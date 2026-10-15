@@ -294,6 +294,14 @@ const api = {
       return () => ipcRenderer.removeListener(IPC.MPV_STATE, l);
     },
   },
+  // ★ 2026-10-16 插件系统（M1）：列表 / 安装（主进程弹选择框）/ 卸载 / 启停 / 超分状态
+  plugins: {
+    list: () => invoke(IPC.PLUGIN_LIST),
+    install: () => invoke(IPC.PLUGIN_INSTALL),
+    uninstall: (id: string) => invoke(IPC.PLUGIN_UNINSTALL, id),
+    setEnabled: (a: { id: string; enabled: boolean }) => invoke(IPC.PLUGIN_SET_ENABLED, a),
+    sr: () => invoke(IPC.PLUGIN_SR),
+  },
   // ★ 2026-09-29 磁力（BT）：探测本机已安装的外部播放器（MKV/HEVC 接力；只探测不启动）
   bt: {
     detectPlayers: () => invoke<Array<{ id: string; name: string; path: string }>>(IPC.BT_DETECT_PLAYERS),

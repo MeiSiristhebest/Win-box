@@ -56,6 +56,19 @@ export function cacheDir(): string {
 export function logsDir(): string {
   return join(userDataDir(), 'logs');
 }
+
+/**
+ * ★ 插件目录（**用户内容**，独立于 `winbox-cache`，`cacheClean` 绝不触碰）。
+ *   已安装插件落 `<plugins>/<id>.winbox/`；见 docs/design/插件系统_设计方案.md §6。
+ */
+export function pluginsDir(): string {
+  return join(userDataDir(), 'plugins');
+}
+
+/** 随包官方插件目录（`resources/plugins/*.winbox`，只读；管理器登记为 builtin 源） */
+export function builtinPluginsDir(): string {
+  return join(resourcesDir(), 'plugins');
+}
 export function spiderCacheDir(): string {
   return join(cacheDir(), 'spider');
 }

@@ -36,6 +36,7 @@ import type { MetaHit, MetaExtra, DiscoverSection, DiscoverGenre, DiscoverGenreP
 import type { MetaSettings, MetaSettingsView, MetaSuggestion } from '../../shared/meta';
 import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../../shared/discover';
 import type { PlayerSettings, MpvStatus, MpvStartOptions, MpvCommand, MpvStateEvent } from '../../shared/player';
+import type { PluginView, SrState } from '../../shared/plugin';
 import type { BackupExportResult, BackupImportResult } from '../../shared/backup';
 import type { DavBrowseResult, DavServer } from '../../shared/webdav';
 import type { DlnaCastResult, DlnaCastTarget, DlnaDevice } from '../../shared/dlna';
@@ -270,6 +271,14 @@ declare global {
         stop: () => Promise<IpcResult<{ ok: boolean }>>;
         onState: (cb: (s: MpvStateEvent) => void) => () => void;
       };
+      // ★ 2026-10-16 插件系统（M1）：列表 / 安装（主进程弹选择框）/ 卸载 / 启停 / 超分状态
+      plugins: {
+        list: () => Promise<IpcResult<PluginView[]>>;
+        install: () => Promise<IpcResult<{ ok: boolean; canceled?: boolean; reason?: string; items?: PluginView[] }>>;
+        uninstall: (id: string) => Promise<IpcResult<{ ok: boolean; reason?: string; items?: PluginView[] }>>;
+        setEnabled: (a: { id: string; enabled: boolean }) => Promise<IpcResult<{ ok: boolean; reason?: string; items?: PluginView[] }>>;
+        sr: () => Promise<IpcResult<SrState>>;
+      };
       // ★ 2026-09-29 磁力（BT）：本机已安装的外部播放器（MKV/HEVC 接力；只探测不启动）
       bt: {
         detectPlayers: () => Promise<IpcResult<Array<{ id: string; name: string; path: string }>>>;
@@ -465,6 +474,13 @@ export const client = {
   mpvCmd: (cmd: MpvCommand) => unwrap<{ ok: boolean }>(window.api.mpv.cmd(cmd)),
   mpvStop: () => unwrap<{ ok: boolean }>(window.api.mpv.stop()),
   mpvOnState: (cb: (s: MpvStateEvent) => void) => window.api.mpv.onState(cb as (s: unknown) => void),
+  // ★ 2026-10-16 插件系统（M1）：列表 / 安装 / 卸载 / 启停 / 超分状态
+  pluginList: () => unwrap<PluginView[]>(window.api.plugins.list()),
+  pluginInstall: () => unwrap<{ ok: boolean; canceled?: boolean; reason?: string; items?: PluginView[] }>(window.api.plugins.install()),
+  pluginUninstall: (id: string) => unwrap<{ ok: boolean; reason?: string; items?: PluginView[] }>(window.api.plugins.uninstall(id)),
+  pluginSetEnabled: (a: { id: string; enabled: boolean }) =>
+    unwrap<{ ok: boolean; reason?: string; items?: PluginView[] }>(window.api.plugins.setEnabled(a)),
+  pluginSr: () => unwrap<SrState>(window.api.plugins.sr()),
   /** ★ 2026-09-29 磁力（BT）：探测本机外部播放器（MKV/HEVC 接力；配置页可指定路径） */
   btDetectPlayers: () => unwrap(window.api.bt.detectPlayers()),
   /** ★ 2026-09-30（用户要求）：点播外部播放器（与磁力分开绑定）——探测本机播放器 / 用当前地址拉起 */

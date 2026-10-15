@@ -37,7 +37,8 @@ import { parseCastTarget, type DlnaDevice } from '../../shared/dlna';
 import { loadPlayerPrefs, savePlayerPrefs, PLAYER_FITS, getSessionAudioPref, setSessionAudioPref, type PlayerPrefs, type PlayerFit } from '../lib/playerPrefs';
 // ★ 2026-10-08（用户拍板「内置官方构建」）：MPV 高兼容播放内核 —— 双内核选择纯函数
 import { resolveKernel, type Kernel, type KernelPref } from '../lib/kernel';
-import { mpvSubPos, type MpvAudioTrack, type MpvKernelState, type MpvStateEvent, type MpvStatus } from '../../shared/player';
+import { mpvSubPos, SR_MODE_LABEL, type MpvAudioTrack, type MpvKernelState, type MpvStateEvent, type MpvStatus, type SrMode } from '../../shared/player';
+import type { SrState } from '../../shared/plugin';
 import { subtitleEmptyReason, subtitleSourceLabel } from '../lib/subtitleText';
 import DriveBindModal from './DriveBindModal';
 import { driveProviderFromUrl, driveProviderLabel } from '../../shared/driveProvider';
@@ -549,6 +550,16 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       .catch(() => setMpvInfo(null));
   }, [allowMpv]);
 
+  // ★ 超分插件（M1）：进入 MPV 内核时刷新一次可用性/档位（配置页装/卸插件后切内核即生效）
+  useEffect(() => {
+    if (!allowMpv || kernel !== 'mpv') {
+      setSrPanel(false);
+      return;
+    }
+    refreshSr();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowMpv, kernel]);
+
   // 本次生效内核（显式偏好优先；auto 按资源形态；mpv 不可用一律回落 html5）
   useEffect(() => {
     if (!allowMpv) {
@@ -773,6 +784,14 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   /** ★ 本会话记住的音轨标识放在 `lib/playerPrefs` 的**模块级变量**里（组件换集会重挂载，ref 扛不住）；
    *  `audioAppliedRef` = 本实例已自动套用过的 url（实例内即可）。 */
   const audioAppliedRef = useRef('');
+  /**
+   * ★ 超分插件（M1）：档位存于 `PlayerSettings.srMode`（主进程落盘），**只在当前内核为 MPV 时显示按钮**
+   *   （HTML5 跑不了 GLSL）。可用性与档位列表由主进程 `plugin:sr` 给出 —— 插件未装/载荷未就位
+   *   → `available=false` → 按钮不出现（不做「自动切内核」）。换档走运行期 IPC，不重启 mpv 会话。
+   */
+  const [srInfo, setSrInfo] = useState<SrState | null>(null);
+  const [srPanel, setSrPanel] = useState(false);
+  const [srMode, setSrMode] = useState<SrMode>('off');
   /** 换片/换集 → 音轨表清空（等当前内核重新上报；否则会残留上一片的列表） */
   useEffect(() => {
     setAudioTracks([]);
@@ -2120,7 +2139,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   }, [dur, mini, isLive]);
 
   // ★ 2026-09-28（用户要求）：字幕/弹幕图标手势 —— 左键单击=开关，右键或长按=打开调整框（三者互斥）
-  const openPanel = (which: 'sub' | 'dm' | 'fit' | 'audio') => {
+  const openPanel = (which: 'sub' | 'dm' | 'fit' | 'audio' | 'sr') => {
     subHover.cancel();
     dmHover.cancel();
     volumeHover.cancel();
@@ -2131,6 +2150,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     setDmPanel(which === 'dm');
     setFitPanel(which === 'fit');
     setAudioPanel(which === 'audio');
+    setSrPanel(which === 'sr');
     setSkipPanel(false); // ★ 与跳过面板互斥
     poke();
   };
@@ -2150,6 +2170,28 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   const subPanelHost = usePlayerPanelPosition(subPanel, wrapRef);
   const dmPanelHost = usePlayerPanelPosition(dmPanel, wrapRef);
   const audioPanelHost = usePlayerPanelPosition(audioPanel, wrapRef);
+  const srPanelHost = usePlayerPanelPosition(srPanel, wrapRef);
+  /**
+   * ★ 超分插件（M1）：
+   *   · `refreshSr`：从主进程取可用性/档位（插件装没装、载荷就位否，都在主进程判定）；
+   *   · `applySr`：切档 —— 落盘偏好（`PlayerSettings.srMode`）+ 运行期 IPC（主进程解析绝对路径）；
+   *   · 初始链由主进程在 `mpv:start` 时按 `srMode` 注入（渲染层不传路径）。
+   */
+  const refreshSr = (): void => {
+    client
+      .pluginSr()
+      .then((s) => {
+        setSrInfo(s);
+        setSrMode((s.mode as SrMode) || 'off');
+      })
+      .catch(() => setSrInfo(null));
+  };
+  const applySr = (m: SrMode): void => {
+    setSrMode(m);
+    void client.playerPrefsSet({ srMode: m }).catch(() => undefined);
+    void client.mpvCmd({ type: 'sr-mode', value: m }).catch(() => undefined);
+    poke();
+  };
   /**
    * ★ 2026-10-17（用户要求「音轨设置」）：音轨处理 ——
    *   · `audioTrackKey`：本会话记忆用的标识（语言优先 → 标题 → id 兜底）；
@@ -3138,6 +3180,47 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             >
               <span className="vp-kernel-tag">MPV</span>
             </button>
+          )}
+          {/* ★ 超分插件（M1，用户口径）：**紧邻 MPV 内核切换按钮**、**仅当前内核为 MPV 时出现**
+              （HTML5 跑不了 GLSL）；悬停选档，切换即时生效（走运行期 IPC，不重启 mpv 会话）。
+              插件未装 / 载荷未就位 → 主进程回 available=false → 本按钮不出现。 */}
+          {kernel === 'mpv' && srInfo?.available && (
+            <div
+              className="vp-vol"
+              onPointerEnter={() => { setSubPanel(false); setDmPanel(false); setFitPanel(false); setAudioPanel(false); setSrPanel(true); poke(); }}
+              onPointerLeave={() => setSrPanel(false)}
+            >
+              <button
+                className={`vp-ctl${srMode !== 'off' ? ' vp-on' : ''}`}
+                title={
+                  srMode !== 'off'
+                    ? `超分：${SR_MODE_LABEL[srMode]}档（悬停换档 / 选「关闭」即停）`
+                    : '超分辨率（仅 MPV 内核；悬停选择档位）'
+                }
+                onClick={() => openPanel('sr')}
+              >
+                <span className="vp-kernel-tag">超分</span>
+                {srMode !== 'off' && <span className="vp-subdot" />}
+              </button>
+              <div className={`vp-fithost${srPanel ? ' open' : ''}`}>
+                <div ref={srPanelHost} className="vp-subpanel vp-fitpanel vp-audiopanel" onClick={(e) => e.stopPropagation()}>
+                  <div className="vsp-row" style={{ marginBottom: 6 }}>
+                    <span className="muted" style={{ fontSize: 11 }}>超分辨率（MPV 内核实时生效，不重启播放）</span>
+                  </div>
+                  <div className="vsp-fits">
+                    {['off', ...srInfo.modes.map((m) => m.id)].map((id) => (
+                      <button
+                        key={id}
+                        className={`vsp-btn${srMode === id ? ' active' : ''}`}
+                        onClick={() => applySr(id as SrMode)}
+                      >
+                        {SR_MODE_LABEL[id as SrMode] ?? id}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
           <div style={{ flex: 1 }} />
           {/* ★ 2026-09-26（用户要求）：**画面比例** —— 竖屏/超宽等特殊比例片源可手动切换；

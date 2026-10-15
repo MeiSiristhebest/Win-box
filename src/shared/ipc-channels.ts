@@ -181,9 +181,20 @@ export const IPC = {
   // ★ 网络代理设置（DNS 污染 / SNI 阻断站点用；配置页可填）
   PROXY_GET: 'proxy:get',
   PROXY_SET: 'proxy:set',
-  // ★ 播放相关本地偏好（当前：m3u8 去广告开关；本地中继 /play 即时生效）
+  // ★ 播放相关本地偏好（当前：m3u8 去广告开关 / 超分档位；本地中继 /play 即时生效）
   PLAYER_PREFS_GET: 'player:prefsGet',
   PLAYER_PREFS_SET: 'player:prefsSet',
+  // ★ 2026-10-16 插件系统（M1）：登记 / 安装 / 卸载 / 启停 / 超分状态与着色器链
+  /** 已登记插件列表（user 目录 + builtin 随包 zip；见 main/plugin/PluginHost.list） */
+  PLUGIN_LIST: 'plugin:list',
+  /** 安装 `.winbox`（主进程弹文件选择框；安装成功返回新表） */
+  PLUGIN_INSTALL: 'plugin:install',
+  /** 卸载（删 `<id>.winbox/`；builtin 下次启动会重新物化） */
+  PLUGIN_UNINSTALL: 'plugin:uninstall',
+  /** 启停整插件（停用保留磁盘、不参与宿主装配） */
+  PLUGIN_SET_ENABLED: 'plugin:setEnabled',
+  /** 超分状态（是否可用 / 可选档位 / 实际生效档位）—— 播放器按钮据此显示与高亮 */
+  PLUGIN_SR: 'plugin:sr',
   /** ★ 2026-09-29 磁力（BT）：探测本机已安装的外部播放器（MKV/HEVC 接力用；只探测不启动） */
   BT_DETECT_PLAYERS: 'bt:detectPlayers',
   // ★ 2026-10-08 MPV 高兼容播放内核（独立播放器窗口内嵌 --wid + JSON IPC；见 main/player/MpvController）

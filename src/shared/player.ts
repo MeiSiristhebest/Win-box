@@ -2,6 +2,34 @@
 // 播放相关的本地偏好 —— 主进程（本地中继 `/play`）与渲染层配置页共用。
 // 落在 <userData>/player-settings.json（见 src/main/player/playerSettings.ts）。
 
+// ---------- ★ 超分插件（M1）：用户可见档位（见 docs/design/插件系统_设计方案.md §8） ----------
+//
+// 档位 id 与插件 manifest 的 `contributes[type='mpv.shaders'].modes[].id` 一一对应；
+// `off` = 不注入着色器（不重启 mpv 会话，逐条 clr 即关）。
+/** 超分档位（`off` + 插件声明的档位 id） */
+export type SrMode = 'off' | 'efficiency' | 'quality' | 'general' | 'high';
+export const SR_MODES: readonly SrMode[] = ['off', 'efficiency', 'quality', 'general', 'high'];
+export const SR_MODE_LABEL: Record<SrMode, string> = {
+  off: '关闭',
+  efficiency: '效率',
+  quality: '质量',
+  general: '通用',
+  high: '高质量',
+};
+
+export function isSrMode(v: unknown): v is SrMode {
+  return typeof v === 'string' && (SR_MODES as readonly string[]).includes(v);
+}
+
+/**
+ * 求**实际生效**档位（纯函数，主/渲染共用）：未就绪（未装插件 / 载荷缺 / 档位不在可用集）→ 一律 `off`。
+ * 记的是"用户想要哪个档"，落盘的 `srMode` 不因插件卸载被改写；渲染时才按可用性收敛。
+ */
+export function srModeUsable(mode: unknown, usable: readonly string[]): SrMode {
+  if (!isSrMode(mode) || mode === 'off') return 'off';
+  return usable.includes(mode) ? mode : 'off';
+}
+
 export interface PlayerSettings {
   /**
    * ★ m3u8 去广告（对位 TVBox `HawkConfig.M3U8_PURIFY`，**默认关**）。
@@ -39,6 +67,12 @@ export interface PlayerSettings {
    * （HTML 覆盖层仍在 mpv 画面之上；地址链路不变，mpv 直接吃既有 `/play` 中继）。
    */
   mpvPath: string;
+  /**
+   * ★ 超分插件（M1）：MPV 内核超分档位（`off`=关；其余为插件档位 id）。
+   * **仅 MPV 内核生效**（HTML5 跑不了 GLSL）；实际是否生效由「插件已装且载荷就绪」决定（`srModeUsable`）。
+   * 换档走运行期 IPC（逐条 clr+append），**不重启 mpv 会话**。
+   */
+  srMode: SrMode;
 }
 
 export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
@@ -47,6 +81,7 @@ export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   vodExternalPlayer: '',
   vodExternalPlayerEnabled: false,
   mpvPath: '',
+  srMode: 'off',
 };
 
 /** 归一（容错旧值/缺字段；纯函数，配置页与主进程共用） */
@@ -56,12 +91,15 @@ export function normalizePlayerSettings(s: Partial<PlayerSettings> | null | unde
   // 旧配置没有该字段 → 按「路径非空」推导（迁移口径）；显式布尔值一律以它为准
   const vodOn = s && typeof s.vodExternalPlayerEnabled === 'boolean' ? s.vodExternalPlayerEnabled : vod !== '';
   const mpv = s && typeof s.mpvPath === 'string' ? s.mpvPath.trim() : '';
+  // ★ 超分档位：非白名单值（旧配置 / 手改坏）一律回落 off
+  const sr = isSrMode(s?.srMode) ? (s!.srMode as SrMode) : 'off';
   return {
     m3u8Purify: !!(s && s.m3u8Purify),
     btExternalPlayer: bt,
     vodExternalPlayer: vod,
     vodExternalPlayerEnabled: vodOn,
     mpvPath: mpv,
+    srMode: sr,
   };
 }
 
@@ -96,6 +134,11 @@ export interface MpvStartOptions {
   rate?: number;
   /** 初始画面比例（PlayerFit；缺省 contain） */
   fit?: string;
+  /**
+   * ★ 超分插件（M1）：本会话初始 mpv 着色器链（**绝对路径**，顺序即生效顺序）。
+   *   经 IPC 逐条 `change-list glsl-shaders clr/append` 注入（不用拼接串，规避分隔符问题）；空/缺省 = 不注入。
+   */
+  shaders?: string[];
 }
 
 /** 渲染层 → 主进程：内核控制命令（主进程翻译成 mpv 命令） */
@@ -111,7 +154,11 @@ export type MpvCommand =
   | { type: 'sub-font'; value: number } // CSS px（主进程换算 mpv 字号）
   | { type: 'sub-pos'; value: number } // 0..100（距顶部百分比）
   // ★ 2026-10-17（用户要求）：音轨切换（mpv 的 aid；内置内核走 hls.js 的 audioTrack，不走这里）
-  | { type: 'aid'; value: number };
+  | { type: 'aid'; value: number }
+  // ★ 超分插件（M1）：整链替换 mpv 着色器（空数组 = 关闭超分），即时生效、不重启会话
+  | { type: 'glsl-shaders'; value: string[] }
+  // ★ 超分插件（M1）：换超分档位 —— 渲染层只报档位，**绝对路径由主进程解析**（渲染层不碰文件系统）
+  | { type: 'sr-mode'; value: SrMode };
 
 /** ★ 2026-10-17（用户要求「音轨设置」）：音轨条目（mpv `track-list` 里的 audio 项归一后） */
 export interface MpvAudioTrack {

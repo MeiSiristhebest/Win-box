@@ -99,6 +99,20 @@ export function mpvObserveLines(): string[] {
 }
 
 /**
+ * ★ 超分插件（M1）：整链替换 mpv 着色器（`glsl-shaders`）。
+ *
+ * 口径（设计文档 §10）：**不用**拼接串（`set glsl-shaders "a:b:c"` —— 路径含分隔符/转义易出错），
+ * 改为**逐条** `change-list`：先 `clr ""` 清空，再对每个绝对路径 `append`。
+ * 空数组 = 只清空（关闭超分）；返回空数组 = 无路径且无意义（调用方自行决定是否下发 clr）。
+ */
+export function mpvShadersCmd(paths: readonly string[]): string[] {
+  const list = (paths ?? []).map((p) => String(p ?? '').trim()).filter(Boolean);
+  const lines = [mpvCmdLine(['change-list', 'glsl-shaders', 'clr', ''])];
+  for (const p of list) lines.push(mpvCmdLine(['change-list', 'glsl-shaders', 'append', p]));
+  return lines;
+}
+
+/**
  * 归一 mpv 推送的一行消息到内核状态（就地更新，返回是否有变化）。
  * 覆盖：property-change（time-pos/duration/pause/paused-for-cache/eof-reached/width/height/
  * cache-speed/demuxer-cache-time/track-list/aid）、file-loaded、end-file。
@@ -330,6 +344,9 @@ export function mpvCommandLines(cmd: MpvCommand): string[] {
       if (!Number.isFinite(id) || id <= 0) return [];
       return [mpvCmdLine(['set_property', 'aid', Math.round(id)])];
     }
+    // ★ 超分插件（M1）：整链替换着色器（空数组 = 清空 = 关闭超分）
+    case 'glsl-shaders':
+      return mpvShadersCmd(cmd.value ?? []);
     default:
       return [];
   }

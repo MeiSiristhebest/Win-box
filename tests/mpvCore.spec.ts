@@ -10,6 +10,7 @@ import {
   mpvCommandLines,
   mpvFitProps,
   mpvObserveLines,
+  mpvShadersCmd,
   reduceMpvMessage,
   resolveMpvPath,
   sameAudioTracks,
@@ -89,6 +90,41 @@ describe('mpvCore · JSON IPC 协议', () => {
 
   it('未知命令返回空（不发明 API）', () => {
     expect(mpvCommandLines({ type: 'nope' } as never)).toEqual([]);
+  });
+});
+
+describe('mpvCore · 超分插件（glsl-shaders 注入）', () => {
+  const parse = (lines: string[]): unknown[][] => lines.map((l) => JSON.parse(l.trim()).command);
+
+  it('逐条 clr + append（不用拼接串）；顺序即生效顺序', () => {
+    const cmds = parse(mpvShadersCmd(['R:\\p\\files\\a.glsl', 'R:\\p\\files\\b.glsl']));
+    expect(cmds).toEqual([
+      ['change-list', 'glsl-shaders', 'clr', ''],
+      ['change-list', 'glsl-shaders', 'append', 'R:\\p\\files\\a.glsl'],
+      ['change-list', 'glsl-shaders', 'append', 'R:\\p\\files\\b.glsl'],
+    ]);
+  });
+
+  it('空数组 = 只清空（关闭超分）；空串/非串被滤掉', () => {
+    expect(parse(mpvShadersCmd([]))).toEqual([['change-list', 'glsl-shaders', 'clr', '']]);
+    expect(parse(mpvShadersCmd(['', '  '] as string[]))).toEqual([['change-list', 'glsl-shaders', 'clr', '']]);
+  });
+
+  it('含分隔符/空格的路径不被拆开（这正是「不用拼接串」的原因）', () => {
+    const cmds = parse(mpvShadersCmd(['R:\\My Plugins\\x y.glsl']));
+    expect(cmds[1]).toEqual(['change-list', 'glsl-shaders', 'append', 'R:\\My Plugins\\x y.glsl']);
+  });
+
+  it('MpvCommand 翻译：type=glsl-shaders 走 clr+append；缺省/未知值不发明 API', () => {
+    const lines = mpvCommandLines({ type: 'glsl-shaders', value: ['C:\\s\\a.glsl'] });
+    expect(parse(lines)).toEqual([
+      ['change-list', 'glsl-shaders', 'clr', ''],
+      ['change-list', 'glsl-shaders', 'append', 'C:\\s\\a.glsl'],
+    ]);
+    // 空数组 → 只清空（关闭超分）
+    expect(parse(mpvCommandLines({ type: 'glsl-shaders', value: [] }))).toEqual([
+      ['change-list', 'glsl-shaders', 'clr', ''],
+    ]);
   });
 });
 

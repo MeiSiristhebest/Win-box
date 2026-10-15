@@ -23,6 +23,7 @@ import {
   mpvCmdLine,
   mpvCommandLines,
   mpvObserveLines,
+  mpvShadersCmd,
   reduceMpvMessage,
   resolveMpvPath,
 } from './mpvCore';
@@ -195,6 +196,10 @@ export class MpvController {
     sock.write(mpvCmdLine(['set_property', 'mute', 'no']));
     sock.write(mpvCmdLine(['set_property', 'pause', opts.paused ? 'yes' : 'no']));
     sock.write(mpvCmdLine(['set_property', 'volume', Math.max(0, Math.min(1, opts.volume ?? 1)) * 100]));
+    // ★ 超分插件（M1）：初始着色器链必须在 loadfile **之前**下发（逐条 clr+append，见 mpvShadersCmd）；
+    //   运行期换档走 `command({type:'glsl-shaders'})`，同样即时生效、不重启会话。
+    const shaders = (opts.shaders ?? []).map((s) => String(s ?? '').trim()).filter(Boolean);
+    if (shaders.length) for (const l of mpvShadersCmd(shaders)) sock.write(l);
     sock.write(mpvCmdLine(['loadfile', url, 'replace']));
     return { session, path: st.path };
   }

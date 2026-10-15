@@ -12,9 +12,10 @@ import { getShowDiscover, setShowDiscover, getMotionPref, setMotionPref, getNavM
 import { THEME_LABELS, type Theme } from '../lib/themeTokens';
 import { DEFAULT_META_SETTINGS, type MetaSettings } from '../../shared/meta';
 import { DEFAULT_PLAYER_SETTINGS, type PlayerSettings, type MpvStatus } from '../../shared/player';
+import type { PluginView } from '../../shared/plugin';
 import type { DavServer } from '../../shared/webdav';
 
-type TabId = 'sources' | 'health' | 'profiles' | 'account' | 'storage' | 'appearance' | 'play' | 'shortcut' | 'network' | 'backup';
+type TabId = 'sources' | 'health' | 'profiles' | 'account' | 'storage' | 'appearance' | 'play' | 'plugins' | 'shortcut' | 'network' | 'backup';
 
 interface Draft {
   name: string;
@@ -139,6 +140,50 @@ export default function ConfigPage() {
   useEffect(() => {
     client.playerPrefsGet().then((s) => setPlayPrefs(s)).catch(() => undefined);
   }, []);
+  // ---- ★ 2026-10-16 插件/组件（M1）：列表 / 安装 / 卸载 / 启停（超分插件也在这里管）----
+  const [pluginItems, setPluginItems] = useState<PluginView[]>([]);
+  const [pluginMsg, setPluginMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
+  const [pluginBusy, setPluginBusy] = useState(false);
+  const loadPlugins = async () => {
+    try {
+      setPluginItems(await client.pluginList());
+    } catch (e) {
+      setPluginMsg({ text: `读取插件列表失败：${(e as Error).message}`, kind: 'err' });
+    }
+  };
+  const applyPluginResult = (r: { items?: PluginView[]; reason?: string }, okText: string) => {
+    if (r.items) setPluginItems(r.items);
+    setPluginMsg(r.reason ? { text: r.reason, kind: 'err' } : { text: okText, kind: 'ok' });
+  };
+  const installPlugin = async () => {
+    setPluginBusy(true);
+    try {
+      const r = await client.pluginInstall();
+      if (r.canceled) return;
+      applyPluginResult(r, '安装成功（运行库就绪前该插件保持「未就位」）');
+    } catch (e) {
+      setPluginMsg({ text: `安装失败：${(e as Error).message}`, kind: 'err' });
+    } finally {
+      setPluginBusy(false);
+    }
+  };
+  const uninstallPlugin = async (id: string, name: string) => {
+    if (!window.confirm(`确定卸载插件「${name}」？（删掉磁盘上的插件目录；随包官方插件下次启动会重新就位）`)) return;
+    setPluginBusy(true);
+    try {
+      applyPluginResult(await client.pluginUninstall(id), '已卸载');
+    } finally {
+      setPluginBusy(false);
+    }
+  };
+  const togglePluginEnabled = async (id: string, on: boolean) => {
+    setPluginBusy(true);
+    try {
+      applyPluginResult(await client.pluginSetEnabled({ id, enabled: on }), on ? '已启用' : '已停用（保留磁盘）');
+    } finally {
+      setPluginBusy(false);
+    }
+  };
   const toggleM3u8Purify = async (on: boolean) => {
     try {
       const s = await client.playerPrefsSet({ m3u8Purify: on });
@@ -931,6 +976,7 @@ export default function ConfigPage() {
     { id: 'storage', label: '存储' },
     { id: 'appearance', label: '外观' },
     { id: 'play', label: '播放' },
+    { id: 'plugins', label: '插件/组件' },
     { id: 'shortcut', label: '快捷键' },
     { id: 'network', label: '网络' },
     { id: 'backup', label: '备份' },
@@ -961,6 +1007,8 @@ export default function ConfigPage() {
     if (tab === 'storage') void loadDav();
     // ★ 2026-09-30：切到「源健康与维护」时拉数据目录信息（展示 + 排障）
     if (tab === 'health') client.dataDir().then(setDataDir).catch(() => undefined);
+    // ★ 2026-10-16：切到「插件/组件」时刷新插件列表
+    if (tab === 'plugins') void loadPlugins();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -1952,6 +2000,80 @@ export default function ConfigPage() {
           )}
         </div>
       </div>
+      </>
+      )}
+
+      {/* ===== 七、插件/组件（★ 2026-10-16 M1：列表 / 安装 / 卸载 / 启停；超分插件也在这里管理） ===== */}
+      {tab === 'plugins' && (
+      <>
+      <div className="card" id="cfg-plugins" style={{ padding: 12, marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontWeight: 600 }}>插件 / 组件</span>
+          <span className="muted" style={{ fontSize: 11 }}>
+            插件是独立打包的 <b>.winbox</b>（zip）单元：官方插件随软件附带，装第三方插件请选
+            <b>本地 .winbox 文件</b>安装。停用会保留磁盘内容、只是不生效；卸载会删掉插件目录
+            （随包官方插件下次启动会重新就位）。
+          </span>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <button className="primary" disabled={pluginBusy} onClick={() => void installPlugin()}>安装插件…</button>
+            <button disabled={pluginBusy} onClick={() => void loadPlugins()}>刷新</button>
+            <span className="muted" style={{ fontSize: 11, marginLeft: 'auto' }}>
+              共 {pluginItems.length} 个
+            </span>
+          </div>
+          {pluginMsg && (
+            <span className={pluginMsg.kind === 'err' ? 'err' : 'status'} style={{ margin: 0, wordBreak: 'break-all' }}>
+              {pluginMsg.text}
+            </span>
+          )}
+        </div>
+      </div>
+      {pluginItems.length === 0 ? (
+        <div className="card" style={{ padding: 12 }}>
+          <span className="muted" style={{ fontSize: 12 }}>
+            还没有插件。安装官方超分插件后，播放器（MPV 内核）里会出现「超分」档位按钮。
+          </span>
+        </div>
+      ) : (
+        pluginItems.map((p) => (
+          <div key={p.id} className="card" style={{ padding: 12, marginBottom: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 600 }}>{p.name}</span>
+                <span className="muted" style={{ fontSize: 11 }}>{p.id} · v{p.version}</span>
+                <span className="tag" title="插件来源">{p.source === 'builtin' ? '随包官方' : '用户安装'}</span>
+                <span className="tag" title="能力分级">{p.level}</span>
+                {p.modes.length > 0 && (
+                  <span className="tag" title="贡献的档位">档位 {p.modes.map((m) => m.label).join('/')}</span>
+                )}
+                <span className={!p.ready ? 'err' : 'status'} style={{ margin: 0, fontSize: 11 }}>
+                  {p.ready ? (p.enabled ? '已启用' : '已停用') : '未就位（载荷缺失）'}
+                </span>
+              </div>
+              <div className="row" style={{ gap: 8 }}>
+                {/* 启停：与第三方统一（停用保留磁盘、不参与宿主装配） */}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={p.enabled}
+                    disabled={pluginBusy}
+                    onChange={(e) => void togglePluginEnabled(p.id, e.target.checked)}
+                  />
+                  <span>启用</span>
+                </label>
+                <button
+                  className=""
+                  style={{ marginLeft: 'auto' }}
+                  disabled={pluginBusy}
+                  onClick={() => void uninstallPlugin(p.id, p.name)}
+                >
+                  卸载
+                </button>
+              </div>
+            </div>
+          </div>
+        ))
+      )}
       </>
       )}
 

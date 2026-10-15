@@ -129,12 +129,14 @@ describe('PlayerSettings 归一 — btExternalPlayer / vodExternalPlayer（容�
     expect(DEFAULT_PLAYER_SETTINGS.vodExternalPlayer).toBe('');
     expect(DEFAULT_PLAYER_SETTINGS.vodExternalPlayerEnabled).toBe(false);
     expect(DEFAULT_PLAYER_SETTINGS.mpvPath).toBe('');
+    expect(DEFAULT_PLAYER_SETTINGS.srMode).toBe('off'); // ★ 超分插件（M1）：默认关
     expect(normalizePlayerSettings(undefined)).toEqual({
       m3u8Purify: false,
       btExternalPlayer: '',
       vodExternalPlayer: '',
       vodExternalPlayerEnabled: false,
       mpvPath: '',
+      srMode: 'off',
     });
   });
 

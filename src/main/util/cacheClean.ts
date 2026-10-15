@@ -64,6 +64,48 @@ function clearDirContents(abs: string): { freed: number; ok: boolean } {
   }
 }
 
+/** 单条目占用字节数（目录递归 / 文件取 size） */
+function entrySize(abs: string): number {
+  try {
+    const st = statSync(abs);
+    return st.isDirectory() ? dirSize(abs) : st.size;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * ★ 2026-10-15（用户要求）：清空**应用私有缓存目录**（`winbox-cache`）的**全部内容**（保留目录本身）。
+ *
+ * 用途：**更新后首次启动**一次性清掉历史安装包（`update/`，逐版累积会让安装目录涨到 GB 级）
+ * 以及随之可重建的运行时（`python` `native`）/ 转换产物（`spider`）/ EPG·BT·图片缓存 ——
+ * 这些都能在下次使用时自动重建（jar 重转、运行时按需重下、EPG/BT/封面重取）。
+ *
+ * 目录由调用方注入（避免本模块依赖 electron）。
+ */
+export function clearWinboxCache(abs: string): ClearCacheResult {
+  const result: ClearCacheResult = { freedBytes: 0, cleared: [], failed: [] };
+  if (!existsSync(abs)) return result;
+  let names: string[];
+  try {
+    names = readdirSync(abs);
+  } catch {
+    result.failed.push(abs);
+    return result;
+  }
+  for (const name of names) {
+    const p = join(abs, name);
+    try {
+      result.freedBytes += entrySize(p);
+      rmSync(p, { recursive: true, force: true, maxRetries: 2 });
+      result.cleared.push(name);
+    } catch {
+      result.failed.push(name);
+    }
+  }
+  return result;
+}
+
 /** 清理全部可安全清除的缓存；返回释放字节数与逐项结果。目录由调用方注入（避免本模块依赖 electron）。 */
 export function clearAppCache(ud: string, sp: string): ClearCacheResult {
   const result: ClearCacheResult = { freedBytes: 0, cleared: [], failed: [] };

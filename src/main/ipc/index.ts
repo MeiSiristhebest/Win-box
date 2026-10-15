@@ -38,6 +38,9 @@ import type { ExploreQuery } from '../../shared/discover';
 import { openPlayerWindow, playerSwitchEpisode, isPlayerOpen, closePlayerWindow, playerSetMini, playerIsMini, playerWindow, playerResendInit, onPlayerWindowClosed, isPlayerWindow, playerSetFullscreen, playerIsFullscreen, playerSetResizable } from '../player/PlayerWindow';
 // ★ 2026-10-08 MPV 高兼容播放内核（独立播放器窗口内嵌 --wid）
 import { MpvController } from '../player/MpvController';
+// ★ 2026-10-16 插件系统（M1）：宿主聚合（登记/安装/启停/超分着色器解析）
+import type { PluginHost } from '../plugin/PluginHost';
+import type { SrMode } from '../../shared/player';
 // ★ 2026-10-08 详情页独立窗口（外观开关控制；见 renderer/lib/detailWin.ts）
 import { openDetailWindow, detailWindowReady } from '../player/DetailWindow';
 import { openSearchWindow, searchWindowReady } from '../player/SearchWindow';
@@ -85,7 +88,7 @@ function importLiveFile(srcPath: string, nameOverride: string): { fileName: stri
   return { fileName, name, needsName: !nameOverride };
 }
 
-export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService, updater: UpdateService, pkgs: LocalPkgStore): void {
+export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService, updater: UpdateService, pkgs: LocalPkgStore, plugins: PluginHost): void {
   const log = fileLogger;
   /** ★ 2026-10-08 MPV 播放内核（单会话；播放器窗口关闭/退出应用会 dispose） */
   const mpv = new MpvController(fileLogger);
@@ -587,12 +590,22 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
 
   // ---- ★ 2026-10-08 MPV 高兼容播放内核（独立播放器窗口内嵌；见 main/player/MpvController）----
   registerHandler(IPC.MPV_STATUS, () => mpv.status(), log);
-  registerHandler(IPC.MPV_START, (e: any, opts: MpvStartOptions) => {
+  registerHandler(IPC.MPV_START, async (e: any, opts: MpvStartOptions) => {
     const w = winOf(e as IpcMainInvokeEvent);
     if (!w) throw new Error('播放器窗口不存在（mpv 无法嵌入）');
-    return mpv.start(w, opts || ({ url: '' } as MpvStartOptions));
+    // ★ 超分插件（M1）：初始着色器链由**主进程**按当前档位解析成绝对路径（渲染层不碰文件系统）
+    const base = opts || ({ url: '' } as MpvStartOptions);
+    const shaders = await plugins.srShaders(playerSettings.settings.srMode);
+    return mpv.start(w, shaders.length ? { ...base, shaders } : base);
   }, log);
-  registerHandler(IPC.MPV_CMD, (_e: any, cmd: MpvCommand) => ({ ok: mpv.command(cmd) }), log);
+  registerHandler(IPC.MPV_CMD, async (_e: any, cmd: MpvCommand) => {
+    // ★ 超分换档：渲染层只报档位 → 此处解析为着色器绝对路径，再走 glsl-shaders（逐条 clr+append）
+    if (cmd?.type === 'sr-mode') {
+      const value = await plugins.srShaders(cmd.value as SrMode);
+      return { ok: mpv.command({ type: 'glsl-shaders', value }) };
+    }
+    return { ok: mpv.command(cmd) };
+  }, log);
   registerHandler(IPC.MPV_STOP, () => {
     mpv.stop();
     return { ok: true };
@@ -636,6 +649,23 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   // ---- ★ 播放偏好（m3u8 去广告开关；本地中继 /play 每轮读一次 → 改后即时生效）----
   registerHandler(IPC.PLAYER_PREFS_GET, () => playerSettings.settings, log);
   registerHandler(IPC.PLAYER_PREFS_SET, (_e: any, patch: Partial<PlayerSettings>) => playerSettings.update(patch || {}), log);
+  // ---- ★ 2026-10-16 插件系统（M1）：登记 / 安装（弹选择框）/ 卸载 / 启停 / 超分状态 ----
+  registerHandler(IPC.PLUGIN_LIST, () => plugins.list(), log);
+  registerHandler(IPC.PLUGIN_INSTALL, async (e: any) => {
+    const w = winOf(e as IpcMainInvokeEvent);
+    const picked = await dialog.showOpenDialog(w ?? undefined!, {
+      title: '安装插件',
+      properties: ['openFile'],
+      filters: [{ name: 'Win-Box 插件', extensions: ['winbox'] }],
+    });
+    if (picked.canceled || !picked.filePaths?.[0]) return { ok: false, canceled: true };
+    const r = await plugins.installFromFile(picked.filePaths[0]);
+    log.i(`插件安装：${r.ok ? '成功' : '失败'}（${picked.filePaths[0]}）${r.reason ? ` — ${r.reason}` : ''}`);
+    return r;
+  }, log);
+  registerHandler(IPC.PLUGIN_UNINSTALL, async (_e: any, id: string) => plugins.uninstall(String(id || '')), log);
+  registerHandler(IPC.PLUGIN_SET_ENABLED, async (_e: any, a: { id: string; enabled: boolean }) => plugins.setEnabled(String(a?.id || ''), !!a?.enabled), log);
+  registerHandler(IPC.PLUGIN_SR, () => plugins.srState(playerSettings.settings.srMode), log);
   // ---- ★ 2026-09-29 磁力外部播放器探测（MKV/HEVC 接力用；只列本机已安装的，不启动）----
   registerHandler(
     IPC.BT_DETECT_PLAYERS,

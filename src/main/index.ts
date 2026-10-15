@@ -22,9 +22,17 @@ import { UpdateService } from './update/UpdateService';
 import { DavStore } from './store/DavStore';
 import { JsonStore } from './store/JsonStore';
 import { LocalPkgStore } from './store/LocalPkgStore';
+import { PluginHost } from './plugin/PluginHost';
 import { LOCAL_PROXY_BASE } from '../shared/constants';
-import { legacyLocalImportsDir, localImportsDir, userDataDir } from './util/paths';
+import { builtinPluginsDir, cacheDir, legacyLocalImportsDir, localImportsDir, pluginsDir, userDataDir } from './util/paths';
 import { safeStorageDriveCodec } from './util/driveCodec';
+import { clearWinboxCache, type ClearCacheResult } from './util/cacheClean';
+import {
+  isFirstLaunchAfterUpdate,
+  lastRunVersionPath,
+  readLastRunVersion,
+  writeLastRunVersion,
+} from './util/updateCacheReset';
 
 // esbuild 打成 CJS：__dirname 由 Node 提供（= dist/）。资源在 dist/../../resources。
 declare const __dirname: string;
@@ -62,6 +70,16 @@ const localPkgs = new LocalPkgStore(
   localImportsDir(),
   legacyLocalImportsDir(),
 );
+/**
+ * ★ 2026-10-16 插件系统（M1，用户拍板「方案 A」）：宿主聚合——
+ *   随包官方插件启动时**物化**（`resources/plugins/*.winbox` → `<userData>/plugins/<id>.winbox/` + 侧签）
+ *   → 与用户安装**同构**；用户插件安装/启停；超分档位 → mpv 着色器**绝对路径**解析。
+ */
+const plugins = new PluginHost({
+  pluginsDir: pluginsDir(),
+  builtinDir: builtinPluginsDir(),
+  statePath: join(userDataDir(), 'plugins-state.json'),
+});
 const proxy = new LocalProxyServer(
   fileLogger,
   () => host.driveList(),
@@ -214,6 +232,28 @@ app.whenReady().then(async () => {
   //   此标记随每轮 main 改动手工递增（含当轮关键词，grep 即证）。
     fileLogger.i(`build: 20261012.1 release-${app.getVersion()}`);
 
+  // ★ 2026-10-15（用户要求）：**更新后首次启动**清空应用私有缓存（winbox-cache）。
+  //   背景：升级下载的安装包落在 `winbox-cache/update/` 且从不删除，逐版累积会让安装目录涨到 GB 级。
+  //   判定 = 与 `<userData>/last-run-version.json` 记的「上次运行版本」比较，版本变化即视为更新后首次启动；
+  //   **仅打包态生效**（开发态版本抖动不应误清）；标记文件放在 winbox-cache 之外，不会被本次清理删掉。
+  //   清理后所有内容自动重建（见下方 `enablePrewarm` 之后的 `rewarmAfterCacheClear`）。
+  let privateCacheReset: ClearCacheResult | null = null;
+  try {
+    const marker = lastRunVersionPath(userDataDir());
+    const prev = readLastRunVersion(marker);
+    if (app.isPackaged && isFirstLaunchAfterUpdate(prev, app.getVersion())) {
+      privateCacheReset = clearWinboxCache(cacheDir());
+      fileLogger.i(
+        `更新后首次启动（${prev} → ${app.getVersion()}）：已清空应用私有缓存 winbox-cache（释放 ${(privateCacheReset.freedBytes / 1024 / 1024).toFixed(1)}MB；`
+          + `清理 ${privateCacheReset.cleared.length} 项${privateCacheReset.cleared.length ? `：${privateCacheReset.cleared.slice(0, 12).join('/')}` : ''}`
+          + `${privateCacheReset.failed.length ? `；失败 ${privateCacheReset.failed.join('/')}` : ''}）`,
+      );
+    }
+    if (app.isPackaged) writeLastRunVersion(marker, app.getVersion());
+  } catch (e) {
+    fileLogger.w('更新后清空私有缓存失败：' + (e instanceof Error ? e.message : String(e)));
+  }
+
   try {
     await proxy.start();
   } catch {
@@ -248,7 +288,20 @@ app.whenReady().then(async () => {
   }
   try { host.syncDriveFiles(); } catch { /* 同步失败不影响启动 */ }
   host.enablePrewarm();
-  registerIpc(host, dav, dlna, updater, localPkgs);
+  // ★ 更新后已清空 winbox-cache（含 jar 转换产物与常驻运行时）→ 立刻在后台重建，
+  //   否则用户下次进源要现付「下载 + dex2jar + JVM 冷启动」（实测 37s，会被请求超时顶掉）。
+  if (privateCacheReset) {
+    try { host.rewarmAfterCacheClear(); } catch { /* 预热失败不影响清理结果 */ }
+  }
+  // ★ 2026-10-16 插件宿主：物化随包官方插件 + 刷新登记表（失败不阻塞启动）
+  try {
+    await plugins.init();
+    const items = await plugins.list();
+    fileLogger.i(`插件：登记 ${items.length} 个（${items.map((p) => `${p.id}@${p.version}/${p.source}`).join('、') || '无'}）`);
+  } catch (e) {
+    fileLogger.w('插件初始化失败：' + (e instanceof Error ? e.message : String(e)));
+  }
+  registerIpc(host, dav, dlna, updater, localPkgs, plugins);
   // 老板键：注入窗口提供者（主窗口 + 播放器窗口）并按上次设置注册全局快捷键
   bossKey.start(() => {
     const ws: BrowserWindow[] = [];
