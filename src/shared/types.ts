@@ -432,6 +432,14 @@ export interface UserConfig {
   /** 多配置档案：每份保存一份可离线重建的订阅 JSON（新增于 v2） */
   profiles: UserProfile[];
   activeProfileId: string; // 当前生效 profile id（'' = 无档案管理，仅源列表）
+  /**
+   * ★ 2026-10-15（用户报「配置里删掉的源，换源下拉里还在」）：**用户手动删除过的源 key 墓碑**。
+   *   订阅是"全量替换"语义（导入 / 启动时 7 天自动刷新 / 档案切换都用订阅自带源重建 `sources`）——
+   *   若不记账，用户删掉的源会在任何一次订阅往返后复活（观感 =「删了还在」）。
+   *   口径与「本机导入的本地直播线路」（withLocalLives）一致：**用户的本地增删改要在订阅往返里保住**。
+   *   用户手动**重新添加**同一 key（addSource）时自动清除对应墓碑，所以"删了想要回来"有明确路径。
+   */
+  deletedSourceKeys: string[];
 }
 
 /** 多配置档案：保存"一份订阅"的原始 JSON（解析后可重建 sources/lives/global），用于多 JSON 源切换 */

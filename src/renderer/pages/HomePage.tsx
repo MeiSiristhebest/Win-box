@@ -14,7 +14,7 @@ import { usePageActive } from '../lib/keepAlive';
 import { needsDriveBind } from '../../shared/driveProvider';
 import { useCovers } from '../lib/useCovers';
 import CascadeBar, { type CascadeLevel } from '../components/CascadeBar';
-import { ALL_TAG, LOCAL_SORTS, applyLocalFilters, localDimensions, sortLocal, type ExploreDimensionKey } from '../../shared/discover';
+import { ALL_TAG, applyLocalFilters, localDimensions, type ExploreDimensionKey } from '../../shared/discover';
 import DriveBindModal from '../components/DriveBindModal';
 import { isSearchWindow, openSearchWindow } from '../lib/searchWin';
 
@@ -37,7 +37,6 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
    *   源**没有**的维度走这里的 `localSel`（在源已返回的条目上**本地过滤**，数据仍来自本源，不走聚合）。
    */
   const [localSel, setLocalSel] = useState<Record<string, string>>({});
-  const [localSort, setLocalSort] = useState('default');
   /** 本地过滤需要多页累积才有意义：累积到的原始列表（null = 尚未累积）与推进代数见 accumulate() */
   const rawRef = useRef<VodItem[] | null>(null);
   const [rawInfo, setRawInfo] = useState({ pages: 0, total: 0 });
@@ -235,7 +234,6 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
       setFiltersActive({});
       // ★ 2026-10-15：重新浏览某源 → 本地维度选择与累积列表一并作废
       setLocalSel({});
-      setLocalSort('default');
       setLocalCap(4);
       rawRef.current = null;
       setItems(r.items);
@@ -471,7 +469,6 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     if (tid) setSessionSort(keyRef.current, tid, { filter: filtersActive, pg: waterfall ? 1 : pg });
     // ★ 2026-10-15：换分类 = 换一份数据 → 我们的本地维度选择与累积列表一并作废
     setLocalSel({});
-    setLocalSort('default');
     setLocalCap(4);
     rawRef.current = null;
     if (!t) {
@@ -499,19 +496,27 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
    *   源里其它筛选组（语言 / 明星 …）原样保留，排在四维之后。逐级展开：上一级选定（含「全部」）才出下一级。
    */
   const DIM_KEYS: ExploreDimensionKey[] = ['类型', '地区', '年代'];
+  /**
+   * ★ 2026-10-15（用户要求「对任何源都要抓得准」）：组的**中文名**匹配，同时兜底**英文 key**
+   *   —— 实测 py 源（yt4K）的组名直接是 `class`/`area`/`lang`/`year`（没有中文 name），
+   *     drpy 源的组 key 是 `itype`/`iarea`/`iyear`/`sort`。所以 name 与 key **都要试**，
+   *     否则「类型」维匹配不上 → 既不出类型行、又会被当"多余组"原样显示成一行 `class`。
+   */
   const GROUP_PAT: Record<string, RegExp> = {
-    类型: /类型|片种|题材|genre|类别|影片类型/i,
+    类型: /类型|片种|题材|genre|类别|分类|影片类型|class|cate|type/i,
     地区: /地区|国家|区域|产地|area|region|country/i,
     年代: /年代|年份|时间|year|era/i,
-    排序: /排序|顺序|sort|排列/i,
+    排序: /排序|顺序|sort|排列|order|rank/i,
   };
+  /** 组的 name 或 key 命中该维（name 缺失时 name = key，两者都试一遍） */
+  const groupMatches = (pat: RegExp, g: { name: string; key: string }): boolean => pat.test(g.name) || pat.test(g.key);
   const dimSpecs = (() => {
     const groups = currentClass()?.filters ?? [];
     const used = new Set<string>();
     const probeList = rawRef.current ?? items;
     const specs: Array<{ key: ExploreDimensionKey; label: string; mode: 'server' | 'local' | 'none'; storeKey: string; options: Array<{ id: string; label: string }> }> = [];
     for (const key of DIM_KEYS) {
-      const g = groups.find((x) => GROUP_PAT[key].test(x.name) && !used.has(x.key));
+      const g = groups.find((x) => groupMatches(GROUP_PAT[key], x) && !used.has(x.key));
       if (g) {
         used.add(g.key);
         specs.push({ key, label: key, mode: 'server', storeKey: g.key, options: g.value.filter((o) => o.v !== '').map((o) => ({ id: o.v, label: o.n })) });
@@ -529,14 +534,14 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     }
     return specs;
   })();
-  const sortGroup = (currentClass()?.filters ?? []).find((x) => GROUP_PAT['排序'].test(x.name));
+  const sortGroup = (currentClass()?.filters ?? []).find((x) => groupMatches(GROUP_PAT['排序'], x));
   /** 源里没被四维吃掉、也不是排序的其它筛选组（语言 / 明星 …）——原样保留 */
   const extraGroups = (currentClass()?.filters ?? []).filter(
     (g) => !dimSpecs.some((s) => s.mode === 'server' && s.storeKey === g.key) && g.key !== sortGroup?.key,
   );
 
   /** 本地维度是否真在起作用（决定要不要多页累积） */
-  const localActive = Object.entries(localSel).some(([, v]) => v && v !== ALL_TAG) || localSort !== 'default';
+  const localActive = Object.entries(localSel).some(([, v]) => v && v !== ALL_TAG);
 
   /** 某个维度当前选中值（server 走 filtersActive；local 走 localSel） */
   const dimValue = (s: { mode: string; key: string; storeKey: string }): string | undefined =>
@@ -569,15 +574,15 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
       // 源自带的空值选项（「全部/不限」）语义等同本组 allLabel → 剔掉，避免两个「全部」
       push({ key: `g:${g.key}`, label: g.name, value: v === undefined ? null : v, allLabel: '全部', options: g.value.filter((o) => o.v !== '').map((o) => ({ id: o.v, label: o.n })) }, v !== undefined);
     }
-    if (prevChosen) {
+    // ★ 2026-10-15（用户要求「点播页不要显示自己本地那两条排序」）：排序行**只在源自带排序筛选组时**出现
+    //   （我们自己的「按默认/按年份/按片名」不是源的数据，会让人误以为是源的排序能力，直接不展示）。
+    if (prevChosen && sortGroup) {
       out.push({
         key: '排序',
         label: '排序',
-        value: sortGroup ? (filtersActive[sortGroup.key] ?? null) : localSort,
-        ...(sortGroup ? { allLabel: '全部' } : {}),
-        options: sortGroup
-          ? sortGroup.value.filter((o) => o.v !== '').map((o) => ({ id: o.v, label: o.n }))
-          : LOCAL_SORTS.map((s) => ({ id: s.id, label: s.label })),
+        value: filtersActive[sortGroup.key] ?? null,
+        allLabel: '全部',
+        options: sortGroup.value.filter((o) => o.v !== '').map((o) => ({ id: o.v, label: o.n })),
       });
     }
     return out;
@@ -614,8 +619,8 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
       return;
     }
     if (levelKey === '排序') {
+      // ★ 2026-10-15：排序行只在源自带排序组时出现（本地排序已不再展示，见 classLevels 注释）
       if (sortGroup) reloadWithServer(toggleExtend(filtersActive, sortGroup.key, id));
-      else setLocalSort(id);
       return;
     }
     if (levelKey.startsWith('g:')) {
@@ -667,7 +672,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
       }
       rawRef.current = acc;
       setRawInfo({ pages, total: acc.length });
-      setItems(sortLocal(applyLocalFilters(acc, localSel), localSort));
+      setItems(applyLocalFilters(acc, localSel));
     } catch (e) {
       if (listGen.current.isCurrent(gen)) setErr((e as Error).message);
     } finally {
@@ -679,13 +684,13 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   useEffect(() => {
     if (!tid) return;
     if (rawRef.current) {
-      setItems(sortLocal(applyLocalFilters(rawRef.current, localSel), localSort));
+      setItems(applyLocalFilters(rawRef.current, localSel));
       return;
     }
     if (!localActive) return;
     void accumulate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localSel, localSort, tid, localCap]);
+  }, [localSel, tid, localCap]);
 
   function chooseSource(k: string) {
     if (!k || k === keyRef.current) return;
@@ -694,7 +699,6 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     setFiltersActive({});
     // ★ 2026-10-15：换源 = 换一份数据 → 本地维度选择与累积列表一并作废
     setLocalSel({});
-    setLocalSort('default');
     setLocalCap(4);
     rawRef.current = null;
     setItems([]);
@@ -876,10 +880,16 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   async function doSearch(force = false, termOverride?: string, forceAllScope?: boolean) {
     const term = (termOverride ?? wd).trim();
     if (!term) return;
-    if (!isSearchWindow()) {
-      try { await openSearchWindow(term); } catch (e) { setErr(String(e)); }
-      return;
-    }
+    /**
+     * ★★ 2026-10-15（用户报「本页内模式下聚合搜索失效、详情里的演员搜索也失效」）★★
+     *   这里**不许**再判「本窗口不是搜索视图 → openSearchWindow 转一道」：
+     *   · 本页内（伪墓碑）模式下，所有入口（顶栏搜索框 / 演员 / 发现页）都是
+     *     `openSearchWindow` → 本窗口跳 `/search?agg=…` → 再由**本页的 aggParam effect** 落到这里；
+     *   · 若在此再弹一次 `openSearchWindow`，就会「跳到同一个 URL」——`/search` 实例的 aggParam 没变化，
+     *     于是只发生一次自我导航、**搜索永远不执行**（这正是「搜索不可用」的根因）。
+     *   · 需要「开/切搜索视图」的入口都直接调 `openSearchWindow`（SearchPanel / DetailPage / DiscoverPage / goAggSearch），
+     *     它们不经本函数；本函数只负责**真正跑搜索**。
+     */
     const allScope = forceAllScope ?? searchAllSources;
     const k = keyRef.current;
     /**

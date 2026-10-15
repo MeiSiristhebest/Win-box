@@ -445,6 +445,16 @@
 :root[data-theme='apple'] .vp-ctl { color: #fff; }
 :root[data-theme='apple'] .vp-ctl:hover { color: var(--ap-blue); background: rgba(255, 255, 255, .14); }
 :root[data-theme='apple'] .vp-ctl:disabled { color: rgba(255, 255, 255, .3); }
+/**
+ * ★★ 2026-10-15（用户报「大果播放器按钮太大，功能变多已挤占文字空间」）★★
+ *   同 Netflix 那条：本皮肤通用 `button` 规则（`:root[data-theme='apple'] button`：灰胶囊底 + `padding: 6px 14px`
+ *   ＋ 0.67px 边框，特异度 (0,2,1)）压过基类 `.vp-ctl` 的 `all: unset`，实测按钮被撑成 **55×39**
+ *   （大豆皮肤同位置 26×26）。这里恢复图标按钮「无底无框无内边距」→ 26×26。
+ */
+:root[data-theme='apple'] .vp-ctl,
+:root[data-theme='apple'] .mini-btn { background: none; border: none; padding: 0; box-shadow: none; }
+:root[data-theme='apple'] .vp-ctl:hover,
+:root[data-theme='apple'] .mini-btn:hover { background: rgba(255, 255, 255, .14); }
 :root[data-theme='apple'] .vp-next { background: rgba(28, 28, 30, .82); border-radius: 14px; backdrop-filter: blur(20px); }
 :root[data-theme='apple'] .vp-next button { background: var(--ap-blue); }
 :root[data-theme='apple'] .vp-vpanel {

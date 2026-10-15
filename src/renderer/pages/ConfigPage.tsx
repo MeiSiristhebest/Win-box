@@ -1774,17 +1774,20 @@ export default function ConfigPage() {
         <div className="row" style={{ marginBottom: 8 }}>
           <span className="muted" style={{ fontWeight: 600 }}>详情与搜索的打开方式</span>
         </div>
-        <div className="pill-switch" role="radiogroup" aria-label="页面打开方式">
+        {/* ★ 2026-10-15（用户报「按上去外观无变化、按钮不变色、netflix 下外框很小」）：
+            改用与上方「外观主题 / 界面动效」**完全同一套**胶囊标签（`.tag` + 选中打 ✓）——
+            那两个开关在各皮肤下都正常，统一口径后选中态必然可见，也不再有一层单独的外框。 */}
+        <div className="row" style={{ gap: 6 }} role="radiogroup" aria-label="页面打开方式">
           {([['inline', '本页内'], ['window', '独立窗口']] as [NavMode, string][]).map(([v, label]) => (
             <button
               key={v}
               type="button"
               role="radio"
               aria-checked={navMode === v}
-              className={navMode === v ? 'active' : ''}
+              className={`tag ${navMode === v ? 'active' : ''}`}
               onClick={() => { setNavModeState(v); setNavMode(v); }}
             >
-              {label}
+              {label} {navMode === v ? '✓' : ''}
             </button>
           ))}
         </div>

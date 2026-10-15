@@ -271,6 +271,17 @@
 :root[data-theme='netflix'] .vp-ctl { color: #fff; }
 :root[data-theme='netflix'] .vp-ctl:hover { color: var(--nf-red); }
 :root[data-theme='netflix'] .vp-ctl:disabled { color: #6b6b6b; }
+/**
+ * ★★ 2026-10-15（用户报「Netflix 播放器按钮太大，功能变多已挤占文字空间」）★★
+ *   本皮肤上面的通用 `button` 规则（`:root[data-theme='netflix'] button`：灰底 + `padding: 6px 14px`）
+ *   特异度 (0,2,1) 高于基类 `.vp-ctl` 的 `all: unset` (0,1,0) ⇒ 误伤控制条图标按钮：
+ *   实测被撑成 **54×38**（大豆皮肤同位置是 26×26），一条控制条 12 个按钮就多吃掉约 340px。
+ *   这里按大豆(.douban)/哔哔皮肤同款做法恢复「无底无框无内边距」，尺寸回到 26×26。
+ */
+:root[data-theme='netflix'] .vp-ctl,
+:root[data-theme='netflix'] .mini-btn { background: none; border: none; padding: 0; box-shadow: none; }
+:root[data-theme='netflix'] .vp-ctl:hover,
+:root[data-theme='netflix'] .mini-btn:hover { background: rgba(255, 255, 255, .14); }
 :root[data-theme='netflix'] .vp-bar { gap: 16px; }
 :root[data-theme='netflix'] .vp-next { background: rgba(20, 20, 20, .9); border-radius: 6px; }
 :root[data-theme='netflix'] .vp-next button { background: var(--nf-red); }

@@ -55,6 +55,7 @@ export function emptyUserConfig(): UserConfig {
     ui: { activeSourceKey: '', activeLiveIndex: 0 },
     profiles: [],
     activeProfileId: '',
+    deletedSourceKeys: [],
   };
 }
 
@@ -172,8 +173,11 @@ export class UserConfigManager {
    * 与导入（replaceFromImport）不同：这里是**还原**，保留备份里的 sources/lives/profiles/ui 原样。
    */
   restore(raw: UserConfig): void {
-    // ★ 2026-10-15：备份还原同样把「本机导入的本地直播线路」并回来（见 withLocalLives）
-    this.apply(this.withLocalLives(this.normalizeLoaded(raw)));
+    const restored = this.normalizeLoaded(raw);
+    // ★ 2026-10-15：备份还原同样把「本机导入的本地直播线路」并回来（见 withLocalLives），
+    //   并按**备份自带的**「已删除源」墓碑过滤（备份里若同时有该源与墓碑，以墓碑为准）。
+    const merged = this.withLocalLives({ ...restored, sources: this.withoutDeletedSources(restored.sources, '备份还原', restored.deletedSourceKeys) });
+    this.apply(merged);
   }
 
   sources(): SourceBean[] {
@@ -198,18 +202,21 @@ export class UserConfigManager {
    * apiUrl 为订阅地址；粘贴 JSON 导入传 ''（手动管理）。
    */
   replaceFromImport(parsed: SiteConfig, apiUrl: string): void {
+    // ★ 2026-10-15（用户报「配置里删掉的源，换源下拉里还在」）：订阅全量替换前，先按「已删除源」墓碑
+    //   把用户删过的 key 挡掉（否则导入 / 启动 7 天自动刷新一跑，删掉的源就回来了）。
+    const sources = this.withoutDeletedSources(parsed.sites.map((s) => ({ ...s })), '订阅导入');
     // 同一份导入 = 更新当前/活跃档案的 json；由调用方在需要时先 createProfile
     const next: UserConfig = {
       ...this.snap,
       version: USER_CONFIG_VERSION,
       apiUrl: apiUrl || this.snap.apiUrl,
       global: { spider: parsed.spider || '', flags: Array.isArray(parsed.flags) ? [...parsed.flags] : [] },
-      sources: parsed.sites.map((s) => ({ ...s })),
+      sources,
       lives: parsed.lives.map((l) => ({ ...l, header: l.header ? { ...l.header } : undefined })),
       parses: realParses(parsed.parses),
       profiles: this.snap.profiles.map((p) =>
         p.id === this.snap.activeProfileId
-          ? { ...p, apiUrl: apiUrl || p.apiUrl, json: serializeImport(parsed), sourceCount: parsed.sites.length, importedAt: new Date().toISOString() }
+          ? { ...p, apiUrl: apiUrl || p.apiUrl, json: serializeImport({ ...parsed, sites: sources }), sourceCount: sources.length, importedAt: new Date().toISOString() }
           : p,
       ),
     };
@@ -220,8 +227,8 @@ export class UserConfigManager {
         // ★ 2026-09-26：首次导入也按「新订阅 xx」命名（后续再导入会把当前档案改名为「旧订阅 xx」）
         name: `新订阅 ${subscriptionStamp()}`,
         apiUrl: apiUrl || '',
-        json: serializeImport(parsed),
-        sourceCount: parsed.sites.length,
+        json: serializeImport({ ...parsed, sites: sources }),
+        sourceCount: sources.length,
         importedAt: new Date().toISOString(),
       };
       next.profiles = [first];
@@ -267,7 +274,8 @@ export class UserConfigManager {
         ? {
             apiUrl,
             global: { spider: parsed.spider || '', flags: Array.isArray(parsed.flags) ? [...parsed.flags] : [] },
-            sources: parsed.sites.map((s) => ({ ...s })),
+            // ★ 2026-10-15：同样按「已删除源」墓碑过滤（否则另存为新档案会把删掉的源带回来）
+            sources: this.withoutDeletedSources(parsed.sites.map((s) => ({ ...s })), '另存档案'),
             lives: parsed.lives.map((l) => ({ ...l })),
             parses: realParses(parsed.parses),
           }
@@ -298,7 +306,8 @@ export class UserConfigManager {
       activeProfileId: id,
       apiUrl: p.apiUrl || this.snap.apiUrl,
       global: { spider: parsed.spider || '', flags: Array.isArray(parsed.flags) ? [...parsed.flags] : [] },
-      sources: parsed.sites.map((s) => ({ ...s })),
+      // ★ 2026-10-15：切换档案也从存档 json 全量重建 sources —— 同样按「已删除源」墓碑过滤
+      sources: this.withoutDeletedSources(parsed.sites.map((s) => ({ ...s })), '档案切换'),
       lives: parsed.lives.map((l) => ({ ...l })),
       parses: realParses(parsed.parses),
     };
@@ -398,7 +407,10 @@ export class UserConfigManager {
     if (!parsed.bean) {
       throw new Error(`源校验失败：${parsed.report.message}`);
     }
-    const next: UserConfig = { ...this.snap, sources: [...this.snap.sources, parsed.bean] };
+    // ★ 2026-10-15：手动**重新添加**同一 key = 用户明确要它回来 → 清掉对应墓碑
+    //   （否则订阅往返时会再被过滤掉，用户会觉得"加了又没了"）
+    const deletedSourceKeys = this.snap.deletedSourceKeys.filter((k) => k !== parsed.bean!.key);
+    const next: UserConfig = { ...this.snap, sources: [...this.snap.sources, parsed.bean], deletedSourceKeys };
     this.apply(next);
     return { ...parsed.bean };
   }
@@ -441,6 +453,9 @@ export class UserConfigManager {
     const next: UserConfig = {
       ...this.snap,
       sources: this.snap.sources.filter((s) => !removing.has(s.key)),
+      // ★ 2026-10-15（用户报「配置里删掉的源，换源下拉里还在」）：把删掉的 key 记成墓碑 ——
+      //   否则下一次订阅往返（导入 / 启动 7 天自动刷新 / 档案切换）会把它们原样带回来。
+      deletedSourceKeys: Array.from(new Set([...this.snap.deletedSourceKeys, ...removing])),
     };
     if (removing.has(next.ui.activeSourceKey)) next.ui = { ...next.ui, activeSourceKey: '' };
     this.apply(next);
@@ -663,11 +678,36 @@ export class UserConfigManager {
       },
       profiles,
       activeProfileId,
+      // ★ 2026-10-15：用户删除过的源 key 墓碑（见 UserConfig.deletedSourceKeys）
+      deletedSourceKeys: Array.from(
+        new Set((Array.isArray((raw as { deletedSourceKeys?: unknown })?.deletedSourceKeys)
+          ? ((raw as { deletedSourceKeys: unknown[] }).deletedSourceKeys)
+          : [])
+          .map((k) => (typeof k === 'string' ? k.trim() : ''))
+          .filter((k) => k.length > 0)),
+      ),
     };
     // active 源若已被剔除/失效 → 清空
     if (next.ui.activeSourceKey && !sources.some((s) => s.key === next.ui.activeSourceKey)) {
       next.ui.activeSourceKey = '';
     }
     return next;
+  }
+
+  /**
+   * ★ 2026-10-15（用户报「配置里删掉的源，换源下拉里还在」）：按「用户删除过的 key 墓碑」过滤掉随订阅
+   *   往返一起回来的源。订阅语义是全量替换（导入 / 启动 7 天自动刷新 / 档案切换 / 备份还原），
+   *   若不过滤，用户删掉的源会在任何一次订阅往返后复活 —— 与「本地直播线路要留住」同一口径。
+   *   仅过滤「墓碑里有」的 key；订阅新增的源照常进列表（被删过的 key 需用户手动添加才会回来）。
+   */
+  private withoutDeletedSources(sources: SourceBean[], where: string, tombs: readonly string[] = this.snap.deletedSourceKeys): SourceBean[] {
+    if (!tombs || tombs.length === 0) return sources;
+    const dead = new Set(tombs);
+    const kept = sources.filter((s) => !dead.has(s.key));
+    const dropped = sources.length - kept.length;
+    if (dropped > 0) {
+      this.logger.i(`${where}：按「已删除源」墓碑过滤掉 ${dropped} 个源（${sources.filter((s) => dead.has(s.key)).map((s) => s.key).slice(0, 6).join('、')}${dropped > 6 ? '…' : ''}）`);
+    }
+    return kept;
   }
 }

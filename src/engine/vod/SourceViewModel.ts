@@ -6,7 +6,7 @@ import type { EngineHost } from '../ports';
 import type { SourceBean, VodItem, VodDetail, PlayResult } from '../../shared/types';
 import { LOCAL_PROXY_BASE } from '../../shared/constants';
 import { CmsSource, type CmsResult } from './CmsSource';
-import { parseFilters, type SortClass } from '../parse/Movie';
+import { classFiltersFor, normalizeClassList, type SortClass } from '../parse/Movie';
 import { SpiderFactory, sourceTimeoutMs, type SpiderFactoryOptions } from '../spider/SpiderFactory';
 import type { Spider } from '../spider/Spider';
 import { parseEpisodes } from './VodNormalizer';
@@ -169,19 +169,20 @@ export class SourceViewModel {
     } catch {
       return null;
     }
-    // 分类 id 保留原样字符串（蜘蛛源存在非数字 id，Number 化会丢分类）；type_flag 透传供筛选联动
-    const classes = Array.isArray(o['class'])
-      ? (o['class'] as Record<string, unknown>[]).map((c) => {
-          const filters = parseFilters(c['filters']);
-          return {
-            id: String(c['type_id'] ?? c['id'] ?? '').trim(),
-            name: String(c['type_name'] ?? c['name'] ?? '').trim(),
-            flag: c['type_flag'] != null ? String(c['type_flag']) : undefined,
-            // 仅当有筛选才带上 filters，保持无筛选源对象形状与历史一致
-            ...(filters.length > 0 ? { filters } : {}),
-          };
-        })
-      : [];
+    // 分类 id 保留原样字符串（蜘蛛源存在非数字 id，Number 化会丢分类）；type_flag 透传供筛选联动。
+    // ★ 2026-10-15：class 的形态兜底（对象 map 等非数组写法不再被整段丢弃）见 normalizeClassList；
+    //   filters 的形态兜底（**顶层按 type_id 键控** 那一份不再被丢掉）见 classFiltersFor。
+    const classes = normalizeClassList(o['class']).map((c, i) => {
+      const id = String(c['type_id'] ?? c['id'] ?? c['tid'] ?? '').trim();
+      const filters = classFiltersFor(o, c, id, i);
+      return {
+        id,
+        name: String(c['type_name'] ?? c['name'] ?? c['title'] ?? '').trim(),
+        flag: c['type_flag'] != null ? String(c['type_flag']) : undefined,
+        // 仅当有筛选才带上 filters，保持无筛选源对象形状与历史一致
+        ...(filters.length > 0 ? { filters } : {}),
+      };
+    });
     const list = Array.isArray(o['list']) ? (o['list'] as Record<string, unknown>[]) : [];
     // ★ 字段名多键兜底（对齐 normalizeSpiderDetail）：部分 py 源/蜘蛛返回 `name`/`pic` 而非
     //   vod_name/vod_pic —— 缺失会让列表 name 空 → 首页 TMDB 封面补全不触发 → 长期无封面。

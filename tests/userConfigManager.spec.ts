@@ -165,6 +165,67 @@ describe('UserConfigManager — 增删改排序与选中', () => {
     expect(kinds).toEqual(['content']);
   });
 
+  /**
+   * ★ 2026-10-15（用户报「配置里删掉的源，换源下拉里还在」）：
+   *   订阅是"全量替换"语义 → 删掉的源会在任何一次订阅往返（导入 / 启动 7 天自动刷新 / 档案切换）后复活。
+   *   修法 = 记「已删除源」墓碑（UserConfig.deletedSourceKeys），往返时按它过滤。
+   */
+  describe('已删除源墓碑（★ 2026-10-15 用户报「删了还在」）', () => {
+    it('删掉的源不会被「订阅往返」带回来（replaceFromImport 全量替换后仍不在）', () => {
+      const m = newManager(tmpDir());
+      m.replaceFromImport(fullConfig([bean('a'), bean('b'), bean('c')]), 'https://h/s.json');
+      m.deleteSource('b');
+      expect(m.sources().map((s) => s.key)).toEqual(['a', 'c']);
+      // 同一份订阅再导入一次（= 启动时 7 天自动刷新走的同一条路径）
+      m.replaceFromImport(fullConfig([bean('a'), bean('b'), bean('c')]), 'https://h/s.json');
+      expect(m.sources().map((s) => s.key)).toEqual(['a', 'c']);
+      // 档案存档 json 也不含它（换源弹层/后续切换都读不到）
+      expect(m.profileSitesView().profiles[0].sites.map((s) => s.key)).toEqual(['a', 'c']);
+    });
+
+    it('切换档案（从存档 json 全量重建）同样按墓碑过滤', () => {
+      const m = newManager(tmpDir());
+      m.replaceFromImport(fullConfig([bean('a'), bean('b')]), 'https://h/one.json');
+      const first = m.activeProfileId();
+      m.deleteSource('b');
+      m.saveAsProfile('配置二', { parsed: fullConfig([bean('x1'), bean('x2')]), apiUrl: 'https://h/two.json' });
+      // 切回旧档案：其存档 json 里带着 b，但墓碑要把它挡掉
+      m.activateProfile(first);
+      expect(m.sources().map((s) => s.key)).toEqual(['a']);
+    });
+
+    it('手动重新添加同一 key = 明确要它回来 → 墓碑清除，后续往返不再被挡', () => {
+      const m = newManager(tmpDir());
+      m.replaceFromImport(fullConfig([bean('a'), bean('b')]), 'https://h/s.json');
+      m.deleteSource('b');
+      expect(m.snapshot().deletedSourceKeys).toEqual(['b']);
+      m.addSource(bean('b'));
+      expect(m.snapshot().deletedSourceKeys).toEqual([]);
+      m.replaceFromImport(fullConfig([bean('a'), bean('b')]), 'https://h/s.json');
+      expect(m.sources().map((s) => s.key)).toEqual(['a', 'b']);
+    });
+
+    it('墓碑落盘：重启读取后仍在（不会被 normalizeLoaded 丢掉）', () => {
+      const dir = tmpDir();
+      const m = newManager(dir);
+      m.replaceFromImport(fullConfig([bean('a'), bean('b')]), 'https://h/s.json');
+      m.deleteSource('b');
+      m.replaceFromImport(fullConfig([bean('a'), bean('b')]), 'https://h/s.json');
+      const m2 = newManager(dir);
+      m2.load();
+      expect(m2.snapshot().deletedSourceKeys).toEqual(['b']);
+      m2.replaceFromImport(fullConfig([bean('a'), bean('b')]), 'https://h/s.json');
+      expect(m2.sources().map((s) => s.key)).toEqual(['a']);
+    });
+
+    it('删除未收录的 key 是 no-op，不写墓碑（避免墓碑无端膨胀）', () => {
+      const m = newManager(tmpDir());
+      m.replaceFromImport(fullConfig([bean('a')]), 'https://h/s.json');
+      m.deleteSource('不存在');
+      expect(m.snapshot().deletedSourceKeys).toEqual([]);
+    });
+  });
+
   it('moveSource：up/down/top/bottom 排序正确；边界 no-op 不抛', () => {
     const m = newManager(tmpDir());
     m.addSource(bean('a'));
