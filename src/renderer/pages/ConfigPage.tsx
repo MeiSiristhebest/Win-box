@@ -388,8 +388,12 @@ export default function ConfigPage() {
   }, [liveNamePrompt]);
   const [liveEditIdx, setLiveEditIdx] = useState<number | null>(null);
   const [liveEditName, setLiveEditName] = useState('');
+  /** ★ 2026-10-16（用户要求）：直播线路多选删除（对齐「我的源列表」的多选范式） */
+  const [livePick, setLivePick] = useState<Set<number>>(new Set());
+  const [liveDeleteBusy, setLiveDeleteBusy] = useState(false);
   const sourceProfileRef = useRef<string | null>(null);
   const selectAllSourcesRef = useRef<HTMLInputElement>(null);
+  const selectAllLivesRef = useRef<HTMLInputElement>(null);
 
   // 档案改名（内联编辑）
   const [renameId, setRenameId] = useState<string | null>(null);
@@ -420,6 +424,7 @@ export default function ConfigPage() {
     const profileChanged = sourceProfileRef.current !== c.activeProfileId;
     sourceProfileRef.current = c.activeProfileId;
     setSourcePick((previous) => profileChanged ? new Set() : new Set([...previous].filter(key => c.sources.some(s => s.key === key))));
+    setLivePick((previous) => new Set([...previous].filter((i) => i >= 0 && i < (c.lives ?? []).length)));
     setCfg(c);
     window.dispatchEvent(new Event(SOURCES_CHANGED));
   }, []);
@@ -478,9 +483,11 @@ export default function ConfigPage() {
       if (r.ok) {
         setReport(null);
         setWarn([]);
-        setErr('');
-        // 提示语走 url 区下方的软提示（无 warning 时也显示成功）
-        setLastOk(`已导入本地 .py 源：${r.key}`);
+        // 提示语走 url 区下方的软提示（无 warning 时也显示成功）；多选时按数量提示
+        const n = r.imported ?? 1;
+        setLastOk(n > 1 ? `已导入 ${n} 个本地 .py 源` : `已导入本地 .py 源：${r.key}`);
+        // 多选时部分文件失败：成功照常入账，失败明细单独上屏
+        setErr(r.failed?.length ? r.error || '' : '');
         await refresh();
       }
       // r.ok=false 且无 error = 用户取消文件选择，静默
@@ -618,6 +625,36 @@ export default function ConfigPage() {
     }
   }
 
+  function toggleLivePick(index: number) {
+    setLivePick((previous) => {
+      const next = new Set(previous);
+      if (next.has(index)) next.delete(index); else next.add(index);
+      return next;
+    });
+  }
+
+  /** ★ 2026-10-16（用户要求）：多选删除直播线路（对齐「我的源列表」的批量删除）。 */
+  async function deleteSelectedLives() {
+    const lives = cfg?.lives ?? [];
+    const picked = lives.map((_, i) => i).filter((i) => livePick.has(i));
+    if (!picked.length || liveDeleteBusy) return;
+    const names = picked.map((i) => lives[i]?.name || `线路${i + 1}`);
+    if (!window.confirm(`确定删除选中的 ${picked.length} 条直播线路吗？\n${names.slice(0, 6).join('、')}${names.length > 6 ? '…' : ''}\n只从应用线路列表移除，不改动你导入的原始文件。`)) return;
+    setLiveDeleteBusy(true);
+    setErr('');
+    try {
+      await client.cfgDeleteLives(picked);
+      if (liveEditIdx !== null && livePick.has(liveEditIdx)) { setLiveEditIdx(null); setLiveEditName(''); }
+      setLivePick(new Set());
+      setLastOk(`已删除 ${picked.length} 条直播线路`);
+      await refresh();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLiveDeleteBusy(false);
+    }
+  }
+
   /** ★ 2026-10-14（用户要求）：直播线路改名（内联编辑）。 */
   async function saveLiveName(index: number) {
     const name = liveEditName.trim();
@@ -736,6 +773,9 @@ export default function ConfigPage() {
   const activeKey = cfg?.ui.activeSourceKey ?? '';
   const selectedSourceCount = sources.filter(s => sourcePick.has(s.key)).length;
   const allSourcesSelected = sources.length > 0 && selectedSourceCount === sources.length;
+  const lives = cfg?.lives ?? [];
+  const selectedLiveCount = lives.map((_, i) => i).filter(i => livePick.has(i)).length;
+  const allLivesSelected = lives.length > 0 && selectedLiveCount === lives.length;
 
   async function saveProfile() {
     setErr('');
@@ -760,9 +800,22 @@ export default function ConfigPage() {
     try { await client.cfgUpdateProfileName({ id, name }); await refresh(); }
     catch (e) { setErr((e as Error).message); }
   }
-  async function delProfile(id: string) {
+  /**
+   * ★ 2026-10-16（用户要求）：**当前生效的配置也可删，唯一一份也可删**。
+   * 主进程侧规则：删生效档案 → 自动切到剩下的第一份（没有其它档案则清空订阅内容、保留本机直播线路）。
+   * 这里给删除加确认（生效/唯一一份的后果说清楚），避免误点。
+   */
+  async function delProfile(id: string, name: string) {
+    const total = cfg?.profiles?.length ?? 0;
+    const active = id === cfg?.activeProfileId;
+    const tail = active
+      ? total > 1
+        ? '删除后将自动切换到剩下的配置。'
+        : '这是唯一一份配置：删除后当前订阅的源列表会被清空（本机导入的直播线路保留）。'
+      : '';
+    if (!window.confirm(`确定删除配置「${name}」吗？${tail}`)) return;
     setErr('');
-    try { await client.cfgDeleteProfile(id); await refresh(); }
+    try { await client.cfgDeleteProfile(id); setRenameId(null); await refresh(); }
     catch (e) { setErr((e as Error).message); }
   }
   /** 一键删除体检"失败"（error）的源 —— 仅删除当前管理列表中的源，不触碰任何原始/档案 JSON */
@@ -1000,7 +1053,10 @@ export default function ConfigPage() {
     if (selectAllSourcesRef.current) {
       selectAllSourcesRef.current.indeterminate = selectedSourceCount > 0 && !allSourcesSelected;
     }
-  }, [tab, selectedSourceCount, allSourcesSelected]);
+    if (selectAllLivesRef.current) {
+      selectAllLivesRef.current.indeterminate = selectedLiveCount > 0 && !allLivesSelected;
+    }
+  }, [tab, selectedSourceCount, allSourcesSelected, selectedLiveCount, allLivesSelected]);
 
   // ★ 2026-09-29：切到「存储」tab 时拉取 WebDAV 服务器列表（放在 tab 声明之后，避免 TDZ）
   useEffect(() => {
@@ -1309,12 +1365,25 @@ export default function ConfigPage() {
           直播线路（{(cfg?.lives ?? []).length}）
         </summary>
         <div style={{ marginTop: 10 }}>
-          {(cfg?.lives ?? []).length === 0 ? (
+          {lives.length === 0 ? (
             <div className="empty" style={{ padding: 12 }}>尚无直播线路，可点上方「导入直播源（TXT / M3U）」添加</div>
           ) : (
+            <>
+            {/* ★ 2026-10-16（用户要求）：直播线路也要能多选删除（对齐「我的源列表」） */}
+            <div className="row" style={{ marginBottom: 10 }}>
+              <span className="muted">已选 {selectedLiveCount} / {lives.length} 条线路</span>
+              <button disabled={liveDeleteBusy || !selectedLiveCount} onClick={() => setLivePick(new Set())}>清空选择</button>
+              <button disabled={busy || liveDeleteBusy || !selectedLiveCount} onClick={() => void deleteSelectedLives()} style={{ color: 'var(--danger)' }}>
+                {liveDeleteBusy ? '删除中…' : `删除所选（${selectedLiveCount}）`}
+              </button>
+            </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ color: 'var(--text-dim)', textAlign: 'left' }}>
+                  <th style={{ padding: 6, borderBottom: '1px solid var(--border)', width: 36, textAlign: 'center' }}>
+                    <input ref={selectAllLivesRef} type="checkbox" className="sel-box" aria-label="全选线路" title="全选 / 取消全选" checked={allLivesSelected} disabled={liveDeleteBusy}
+                      onChange={e => setLivePick(e.target.checked ? new Set(lives.map((_, i) => i)) : new Set())} />
+                  </th>
                   <th style={{ padding: 6, borderBottom: '1px solid var(--border)', width: 36, textAlign: 'center' }}>当前</th>
                   <th style={{ padding: 6, borderBottom: '1px solid var(--border)' }}>名称</th>
                   <th style={{ padding: 6, borderBottom: '1px solid var(--border)' }}>地址</th>
@@ -1322,15 +1391,18 @@ export default function ConfigPage() {
                 </tr>
               </thead>
               <tbody>
-                {(cfg?.lives ?? []).map((l, i) => {
+                {lives.map((l, i) => {
                   const isActive = i === (cfg?.ui.activeLiveIndex ?? 0);
                   const editing = liveEditIdx === i;
                   return (
                     <tr
                       key={i}
-                      onClick={() => { if (!editing) void client.cfgSetActiveLive(i).then(refresh).catch((e) => setErr((e as Error).message)); }}
+                      onClick={() => { if (!editing && !liveDeleteBusy) void client.cfgSetActiveLive(i).then(refresh).catch((e) => setErr((e as Error).message)); }}
                       style={{ cursor: editing ? 'default' : 'pointer', background: isActive && !editing ? 'var(--bg-elev2)' : undefined }}
                     >
+                      <td style={{ padding: 6, borderBottom: '1px solid var(--border)', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" className="sel-box" aria-label={`选择线路 ${l.name || `线路${i + 1}`}`} checked={livePick.has(i)} disabled={liveDeleteBusy} onChange={() => toggleLivePick(i)} />
+                      </td>
                       <td style={{ padding: 6, borderBottom: '1px solid var(--border)', textAlign: 'center', color: 'var(--accent)' }}>{isActive ? '●' : '○'}</td>
                       <td style={{ padding: 6, borderBottom: '1px solid var(--border)' }}>
                         {editing ? (
@@ -1357,7 +1429,7 @@ export default function ConfigPage() {
                         ) : (
                           <>
                             <button className="linkbtn" title="重命名该直播线路" onClick={() => { setLiveEditIdx(i); setLiveEditName(l.name || `线路${i + 1}`); }}>改名</button>
-                            <button className="linkbtn danger" title="删除该直播线路" onClick={() => void delLive(i, l.name)}>删除</button>
+                            <button className="linkbtn danger" disabled={liveDeleteBusy} title="删除该直播线路" onClick={() => void delLive(i, l.name)}>删除</button>
                           </>
                         )}
                       </td>
@@ -1366,9 +1438,10 @@ export default function ConfigPage() {
                 })}
               </tbody>
             </table>
+            </>
           )}
           <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
-            点某行可把它设为直播页当前线路；「删除」只从应用线路列表移除，不改动你导入的原始文件。
+            勾选多行可批量删除；点某行可把它设为直播页当前线路；「删除」只从应用线路列表移除，不改动你导入的原始文件。
           </div>
         </div>
       </details>
@@ -1574,7 +1647,8 @@ export default function ConfigPage() {
       
 {/* 0) 多配置档案（多 JSON 源切换） */}
       <div className="card" id="cfg-profiles" style={{ padding: 12, marginBottom: 16 }}>
-        <details open={false}>
+        {/* ★ 2026-10-16（用户要求）：该列表默认展开 */}
+        <details open>
           <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
             已保存配置（多份订阅离线切换）
             {cfg?.profiles?.length ? <span className="muted" style={{ fontWeight: 400 }}> —— 共 {cfg.profiles.length} 份，当前「{cfg.profiles.find((p) => p.id === cfg.activeProfileId)?.name ?? '未知'}」</span> : null}
@@ -1613,7 +1687,8 @@ export default function ConfigPage() {
                       {p.name}{active ? ' ✓' : ''} <span className="muted">({p.sourceCount})</span>
                       <button className="linkbtn" title="重命名该配置" onClick={() => { setRenameId(p.id); setRenameDraft(p.name); }}>改名</button>
                       {!active && <button className="linkbtn" onClick={() => activateProfile(p.id)}>切换</button>}
-                      {!active && <button className="linkbtn danger" onClick={() => delProfile(p.id)}>删</button>}
+                      {/* ★ 2026-10-16（用户要求）：生效档案 / 唯一一份也允许删除（主进程侧会自动切档或清空） */}
+                      <button className="linkbtn danger" title="删除该配置" onClick={() => void delProfile(p.id, p.name)}>删</button>
                     </>
                   )}
                 </span>

@@ -9,6 +9,8 @@ import { client } from '../api/client';
 import { openSearchWindow } from '../lib/searchWin';
 import { useTheme } from '../lib/theme';
 import HScrollRow from '../components/HScrollRow';
+// ★ 2026-10-16（用户要求「四套皮肤绝对大改」）：首屏聚光卡（四皮肤共用结构，材质由各皮肤 CSS 决定）
+import DiscoverSpotlight from '../components/DiscoverSpotlight';
 import CascadeBar, { type CascadeLevel, type CascadeOption } from '../components/CascadeBar';
 import { useCovers } from '../lib/useCovers';
 import { ALL_TAG, DISCOVER_MEDIA, type DiscoverMediaId, type ExploreVocabulary } from '../../shared/discover';
@@ -289,6 +291,21 @@ export default function DiscoverPage() {
   return (
     <>
       <div className="content">
+        {/* ---- ★ 2026-10-16 首屏聚光卡：只在「推荐榜」首页视图出现（选了分类就不再抢画面）----
+             数据 = 第一个榜单的前 12 部（候选池，供 hero 挑「有横版剧照」的片子轮播）；
+             四皮肤共用同一份结构，材质/配色由各自 CSS 决定。 ---- */}
+        {media === null && sections && sections.length > 0 && (
+          <DiscoverSpotlight
+            /* ★ 取 12 部当候选池：360 横版图链路对短名/带数字的片名召回率不高，
+               池子太小会出现「只有 1 部有图、hero 无法轮播」（实测 6 部时命中 1）。
+               组件内部只会用**真拿到横版图**的那些来轮播（见 DiscoverSpotlight）。 */
+            items={sections[0].items.slice(0, 12)}
+            picOf={(it) => covers.picOf(coverItem(it))}
+            onOpen={goSearch}
+            /* netflix = 满幅 billboard → 用**横版剧照**当景（其余皮肤用竖版海报做柔化底） */
+            landscape={nf}
+          />
+        )}
         {/* ---- 级联分类条：分类 → 类型 → 地区 → 年代 → 排序（逐级点击才展开下级）---- */}
         <CascadeBar levels={levels} onPick={onPick} />
         {media === null || !mediaOpt ? (

@@ -319,16 +319,92 @@ export class UserConfigManager {
     this.apply(merged);
   }
 
-  /** 删除档案（不可删除当前生效档案；可传 force 在无其它档案时同时清空状态） */
+  /**
+   * ★ 2026-10-16（用户报「本地包删掉订阅后重新导入、订阅里一个源都没有」）：**清除指定 key 的删除墓碑**。
+   *   只在「用户**主动导入**订阅」时调用 —— 那是明确的「我要这份订阅」意图（自动刷新不会走这里），
+   *   与 `addSource` 手动重加同一 key 时清墓碑同源（"删了想要回来"的明确路径）。
+   *   无变化则不写盘。
+   */
+  clearDeletedSourceKeys(keys: readonly string[]): void {
+    if (!keys.length || !this.snap.deletedSourceKeys.length) return;
+    const drop = new Set(keys.map((k) => String(k)));
+    const next = this.snap.deletedSourceKeys.filter((k) => !drop.has(k));
+    if (next.length === this.snap.deletedSourceKeys.length) return;
+    this.apply({ ...this.snap, deletedSourceKeys: next });
+  }
+
+  /**
+   * 删除档案。
+   * ★ 2026-10-16（用户要求）：**允许删除当前生效的配置，也允许删除唯一一份配置**（此前生效档案会抛错、
+   *   唯一一份时界面上根本没有「删」按钮，用户无法清掉误导入的订阅）。规则：
+   *   - 删的是**非生效**档案 → 直接移除（生效档案与运行期内容一字不动）；
+   *   - 删的是**生效**档案且还有其它档案 → 移除后自动切到剩下的第一份（按其存档 json 重建 sources/lives/global）；
+   *     若剩下的那份无可用 json（早期迁移档案），则保留它为生效档案但清空运行期内容；
+   *   - 删的是**唯一**一份 → 清空订阅内容（sources / 订阅自带 lives / parses / apiUrl）；
+   *     本机导入的 TXT / M3U 直播线路独立保留（见 withLocalLives）。
+   */
   deleteProfile(id: string): void {
     const p = this.snap.profiles.find((x) => x.id === id);
     if (!p) return;
-    if (id === this.snap.activeProfileId) {
-      throw new Error('当前生效的配置不可直接删除，请先切换到其它配置');
+    const profiles = this.snap.profiles.filter((x) => x.id !== id);
+    if (id !== this.snap.activeProfileId) {
+      this.apply({ ...this.snap, profiles });
+      return;
     }
-    const next: UserConfig = { ...this.snap, profiles: this.snap.profiles.filter((x) => x.id !== id) };
-    if (next.profiles.length === 0) next.activeProfileId = '';
-    this.apply(next);
+    const nextProfile = profiles[0];
+    const localLives = this.snap.lives.filter((l) => isLocalLiveUrl(l.url));
+    if (nextProfile) {
+      let parsed: SiteConfig | null = null;
+      if (nextProfile.json) {
+        try {
+          parsed = parseSiteConfig(nextProfile.json).config;
+        } catch {
+          parsed = null;
+        }
+      }
+      if (!parsed) {
+        // 剩下的档案无可恢复内容：保留为生效档案，运行期内容清空
+        this.apply({
+          ...this.snap,
+          profiles,
+          activeProfileId: nextProfile.id,
+          apiUrl: '',
+          global: { spider: '', flags: [] },
+          sources: [],
+          lives: localLives,
+          parses: [],
+          ui: { ...this.snap.ui, activeSourceKey: '', activeLiveIndex: clampIndex(this.snap.ui.activeLiveIndex, localLives.length) },
+        });
+        return;
+      }
+      const next: UserConfig = {
+        ...this.snap,
+        profiles,
+        activeProfileId: nextProfile.id,
+        apiUrl: nextProfile.apiUrl || '',
+        global: { spider: parsed.spider || '', flags: Array.isArray(parsed.flags) ? [...parsed.flags] : [] },
+        sources: this.withoutDeletedSources(parsed.sites.map((s) => ({ ...s })), '删除生效档案'),
+        lives: parsed.lives.map((l) => ({ ...l })),
+        parses: realParses(parsed.parses),
+      };
+      const merged = this.withLocalLives(next);
+      if (!merged.sources.some((s) => s.key === merged.ui.activeSourceKey)) merged.ui.activeSourceKey = '';
+      merged.ui.activeLiveIndex = clampIndex(merged.ui.activeLiveIndex, merged.lives.length);
+      this.apply(merged);
+      return;
+    }
+    // 唯一一份被删：清空订阅内容，本地直播线路保留
+    this.apply({
+      ...this.snap,
+      profiles: [],
+      activeProfileId: '',
+      apiUrl: '',
+      global: { spider: '', flags: [] },
+      sources: [],
+      lives: localLives,
+      parses: [],
+      ui: { ...this.snap.ui, activeSourceKey: '', activeLiveIndex: clampIndex(this.snap.ui.activeLiveIndex, localLives.length) },
+    });
   }
 
   /** 重命名档案 */
@@ -525,6 +601,21 @@ export class UserConfigManager {
     const i = Math.floor(index);
     if (!Number.isFinite(i) || i < 0 || i >= this.snap.lives.length) return;
     const lives = this.snap.lives.filter((_, n) => n !== i);
+    const activeLiveIndex = clampIndex(this.snap.ui.activeLiveIndex, lives.length);
+    this.apply({ ...this.snap, lives, ui: { ...this.snap.ui, activeLiveIndex } });
+  }
+
+  /**
+   * ★ 2026-10-16（用户要求）：**批量**删除直播线路（配置页「直播线路」多选删除）。
+   * 按下标集合一次移除（越界忽略），并收敛 activeLiveIndex（避免选中态悬空）。
+   */
+  deleteLives(indices: readonly number[]): void {
+    const drop = new Set(
+      indices.map((n) => Math.floor(n)).filter((n) => Number.isFinite(n) && n >= 0),
+    );
+    if (!drop.size) return;
+    const lives = this.snap.lives.filter((_, n) => !drop.has(n));
+    if (lives.length === this.snap.lives.length) return;
     const activeLiveIndex = clampIndex(this.snap.ui.activeLiveIndex, lives.length);
     this.apply({ ...this.snap, lives, ui: { ...this.snap.ui, activeLiveIndex } });
   }

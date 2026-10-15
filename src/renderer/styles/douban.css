@@ -1,12 +1,11 @@
-/* douban.css — Win-Box 第四套皮肤：**大豆**（Material 3 Expressive × 豆瓣，浅色）
+/* douban.css — Win-Box 皮肤：**大豆**（Material 3 Expressive × 豆瓣，浅色）
    ================================================================================
    ★★ 2026-10-09 整体重做（用户口径：皮肤改叫「大豆」，风格重做、务必大改、参考更多开源 UI）：
      · 设计语言 = **Material 3 Expressive**（2025 Google：大圆角 / 鲜明容器色 / 弹性动效 /
-       强排版对比）× **豆瓣品牌**（豆绿 #2E9629 主色 / 豆瓣橙 #F0641E 点缀 / 暖纸白底）；
-       层级光影参考 Arc / Linear（发丝线 + 精确阴影），媒体行/海报墙参考豆瓣 App 新版。
-     · 与初版（「豆风」= Material You 淡紫底 + 靛蓝 #5B5BD6）的差异：**换色系（靛蓝→豆绿）、
-       换底（淡紫→暖纸白）、导航由「独立胶囊行」→「一体式分段控制器」、FAB 圆钮→squircle、
-       详情头图→品牌渐变容器、全套控件圆角/阴影/状态层重做**。
+       强排版对比）× **豆瓣品牌**（豆绿 #2E9629 主色 / 豆瓣橙 #F0641E 点缀 / 暖纸白底）。
+   ★★ 2026-10-16 现代化打磨（impeccable 口径）：
+     · 全控件选中弹跳（chips/tag/ep/ FAB）、卡片封面慢推变焦、选中色/插入符品牌化、
+       节标题色条生长动画；动效统一走全站令牌（--ease-x / --dur-x），四皮肤同一手感。
      · 结构类名/功能口径全部保留（App.tsx 外壳、db-wall/db-hero/搜索条宽度挂 .srcpick 等），
        本文件只做「视觉层」重写 —— 勿回退口径见 MEMORY §C62（普通搜索条宽度、pvwin 深色、--bg 兜底）。
    ================================================================================
@@ -85,7 +84,9 @@
   border-radius: 10px; font-size: 11.5px; font-weight: 800; letter-spacing: .06em;
   box-shadow: 0 2px 10px -2px rgba(46, 150, 41, .5), inset 0 1px 0 rgba(255, 255, 255, .22);
   flex: 0 0 auto;
+  transition: box-shadow var(--db-dur-m) var(--db-ease), filter var(--db-dur-m) var(--db-ease);
 }
+:root[data-theme='douban'] .db-brand:hover { filter: brightness(1.07); box-shadow: 0 4px 16px -3px rgba(46, 150, 41, .6), inset 0 1px 0 rgba(255, 255, 255, .28); }
 :root[data-theme='douban'] .db-brand-ico { width: 18px; height: 18px; border-radius: 6px; object-fit: contain; background: rgba(255, 255, 255, .92); padding: 1px; box-sizing: border-box; }
 :root[data-theme='douban'] .db-brand-dot { width: 9px; height: 9px; margin: 0 3px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .22); }
 :root[data-theme='douban'] .db-title { font-size: 16px; font-weight: 800; letter-spacing: -.015em; color: var(--text); padding-left: 2px; flex: 0 0 auto; }
@@ -124,7 +125,13 @@
 :root[data-theme='douban'] .db-chip.active {
   background: #fff; color: var(--accent); font-weight: 750;
   box-shadow: 0 1px 4px rgba(20, 28, 18, .14), 0 0 0 1px rgba(20, 28, 18, .04);
+  animation: dbPop var(--db-dur-m) var(--ease-spring);
 }
+/* 选中弹跳（NavLink / 控件切换 class 时重放，给「选中了」一个弹性确认） */
+@keyframes dbPop { 0% { transform: scale(.86); } 100% { transform: scale(1); } }
+/* 浏览器表面也要是设计的一部分：选中色 / 插入符 */
+:root[data-theme='douban'] ::selection { background: rgba(46, 150, 41, .2); }
+:root[data-theme='douban'] input, :root[data-theme='douban'] textarea { caret-color: var(--accent); }
 :root[data-theme='douban'] .db-main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 /* 无悬浮导航遮挡，内容区使用正常底部留白。 */
 :root[data-theme='douban'] .db-main .content { padding: 18px 22px 24px; }
@@ -154,6 +161,7 @@
 :root[data-theme='douban'] .db-fab.active .db-fab-orb {
   background: linear-gradient(135deg, #38A932, #1F7A1B); border-color: transparent; color: #fff;
   box-shadow: 0 3px 8px rgba(31, 122, 27, .3), 0 16px 34px -10px rgba(46, 150, 41, .55);
+  animation: dbPop var(--db-dur-m) var(--ease-spring);
 }
 :root[data-theme='douban'] .db-fab-label { font-size: 10px; color: var(--text-dim); line-height: 1; }
 :root[data-theme='douban'] .db-fab.active .db-fab-label { color: var(--accent); font-weight: 750; }
@@ -200,6 +208,8 @@
 /* 基础样式的 hover 是「白字 + 蓝色光晕」（深色底设计），浅色底必须换字色 */
 :root[data-theme='douban'] button:hover { border-color: rgba(46, 150, 41, .5); color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 :root[data-theme='douban'] button:active { transform: scale(.98); opacity: .92; }
+/* 中央大播放键是 translate(-50%,-50%) 定位，按压缩放必须带上位移（否则按下时跳走半个身位） */
+:root[data-theme='douban'] .vp-big:active { transform: translate(-50%, -50%) scale(.95); }
 :root[data-theme='douban'] button.primary {
   background: linear-gradient(135deg, #38A932, #1F7A1B); border-color: transparent; color: #fff; font-weight: 650;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2);
@@ -266,6 +276,7 @@
 :root[data-theme='douban'] .tag.active {
   background: linear-gradient(135deg, #38A932, #1F7A1B); border-color: transparent; color: #fff; font-weight: 700;
   box-shadow: 0 2px 10px -2px rgba(46, 150, 41, .45);
+  animation: dbPop var(--db-dur-m) var(--ease-spring);
 }
 :root[data-theme='douban'] .banner {
   background: #fff; border: 1px solid var(--border-soft); border-radius: 14px; box-shadow: var(--db-card-shadow);
@@ -284,6 +295,20 @@
 
 /* ================== 卡片 / 网格 / 列表 ================== */
 :root[data-theme='douban'] .grid { gap: 20px 18px; }
+/* 通用海报网格逐个错开入场（前 12 张；与全局 pageIn 同节奏，列表现身为列表） */
+:root[data-theme='douban'] .grid > * { animation: dbCardIn var(--dur-page) var(--db-ease-out) both; }
+:root[data-theme='douban'] .grid > :nth-child(1) { animation-delay: 0ms; }
+:root[data-theme='douban'] .grid > :nth-child(2) { animation-delay: 26ms; }
+:root[data-theme='douban'] .grid > :nth-child(3) { animation-delay: 52ms; }
+:root[data-theme='douban'] .grid > :nth-child(4) { animation-delay: 78ms; }
+:root[data-theme='douban'] .grid > :nth-child(5) { animation-delay: 104ms; }
+:root[data-theme='douban'] .grid > :nth-child(6) { animation-delay: 130ms; }
+:root[data-theme='douban'] .grid > :nth-child(7) { animation-delay: 156ms; }
+:root[data-theme='douban'] .grid > :nth-child(8) { animation-delay: 182ms; }
+:root[data-theme='douban'] .grid > :nth-child(9) { animation-delay: 208ms; }
+:root[data-theme='douban'] .grid > :nth-child(10) { animation-delay: 234ms; }
+:root[data-theme='douban'] .grid > :nth-child(11) { animation-delay: 260ms; }
+:root[data-theme='douban'] .grid > :nth-child(n+12) { animation-delay: 280ms; }
 :root[data-theme='douban'] .card-media .card {
   border-radius: 16px; overflow: hidden;
   box-shadow: var(--db-card-shadow); transition: transform var(--db-dur-m) var(--ease-spring), box-shadow var(--db-dur-m) var(--db-ease), border-color var(--db-dur-m) var(--db-ease);
@@ -335,6 +360,7 @@
 :root[data-theme='douban'] .ep.active {
   background: linear-gradient(135deg, #38A932, #1F7A1B); border-color: transparent; color: #fff; font-weight: 650;
   box-shadow: 0 3px 12px -3px rgba(46, 150, 41, .5);
+  animation: dbPop var(--db-dur-m) var(--ease-spring);
 }
 :root[data-theme='douban'] .live-player { border-radius: 16px; overflow: hidden; box-shadow: var(--db-card-shadow); }
 :root[data-theme='douban'] .dav-player { border-radius: 16px; overflow: hidden; box-shadow: var(--db-card-shadow); }
@@ -449,6 +475,7 @@
 :root[data-theme='douban'] .db-wall-chip.active {
   background: linear-gradient(135deg, #38A932, #1F7A1B); border-color: transparent; color: #fff; font-weight: 700;
   box-shadow: 0 3px 12px -3px rgba(46, 150, 41, .5);
+  animation: dbPop var(--db-dur-m) var(--ease-spring);
 }
 /* 网格：5 列起（豆瓣海报墙密度），窄窗自动降列；卡片入场逐个错开（前 12 张） */
 :root[data-theme='douban'] .db-wall-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 22px 18px; }
@@ -478,9 +505,9 @@
   transition: opacity var(--db-dur-m) var(--db-ease), transform var(--db-dur-m) var(--ease-spring);
 }
 :root[data-theme='douban'] .card-media:hover .db-card-play { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-/* 海报图片悬停缓推（0.6s 慢镜，比瞬间放大更「贵」） */
-:root[data-theme='douban'] .db-wall-grid .card-media img { transition: transform .6s var(--db-ease); }
-:root[data-theme='douban'] .db-wall-grid .card-media:hover img { transform: scale(1.05); }
+/* 海报图片悬停缓推（0.6s 慢镜，比瞬间放大更「贵」）——全站卡片统一（不止海报墙） */
+:root[data-theme='douban'] .card-media img { transition: transform .6s var(--db-ease); }
+:root[data-theme='douban'] .card-media:hover img { transform: scale(1.05); }
 :root[data-theme='douban'] .db-year-badge { letter-spacing: .02em; }
 
 /* ---- ④ 豆瓣式「标签行」（左小标签 + 右胶囊 chips）：发现页分类/类型、点播页分类/筛选 ---- */
@@ -511,6 +538,11 @@
   flex: 0 0 172px; width: 172px; border-radius: 16px; object-fit: cover;
   border: 2px solid rgba(255, 255, 255, .9);
   box-shadow: 0 10px 28px -10px rgba(20, 28, 18, .38);
+  transition: transform var(--db-dur-m) var(--ease-spring), box-shadow var(--db-dur-m) var(--db-ease);
+}
+:root[data-theme='douban'] .db-hero-poster:hover {
+  transform: translateY(-3px) rotate(-.6deg);
+  box-shadow: 0 16px 36px -12px rgba(20, 28, 18, .44);
 }
 :root[data-theme='douban'] .db-hero-nocover { display: flex; align-items: center; justify-content: center; color: var(--text-dim); font-size: 12px; background: #fff; }
 :root[data-theme='douban'] .db-hero-info { display: flex; flex-direction: column; gap: 3px; }
@@ -529,7 +561,10 @@
   content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
   width: 4px; height: 16px; border-radius: 999px;
   background: linear-gradient(180deg, #38A932, #F0641E);
+  transform-origin: center; animation: dbBarGrow var(--db-dur-l) var(--db-ease-out) both;
 }
+/* 节标题色条：页面进场时从 0 生长（M3 Expressive 的「容器醒来」感） */
+@keyframes dbBarGrow { from { transform: translateY(-50%) scaleY(0); } to { transform: translateY(-50%) scaleY(1); } }
 :root[data-theme='douban'] .db-detail .ep-list { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
 :root[data-theme='douban'] .db-detail .ep { text-align: center; }
 :root[data-theme='douban'] .db-detail .rec-row { gap: 16px; }
@@ -566,3 +601,512 @@
   :root[data-theme='douban'] .db-wall-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 10px; }
   :root[data-theme='douban'] .db-fabs { right: 10px; bottom: 10px; }
 }
+
+/* ============================================================================
+   ★★ 2026-10-16 第二代外观（**结构级重做**；用户口径：「绝对的好看，绝对的大改」）
+   ----------------------------------------------------------------------------
+   为什么要有第二代：第一代只改了 hover / 选中色 / 滚动条这类**微观交互态** ——
+   它们在截图与整体观感里几乎为零，用户评价「没看出来变化在哪」。这一代改的是**宏观视觉层**：
+     ① 环境 → 全站**环境光背景场**（豆绿 / 豆瓣橙双色暖光 + 极淡胶片颗粒；骨架见 global.css）；
+     ② 外壳 → 背景**透明化 + 抬层**（氛围层是 z-index:0 的 fixed 元素，内容不抬到 1 会被整片盖住）；
+     ③ 形态 → 顶栏毛玻璃再提纯；导航「浅底白胶囊」→ **豆绿实心胶囊 + 弹跳**；浮动圆钮收敛；
+     ④ 分类条 → 从「散装 chips」→ **玻璃分段容器** + 弱化小字；
+     ⑤ 排版 → 海报墙 chips / 节标题 → **带品牌光条的大字号标题**（与 netflix「大字号 + 光条」对位）；
+     ⑥ 卡片 → 「白卡」→ **白玻璃卡**（描边 + 双层阴影 + shine 扫光 + 悬停浮出豆绿播放钮）；
+     ⑧ 首屏 → 发现页**浅色聚光卡**（.spot：模糊海报做环境色 + 浅色纱幕 + 深色大字号标题）。
+   ★ 历史守卫全部保留：`.vp-ctl` 重置、`.vp-big:active` 位移守卫、pvwin 白壳、普通搜索条宽度、--bg 兜底。
+   ★ M3 克制口径：大豆是**浅色**皮肤，光斑与纱幕都要**柔和**，只给极淡的色温偏移，不花哨。
+   ============================================================================ */
+
+/* ---- ① 环境：暖纸白打底 + 豆绿 / 豆瓣橙双色柔光 + 极淡胶片颗粒 ---- */
+:root[data-theme='douban'] .app-ambient .amb-blob-1 {
+  background: radial-gradient(circle at 50% 50%, rgba(46, 150, 41, .16), rgba(46, 150, 41, 0) 68%);
+}
+:root[data-theme='douban'] .app-ambient .amb-blob-2 {
+  background: radial-gradient(circle at 50% 50%, rgba(240, 100, 30, .12), rgba(240, 100, 30, 0) 68%);
+}
+:root[data-theme='douban'] .app-ambient .amb-blob-3 {
+  background: radial-gradient(circle at 50% 50%, rgba(178, 190, 172, .22), rgba(178, 190, 172, 0) 70%);
+}
+:root[data-theme='douban'] .app-ambient .amb-grain { opacity: .14; }
+/* 暖纸白打底光：左上豆绿余光 + 右上豆瓣橙余光（浅色皮肤的静态打底，只给极淡色温偏移） */
+:root[data-theme='douban'] .app,
+:root[data-theme='douban'] .app.db-app {
+  background:
+    radial-gradient(1200px 520px at 8% -12%, rgba(46, 150, 41, .10), transparent 62%),
+    radial-gradient(1000px 460px at 98% 0%, rgba(240, 100, 30, .07), transparent 60%),
+    var(--bg0);
+}
+
+/* ---- ② 外壳透明化 + 抬层：氛围才看得见、内容才盖得住（氛围层 = z-index:0 的 fixed 元素） ---- */
+:root[data-theme='douban'] .db-main,
+:root[data-theme='douban'] .db-main .content { background: transparent; position: relative; z-index: 1; }
+/* 顶栏已有 position:relative，重申 z-index:30 确保它仍压在 .db-main（z-index:1）之上 */
+:root[data-theme='douban'] .db-head { z-index: 30; }
+
+/* ---- ③ 顶栏 / 导航：毛玻璃提纯 + 豆绿实心选中胶囊（沿用已有的 dbPop 弹跳） ---- */
+:root[data-theme='douban'] .db-head {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .86), rgba(246, 250, 243, .76));
+  backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  border-bottom: 1px solid rgba(26, 32, 25, .08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 12px 30px -24px rgba(20, 28, 18, .5);
+}
+/* 品牌块：豆绿渐变 squircle + 内高光 + 品牌光晕（原「胶囊」→ 更实的实体标记） */
+:root[data-theme='douban'] .db-brand {
+  height: 32px; padding: 0 14px 0 6px; border-radius: 12px;
+  font-size: 12px; letter-spacing: .085em;
+  background: linear-gradient(135deg, #3AAE33, #1F7A1B);
+  box-shadow: 0 3px 12px -3px rgba(46, 150, 41, .55), inset 0 1px 0 rgba(255, 255, 255, .28);
+  transition: transform var(--db-dur-m) var(--ease-spring), box-shadow var(--db-dur-m) var(--db-ease),
+    filter var(--db-dur-m) var(--db-ease);
+}
+:root[data-theme='douban'] .db-brand:hover {
+  transform: scale(1.03); filter: brightness(1.06);
+  box-shadow: 0 5px 18px -3px rgba(46, 150, 41, .65), inset 0 1px 0 rgba(255, 255, 255, .34);
+}
+/* 导航容器：玻璃分段（内高光 + 细描边），浮在毛玻璃顶栏上 */
+:root[data-theme='douban'] .db-nav {
+  margin: 2px 16px 12px; padding: 4px; gap: 3px;
+  background: rgba(255, 255, 255, .5); border: 1px solid rgba(26, 32, 25, .07);
+  backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 10px 24px -18px rgba(20, 28, 18, .5);
+}
+:root[data-theme='douban'] .db-chip { padding: 7px 16px; font-weight: 640; }
+:root[data-theme='douban'] .db-chip:hover { color: var(--accent-strong); background: rgba(46, 150, 41, .1); }
+/* 选中：实心豆绿胶囊 + 白字 + 内高光（dbPop 弹跳确认，原「白底浮起 + 绿字」） */
+:root[data-theme='douban'] .db-chip.active {
+  background: linear-gradient(135deg, #38A932, #1F7A1B); color: #fff; font-weight: 750;
+  box-shadow: 0 4px 14px -4px rgba(46, 150, 41, .6), inset 0 1px 0 rgba(255, 255, 255, .26);
+  animation: dbPop var(--db-dur-m) var(--ease-spring);
+}
+/* 开启态 × hover 组合：避免 hover 反压选中色（§C54/§C60） */
+:root[data-theme='douban'] .db-chip.active:hover {
+  background: linear-gradient(135deg, #38A932, #1F7A1B); color: #fff;
+}
+/* 浮动圆钮：收敛到与导航同语言（白玻璃 squircle + 内高光；选中豆绿渐变） */
+:root[data-theme='douban'] .db-fab-orb {
+  width: 54px; height: 54px; border-radius: 20px; background: rgba(255, 255, 255, .92);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 2px 6px rgba(20, 28, 18, .08),
+    0 16px 34px -14px rgba(20, 28, 18, .26);
+}
+:root[data-theme='douban'] .db-fab.active .db-fab-orb {
+  background: linear-gradient(135deg, #3AAE33, #1F7A1B);
+  box-shadow: 0 4px 10px rgba(31, 122, 27, .35), 0 18px 36px -12px rgba(46, 150, 41, .6),
+    inset 0 1px 0 rgba(255, 255, 255, .3);
+}
+
+/* ---- ④ 分类条：玻璃分段容器 + 弱化小字 + 胶囊化 tag（选中豆绿，沿用已有 .tag.active） ---- */
+:root[data-theme='douban'] .db-filters {
+  background: rgba(255, 255, 255, .72); border: 1px solid rgba(26, 32, 25, .07);
+  border-radius: 20px; padding: 8px 16px; margin-bottom: 18px;
+  backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 12px 30px -24px rgba(20, 28, 18, .5);
+}
+:root[data-theme='douban'] .db-filters .db-filter-row { gap: 9px; padding: 9px 0; }
+:root[data-theme='douban'] .db-filters .db-filter-row + .db-filter-row { border-top: 1px solid rgba(26, 32, 25, .06); }
+/* 维度小字：更小更弱（大写间距感的眉标），把注意力让给胶囊 */
+:root[data-theme='douban'] .db-filters .db-filter-label {
+  width: 46px; font-size: 10.5px; font-weight: 750; letter-spacing: .12em; color: #8B9384;
+}
+:root[data-theme='douban'] .tag {
+  padding: 5px 14px; border-radius: 999px;
+  background: rgba(255, 255, 255, .8); border-color: rgba(26, 32, 25, .12); color: var(--text-dim);
+}
+:root[data-theme='douban'] .tag:hover {
+  background: #fff; color: var(--accent); border-color: rgba(46, 150, 41, .5);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+:root[data-theme='douban'] .tag.active {
+  color: #fff; border-color: transparent;
+  box-shadow: 0 3px 12px -3px rgba(46, 150, 41, .55), inset 0 1px 0 rgba(255, 255, 255, .24);
+}
+/* 开启态 × hover 组合：避免 hover 反压选中色（§C54/§C60） */
+:root[data-theme='douban'] .tag.active:hover {
+  background: linear-gradient(135deg, #3AAE33, #1F7A1B); color: #fff; border-color: transparent;
+}
+
+/* ---- ⑤ 海报墙 chips / 节标题：大字号 + 品牌光条（与 netflix「大字号 + 光条」对位） ---- */
+:root[data-theme='douban'] .db-wall-chips { gap: 12px; margin: 2px 0 18px; align-items: center; }
+/* 海报墙分区行首的品牌光条（豆绿 → 豆瓣橙），与节标题色条同一语言 */
+:root[data-theme='douban'] .db-wall-chips::before {
+  content: ''; flex: none; width: 4px; height: 22px; border-radius: 3px;
+  background: linear-gradient(180deg, #38A932, #F0641E);
+  box-shadow: 0 0 14px rgba(46, 150, 41, .5);
+}
+:root[data-theme='douban'] .db-wall-chip {
+  padding: 8px 18px; font-size: 14px; font-weight: 660;
+  background: rgba(255, 255, 255, .8); border-color: rgba(26, 32, 25, .1);
+}
+:root[data-theme='douban'] .db-wall-chip:hover {
+  transform: translateY(-2px); box-shadow: 0 4px 12px -5px rgba(20, 28, 18, .3);
+}
+:root[data-theme='douban'] .db-wall-chip.active {
+  box-shadow: 0 4px 14px -4px rgba(46, 150, 41, .6), inset 0 1px 0 rgba(255, 255, 255, .24);
+}
+/* 开启态 × hover 组合：避免 hover 反压选中色（§C54/§C60） */
+:root[data-theme='douban'] .db-wall-chip.active:hover {
+  background: linear-gradient(135deg, #3AAE33, #1F7A1B); color: #fff; border-color: transparent;
+}
+/* 节标题：字号抬高 + 色条加高加辉光（dbBarGrow 生长动画保留） */
+:root[data-theme='douban'] .db-sec-title { padding-left: 15px; font-size: 20px; font-weight: 850; letter-spacing: -.02em; }
+:root[data-theme='douban'] .db-sec-title::before {
+  width: 4px; height: 20px; box-shadow: 0 0 14px rgba(46, 150, 41, .5);
+}
+
+/* ---- ⑥ 卡片：白玻璃卡 + shine 扫光 + 悬停浮出豆绿播放钮 ----
+   ★ 豆风卡片已有 `.db-card-play` 元素（悬停浮出的圆钮），与模板的 `::before` 会**双重播放钮**冲突 ——
+     按口径**保留并样式化 `.db-card-play`**，不再另加 `::before`。 */
+:root[data-theme='douban'] .card-media:hover { z-index: 5; }
+:root[data-theme='douban'] .card-media .card {
+  border: 1px solid rgba(26, 32, 25, .07); border-radius: 18px;
+  background: linear-gradient(180deg, #FFFFFF, #FCFDFA);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 1px 2px rgba(20, 28, 18, .05),
+    0 16px 34px -18px rgba(20, 28, 18, .3);
+}
+:root[data-theme='douban'] .card-media:hover .card {
+  border-color: rgba(46, 150, 41, .45);
+  box-shadow: 0 6px 16px rgba(20, 28, 18, .08), 0 28px 54px -20px rgba(46, 150, 41, .38);
+}
+/* 封面区（.card 首个子元素）承载 shine 扫光；overflow:hidden 保证扫光不溢到信息区 */
+:root[data-theme='douban'] .card-media .card > :first-child { position: relative; overflow: hidden; }
+:root[data-theme='douban'] .card-media .card > :first-child::after {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(104deg, transparent 32%, rgba(255, 255, 255, .36) 46%, transparent 60%);
+  transform: translateX(-140%);
+}
+:root[data-theme='douban'] .card-media:hover .card > :first-child::after {
+  transform: translateX(140%); transition: transform .85s var(--db-ease);
+}
+/* 悬停播放钮：豆绿渐变圆 + 白三角（配色照模板，红 → 豆绿），z-index 抬到扫光之上 */
+:root[data-theme='douban'] .db-card-play {
+  z-index: 2; width: 46px; height: 46px; border-radius: 50%; color: #fff;
+  background: linear-gradient(150deg, #3AAE33, #1F7A1B);
+  box-shadow: 0 10px 24px -6px rgba(31, 122, 27, .6), inset 0 1px 0 rgba(255, 255, 255, .3);
+}
+
+/* ---- ⑦ 按钮：豆绿渐变主行动 + 次要按钮胶囊化（增量收敛） ---- */
+:root[data-theme='douban'] button.primary {
+  padding: 8px 22px; font-weight: 700; color: #fff; border-color: transparent;
+  background: linear-gradient(135deg, #3AAE33, #1F7A1B);
+  box-shadow: 0 3px 12px -3px rgba(46, 150, 41, .5), inset 0 1px 0 rgba(255, 255, 255, .24);
+}
+:root[data-theme='douban'] button.primary:hover {
+  background: linear-gradient(135deg, #36A430, #1B7018); color: #fff;
+  box-shadow: 0 8px 22px -8px rgba(46, 150, 41, .65);
+}
+/* 次要按钮（页面顶栏 / 返回）：统一胶囊，与导航同语言 */
+:root[data-theme='douban'] .topbar button,
+:root[data-theme='douban'] .back-btn { border-radius: 999px; }
+/* 中央播放键是 translate(-50%,-50%) 定位：重申位移守卫（generic button 规则之后，§C62） */
+:root[data-theme='douban'] .vp-big:active { transform: translate(-50%, -50%) scale(.95); }
+
+/* ---- ⑧ 首屏聚光卡：浅色聚光卡（暖白纱幕 + 豆绿 / 豆瓣橙强调 + 深色大标题） ----
+   ★ 大豆是浅色皮肤：模糊海报必须被提亮（brightness>1）+ 浅色纱幕压住，深色标题才读得清。 */
+:root[data-theme='douban'] .spot {
+  border: 1px solid rgba(46, 150, 41, .16);
+  background: linear-gradient(135deg, #F3FAF0 0%, #FBFDF8 55%, #FFF4EC 100%);
+  box-shadow: 0 26px 60px -30px rgba(20, 28, 18, .5), inset 0 1px 0 rgba(255, 255, 255, .8);
+}
+:root[data-theme='douban'] .spot-art-layer { filter: blur(42px) saturate(1.5) brightness(1.28); }
+:root[data-theme='douban'] .spot-veil {
+  background: linear-gradient(100deg, rgba(252, 253, 250, .96) 0%, rgba(250, 253, 247, .9) 38%,
+    rgba(248, 252, 245, .58) 66%, rgba(255, 245, 236, .88) 100%);
+}
+:root[data-theme='douban'] .spot-kicker { color: var(--accent-strong); }
+:root[data-theme='douban'] .spot-kicker-dot { background: var(--accent); box-shadow: 0 0 12px rgba(46, 150, 41, .7); }
+:root[data-theme='douban'] .spot-title { color: var(--text); text-shadow: 0 1px 3px rgba(255, 255, 255, .7); }
+:root[data-theme='douban'] .spot-meta { color: var(--text-dim); }
+:root[data-theme='douban'] .spot-year { color: var(--accent-strong); font-weight: 700; }
+:root[data-theme='douban'] .spot-sep { color: #A6AF9E; }
+:root[data-theme='douban'] .spot-rank { color: var(--accent-2); font-weight: 750; letter-spacing: .05em; }
+:root[data-theme='douban'] .spot-go { display: inline-flex; align-items: center; gap: 7px; padding: 9px 22px; font-size: 14px; }
+:root[data-theme='douban'] .spot-next {
+  padding: 9px 18px; font-weight: 640; color: var(--text);
+  background: rgba(255, 255, 255, .82); border: 1px solid rgba(26, 32, 25, .12);
+}
+:root[data-theme='douban'] .spot-next:hover {
+  background: #fff; border-color: rgba(46, 150, 41, .5); color: var(--accent);
+}
+:root[data-theme='douban'] .spot-poster {
+  box-shadow: 0 22px 48px -18px rgba(20, 28, 18, .5), 0 0 0 1px rgba(255, 255, 255, .9),
+    0 0 46px -10px rgba(46, 150, 41, .4);
+}
+:root[data-theme='douban'] .spot-poster-none { color: var(--text-dim); }
+:root[data-theme='douban'] .spot-poster-ghost {
+  filter: brightness(.94) saturate(.9) opacity(.85);
+  box-shadow: 0 16px 34px -16px rgba(20, 28, 18, .4), 0 0 0 1px rgba(255, 255, 255, .7);
+}
+:root[data-theme='douban'] .spot-dot { background: rgba(26, 32, 25, .18); }
+:root[data-theme='douban'] .spot-dot:hover { background: rgba(26, 32, 25, .34); }
+:root[data-theme='douban'] .spot-dot.active { background: var(--accent); box-shadow: 0 0 10px rgba(46, 150, 41, .7); }
+
+/* ============================================================================
+   ★★ 2026-10-16 第三代外观（**大豆差异化 · Material 3 Expressive 杂志编辑风**）
+   ----------------------------------------------------------------------------
+   为什么要有第三代：第二代与其余三套**结构趋同**（都停在「玻璃容器 + 扫光 + 白胶囊」的语言），
+   用户口径「四套成了一模一样仅换色，还不如以前各有特色」。这一代把大豆推到**独一份**的形态：
+     ① 环境 → 豆绿 / 豆瓣橙**克制**暖光 + 极淡颗粒（暖纸白打底，不做花哨）；
+     ② 外壳 → 内容抬层（氛围层是 z-index:0 的 fixed 元素，不抬 z-index 会被整片盖住）；
+     ③ 顶栏 → 毛玻璃提纯；导航 = **M3 分段容器**（浅色 track）＋ 豆绿实心选中胶囊；
+     ④ 分类条 → **M3 tonal 容器**（不是玻璃）＋ 弱化眉标 ＋ 胶囊化 tag；
+     ⑤ 标题 → 大字号 + 品牌光条（沿用既有 dbBarGrow / dbPop 动画）；
+     ⑥ 首屏 → **M3 杂志块**（主色容器底 ＋ 轻微旋转的封面级海报 ＋ 超大标题）——
+        与 netflix「全出血 billboard」/ 哔哔「彩色横幅」/ 大果「Today 玻璃卡」都不重叠；
+     ⑦ 卡片 → **M3 tonal 卡**：圆角 20px + 状态层（**去掉 shine 扫光**，那是哔哔的语言）；
+     ⑨ 播放器 → **M3 bottom-app-bar dock**：近实心 tonal 圆角条 + 厚圆进度 + 40px 圆钮 + 80px 大键。
+   ★ 历史守卫全部保留：`.vp-ctl` 重置、`.vp-big:active` 位移守卫、pvwin 白壳、普通搜索条宽度、--bg 兜底。
+   ============================================================================ */
+
+/* ---- ① 环境：暖纸白打底 + 豆绿 / 豆瓣橙 / 极淡中性光（克制） + 极淡颗粒 ---- */
+:root[data-theme='douban'] .app-ambient .amb-blob-1 {
+  background: radial-gradient(circle at 50% 50%, rgba(46, 150, 41, .14), rgba(46, 150, 41, 0) 70%);
+}
+:root[data-theme='douban'] .app-ambient .amb-blob-2 {
+  background: radial-gradient(circle at 50% 50%, rgba(240, 100, 30, .10), rgba(240, 100, 30, 0) 70%);
+}
+:root[data-theme='douban'] .app-ambient .amb-blob-3 {
+  background: radial-gradient(circle at 50% 50%, rgba(178, 190, 172, .18), rgba(178, 190, 172, 0) 72%);
+}
+:root[data-theme='douban'] .app-ambient .amb-grain { opacity: .14; }
+:root[data-theme='douban'] .app,
+:root[data-theme='douban'] .app.db-app {
+  background:
+    radial-gradient(1200px 520px at 8% -12%, rgba(46, 150, 41, .09), transparent 62%),
+    radial-gradient(1000px 460px at 98% 0%, rgba(240, 100, 30, .06), transparent 60%),
+    var(--bg0);
+}
+
+/* ---- ② 外壳层序：内容透明 + 抬到 z-index:1，顶栏保持 z-index:30（压过内容与氛围） ---- */
+:root[data-theme='douban'] .db-main,
+:root[data-theme='douban'] .db-main .content { background: transparent; position: relative; z-index: 1; }
+:root[data-theme='douban'] .db-head { z-index: 30; }
+
+/* ---- ③ 顶栏毛玻璃提纯 + 品牌块升级 + M3 分段容器导航 ---- */
+:root[data-theme='douban'] .db-head {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .9), rgba(247, 251, 245, .78));
+  backdrop-filter: blur(26px) saturate(1.5); -webkit-backdrop-filter: blur(26px) saturate(1.5);
+  border-bottom: 1px solid rgba(26, 32, 25, .07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .85), 0 1px 0 rgba(20, 28, 18, .03),
+    0 14px 34px -26px rgba(20, 28, 18, .5);
+}
+/* 品牌块：豆绿渐变 squircle（更实的实体标记 + 品牌光晕） */
+:root[data-theme='douban'] .db-brand {
+  height: 34px; padding: 0 15px 0 6px; border-radius: 13px;
+  font-size: 12px; letter-spacing: .09em;
+  background: linear-gradient(135deg, #3AAE33, #1F7A1B);
+  box-shadow: 0 4px 14px -4px rgba(46, 150, 41, .6), inset 0 1px 0 rgba(255, 255, 255, .3);
+  transition: transform var(--db-dur-m) var(--ease-spring), box-shadow var(--db-dur-m) var(--db-ease),
+    filter var(--db-dur-m) var(--db-ease);
+}
+:root[data-theme='douban'] .db-brand:hover {
+  transform: scale(1.035); filter: brightness(1.07);
+  box-shadow: 0 6px 20px -4px rgba(46, 150, 41, .68), inset 0 1px 0 rgba(255, 255, 255, .36);
+}
+/* 导航 = M3 分段容器：浅色 track（**不玻璃、不模糊**）+ 细内高光，浮在毛玻璃顶栏上 */
+:root[data-theme='douban'] .db-nav {
+  margin: 2px 16px 12px; padding: 4px; gap: 3px;
+  background: #E9F0E6; border: 1px solid rgba(26, 32, 25, .06); border-radius: 999px;
+  box-shadow: inset 0 1px 2px rgba(20, 28, 18, .06), inset 0 -1px 0 rgba(255, 255, 255, .6);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+:root[data-theme='douban'] .db-chip { padding: 7px 17px; font-weight: 650; }
+:root[data-theme='douban'] .db-chip:hover { color: var(--accent-strong); background: rgba(255, 255, 255, .6); }
+/* 选中：豆绿实心胶囊 + 白字 + 内高光（dbPop 弹性确认） */
+:root[data-theme='douban'] .db-chip.active {
+  background: linear-gradient(135deg, #38A932, #1F7A1B); color: #fff; font-weight: 750;
+  box-shadow: 0 4px 14px -4px rgba(46, 150, 41, .6), inset 0 1px 0 rgba(255, 255, 255, .26);
+  animation: dbPop var(--db-dur-m) var(--ease-spring);
+}
+/* 开启态 × hover 组合：避免 hover 反压选中色（§C54/§C60） */
+:root[data-theme='douban'] .db-chip.active:hover {
+  background: linear-gradient(135deg, #38A932, #1F7A1B); color: #fff;
+}
+
+/* ---- ④ 分类条：M3 tonal 容器（**不是玻璃**） + 弱化眉标 + 胶囊化 tag ---- */
+:root[data-theme='douban'] .db-filters {
+  background: #EEF3EA; border: 1px solid rgba(26, 32, 25, .06); border-radius: 24px;
+  padding: 8px 16px; margin-bottom: 18px;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), inset 0 -1px 0 rgba(20, 28, 18, .03);
+}
+:root[data-theme='douban'] .db-filter-row { gap: 9px; }
+:root[data-theme='douban'] .db-filters .db-filter-row { gap: 9px; padding: 9px 0; }
+:root[data-theme='douban'] .db-filters .db-filter-row + .db-filter-row { border-top: 1px solid rgba(26, 32, 25, .05); }
+:root[data-theme='douban'] .db-filter-label { font-size: 10.5px; font-weight: 750; letter-spacing: .12em; color: #8B9384; }
+:root[data-theme='douban'] .db-filters .db-filter-label { width: 46px; font-size: 10.5px; font-weight: 750; letter-spacing: .12em; color: #8B9384; }
+:root[data-theme='douban'] .tag {
+  padding: 5px 14px; border-radius: 999px;
+  background: rgba(255, 255, 255, .74); border-color: rgba(26, 32, 25, .1); color: var(--text-dim);
+}
+:root[data-theme='douban'] .tag:hover {
+  background: #fff; color: var(--accent); border-color: rgba(46, 150, 41, .5);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+:root[data-theme='douban'] .tag.active {
+  background: linear-gradient(135deg, #38A932, #1F7A1B); border-color: transparent; color: #fff; font-weight: 700;
+  box-shadow: 0 3px 12px -3px rgba(46, 150, 41, .55), inset 0 1px 0 rgba(255, 255, 255, .24);
+  animation: dbPop var(--db-dur-m) var(--ease-spring);
+}
+/* 开启态 × hover 组合：避免 hover 反压选中色（§C54/§C60） */
+:root[data-theme='douban'] .tag.active:hover {
+  background: linear-gradient(135deg, #3AAE33, #1F7A1B); color: #fff; border-color: transparent;
+}
+
+/* ---- ⑤ 分区 chips / 节标题：大字号 + 品牌光条（沿用 dbBarGrow） ---- */
+:root[data-theme='douban'] .db-wall-chips { gap: 12px; margin: 2px 0 18px; align-items: center; }
+:root[data-theme='douban'] .db-wall-chips::before {
+  content: ''; flex: none; width: 4px; height: 24px; border-radius: 3px;
+  background: linear-gradient(180deg, #38A932, #F0641E);
+  box-shadow: 0 0 16px rgba(46, 150, 41, .55);
+}
+:root[data-theme='douban'] .db-wall-chip {
+  padding: 8px 18px; font-size: 14px; font-weight: 660;
+  background: rgba(255, 255, 255, .8); border-color: rgba(26, 32, 25, .1);
+}
+:root[data-theme='douban'] .db-wall-chip:hover { transform: translateY(-2px); box-shadow: 0 5px 14px -5px rgba(20, 28, 18, .3); }
+:root[data-theme='douban'] .db-wall-chip.active {
+  background: linear-gradient(135deg, #38A932, #1F7A1B); border-color: transparent; color: #fff; font-weight: 700;
+  box-shadow: 0 4px 14px -4px rgba(46, 150, 41, .6), inset 0 1px 0 rgba(255, 255, 255, .24);
+  animation: dbPop var(--db-dur-m) var(--ease-spring);
+}
+:root[data-theme='douban'] .db-wall-chip.active:hover {
+  background: linear-gradient(135deg, #3AAE33, #1F7A1B); color: #fff; border-color: transparent;
+}
+:root[data-theme='douban'] .db-sec-title { padding-left: 16px; font-size: 22px; font-weight: 850; letter-spacing: -.022em; }
+:root[data-theme='douban'] .db-sec-title::before {
+  width: 4px; height: 22px;
+  background: linear-gradient(180deg, #38A932, #F0641E);
+  box-shadow: 0 0 16px rgba(46, 150, 41, .55);
+}
+
+/* ---- ⑥ 首屏 = M3 杂志块：主色容器底（**不用玻璃/不用模糊海报当主体**）+ 轻微旋转的封面海报 ----
+   ★ 浅色皮肤：右上海报走「杂志封面」——rotate(-3deg) + 20px 大圆角 + 长阴影。 */
+:root[data-theme='douban'] .spot {
+  border: 1px solid rgba(46, 150, 41, .22); border-radius: 28px;
+  padding: 30px 32px;
+  /* ★ 明快的容器渐变（上一版纯色 #DCF2D8 + 灰海报 = 浑浊 sage）：
+     豆绿容器 → 暖纸白的方向渐变 + 右上豆瓣橙角光，M3 的「鲜明容器色」 */
+  background:
+    radial-gradient(680px 320px at 92% 8%, rgba(240, 100, 30, .12), transparent 64%),
+    linear-gradient(118deg, #E7F6E0 0%, #DFF1D9 46%, #EFF7EA 100%);
+  box-shadow: 0 30px 64px -34px rgba(31, 122, 27, .5), inset 0 1px 0 rgba(255, 255, 255, .6);
+}
+/* 模糊海报做环境色纹理：提饱和、提不透明度（上一版 saturate(1.1)+opacity(.26) 只剩一层灰） */
+:root[data-theme='douban'] .spot-art-layer { filter: blur(44px) saturate(1.6) brightness(1.26) opacity(.55); }
+/* ★ 右半幅氛围（深色海报全幅铺底会让容器变泥）——只在海报身后晕开，左侧文字区保持干净的容器色 */
+:root[data-theme='douban'] .spot-art {
+  inset: 0 0 0 44%;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 38%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 38%);
+}
+/* ★ 默认**完全透明**（主色容器底直接透出，不再用暗幕） */
+:root[data-theme='douban'] .spot-veil { background: transparent; }
+:root[data-theme='douban'] .spot-kicker { color: var(--accent-strong); font-size: 12px; letter-spacing: .22em; }
+:root[data-theme='douban'] .spot-kicker-dot { width: 7px; height: 7px; background: var(--accent); box-shadow: 0 0 12px rgba(46, 150, 41, .75); }
+:root[data-theme='douban'] .spot-title {
+  margin: 12px 0; font-size: clamp(32px, 4vw, 50px); line-height: 1.04;
+  font-weight: 800; letter-spacing: -.03em; color: #163018;
+}
+:root[data-theme='douban'] .spot-meta { color: #3E5B42; }
+:root[data-theme='douban'] .spot-year { color: var(--accent-strong); font-weight: 700; }
+:root[data-theme='douban'] .spot-sep { color: #7E9A82; }
+:root[data-theme='douban'] .spot-rank { color: var(--accent-2); font-weight: 800; letter-spacing: .05em; }
+:root[data-theme='douban'] .spot-go {
+  display: inline-flex; align-items: center; gap: 8px; padding: 11px 26px; font-size: 14px; border-radius: 999px;
+}
+:root[data-theme='douban'] .spot-next {
+  padding: 11px 20px; font-weight: 650; border-radius: 999px; color: var(--text);
+  background: rgba(255, 255, 255, .78); border: 1px solid rgba(26, 32, 25, .12);
+}
+:root[data-theme='douban'] .spot-next:hover { background: #fff; border-color: rgba(46, 150, 41, .5); color: var(--accent); }
+:root[data-theme='douban'] .spot-poster {
+  border-radius: 20px; transform: rotate(-3deg);
+  box-shadow: 0 30px 54px -20px rgba(16, 40, 18, .5), 0 0 0 1px rgba(255, 255, 255, .85),
+    0 0 60px -14px rgba(46, 150, 41, .4);
+}
+/* 预告叠角（同为 .spot-poster）：重新给出自身的错位变换，避免被上面的 rotate(-3deg) 抹掉 */
+:root[data-theme='douban'] .spot-poster-ghost {
+  transform: translate(26px, 14px) rotate(5deg) scale(.92);
+  box-shadow: 0 22px 44px -20px rgba(16, 40, 18, .42), 0 0 0 1px rgba(255, 255, 255, .6);
+  filter: none;
+}
+:root[data-theme='douban'] .spot-poster-none { color: #4E6A52; }
+:root[data-theme='douban'] .spot-dot { background: rgba(20, 40, 20, .22); }
+:root[data-theme='douban'] .spot-dot:hover { background: rgba(20, 40, 20, .38); }
+:root[data-theme='douban'] .spot-dot.active { background: var(--accent); box-shadow: 0 0 12px rgba(46, 150, 41, .75); }
+
+/* ---- ⑦ 卡片 = M3 tonal 卡：圆角 20px + 细边 + 状态层（**去掉 shine 扫光**） ---- */
+:root[data-theme='douban'] .card-media:hover { z-index: 5; }
+:root[data-theme='douban'] .card-media .card {
+  border: 1px solid rgba(26, 32, 25, .08); border-radius: 20px; background: #fff;
+  box-shadow: 0 1px 2px rgba(20, 28, 18, .05), 0 16px 34px -20px rgba(20, 28, 18, .28);
+}
+:root[data-theme='douban'] .card-media:hover .card {
+  transform: translateY(-3px); border-color: rgba(46, 150, 41, .4);
+  box-shadow: 0 6px 16px rgba(20, 28, 18, .07), 0 26px 48px -22px rgba(46, 150, 41, .34);
+}
+/* 把二代的 shine 伪元素**改造成**静态色调状态层（hover 淡入），彻底去掉扫光 */
+:root[data-theme='douban'] .card-media .card > :first-child::after {
+  content: ''; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: rgba(46, 150, 41, .06); opacity: 0; transform: none;
+  transition: opacity var(--db-dur-m) var(--db-ease);
+}
+:root[data-theme='douban'] .card-media:hover .card > :first-child::after {
+  transform: none; opacity: 1;
+  transition: opacity var(--db-dur-m) var(--db-ease);
+}
+/* 悬停播放钮（海报墙已有 `.db-card-play` 元素）：豆绿实底 + 白三角，抬到状态层之上（不再加 ::before） */
+:root[data-theme='douban'] .db-card-play {
+  z-index: 2; width: 46px; height: 46px; border-radius: 50%; color: #fff;
+  background: linear-gradient(150deg, #3AAE33, #1F7A1B);
+  box-shadow: 0 10px 24px -6px rgba(31, 122, 27, .6), inset 0 1px 0 rgba(255, 255, 255, .3);
+}
+
+/* ---- ⑨ 播放器 = M3 bottom-app-bar dock（近实心 tonal 圆角条；**不用 glass 模糊**） ---- */
+:root[data-theme='douban'] .vplayer { background: #000; }
+:root[data-theme='douban'] .vp-controls {
+  left: 0; right: 0; bottom: 20px;
+  width: min(880px, calc(100% - 40px)); margin: 0 auto; box-sizing: border-box;
+  padding: 14px 22px 16px; border-radius: 28px;
+  background: rgba(24, 26, 24, .9); border: 1px solid rgba(255, 255, 255, .1);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  box-shadow: 0 26px 60px -22px rgba(0, 0, 0, .95), inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+/* 厚圆进度条 + 大进度点（豆绿 + 3px 光环） */
+:root[data-theme='douban'] .vp-progress { height: 20px; margin-bottom: 6px; background: transparent; border-radius: 999px; }
+:root[data-theme='douban'] .vp-progress::before { height: 6px; border-radius: 999px; background: rgba(255, 255, 255, .22); }
+:root[data-theme='douban'] .vp-buffer { height: 6px; border-radius: 999px; background: rgba(255, 255, 255, .34); }
+:root[data-theme='douban'] .vp-played { height: 6px; border-radius: 999px; background: linear-gradient(90deg, #2E9629, #F0641E); }
+:root[data-theme='douban'] .vp-thumb {
+  width: 16px; height: 16px; background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(46, 150, 41, .4), 0 2px 8px rgba(0, 0, 0, .55);
+  transition: width var(--db-dur-m) var(--db-ease), height var(--db-dur-m) var(--db-ease);
+}
+:root[data-theme='douban'] .vp-progress:hover .vp-thumb { width: 18px; height: 18px; }
+:root[data-theme='douban'] .vp-bar { gap: 12px; }
+/* 40×40 大圆钮：常态透明，hover 显 M3 状态层（不是玻璃高亮） */
+:root[data-theme='douban'] .vp-ctl {
+  width: 40px; height: 40px; border-radius: 999px;
+  background: transparent; border: none; padding: 0; box-shadow: none; color: #F2F4F1;
+  transition: background var(--db-dur-m) var(--db-ease), color var(--db-dur-m) var(--db-ease);
+}
+:root[data-theme='douban'] .vp-ctl:hover { background: rgba(255, 255, 255, .1); color: #fff; box-shadow: none; }
+:root[data-theme='douban'] .vp-ctl:disabled { color: rgba(242, 244, 241, .28); background: transparent; }
+/* 开启态：豆绿 tonal 底 + 豆绿图标（.a.b 组合压过 hover 反压） */
+:root[data-theme='douban'] .vp-ctl.vp-on { color: var(--accent); background: rgba(46, 150, 41, .24); }
+:root[data-theme='douban'] .vp-ctl.vp-on:hover { color: var(--accent); background: rgba(46, 150, 41, .32); }
+/* 中央大播放键：80px 豆绿渐变实底 + 白图标 + 大阴影 */
+:root[data-theme='douban'] .vp-big {
+  width: 80px; height: 80px; border-radius: 50%; border: none; color: #fff;
+  background: linear-gradient(150deg, #3AAE33, #1F7A1B);
+  box-shadow: 0 22px 50px -16px rgba(31, 122, 27, .8), inset 0 1px 0 rgba(255, 255, 255, .3);
+}
+/* ★ hover 必须带 translate(-50%,-50%)（元素 left/top:50% 定位，缺位移会跳走半个身位） */
+:root[data-theme='douban'] .vp-big:hover {
+  transform: translate(-50%, -50%) scale(1.06);
+  background: linear-gradient(150deg, #33A02D, #1B7018);
+}
+/* ★ 重申按下位移守卫（generic button 规则之后，§C62） */
+:root[data-theme='douban'] .vp-big:active { transform: translate(-50%, -50%) scale(.95); }
+/* 小窗模式：dock 收敛（避免大内边距挤占小窗空间） */
+:root[data-theme='douban'] .vplayer.vp-mini .vp-controls { padding: 10px 14px 12px; border-radius: 22px; }

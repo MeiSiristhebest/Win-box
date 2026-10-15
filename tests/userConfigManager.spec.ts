@@ -224,6 +224,38 @@ describe('UserConfigManager — 增删改排序与选中', () => {
       m.deleteSource('不存在');
       expect(m.snapshot().deletedSourceKeys).toEqual([]);
     });
+
+    /**
+     * ★ 2026-10-16（用户报「本地包删掉订阅后重新导入、订阅里一个源都没有」）：
+     *   用户**主动重新导入**该订阅 = 「我要这份订阅」的明确意图 → 导入前先清掉这些 key 的墓碑；
+     *   后台自动刷新不清墓碑 ⇒ 「删掉的不被刷新带回来」口径不变。
+     */
+    it('clearDeletedSourceKeys 只清指定 key，其余墓碑保留（主动重导用）', () => {
+      const m = newManager(tmpDir());
+      m.replaceFromImport(fullConfig([bean('a'), bean('b'), bean('c')]), 'https://h/s.json');
+      m.deleteSources(['a', 'b']);
+      expect(m.snapshot().deletedSourceKeys).toEqual(['a', 'b']);
+      m.clearDeletedSourceKeys(['a', '不存在']);
+      expect(m.snapshot().deletedSourceKeys).toEqual(['b']);
+      // 清过墓碑的 'a' 能回来；没清的 'b' 仍被过滤（= 自动刷新口径未被改动）
+      m.replaceFromImport(fullConfig([bean('a'), bean('b'), bean('c')]), 'https://h/s.json');
+      expect(m.sources().map((s) => s.key)).toEqual(['a', 'c']);
+    });
+
+    it('clearDeletedSourceKeys 无墓碑/无变化时不触发 content 变更（不写盘）', () => {
+      const m = newManager(tmpDir());
+      m.replaceFromImport(fullConfig([bean('a')]), 'https://h/s.json');
+      const kinds: string[] = [];
+      m.setOnChange((_snap, kind) => kinds.push(kind));
+      m.clearDeletedSourceKeys(['a']); // 当前无墓碑 → no-op
+      expect(kinds).toEqual([]);
+      m.deleteSource('a');
+      expect(kinds).toEqual(['content']);
+      const before = m.snapshot().deletedSourceKeys;
+      m.clearDeletedSourceKeys(['不存在']); // 无交集 → 不再写盘
+      expect(m.snapshot().deletedSourceKeys).toEqual(before);
+      expect(kinds).toEqual(['content']);
+    });
   });
 
   it('moveSource：up/down/top/bottom 排序正确；边界 no-op 不抛', () => {
@@ -419,17 +451,25 @@ describe('UserConfigManager v2 — 多配置档案（profiles）', () => {
     expect(m2.sources().map((s) => s.key)).toEqual(['x1', 'x2']);
   });
 
-  it('删除当前生效档案被拒绝；切走后可删', () => {
+  it('删除档案：非生效直接移除；删除生效档自动切到剩下的那份；删唯一一份清空订阅内容', () => {
     const dir = tmpDir();
     const m = newManager(dir);
     m.replaceFromImport(fullConfig([bean('p1')]), 'https://h/p.json');
     const pa = m.activeProfileId();
-    expect(() => m.deleteProfile(pa)).toThrow(/当前生效/);
-    m.saveAsProfile('另一个');
+    m.saveAsProfile('另一个'); // active 移到新档，两份内容都还是 p1
     const other = m.profiles().find((p) => p.id !== pa)!;
-    m.deleteProfile(pa); // 现在 active=另一个，可删 A
-    expect(m.profiles().some((p) => p.id === pa)).toBe(false);
-    expect(m.profiles().length).toBe(1);
+
+    // ★ 2026-10-16（用户要求）：生效档案不再拒绝删除 —— 自动切到剩下的第一份并按其存档重建
+    m.deleteProfile(other.id);
+    expect(m.profiles().some((p) => p.id === other.id)).toBe(false);
+    expect(m.activeProfileId()).toBe(pa);
+    expect(m.sources().map((s) => s.key)).toEqual(['p1']);
+
+    // 删唯一一份：清空订阅内容（sources / 订阅自带 lives / parses），本地导入线路另测（见 localLive/墓碑用例）
+    m.deleteProfile(pa);
+    expect(m.profiles().length).toBe(0);
+    expect(m.activeProfileId()).toBe('');
+    expect(m.sources().length).toBe(0);
   });
 
   // ★ 2026-09-26（用户口径）：导入新订阅 → 旧档案改名「旧订阅 xx」+ 新档案「新订阅 xx」并切换过去
@@ -580,6 +620,20 @@ describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播
     m.activateProfile(aId);
     expect(m.lives()).toHaveLength(1);
     expect(m.lives()[0].name).toBe('改过名');
+  });
+
+  it('★ deleteLives：批量按下标删除，收敛 activeLiveIndex，越界忽略', () => {
+    const dir = tmpDir();
+    const m = newManager(dir);
+    m.addLive(liveBean('A', LOCAL + '?a'));
+    m.addLive(liveBean('B', LOCAL + '?b'));
+    m.addLive(liveBean('C', LOCAL + '?c'));
+    m.setActiveLiveIndex(2);
+    m.deleteLives([0, 2, 99]); // 99 越界忽略
+    expect(m.lives().map((l) => l.name)).toEqual(['B']);
+    expect(m.activeLiveIndex()).toBe(0);
+    m.deleteLives([]); // 空集合 no-op
+    expect(m.lives()).toHaveLength(1);
   });
 
   it('删除本地线路后，后续订阅替换不会让它复活', () => {

@@ -226,6 +226,29 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   };
 
   /**
+   * ★ 2026-10-16（用户要求）：**左侧点选订阅时，配置档案也同步切换**（不再只是"浏览"）。
+   *   此前点左侧订阅只切换右栏列表，生效档案要到"再点一个源"才切换 —— 与配置页「已保存配置」的
+   *   "当前订阅"不一致；这里点选即 `cfgActivateProfile`，并广播 profile-changed / sources-changed
+   *   让点播页与各列表按新档案重载。
+   *   该订阅无可恢复内容（早期迁移档案 json 为空）→ 仅浏览，不改生效档案。
+   */
+  const selectPane = (id: string): void => {
+    if (!id) return;
+    setPaneId(id);
+    if (id === (views?.activeId || '')) return;
+    void (async () => {
+      try {
+        await client.cfgActivateProfile(id);
+      } catch {
+        return;
+      }
+      // 生效档案已切换：detail 传 '' → 点播页回落到新档案的 activeSourceKey
+      window.dispatchEvent(new CustomEvent('winbox:profile-changed', { detail: '' }));
+      window.dispatchEvent(new CustomEvent('winbox:sources-changed'));
+    })();
+  };
+
+  /**
    * 点选某源：目标订阅 = 当前生效订阅 → 走既有 pick；
    * 否则先切换档案再选中源（一步完成），并广播两类变更事件让各页同步。
    */
@@ -310,11 +333,11 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
                     tabIndex={0}
                     className={`srcpick-item srcpick-sub${p.id === pane.id ? ' active' : ''}${p.id === views!.activeId ? ' cur' : ''}`}
                     title={`${p.name}（${p.sites.length} 个源）${p.id === views!.activeId ? ' · 当前订阅' : ''}`}
-                    onClick={() => setPaneId(p.id)}
+                    onClick={() => selectPane(p.id)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
-                        setPaneId(p.id);
+                        selectPane(p.id);
                       }
                     }}
                   >

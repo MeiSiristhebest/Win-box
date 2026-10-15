@@ -409,6 +409,10 @@ export default function PlayerPage() {
               // ★ 2026-09-30：图集源（每「集」= 一张图）/ 音乐源 → 图片浏览器 / 音乐播放器显示页码与封面
               epIndex={epIndex}
               epTotal={eps.length}
+              // ★ 2026-10-16（用户要求）：全屏播放器「选集」—— 传**本线路**的集列表（与 上一集/下一集 同一份）
+              //   从历史记录进入时 applyInit 会重新取详情把 eps 补全 ⇒ 这边同样可用
+              episodes={eps}
+              onPickEpisode={(idx) => goEp(idx)}
               cover={init?.meta?.pic}
               // ★ 2026-10-08（用户要求）：跳过片头片尾 —— 资源键（与历史分组同口径）+ 本集键（原始 episode url）
               skipResourceKey={historyGroupKey({

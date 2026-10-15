@@ -82,6 +82,46 @@ export function useWaterfall(): boolean {
 }
 
 /**
+ * ★ 2026-10-16（用户要求）：点播页「筛选」开关 —— 默认**关**（点播页不显示源分类与筛选条；
+ *   只有打开才出现），打开后**一次性展开全部**（点播页不再逐级展开，逐级展开只留给发现页）。
+ *   持久化在 localStorage（同 uiPrefs 惯例）⇒ **换源 / 重启后都保持**。
+ */
+const KEY_HOME_FILTERS = 'winbox-home-filters';
+
+export function getHomeFilters(): boolean {
+  try {
+    return localStorage.getItem(KEY_HOME_FILTERS) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** 设置「点播页筛选展开」并广播（多窗口 / 多入口同步） */
+export function setHomeFilters(v: boolean): void {
+  try {
+    localStorage.setItem(KEY_HOME_FILTERS, v ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+  try {
+    window.dispatchEvent(new Event(UI_PREFS_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** React Hook：订阅「点播页筛选展开」 */
+export function useHomeFilters(): boolean {
+  const [on, setOn] = useState<boolean>(() => getHomeFilters());
+  useEffect(() => {
+    const onChange = (): void => setOn(getHomeFilters());
+    window.addEventListener(UI_PREFS_EVENT, onChange);
+    return () => window.removeEventListener(UI_PREFS_EVENT, onChange);
+  }, []);
+  return on;
+}
+
+/**
  * ★ 2026-10-08（用户要求「整体重做界面视觉与动效交互」）：**界面动效偏好**。
  *   Windows 的「动画效果」是系统级开关（`prefers-reduced-motion`）——本机实测该开关为关时，
  *   浏览器会把一切动画/过渡折叠掉，用户看不到任何动效。所以给一个应用内三态：

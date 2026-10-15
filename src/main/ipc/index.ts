@@ -246,8 +246,8 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   registerHandler(IPC.META_EXTRA, (_e: any, name: string, year?: string) => host.metaExtra(String(name || ''), year ? String(year) : undefined), log);
   registerHandler(IPC.META_DISCOVER, (_e: any, refresh?: boolean) => host.metaDiscover(!!refresh), log);
   registerHandler(IPC.META_MOVIE_HOT, () => host.metaMovieHot(), log);
-  registerHandler(IPC.META_DISCOVER_IMAGES, (_e: any, name: string, mediaType: string, year?: string, kind?: string) =>
-    host.metaDiscoverImages(String(name || ''), mediaType === 'tv' ? 'tv' : 'movie', /^\d{4}$/.test(String(year)) ? String(year) : undefined, kind === 'poster' ? 'poster' : 'backdrop'), log);
+  registerHandler(IPC.META_DISCOVER_IMAGES, (_e: any, name: string, mediaType: string, year?: string, kind?: string, doubanId?: string) =>
+    host.metaDiscoverImages(String(name || ''), mediaType === 'tv' ? 'tv' : 'movie', /^\d{4}$/.test(String(year)) ? String(year) : undefined, kind === 'poster' ? 'poster' : 'backdrop', /^\d{5,}$/.test(String(doubanId || '')) ? String(doubanId) : undefined), log);
   // ★ 2026-09-24：发现页「分类」（TMDB 类型清单 + 按类型翻页）
   registerHandler(IPC.META_GENRES, () => host.metaGenres(), log);
   registerHandler(IPC.META_GENRE_PAGE, (_e: any, mediaType: string, genreId: number, page: number) => host.metaGenrePage(String(mediaType || 'movie'), Number(genreId) || 0, Number(page) || 1), log);
@@ -384,27 +384,39 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
 
   // 本地 .py：复制到安装目录 imports/py 后入库，不依赖原始文件。
   //   ★ 2026-09-27（用户要求）：源名/源 key 用**原始文件名**（去扩展名）——与本地 .json 同一命名口径
-  registerHandler(IPC.CFG_IMPORT_PY_LOCAL, async (e: any): Promise<{ ok: boolean; key?: string; error?: string }> => {
+  //   ★ 2026-10-16（用户要求）：文件选择器支持**按住 Ctrl 多选**——所选 .py 一并导入；
+  //     逐个文件独立成败（单个失败只丢弃该文件副本、不影响其余），最后汇总回执。
+  registerHandler(IPC.CFG_IMPORT_PY_LOCAL, async (e: any): Promise<{
+    ok: boolean; key?: string; keys?: string[]; imported?: number; failed?: { name: string; error: string }[]; error?: string;
+  }> => {
     const win = winOf(e);
     const picked = await dialog.showOpenDialog(win ?? undefined!, {
-      properties: ['openFile'],
+      properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Python 蜘蛛脚本', extensions: ['py'] }],
     });
-    if (picked.canceled || !picked.filePaths?.[0]) return { ok: false }; // 用户取消，不视为错误
-    const srcPath = picked.filePaths[0];
-    let importedApi = '';
-    try {
-      const name = nameFromLocalFile(srcPath);
-      const api = importedApi = pkgs.importPython(srcPath);
-      const bean = host.cfgAddSource({ key: name, name, type: 3, api, ext: '', jar: '' } as SourceBean);
-      return { ok: true, key: bean.key };
-    } catch (err) {
-      if (importedApi) {
-        try { pkgs.discardImport(importedApi, host.cfgSnapshot()); }
-        catch (cleanup) { log.w(`导入失败副本清理失败：${String(cleanup)}`); }
+    if (picked.canceled || !picked.filePaths?.length) return { ok: false }; // 用户取消，不视为错误
+    const keys: string[] = [];
+    const failed: { name: string; error: string }[] = [];
+    for (const srcPath of picked.filePaths) {
+      let importedApi = '';
+      try {
+        const name = nameFromLocalFile(srcPath);
+        const api = importedApi = pkgs.importPython(srcPath);
+        const bean = host.cfgAddSource({ key: name, name, type: 3, api, ext: '', jar: '' } as SourceBean);
+        keys.push(bean.key);
+      } catch (err) {
+        if (importedApi) {
+          try { pkgs.discardImport(importedApi, host.cfgSnapshot()); }
+          catch (cleanup) { log.w(`导入失败副本清理失败：${String(cleanup)}`); }
+        }
+        failed.push({ name: nameFromLocalFile(srcPath), error: err instanceof Error ? err.message : String(err) });
       }
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
+    const failSummary = failed.length
+      ? `${failed.length} 个文件导入失败：${failed.map((f) => `${f.name}（${f.error}）`).join('；')}`
+      : undefined;
+    if (!keys.length) return { ok: false, failed, error: failSummary };
+    return { ok: true, key: keys[0], keys, imported: keys.length, failed: failed.length ? failed : undefined, error: failSummary };
   }, log);
 
   /**
@@ -505,6 +517,8 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
 
   /** ★ 2026-10-14（用户要求）：删除某条直播线路（配置页直播线路列表） */
   registerHandler(IPC.CFG_DELETE_LIVE, (_e: any, index: number) => host.cfgDeleteLive(Number(index)), log);
+  /** ★ 2026-10-16（用户要求）：批量删除直播线路（配置页直播线路列表多选删除） */
+  registerHandler(IPC.CFG_DELETE_LIVES, (_e: any, indices: number[]) => host.cfgDeleteLives(Array.isArray(indices) ? indices.map(Number) : []), log);
   /** ★ 2026-10-14（用户要求）：重命名某条直播线路（导入后允许编辑名称） */
   registerHandler(IPC.CFG_UPDATE_LIVE, (_e: any, a: { index: number; name: string }) => host.cfgUpdateLiveName(Number(a?.index), String(a?.name ?? '')), log);
 

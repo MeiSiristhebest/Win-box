@@ -80,7 +80,8 @@ declare global {
         // ★ 2026-09-27：本地 .json 订阅文件导入（文件选择器；档案名默认取原始文件名）
         importJsonLocal: (name?: string) =>
           Promise<IpcResult<{ ok: boolean; file?: string; name?: string; error?: string; result?: ImportReturn }>>;
-        importPyLocal: () => Promise<IpcResult<{ ok: boolean; key?: string; error?: string }>>;
+        /** ★ 2026-10-16：文件选择器支持多选，一次性导入多个 .py（`imported` 数量 / `failed` 明细） */
+        importPyLocal: () => Promise<IpcResult<{ ok: boolean; key?: string; keys?: string[]; imported?: number; failed?: { name: string; error: string }[]; error?: string }>>;
         /**
          * ★ 2026-09-30（用户要求）：导入本地 TXT / M3U 直播源。
          * ★ 2026-10-14：两步导入 —— 首次返回 `needsName` 由渲染层弹框命名，二次带 `{ path, name }` 登记。
@@ -89,6 +90,8 @@ declare global {
           Promise<IpcResult<{ ok: boolean; needsName?: boolean; path?: string; name?: string; index?: number; replaced?: boolean; total?: number; error?: string }>>;
         /** ★ 2026-10-14（用户要求）：删除某条直播线路（下标） */
         deleteLive: (index: number) => Promise<IpcResult<void>>;
+        /** ★ 2026-10-16（用户要求）：批量删除直播线路（下标数组） */
+        deleteLives: (indices: number[]) => Promise<IpcResult<void>>;
         /** ★ 2026-10-14（用户要求）：重命名某条直播线路 */
         updateLive: (a: { index: number; name: string }) => Promise<IpcResult<void>>;
         /** ★ 2026-09-29：导入本地包（目录包：影视.json + py/js/jar/html/xbpq） */
@@ -174,7 +177,7 @@ declare global {
         /** ★ 发现页榜单（无源默认主页） */
         discover: (refresh?: boolean) => Promise<IpcResult<DiscoverSection[]>>;
         movieHot: () => Promise<IpcResult<MovieHotList>>;
-        discoverImages: (name: string, mediaType: 'movie' | 'tv', year?: string, kind?: 'backdrop' | 'poster') => Promise<IpcResult<MetaImages>>;
+        discoverImages: (name: string, mediaType: 'movie' | 'tv', year?: string, kind?: 'backdrop' | 'poster', doubanId?: string) => Promise<IpcResult<MetaImages>>;
         /** ★ 发现页「分类」：类型清单与按类型翻页 */
         genres: () => Promise<IpcResult<{ movie: DiscoverGenre[]; tv: DiscoverGenre[] }>>;
         genrePage: (mediaType: 'movie' | 'tv', genreId: number, page: number) => Promise<IpcResult<DiscoverGenrePage>>;
@@ -340,6 +343,8 @@ export const client = {
   cfgImportLiveLocal: (args?: { name?: string; path?: string }) => unwrap(window.api.config.importLiveLocal(args)),
   /** ★ 2026-10-14（用户要求）：删除某条直播线路（下标） */
   cfgDeleteLive: (index: number) => unwrap(window.api.config.deleteLive(index)),
+  /** ★ 2026-10-16（用户要求）：批量删除直播线路（配置页多选删除） */
+  cfgDeleteLives: (indices: number[]) => unwrap(window.api.config.deleteLives(indices)),
   /** ★ 2026-10-14（用户要求）：重命名某条直播线路 */
   cfgUpdateLive: (a: { index: number; name: string }) => unwrap(window.api.config.updateLive(a)),
   /** ★ 2026-09-30：数据目录信息（安装目录/data；迁移结果与回退原因） */
@@ -451,7 +456,7 @@ export const client = {
   /** ★ 发现页榜单（无源默认主页；refresh 绕过 6h 缓存） */
   metaDiscover: (refresh?: boolean) => unwrap(window.api.meta.discover(refresh)),
   metaMovieHot: () => unwrap(window.api.meta.movieHot()),
-  metaDiscoverImages: (name: string, mediaType: 'movie' | 'tv', year?: string, kind?: 'backdrop' | 'poster') => unwrap(window.api.meta.discoverImages(name, mediaType, year, kind)),
+  metaDiscoverImages: (name: string, mediaType: 'movie' | 'tv', year?: string, kind?: 'backdrop' | 'poster', doubanId?: string) => unwrap(window.api.meta.discoverImages(name, mediaType, year, kind, doubanId)),
   /** ★ 发现页「分类」：TMDB 类型清单 */
   metaGenres: () => unwrap(window.api.meta.genres()),
   /** ★ 发现页「分类」：按类型取一页 */

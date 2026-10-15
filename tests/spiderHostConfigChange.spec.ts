@@ -102,8 +102,11 @@ describe('SpiderHost — 切源（ui-only 变更）不得触发重活', () => {
       expect(cleanupRemoved).toHaveBeenCalledTimes(2);
       expect(cleanupRemoved.mock.calls[1][0].profiles.some((p: { id: string }) => p.id === profile.id)).toBe(true);
       expect(cleanupRemoved.mock.calls[1][1].profiles.some((p: { id: string }) => p.id === profile.id)).toBe(false);
-      expect(() => host.cfgDeleteProfile(host.cfgSnapshot().activeProfileId)).toThrow('当前');
-      expect(cleanupRemoved).toHaveBeenCalledTimes(2);
+      // ★ 2026-10-16（用户要求）：生效档案也允许删除。此处只剩这一份 → 等于「删唯一一份」，清空订阅内容
+      host.cfgDeleteProfile(host.cfgSnapshot().activeProfileId);
+      expect(cleanupRemoved).toHaveBeenCalledTimes(3);
+      expect(host.cfgSnapshot().profiles.length).toBe(0);
+      expect(host.cfgSnapshot().sources.length).toBe(0);
     } finally {
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }

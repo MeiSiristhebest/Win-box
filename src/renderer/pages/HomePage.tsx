@@ -9,12 +9,11 @@ import { uiMem, schedulePersist, saveUiMemory, type HomeSearchMem } from '../lib
 import { getSessionSort, setSessionSort } from '../lib/sessionSort';
 import { makeStaleGuard } from '../lib/staleGuard';
 import { appendUniqueItems, pageSignature } from '../lib/listAppend';
-import { useWaterfall, setWaterfall as setWaterfallPref } from '../lib/uiPrefs';
+import { useWaterfall, setWaterfall as setWaterfallPref, useHomeFilters, setHomeFilters } from '../lib/uiPrefs';
 import { usePageActive } from '../lib/keepAlive';
 import { needsDriveBind } from '../../shared/driveProvider';
 import { useCovers } from '../lib/useCovers';
 import CascadeBar, { type CascadeLevel } from '../components/CascadeBar';
-import { ALL_TAG, applyLocalFilters, localDimensions, type ExploreDimensionKey } from '../../shared/discover';
 import DriveBindModal from '../components/DriveBindModal';
 import { isSearchWindow, openSearchWindow } from '../lib/searchWin';
 
@@ -31,17 +30,8 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   const [tid, setTid] = useState<string>('');
   /** 当前分类已选中的筛选（分组 key → 选中 value） */
   const [filtersActive, setFiltersActive] = useState<Record<string, string>>({});
-  /**
-   * ★ 2026-10-15（用户要求「点播页分类要和发现页一样丰富」）：我们自建四维（类型/地区/年代/排序）。
-   *   源**有**对应筛选组的维度走 `filtersActive`（服务端筛选，精确）；
-   *   源**没有**的维度走这里的 `localSel`（在源已返回的条目上**本地过滤**，数据仍来自本源，不走聚合）。
-   */
-  const [localSel, setLocalSel] = useState<Record<string, string>>({});
-  /** 本地过滤需要多页累积才有意义：累积到的原始列表（null = 尚未累积）与推进代数见 accumulate() */
-  const rawRef = useRef<VodItem[] | null>(null);
-  const [rawInfo, setRawInfo] = useState({ pages: 0, total: 0 });
-  /** 累积页数上限（首轮 4 页；底部「继续加载更多」按 +4 递增） */
-  const [localCap, setLocalCap] = useState(4);
+  // ★ 2026-10-16（用户要求「点播页不要用我们自建的分类，用源自带的」）：**已删除**自建四维的本地过滤设施
+  //   （`localSel` / 多页累积 `accumulate()` / `rawInfo` / `localCap` /「继续加载更多」）—— 见 classLevels 注释。
   const [items, setItems] = useState<VodItem[]>([]);
   const [pg, setPg] = useState(1);
   const [pageInfo, setPageInfo] = useState({ page: 0, pagecount: 0, total: 0 });
@@ -53,6 +43,13 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
    *   `content-visibility`（只渲染可视区）—— 见下方 VodCard 与 global.css。
    */
   const waterfall = useWaterfall();
+  /**
+   * ★ 2026-10-16（用户要求）：点播页「筛选」开关（右上角按钮）—— 默认**关**。
+   *   关：点播页**不显示任何分类**（源分类 + 预设分类 + 源筛选组全消失）；
+   *   开：**一次性展开全部**（点播页不再逐级展开；逐级展开只留给发现页）；
+   *   该偏好持久化（见 lib/uiPrefs）⇒ **换源 / 重启后仍保持**。
+   */
+  const filtersOpen = useHomeFilters();
   /** 瀑布加载单飞：一次只追加一页（哨兵在加载期间可能反复命中） */
   const wfBusyRef = useRef(false);
   /** 底部哨兵：可见（含预取边距）即加载下一页 */
@@ -232,10 +229,6 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
       setClasses(r.sortClasses);
       setTid('');
       setFiltersActive({});
-      // ★ 2026-10-15：重新浏览某源 → 本地维度选择与累积列表一并作废
-      setLocalSel({});
-      setLocalCap(4);
-      rawRef.current = null;
       setItems(r.items);
       setPageInfo({ page: r.page, pagecount: r.pagecount, total: r.total });
       setPg(1);
@@ -395,9 +388,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     setErr('');
     setFallback(false); // 明确点分类 = 用户主动浏览，不再是首页回退
     if (!append) {
-      // ★ 2026-10-15：整页拉取 = 这是一份新的服务端结果 → 本地累积列表作废
-      rawRef.current = null;
-      setRawInfo({ pages: 0, total: 0 });
+      // 整页拉取 = 一份新的服务端结果（列表随即整体替换，无需另作废中间态）
     }
     try {
       const r = t
@@ -405,14 +396,26 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
         : await client.home(k);
       if (!listGen.current.isCurrent(gen)) return; // ★ 过期（用户已换分类/换源/进搜索）：不上屏、不覆盖
       if (append) {
-        // ★ 瀑布护栏：本页与上一页签名一致（零新增）⇒ 该源没有真分页/已到末页 → 停住，别无限拉
+        // ★ 瀑布护栏：本页**空页**或与上一页签名一致（零新增）⇒ 该源没有真分页/已到末页 → 停住，别无限拉
+        //   （★ 2026-10-16 补「空页」这一支：`csp_*` 壳源拿到不存在的一页时回空 list，此前只比签名 → 空页
+        //     永远不比出「零新增」（签名为空串）⇒ 哨兵会一直空转、底部永远显示「继续下滑自动加载」。）
         const sig = pageSignature(r.items);
-        if (sig === wfSigRef.current) setWfNoMore(true);
+        if (r.items.length === 0 || sig === wfSigRef.current) setWfNoMore(true);
         wfSigRef.current = sig;
         setItems((prev) => appendUniqueItems(prev, r.items));
       } else {
+        const sig = pageSignature(r.items);
+        // ★ 2026-10-16（用户报「分类没有分页/不能瀑布」）：引擎对「源没报总页数」的分类给了兜底
+        //   `pagecount=9999`（见 SourceViewModel.pagingFallback）；真到底与否由这里判：
+        //   **往后翻页却零新增**（空页 / 与当前页完全同一份）⇒ 该源并无更多页 → 保留当前列表、
+        //   页码回退、标记到底（否则「下一页」会把用户看得好好的列表清空或换成同一份）。
+        if (page > 1 && (r.items.length === 0 || sig === wfSigRef.current)) {
+          setWfNoMore(true);
+          setPg(page - 1);
+          return;
+        }
         setItems(r.items);
-        wfSigRef.current = pageSignature(r.items);
+        wfSigRef.current = sig;
         setWfNoMore(false); // 新的一轮浏览（换分类/换筛选/换源）：护栏复位
       }
       setPageInfo({ page: r.page, pagecount: r.pagecount, total: r.total });
@@ -467,10 +470,6 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     // ★ 2026-09-30（瀑布模式）：瀑布下 `pg` = 「已连续加载到第几页」，与「翻页模式的第 N 页」不是一个语义
     //   （items 里是 1..N 页的合集）→ 会话记忆固定存 1，切走再切回从第 1 页重看、下滑继续追加。
     if (tid) setSessionSort(keyRef.current, tid, { filter: filtersActive, pg: waterfall ? 1 : pg });
-    // ★ 2026-10-15：换分类 = 换一份数据 → 我们的本地维度选择与累积列表一并作废
-    setLocalSel({});
-    setLocalCap(4);
-    rawRef.current = null;
     if (!t) {
       setTid('');
       setFiltersActive({});
@@ -488,64 +487,19 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   }
 
   /**
-   * ★ 2026-10-15（用户要求「点播页分类要和发现页一样丰富」）：
-   *   一级 = **源分类**（保留源自有分类，不替换）；其下固定四维：类型 / 地区 / 年代 / 排序。
-   *   · 源有同名（含别名）筛选组 → 用**源自己的选项**（服务端筛选，精确）；
-   *   · 源没有该组 → 用通用词表 + **本地过滤**（条目仍来自本源，绝不走聚合）；
-   *   · 源连条目字段都没有（例如根本不返回 area）→ 该维**诚实地隐藏**，不给死筛选。
-   *   源里其它筛选组（语言 / 明星 …）原样保留，排在四维之后。逐级展开：上一级选定（含「全部」）才出下一级。
+   * ★ 2026-10-16（用户要求「除了发现页，点播页不要用我们自建的分类，用源自带的，深挖源的分类规则」）：
+   *   点播页的筛选条**只呈现源自带的东西**，且**深挖源的分类规则**（引擎侧已归一多种形态，见
+   *   `engine/parse/Movie.classFiltersFor` / `parseFilters`）：
+   *     · 一级 = **源分类**（`homeContent.class`）：源自有的 id / 名称 / 顺序**原样**；
+   *     · 其下每一行 = **源自己的一个筛选组**（`class[].filters` 或顶层按 `type_id` 键控的 `filters`），
+   *       行名用**源自己的组名**、选项用**源自己的选项**（只在最前插一个「全部」= 清空该组，等价于源自己的空值档）；
+   *       —— 组名不再被我们改写，组也不再有"多余组"之分，**完全按源给的顺序**排列。
+   *   ★ 已删除（用户明确不要的那套）：我们自建的四维（类型 / 地区 / 年代）**归类**、源没有该组时用豆瓣词表
+   *     做**本地过滤**，以及为它配套的多页累积 /「继续加载更多」。**发现页（DiscoverPage）仍走我们自建的
+   *     豆瓣维度，不受本处影响。**
+   *   逐级展开语义保留：上一级选定（含「全部」）才出下一级（组件侧规则，见 CascadeBar）。
    */
-  const DIM_KEYS: ExploreDimensionKey[] = ['类型', '地区', '年代'];
-  /**
-   * ★ 2026-10-15（用户要求「对任何源都要抓得准」）：组的**中文名**匹配，同时兜底**英文 key**
-   *   —— 实测 py 源（yt4K）的组名直接是 `class`/`area`/`lang`/`year`（没有中文 name），
-   *     drpy 源的组 key 是 `itype`/`iarea`/`iyear`/`sort`。所以 name 与 key **都要试**，
-   *     否则「类型」维匹配不上 → 既不出类型行、又会被当"多余组"原样显示成一行 `class`。
-   */
-  const GROUP_PAT: Record<string, RegExp> = {
-    类型: /类型|片种|题材|genre|类别|分类|影片类型|class|cate|type/i,
-    地区: /地区|国家|区域|产地|area|region|country/i,
-    年代: /年代|年份|时间|year|era/i,
-    排序: /排序|顺序|sort|排列|order|rank/i,
-  };
-  /** 组的 name 或 key 命中该维（name 缺失时 name = key，两者都试一遍） */
-  const groupMatches = (pat: RegExp, g: { name: string; key: string }): boolean => pat.test(g.name) || pat.test(g.key);
-  const dimSpecs = (() => {
-    const groups = currentClass()?.filters ?? [];
-    const used = new Set<string>();
-    const probeList = rawRef.current ?? items;
-    const specs: Array<{ key: ExploreDimensionKey; label: string; mode: 'server' | 'local' | 'none'; storeKey: string; options: Array<{ id: string; label: string }> }> = [];
-    for (const key of DIM_KEYS) {
-      const g = groups.find((x) => groupMatches(GROUP_PAT[key], x) && !used.has(x.key));
-      if (g) {
-        used.add(g.key);
-        specs.push({ key, label: key, mode: 'server', storeKey: g.key, options: g.value.filter((o) => o.v !== '').map((o) => ({ id: o.v, label: o.n })) });
-        continue;
-      }
-      const field = key === '地区' ? 'area' : key === '年代' ? 'year' : 'type';
-      const viable = probeList.length === 0 || probeList.some((it) => String((it as unknown as Record<string, unknown>)[field] || '').trim());
-      specs.push({
-        key,
-        label: key,
-        mode: viable ? 'local' : 'none',
-        storeKey: key,
-        options: (localDimensions().find((d) => d.key === key)?.values || []).filter((v) => v !== ALL_TAG).map((v) => ({ id: v, label: v })),
-      });
-    }
-    return specs;
-  })();
-  const sortGroup = (currentClass()?.filters ?? []).find((x) => groupMatches(GROUP_PAT['排序'], x));
-  /** 源里没被四维吃掉、也不是排序的其它筛选组（语言 / 明星 …）——原样保留 */
-  const extraGroups = (currentClass()?.filters ?? []).filter(
-    (g) => !dimSpecs.some((s) => s.mode === 'server' && s.storeKey === g.key) && g.key !== sortGroup?.key,
-  );
-
-  /** 本地维度是否真在起作用（决定要不要多页累积） */
-  const localActive = Object.entries(localSel).some(([, v]) => v && v !== ALL_TAG);
-
-  /** 某个维度当前选中值（server 走 filtersActive；local 走 localSel） */
-  const dimValue = (s: { mode: string; key: string; storeKey: string }): string | undefined =>
-    s.mode === 'server' ? filtersActive[s.storeKey] : localSel[s.key];
+  const sourceGroups = currentClass()?.filters ?? [];
 
   const classLevels: CascadeLevel[] = (() => {
     const out: CascadeLevel[] = [
@@ -557,33 +511,21 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
         options: classes.map((c) => ({ id: String(c.id), label: c.name })),
       },
     ];
-    // 逐级展开：上一级「已选定」（值非 undefined）才放进下一级
+    // ★ 2026-10-16（用户要求）：点播页**不再逐级展开** —— 开启「筛选」时把**每一行都**给出去；
+    //   （逐级展开只留给发现页 —— 那边是它自己的 CascadeBar 调用，不受本处影响）
     let prevChosen = true;
-    const push = (lv: CascadeLevel, chosen: boolean): void => {
-      if (!prevChosen) return;
-      out.push(lv);
-      prevChosen = chosen;
-    };
-    for (const s of dimSpecs) {
-      if (s.mode === 'none') continue;
-      const v = dimValue(s);
-      push({ key: s.key, label: s.label, value: v === undefined ? null : v, allLabel: '全部', options: s.options }, v !== undefined);
-    }
-    for (const g of extraGroups) {
+    for (const g of sourceGroups) {
+      if (!filtersOpen && !prevChosen) break;
       const v = filtersActive[g.key];
-      // 源自带的空值选项（「全部/不限」）语义等同本组 allLabel → 剔掉，避免两个「全部」
-      push({ key: `g:${g.key}`, label: g.name, value: v === undefined ? null : v, allLabel: '全部', options: g.value.filter((o) => o.v !== '').map((o) => ({ id: o.v, label: o.n })) }, v !== undefined);
-    }
-    // ★ 2026-10-15（用户要求「点播页不要显示自己本地那两条排序」）：排序行**只在源自带排序筛选组时**出现
-    //   （我们自己的「按默认/按年份/按片名」不是源的数据，会让人误以为是源的排序能力，直接不展示）。
-    if (prevChosen && sortGroup) {
       out.push({
-        key: '排序',
-        label: '排序',
-        value: filtersActive[sortGroup.key] ?? null,
+        key: `g:${g.key}`,
+        label: g.name || g.key,
+        value: v === undefined ? null : v,
         allLabel: '全部',
-        options: sortGroup.value.filter((o) => o.v !== '').map((o) => ({ id: o.v, label: o.n })),
+        // 源自带的空值选项（「全部/不限」）语义等同本组 allLabel → 剔掉，避免两个「全部」
+        options: g.value.filter((o) => o.v !== '').map((o) => ({ id: o.v, label: o.n })),
       });
+      prevChosen = v !== undefined;
     }
     return out;
   })();
@@ -602,105 +544,28 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     return next;
   };
 
-  /** 服务端筛选变化后的统一重载：本地维度在用时走多页累积，否则按整页拉 */
+  /** 源筛选变化后的统一重载：按整页拉第 1 页（筛选一律走源站，见 classLevels 注释） */
   function reloadWithServer(next: Record<string, string>): void {
     setFiltersActive(next);
     setSessionSort(keyRef.current, tid, { filter: next, pg: 1 });
-    rawRef.current = null;
-    // ★ 注意：setState 是异步的 → 这里必须把**新** extend 显式传下去，否则累积请求会用到旧的 filtersActive
-    if (localActive) void accumulate(localCap, cleanExtend(next));
-    else void loadCategory(tid, 1, cleanExtend(next));
+    // ★ 注意：setState 是异步的 → 必须把**新** extend 显式传下去，否则请求会用到旧的 filtersActive
+    void loadCategory(tid, 1, cleanExtend(next));
   }
 
-  /** 级联点选（源分类 / 四维 / 源的其它筛选组 / 排序） */
+  /** 级联点选（源分类 / 源筛选组）—— 一律以**源自己的 key** 发 extend（见 engine/parse/Movie.classFiltersFor） */
   function onCascadePick(levelKey: string, id: string): void {
     if (levelKey === 'class') {
       chooseCategory(id === '' || tid === id ? '' : id);
       return;
     }
-    if (levelKey === '排序') {
-      // ★ 2026-10-15：排序行只在源自带排序组时出现（本地排序已不再展示，见 classLevels 注释）
-      if (sortGroup) reloadWithServer(toggleExtend(filtersActive, sortGroup.key, id));
-      return;
-    }
-    if (levelKey.startsWith('g:')) {
-      reloadWithServer(toggleExtend(filtersActive, levelKey.slice(2), id));
-      return;
-    }
-    const spec = dimSpecs.find((s) => s.key === levelKey);
-    if (!spec) return;
-    if (spec.mode === 'server') {
-      reloadWithServer(toggleExtend(filtersActive, spec.storeKey, id));
-      return;
-    }
-    // 本地维度：只在内存里过滤（数据仍来自本源）
-    setLocalSel((prev) => {
-      const next = { ...prev };
-      if (next[spec.key] === id) delete next[spec.key];
-      else next[spec.key] = id;
-      return next;
-    });
+    if (levelKey.startsWith('g:')) reloadWithServer(toggleExtend(filtersActive, levelKey.slice(2), id));
   }
-
-  /**
-   * ★ 2026-10-15：本地维度的多页累积 —— 一页（20~40 条）里凑不出「某地区/某年代」，必须多抓几页才有意义。
-   *   封顶 `max` 页（默认 4；底部「继续加载更多」按 +4 递增），命中末页/空页即停；与 `loadCategory` 共用代数守卫。
-   */
-  async function accumulate(max = localCap, extend = cleanExtend(filtersActive)): Promise<void> {
-    const k = keyRef.current;
-    if (!k || !tid) return;
-    const gen = listGen.current.next();
-    setLoading(true);
-    setErr('');
-    setFallback(false);
-    const acc: VodItem[] = [];
-    const seen = new Set<string>();
-    let pages = 0;
-    try {
-      for (let p = 1; p <= max; p++) {
-        const r = await client.category({ key: k, tid, pg: String(p), extend });
-        if (!listGen.current.isCurrent(gen)) return; // 过期：用户已换分类/换源/进搜索
-        pages = p;
-        if (p === 1) setPageInfo({ page: r.page, pagecount: r.pagecount, total: r.total });
-        if (!r.items.length) break;
-        for (const it of r.items) {
-          if (seen.has(it.id)) continue;
-          seen.add(it.id);
-          acc.push(it);
-        }
-        if (r.pagecount > 0 && r.pagecount <= 999 && p >= r.pagecount) break;
-      }
-      rawRef.current = acc;
-      setRawInfo({ pages, total: acc.length });
-      setItems(applyLocalFilters(acc, localSel));
-    } catch (e) {
-      if (listGen.current.isCurrent(gen)) setErr((e as Error).message);
-    } finally {
-      if (listGen.current.isCurrent(gen)) setLoading(false);
-    }
-  }
-
-  /** 本地维度变化：已有累积就直接重筛（瞬时），否则先累积多页 */
-  useEffect(() => {
-    if (!tid) return;
-    if (rawRef.current) {
-      setItems(applyLocalFilters(rawRef.current, localSel));
-      return;
-    }
-    if (!localActive) return;
-    void accumulate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localSel, tid, localCap]);
 
   function chooseSource(k: string) {
     if (!k || k === keyRef.current) return;
     setKey(k);
     setTid('');
     setFiltersActive({});
-    // ★ 2026-10-15：换源 = 换一份数据 → 本地维度选择与累积列表一并作废
-    setLocalSel({});
-    setLocalCap(4);
-    rawRef.current = null;
     setItems([]);
     // ★ 2026-10-15（伪墓碑）：单页内模式下搜索页就在主界面里 —— 换源＝进浏览态，
     //   同时把 URL 上的 `?agg=` 清掉（只在 /search 路由生效，见 syncSearchUrl），避免「界面已是浏览态、URL 还带搜索词」。
@@ -1293,7 +1158,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
         {err && <div className="err" style={{ marginBottom: 10 }}>{err}</div>}
         {!err && fallback && !aggMode && (
           <div className="banner" style={{ borderLeftColor: 'var(--accent-2)', marginBottom: 12 }}>
-            该源首页未提供推荐列表，已自动加载首个分类内容（点上方分类可切换）。
+            该源首页未提供推荐列表，已自动加载首个分类内容（点右上角「筛选」可切分类）。
           </div>
         )}
         {/* ★ 2026-09-26：网盘类源 → 源内绑定入口（替代「源内配置源」：cookie 直接配在应用里） */}
@@ -1464,11 +1329,32 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
           )
         ) : (
           <>
-            {/* ★ 2026-10-15（用户要求「级联分类·保留源分类」）：分类条 + 该分类的筛选组
-                改成**逐级展开**（一级选定才出下一级）—— 见 classLevels / onCascadePick */}
-            {classes.length > 0 && !err && <CascadeBar levels={classLevels} onPick={onCascadePick} />}
-            {/* 站级预设分类（SourceBean.categories）：映射到同名/同 id 分类则点击可切，否则只读展示 */}
-            {siteCats.length > 0 && !err && (
+            {/* ★ 2026-10-16（用户要求）：点播页的分类/筛选条由右上角「筛选」按钮开关 ——
+                默认关（**所有分类都不显示**）；开启时**一次性展开全部**（不再逐级展开，逐级展开只留给发现页）。
+                按钮右下角在开启态出现对号；该偏好持久化 ⇒ 换源/重启后仍保持。 */}
+            {classes.length > 0 && !err && (
+              <div className="row home-filter-row">
+                <button
+                  type="button"
+                  className={`home-filter-btn${filtersOpen ? ' active' : ''}`}
+                  aria-pressed={filtersOpen}
+                  title={filtersOpen ? '隐藏源分类与筛选条件' : '显示源分类与筛选条件'}
+                  onClick={() => setHomeFilters(!filtersOpen)}
+                >
+                  {/* 筛选（漏斗）图标 —— 与「收藏」按钮同口径：内联 SVG，随按钮前景色 */}
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 4h18l-7.2 8.4V19l-3.6-2.2v-4.4z" />
+                  </svg>
+                  筛选
+                  {filtersOpen && <span className="hf-check" aria-hidden="true">✓</span>}
+                </button>
+              </div>
+            )}
+            {/* ★ 2026-10-15（用户要求「级联分类·保留源分类」）：分类条 + 该分类的筛选组。
+                发现页保留**逐级展开**；点播页只在「筛选」开启时出现，且展开全部（见 classLevels / onCascadePick） */}
+            {classes.length > 0 && !err && filtersOpen && <CascadeBar levels={classLevels} onPick={onCascadePick} />}
+            {/* 站级预设分类（SourceBean.categories）：映射到同名/同 id 分类则点击可切，否则只读展示（随「筛选」一并显隐） */}
+            {siteCats.length > 0 && !err && filtersOpen && (
               <div className="row" style={{ marginBottom: 14 }}>
                 <span className="muted" style={{ fontSize: 11, marginRight: 6 }}>预设分类：</span>
                 {siteCats.map((c) => {
@@ -1515,19 +1401,10 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
                 </div>
                 )}
                 {/* ★ 2026-09-30（瀑布模式）：底部哨兵 —— 进入预取范围即自动追加下一页（见上方 effect） */}
-                {waterfall && tid !== '' && !localActive && pageInfo.pagecount > 1 && (
+                {waterfall && tid !== '' && pageInfo.pagecount > 1 && (
                   <div ref={wfSentinelRef} style={{ height: 1 }} aria-hidden="true" />
                 )}
-                {localActive ? (
-                  // ★ 2026-10-15：本地维度（源没有对应筛选组）在用时，列表是「多页累积 + 本地筛选」的产物 ——
-                  //   翻页按钮没有意义，这里只给状态与「继续加载更多」
-                  <div className="row" style={{ justifyContent: 'center', marginTop: 16 }}>
-                    <span className="status">已从本源取 {rawInfo.pages} 页 / 共 {rawInfo.total} 条 · 本地筛选后 {items.length} 条</span>
-                    {rawInfo.pages >= localCap && rawInfo.pages < 1000 && (
-                      <button disabled={loading} onClick={() => { setLocalCap((n) => n + 4); }}>继续加载更多</button>
-                    )}
-                  </div>
-                ) : pageInfo.pagecount > 1 && (waterfall && tid !== '' ? (
+                {pageInfo.pagecount > 1 && (waterfall && tid !== '' ? (
                   // 瀑布模式：底部只留进度（加载由哨兵自动驱动，无需按钮）
                   <div className="row" style={{ justifyContent: 'center', marginTop: 16 }}>
                     <span className="status">{wfStatusText()}</span>
@@ -1536,8 +1413,9 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
                 ) : (
                   <div className="row" style={{ justifyContent: 'center', marginTop: 16 }}>
                     <button disabled={pg <= 1 || loading} onClick={() => { const p = pg - 1; setPg(p); loadCategory(tid, p, filtersActive); }}>上一页</button>
-                    <span className="status">{pageInfo.pagecount > 999 ? `${pg} 页` : `${pg} / ${pageInfo.pagecount}`}</span>
-                    <button disabled={pg >= pageInfo.pagecount || loading} onClick={() => { const p = pg + 1; setPg(p); loadCategory(tid, p, filtersActive); }}>下一页</button>
+                    {/* ★ 2026-10-16：`wfNoMore`（本页零新增 ⇒ 源其实没有更多页）同样禁用「下一页」并把状态说清楚 */}
+                    <span className="status">{wfNoMore ? `${pg} 页 · 已到底（该源无更多内容）` : pageInfo.pagecount > 999 ? `${pg} 页` : `${pg} / ${pageInfo.pagecount}`}</span>
+                    <button disabled={pg >= pageInfo.pagecount || loading || wfNoMore} onClick={() => { const p = pg + 1; setPg(p); loadCategory(tid, p, filtersActive); }}>下一页</button>
                     {/* ★ 2026-09-30（用户要求）：分类浏览可切「瀑布模式」（一直下滑自动加载下一页）。
                         只在有分页的分类里给入口（tid='' 走 home 接口，没有页码语义）。 */}
                     {tid !== '' && (

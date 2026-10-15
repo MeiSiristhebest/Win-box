@@ -1,5 +1,7 @@
 import { NavLink, Outlet, Route, Routes, UNSAFE_LocationContext, useNavigate } from 'react-router-dom';
 import TitleBar from './components/TitleBar';
+// ★ 2026-10-16（用户要求「四套皮肤绝对大改」）：环境光背景场（四外壳共用的底层氛围层）
+import AppAmbient from './components/AppAmbient';
 import SearchPanel from './components/SearchPanel';
 import PageErrorBoundary from './components/PageErrorBoundary';
 import SourcePicker from './components/SourcePicker';
@@ -250,6 +252,14 @@ function AppShell() {
    *   ＋ 内容区（Apple TV 式精选轮播 + 内容栏，见 DiscoverPage / apple.css）。
    */
   const apple = theme === 'apple';
+  /**
+   * ★ 2026-10-16（用户要求「四套皮肤各有特色、绝对大改」）：**哔哔专属外壳**。
+   *   此前「哔哔与 netflix 共用 `.nf-nav` 单行顶栏」正是四套皮肤长得像的根源之一。
+   *   现在哔哔独立为**双行头**：上行为「品牌 + 居中搜索 + 换源 + 窗口控制」，
+   *   下行为**分类 tab 条**（选中项蓝色胶囊 + 弹跳）——
+   *   与 netflix 的「满幅渐变浮层」、大果的「侧边栏」、大豆的「胶囊导航条」形态互不相同。
+   */
+  const bilibili = theme === 'bilibili';
   /**
    * ★ 2026-09-30（用户要求）：配置页可关掉「发现」页（默认展示）。
    *   关掉后：导航里不出现「发现」；默认落地页从 `/` 改为 `/home`（源主页）。
@@ -626,6 +636,7 @@ function AppShell() {
   if (apple) {
     return (
       <div className="app ap-app">
+        <AppAmbient />
         {disclaim && DisclaimerModal}
         <header className="ap-toolbar">
           <TitleBar variant="mac" />
@@ -666,6 +677,41 @@ function AppShell() {
   }
 
   /**
+   * ★ 2026-10-16：**哔哔专属外壳**（双行头：搜索行 + 分类 tab 条；样式全部在 bilibili.css）。
+   *   与其余三套外壳的分工：netflix = 满幅渐变浮层压在 billboard 上；大果 = 侧边栏 + 工具栏；
+   *   大豆 = 顶栏 + 胶囊导航条 + 右下浮动钮。四者形态互不相同 —— 这是「大改」的骨架层落点。
+   */
+  if (bilibili) {
+    return (
+      <div className="app bb-app">
+        <AppAmbient />
+        {disclaim && DisclaimerModal}
+        <header className="bb-head">
+          <div className="bb-top">
+            <span className="bb-brand" title="Win-Box">
+              <span className="bb-brand-mark" aria-hidden="true">b</span>
+              WIN-BOX
+            </span>
+            {/* M3 式搜索条变体复用：这里做成「居中宽胶囊」 */}
+            <SearchPanel bar />
+            <span className="bb-spacer" />
+            <SourcePicker />
+            <TitleBar />
+          </div>
+          <nav className="bb-tabs">
+            {navItems.map((n) => (
+              <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => 'bb-tab' + (isActive ? ' active' : '')}>
+                {n.label}
+              </NavLink>
+            ))}
+          </nav>
+        </header>
+        <main className="bb-main">{mainRoutesNode}</main>
+      </div>
+    );
+  }
+
+  /**
    * ★ 2026-10-08（用户要求「照参考图做一套外观，允许大改 UI 布局」）：**豆风独立外壳**
    *   （Material You × 豆瓣；样式全部在 douban.css）：
    *   ① `.db-head` = 顶栏（深蓝品牌胶囊「WIN-BOX」+ 页面标题 + 搜索/换源 + 窗口控制）＋ 胶囊导航条；
@@ -674,6 +720,7 @@ function AppShell() {
   if (douban) {
     return (
       <div className="app db-app">
+        <AppAmbient />
         {disclaim && DisclaimerModal}
         <header className="db-head">
           <div className="db-topbar">
@@ -703,6 +750,7 @@ function AppShell() {
 
   return (
     <div className={`app nf ${theme}`.trim()}>
+      <AppAmbient />
       {disclaim && DisclaimerModal}
       <main className="main">
         {/* ★ 2026-09-24：**一体化顶栏** —— 网飝 / 哔哔把标题栏（窗口控制）并进导航条同一行，

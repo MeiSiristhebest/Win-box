@@ -14,8 +14,24 @@ import { normalizeVodId, normalizeVodPic, splitUrlHeaders } from './itemNormaliz
 import { fixDetailFields } from './detailFix';
 import { SourceProblemError, SOURCE_PROBLEM_TEXT } from '../spider/errors';
 import { sourceAvailability, type SourceAvailability } from './sourceAvailability';
+import { directPlayUrlError } from '../../shared/playbackResult';
 
 export { sourceAvailability, type SourceAvailability };
+
+/**
+ * 「一页」的量级（TVBox 源常见页大小 20/24/30/40/60/90）。
+ * ★ 2026-10-16（用户报「很多源，如玩偶、木偶，点播分类一页都填不满、既没有分页也不能瀑布」）：
+ *   一大批 jar/壳源（`csp_*` 家族，如 Wogg/PanWebShare）的 `categoryContent` **只回 `list`**，
+ *   `pagecount / total / page` 全缺（归一后 = 0），但**翻页其实是真能用的**（实测 `pg=2` 返回的是
+ *   全新一页）。若把 0 原样透传给 UI，UI 的「翻页 / 瀑布」闸门 `pagecount > 1` 恒不成立
+ *   ⇒ 用户永远停在第一页，且**连瀑布入口都不出现**（- 也即用户说的"一页都填不满"的观感）。
+ */
+const PAGE_ITEMS_ONE_PAGE = 20;
+/**
+ * 「总页数未知但后面还有」的兜底值（UI 对 `> 999` 的既有口径：不显示分母、一直允许下一页/瀑布；
+ * 真正到底由「本页零新增 / 空页」护栏判定，见 ui/HomePage.loadCategory 与 loadMoreForWaterfall）。
+ */
+const PAGE_COUNT_UNKNOWN = 9999;
 
 export interface HomeResult extends CmsResult {
   sourceKey: string;
@@ -169,6 +185,10 @@ export class SourceViewModel {
     } catch {
       return null;
     }
+    // ★ 2026-10-16：`.py` 蜘蛛里 `homeVideoContent` 常写成 `pass`（Python 返回 `None`）→ 序列化成字面量
+    //   `null`；此前直接 `o['class']` 会抛 `Cannot read properties of null (reading 'class')`
+    //   （用户侧：homeVideoContent 回退失败 + 日志噪声）。按「非法 JSON → null（不抛）」同口径吞掉。
+    if (!o || typeof o !== 'object') return null;
     // 分类 id 保留原样字符串（蜘蛛源存在非数字 id，Number 化会丢分类）；type_flag 透传供筛选联动。
     // ★ 2026-10-15：class 的形态兜底（对象 map 等非数组写法不再被整段丢弃）见 normalizeClassList；
     //   filters 的形态兜底（**顶层按 type_id 键控** 那一份不再被丢掉）见 classFiltersFor。
@@ -262,20 +282,37 @@ export class SourceViewModel {
       sortClasses: p.classes,
       items: p.items,
       page: p.page,
-      pagecount: p.pagecount,
+      pagecount: this.pagingFallback(p.pagecount, p.items.length),
       total: p.total,
       sourceKey: key,
     };
   }
 
   /**
+   * ★ 2026-10-16：**分页元数据兜底**（只用于 type3 的 category —— 首页/搜索没有页码语义，见 §C78）。
+   *   源没给总页数（`pagecount <= 1`）却回了「装得满一页」的列表 → 报 `PAGE_COUNT_UNKNOWN`，
+   *   让 UI 放开「下一页 / 瀑布」；真的只有寥寥几条 → 保持原样（多半确实只有一页）。
+   *   判据必须**同时**满足两条，避免把「真·单页源」也放开（放开后到底与否由 UI 的零新增护栏判定）。
+   */
+  private pagingFallback(pagecount: number, itemCount: number): number {
+    if (!Number.isFinite(pagecount) || pagecount > 1) return pagecount;
+    return itemCount >= PAGE_ITEMS_ONE_PAGE ? PAGE_COUNT_UNKNOWN : pagecount;
+  }
+
+  /**
    * 首页（type3）：对齐原版 SourceViewModel.java:230-290 的「homeContent → 回退 homeVideoContent」，
    * 并补齐与 CmsSource.home 同等的「分类兜底」（见下 ③），保证 csp_/jar 源主页不出现空网格。
-   * ① homeContent 自带 list → 直接用，绝不触发回退；
-   * ② list 为空（或 homeContent 非法）→ 回退 homeVideoContent 取推荐列表（失败/超时静默降级，不抛）；
-   * ③ 仍无条目但有分类 → 拉首个分类第 1 页当首页内容（与 CMS 路径一致，P0-JVM-HOME）；
+   * ① homeContent 自带「装得满一页」的 list → 直接用，绝不触发回退；
+   * ② list 为空/**装不满一页**（或 homeContent 非法）→ 回退 homeVideoContent 取推荐列表（失败/超时静默降级，不抛）；
+   * ③ 仍不满一页但有分类 → 拉首个分类第 1 页当首页内容（与 CMS 路径一致，P0-JVM-HOME）；
    * ④ 兜底后仍全空 → EMPTY_RESULT（homeContent 合法）/ SPIDER_ERROR（空或非法）。
    * 注：sp.homeContent 自身抛错（.py / 无桥 jar 的 PY_UNSUPPORTED / JAR_NO_RUNTIME）必须原样上抛。
+   *
+   * ★ 2026-10-16（用户报「玩偶/木偶等源，点播分类选『全部』展示的内容也十分有限，一页都填不满」）：
+   *   判据由「`list` 非空」放宽为「`list` **装得满一页**（≥ {@link PAGE_ITEMS_ONE_PAGE}）」——
+   *   实测玩偶的 `homeContent` 只回 12 条（源侧本身就这么少，且有时抖动到 0/3 条），
+   *   而它的首个分类第 1 页有 70 条 ⇒ 继续沿用既有「分类兜底」口径取到能填满的内容。
+   *   ★ 任何兜底都**只取更丰富的那份**（回退结果条目数必须严格多于首页自带），不会把列表换小。
    */
   private async spiderHome(bean: SourceBean, timeoutMs: number): Promise<HomeResult> {
     const key = bean.key;
@@ -285,8 +322,8 @@ export class SourceViewModel {
     const homeJson = await Promise.resolve(sp.homeContent(true)); // ★ 抛错向上传播（UnsupportedSpider 行为不变）
     const parsed = this.parseSpiderJson(homeJson, key);
 
-    // A：homeContent 自带列表 → 直接用，绝不触发回退（不打 homeFallback 标）
-    if (parsed && parsed.items.length > 0) {
+    // A：homeContent 自带列表**装得满一页** → 直接用，绝不触发回退（不打 homeFallback 标）
+    if (parsed && parsed.items.length >= PAGE_ITEMS_ONE_PAGE) {
       return {
         sortClasses: parsed.classes,
         items: parsed.items,
@@ -297,17 +334,19 @@ export class SourceViewModel {
       };
     }
 
-    // B/C：无 list（或 homeContent 非法）→ 回退 homeVideoContent
+    // B/C：无 list / 装不满一页（或 homeContent 非法）→ 回退 homeVideoContent
+    const baseItems = parsed?.items ?? [];
     const recItems = await this.tryHomeRec(sp, key, deadline);
     const classes = parsed?.classes ?? [];
-    let items = recItems.length > 0 ? recItems : (parsed?.items ?? []);
-    let fallbackKind: 'rec' | 'class' | '' = recItems.length > 0 ? 'rec' : '';
+    // ★ 只采纳「更丰富」的回退结果（严格多于首页自带），避免把已有内容换小
+    let items = recItems.length > baseItems.length ? recItems : baseItems;
+    let fallbackKind: 'rec' | 'class' | '' = recItems.length > baseItems.length ? 'rec' : '';
 
-    // D：仍无条目但有分类 → 分类兜底（对齐 CmsSource.home:81-91；这是 JVM 源主页空白的根因修复）
+    // D：仍不满一页但有分类 → 分类兜底（对齐 CmsSource.home:81-91；这是 JVM 源主页空白的根因修复）
     let classFallbackPage: { page: number; pagecount: number; total: number } | null = null;
-    if (items.length === 0 && classes.length > 0) {
+    if (items.length < PAGE_ITEMS_ONE_PAGE && classes.length > 0) {
       const rec = await this.tryHomeClassRec(sp, key, classes[0].id, deadline);
-      if (rec) {
+      if (rec && rec.items.length > items.length) {
         items = rec.items;
         classFallbackPage = { page: rec.page, pagecount: rec.pagecount, total: rec.total };
         fallbackKind = 'class';
@@ -504,13 +543,33 @@ export class SourceViewModel {
         : null;
     if (arr) {
       const resolvedArr = arr.map((u) => this.resolvePlayUrl(String(u ?? ''), undefined));
-      const arrHdr = resolvedArr.find((r) => r.header)?.header;
+      /**
+       * ★ 2026-10-16（用户报「这种 PY 直播源无法观看」）：
+       *   TVBox 生态里 `playerContent` 的 `url` 数组**两种写法都有** ——
+       *     ① 纯地址列表 `["https://a","https://b"]`；
+       *     ② **「名称 / 地址」交替对** `["蓝光4M","https://a","超清","https://b"]`（虎牙/斗鱼/网易/B站
+       *        多线路均用这种形态，名称只是给播放器做「清晰度菜单」用）。
+       *   此前把**每一个**元素都当地址 → 拼成 `蓝光4M#https://a…`，交给播放器前会被
+       *   `directPlayUrlError` 判为「返回了选集参数或相对路径」而**清空地址** ⇒ 一律黑屏。
+       *   这里只保留**能归一成真实可播地址**的项，再按既有「# 连接多段」口径拼（首段即播放器实际
+       *   使用的那条；判据与 `shared/playbackResult.directPlayUrlError` 同源，避免两套口径漂移）。
+       *   全部项都不是地址（如斗鱼取链失败时的 `["原画","#-1"]`）→ 退回原行为，让上层给出「未取得
+       *   播放地址」的明确提示，而不是拼出一条更离谱的地址。
+       */
+      const playable = resolvedArr.filter((r) => directPlayUrlError(r.url) === '');
+      const picked = playable.length > 0 ? playable : resolvedArr;
+      // ★ 数组分支此前**丢掉了**对象里的显式 `header/headers`（虎牙/斗鱼的播放头 UA/Referer 全靠它，
+      //   丢了会让 CDN 按来源拒绝）—— 与对象分支同口径合并：地址尾巴拆出的头 < 显式 header。
+      const arrHdr = {
+        ...(picked.find((r) => r.header)?.header || {}),
+        ...(this.normalizePlayHeader(rec?.['header'] ?? rec?.['headers']) || {}),
+      };
       return {
         parse: 0,
-        url: resolvedArr.map((r) => r.url).join('#'),
+        url: picked.map((r) => r.url).join('#'),
         playUrl,
         flag,
-        ...(arrHdr ? { header: arrHdr } : {}),
+        ...(Object.keys(arrHdr).length ? { header: arrHdr } : {}),
       };
     }
     const o = (rec ?? {}) as Record<string, unknown>;

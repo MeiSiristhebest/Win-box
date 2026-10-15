@@ -287,6 +287,15 @@ interface VideoPlayerProps {
   /** ★ 本集展示名（如「第12集」）—— 面板提示「沿用 X 的设置」用 */
   skipEpisodeLabel?: string;
   /**
+   * ★ 2026-10-16（用户要求）：**本线路的集列表**（点即切集）。
+   *   由外层（PlayerPage）传入 —— 就是「上一集/下一集」用的同一份 `init.episodes`，
+   *   ★ 从**历史记录**进入播放器时外层会重新取一次详情把集补全（见 PlayerPage.applyInit），
+   *   所以历史进入同样有完整选集；缺省（图集/音乐/无集概念）则不显示选集入口。
+   */
+  episodes?: { name: string; url: string }[];
+  /** 选集回调（与 上一集/下一集 同一条切集链路 `goEp`） */
+  onPickEpisode?: (idx: number) => void;
+  /**
    * ★ 2026-10-08（用户拍板「内置官方构建」）：允许 MPV 高兼容内核。
    *   **仅独立播放器窗口传 true**（`#/player` 窗口 transparent，mpv 画面才能嵌入透出；
    *   主窗口里的直播/WebDAV 播放保持纯 HTML5，不显示内核切换入口）。
@@ -355,6 +364,12 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
   const [ui, setUi] = useState(true);
+  /**
+   * ★ 2026-10-16（用户要求）：**选集抽屉**（全屏播放器左侧「选集」按钮 → 面板从画面**右侧**丝滑滑出）。
+   *   开：上下贯通、半透明毛玻璃、只占画面 1/4~1/3；点某集 → 切集并自动关；再点左侧按钮 → 关。
+   *   ★ 面板打开期间**挂进 `panelOpenRef`** ⇒ 鼠标不动也不会让底部控制条淡出（见下方那个 effect）。
+   */
+  const [epPanel, setEpPanel] = useState(false);
   const [isLive, setIsLive] = useState(false);
   /**
    * ★ 2026-09-30：**当前流的直播结论**（由引擎给出，不是靠时长猜）——
@@ -1233,6 +1248,19 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     [skipUsable, skipResourceKey, skipEpisodeKey, skipEpisodeLabel, resourceName],
   );
 
+  /**
+   * ★ 2026-10-16（用户要求）：开/关**选集抽屉**（与其它面板互斥）。
+   *   开 → 由 panelOpenRef effect 清闲置计时并锁住控制层（鼠标不动底部播放条也不消失）；再点即关。
+   */
+  const toggleEpPanel = useCallback(() => {
+    setSubPanel(false);
+    setDmPanel(false);
+    setFitPanel(false);
+    setSkipPanel(false);
+    setEpPanel((p) => !p);
+    poke();
+  }, [poke]);
+
   /** 开/关跳过设置面板（与字幕/弹幕/比例面板互斥） */
   const toggleSkipPanel = useCallback(() => {
     setSubPanel(false);
@@ -1249,13 +1277,14 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   }, [commitSkip, showSkipToast, skipDraft]);
 
   // 字幕/弹幕/画面比例面板打开：同步 ref + 清闲置计时并锁定显示（关闭面板恢复自动隐藏）
+  // ★ 2026-10-16（用户要求）：选集抽屉同样计入 —— 「启动选集列表的时候就算鼠标不动，也不应该让下方的播放条 ui 消失」。
   useEffect(() => {
-    panelOpenRef.current = !!(subPanel || dmPanel || fitPanel || audioPanel || skipPanel || volOpen);
+    panelOpenRef.current = !!(subPanel || dmPanel || fitPanel || audioPanel || skipPanel || volOpen || epPanel);
     if (panelOpenRef.current) {
       if (idleTimer.current) clearTimeout(idleTimer.current);
       setUi(true);
     }
-  }, [subPanel, dmPanel, fitPanel, audioPanel, skipPanel, volOpen]);
+  }, [subPanel, dmPanel, fitPanel, audioPanel, skipPanel, volOpen, epPanel]);
 
   // 键盘 ↑/↓ 调节音量时，短暂展开音量面板（1s 后自动淡出）
   const flashVol = useCallback(() => {
@@ -2301,6 +2330,20 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     return () => { delete root.dataset.playerFullscreen; };
   }, [full, kernel]);
 
+  /**
+   * ★ 2026-10-16（用户要求）：播放器窗口**顶部标题栏**要和底部控制条一样「鼠标移动才显形」——
+   *   把本组件控制层（ui）的显隐状态镜像到 :root[data-pwin-ui]，供标题栏（在 PlayerPage 内、
+   *   位于 .vplayer 之外，拿不到本组件的 ui）用 CSS 联动。
+   *   ★ 口径：只有「隐藏」才写 `data-pwin-ui="0"`；**未挂载本组件（无视频/等待播放/解析失败）时不带该属性
+   *     → 标题栏默认可见**，保证任何状态下都能最小化/关窗（避免把窗口按钮一起藏没）。
+   */
+  useEffect(() => {
+    const root = document.documentElement;
+    if (ui) delete root.dataset.pwinUi;
+    else root.dataset.pwinUi = '0';
+    return () => { delete root.dataset.pwinUi; };
+  }, [ui]);
+
   const toggleFull = () => {
     const wrap = wrapRef.current;
     if (!wrap) return;
@@ -2430,6 +2473,13 @@ export default function VideoPlayer(props: VideoPlayerProps) {
    *   本组件不再渲染置顶入口（见 PlayerPage 的 pinTop 状态与 TitleBar 接线）。
    */
 
+  /**
+   * ★ 2026-10-16（用户要求）：**选集** —— 该资源**当前线路**下的集列表（外层传的就是 上一集/下一集 用的那份，
+   *   从历史记录进入时外层已重新取详情补全，所以历史进入同样可用）。
+   */
+  const epList = props.episodes ?? [];
+  const epNow = props.epIndex ?? -1;
+
   return (
     <div
       ref={wrapRef}
@@ -2502,6 +2552,41 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           </button>
         </div>
       )}
+      {/* ★ 2026-10-16（用户要求）：**选集抽屉** —— 从画面**右侧**丝滑滑出，上下贯通（top→bottom）、
+          半透明毛玻璃、只占画面 1/4~1/3；点某集 → 切集并自动关闭（再点左侧按钮同样关闭）。
+          ★ 打开期间控制层被 panelOpenRef 锁住 ⇒ 鼠标不动底部播放条也不消失；面板存在时不展示中央暂停键。 */}
+      {!mini && epList.length > 0 && (
+        <aside
+          className={`vp-eppanel${epPanel ? ' open' : ''}`}
+          aria-hidden={!epPanel}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <div className="vp-ephead">
+            <span className="vp-eptitle" title={playTitle || resourceName || '选集'}>{playTitle || resourceName || '选集'}</span>
+            <span className="vp-epcount">{epNow >= 0 ? `${epNow + 1} / ${epList.length}` : `${epList.length} 集`}</span>
+            <button type="button" className="vp-epclose" title="收起选集" onClick={() => setEpPanel(false)}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                <path d="M6 6l12 12M18 6L6 18" />
+              </svg>
+            </button>
+          </div>
+          <div className="vp-eplist">
+            {epList.map((ep, i) => (
+              <button
+                key={`${i}:${ep.url}`}
+                type="button"
+                className={`vp-epitem${i === epNow ? ' cur' : ''}`}
+                title={ep.name || `第${i + 1}集`}
+                onClick={() => { props.onPickEpisode?.(i); setEpPanel(false); }}
+              >
+                <span className="vp-epno">{i + 1}</span>
+                <span className="vp-epname">{ep.name || `第${i + 1}集`}</span>
+              </button>
+            ))}
+          </div>
+        </aside>
+      )}
       {/* ★ 2026-10-15（用户要求）：右键「详情信息」→ 画面右上角浮层（紧凑、不拦截鼠标）
           · 片名只取播放详情里的片名（不含第几集）；进度 mm:ss/mm:ss；分辨率与窗口标题同源；现在时间 xx点xx分 */}
       {infoOpen && !mini && (
@@ -2528,8 +2613,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           </span>
         </div>
       )}
-      {/* 中央大按钮（小窗口只保留控制条的 上/下集 + 播放暂停） */}
-      {!loading && !err && !mpvErr && !mini && (
+      {/* 中央大按钮（小窗口只保留控制条的 上/下集 + 播放暂停）
+          ★ 2026-10-16（用户要求）：**选集列表存在时（抽屉打开）不展示画面中间的暂停键** */}
+      {!loading && !err && !mpvErr && !mini && !epPanel && (
         <button className="vp-big" onClick={onSurfaceClick} onMouseDown={onSurfaceDown} title={paused ? '播放' : '暂停'}>
           {paused ? (
             <svg width="44" height="44" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
@@ -3305,6 +3391,21 @@ export default function VideoPlayer(props: VideoPlayerProps) {
               </div>
             </div>
           </div>
+          {/* ★ 2026-10-16（用户要求「放到播放器下方的全屏按钮和比例按钮中间」）：**选集**按钮 ——
+              就放在「画面比例」与「全屏」之间；开/关右侧选集抽屉（点某集自动关、再点一次也关）。
+              ★ 图标态与相邻按钮同一套 `.vp-ctl`；开启态沿用既有 `.vp-on`（accent 高亮）。 */}
+          {epList.length > 1 && (
+            <button
+              className={`vp-ctl${epPanel ? ' vp-on' : ''}`}
+              title={epPanel ? '收起选集' : `选集（${epList.length} 集）`}
+              aria-pressed={epPanel}
+              onClick={() => toggleEpPanel()}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+          )}
           <button className="vp-ctl" title="全屏" onClick={toggleFull}>
             {full ? (
               <svg width="15" height="15" viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>

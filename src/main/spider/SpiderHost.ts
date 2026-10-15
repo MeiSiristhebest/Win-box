@@ -141,7 +141,7 @@ import {
   setTmdbRuntime,
   hasUserTmdbKey,
 } from '../meta/tmdbProvider';
-import { doubanSearchTitle, doubanSuggest, DOUBAN_CACHE_PREFIX } from '../meta/doubanProvider';
+import { doubanSearchTitle, doubanStills, doubanSuggest, DOUBAN_CACHE_PREFIX } from '../meta/doubanProvider';
 import { DomesticDiscover } from '../meta/domesticDiscover';
 import { DiscoverArtwork } from '../meta/discoverArtwork';
 import { ParseService } from '../parse/ParseService';
@@ -613,6 +613,10 @@ export class SpiderHost {
   /** ★ 2026-10-14（用户要求）：删除某条直播线路（下标越界静默 no-op） */
   cfgDeleteLive(index: number): void {
     this.manager.deleteLive(index);
+  }
+  /** ★ 2026-10-16（用户要求）：批量删除直播线路（配置页多选删除；下标越界忽略） */
+  cfgDeleteLives(indices: number[]): void {
+    this.manager.deleteLives(indices);
   }
   /** ★ 2026-10-14（用户要求）：重命名某条直播线路 */
   cfgUpdateLiveName(index: number, name: string): void {
@@ -1101,10 +1105,22 @@ export class SpiderHost {
 
   metaMovieHot() { return this.domesticDiscover.hot(); }
 
-  async metaDiscoverImages(name: string, mediaType: 'movie' | 'tv', year?: string, kind: 'backdrop' | 'poster' = 'backdrop') {
+  async metaDiscoverImages(name: string, mediaType: 'movie' | 'tv', year?: string, kind: 'backdrop' | 'poster' = 'backdrop', doubanId?: string) {
     if (kind === 'poster') {
       const hit = await this.metaSearch(name, year);
       return { backdrops: [], posters: hit?.poster ? [hit.poster] : [] };
+    }
+    /**
+     * ★★ 2026-10-16（用户口径「横图走豆瓣剧照 / TMDB」）：**横版图优先豆瓣剧照**。
+     *   调用方带 `doubanId`（发现页榜单来自豆瓣，条目自带 subject id）时，直接取该条的「剧照」相册 ——
+     *   图源与条目**一一对应**，且带宽高可精确筛横版，不会像 360 图搜那样错配（短名片名尤甚）。
+     *   取不到再走「用户自带 TMDB 凭据」；仍无则落到既有的 360 兜底（首屏 hero 端会拒绝该来源，见 DiscoverSpotlight）。
+     */
+    if (doubanId) {
+      try {
+        const stills = await doubanStills(this.logger, doubanId);
+        if (stills.length) return { backdrops: stills, posters: [] };
+      } catch { /* 落下一条链路 */ }
     }
     if (hasUserTmdbKey()) {
       try {
@@ -1573,6 +1589,11 @@ export class SpiderHost {
     this.report = result.report;
     this.config = result.config;
     this.applyConfig(result.config);
+    // ★ 2026-10-16（用户报「删掉本地包订阅后重新导入、订阅里一个源都没有」）：**用户主动导入** = 明确的
+    //   「我要这份订阅」意图 → 先清掉它自带源 key 的删除墓碑。否则 `replaceFromImport` / `saveAsProfile`
+    //   会按墓碑把这些源全滤掉 ⇒ 订阅落了库却一个源都没有（本地包 `pkg://` 又**不会**自动刷新，等于永远回不来）。
+    //   ★ 自动刷新（`snapshot === false`）**不清** —— 守住「删掉的源不被后台刷新带回来」（2026-10-15 口径）。
+    if (snapshot) this.manager.clearDeletedSourceKeys(result.config.sites.map((s) => s.key));
     this.applyImportedConfig(result.config, source.url || '', snapshot, source.name);
     return result;
   }
@@ -1757,6 +1778,8 @@ export class SpiderHost {
         this.report = result.report;
         this.config = result.config;
         this.applyConfig(result.config);
+        // ★ 同 importConfig：用户主动导入的多仓订阅也清各自源 key 的墓碑（自动刷新 snapshot=false 不清）
+        if (snapshot) this.manager.clearDeletedSourceKeys(result.config.sites.map((s) => s.key));
         this.applyImportedConfig(result.config, item.url, snapshot, name);
         const note = `多仓共 ${total} 项，已导入首个可用子仓「${label}」${total > 1 ? `；其余 ${total - 1} 项：${skipped.join('；') || '均可用（可另行单独导入）'}；如需指定线路，在订阅地址尾加 #line=N（N 从 0 起）` : ''}`;
         this.logger.i('multi-repo: ' + note);

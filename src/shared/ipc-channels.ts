@@ -82,6 +82,8 @@ export const IPC = {
   CFG_IMPORT_LIVE_LOCAL: 'cfg:importLiveLocal',
   /** ★ 2026-10-14（用户要求）：删除某条直播线路（导入的 TXT/M3U 直播源可在配置页删除） */
   CFG_DELETE_LIVE: 'cfg:deleteLive',
+  /** ★ 2026-10-16（用户要求）：批量删除直播线路（配置页「直播线路」多选删除） */
+  CFG_DELETE_LIVES: 'cfg:deleteLives',
   /** ★ 2026-10-14（用户要求）：重命名某条直播线路（导入后允许编辑名称） */
   CFG_UPDATE_LIVE: 'cfg:updateLive',
   CFG_PROFILE_SAVE: 'cfg:profileSave',

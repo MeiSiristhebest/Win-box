@@ -228,6 +228,57 @@ export async function doubanSearchTitle(logger: Logger, name: string, year?: str
 }
 
 /**
+ * ★★ 2026-10-16（用户口径「Hero 抓豆瓣的横板封面或剧照」）：**豆瓣剧照（横版）** —— 按 subject id 取「剧照」相册。
+ *   为什么必须有它：
+ *     · 360 图搜对**短名片名**会配错图（「希望」2 字 → 相关性过滤的「全包含」分支放行任何含该词的标题），
+ *       属机制性缺陷，已按用户口径从首屏 hero 中退役；
+ *     · TMDB 只认用户自带的凭据（`hasUserTmdbKey()`），无凭据时首屏就一张横图都没有；
+ *     · 豆瓣 rexxar 的 photos 接口**返回带宽高**，可按横宽比**精确筛掉竖版**，且图源与条目一一对应（不会错配）。
+ *   与 doubanSearchTitle 共用熔断口径；失败/熔断中返回空数组（调用方自然回落下一档）。
+ */
+export async function doubanStills(logger: Logger, doubanId: string): Promise<string[]> {
+  const id = String(doubanId || '').trim();
+  if (!/^\d{5,}$/.test(id)) return [];
+  if (doubanBreakerOpen()) return [];
+  try {
+    const resp = await doubanJson(`https://m.douban.com/rexxar/api/v2/movie/${id}/photos?type=S&start=0&count=12&for_mobile=1`, 15000);
+    if (resp.status !== 200) {
+      if (resp.status !== 0) noteDoubanStatus(resp.status);
+      return [];
+    }
+    noteDoubanStatus(200);
+    const j = JSON.parse(resp.text) as { photos?: Array<{ image?: { large?: { url?: string; width?: number; height?: number } } }> };
+    const rows = Array.isArray(j?.photos) ? j.photos : [];
+    const cands: Array<{ u: string; area: number }> = [];
+    for (const p of rows) {
+      const im = p?.image?.large;
+      const u = String(im?.url || '').trim();
+      const w = Number(im?.width) || 0;
+      const h = Number(im?.height) || 0;
+      if (!/^https?:\/\//i.test(u) || w < 600 || h < 300) continue;
+      const ratio = w / h;
+      if (ratio < 1.4 || ratio > 2.4) continue; // 只要横版剧照（竖版海报/封面一概不收）
+      cands.push({ u, area: w * h });
+    }
+    cands.sort((a, b) => b.area - a.area);
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const c of cands) {
+      const key = c.u.split('?')[0];
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(`${IMG_PROXY}?u=${encodeURIComponent(c.u)}`);
+      if (out.length >= 4) break;
+    }
+    if (out.length) logger.i?.(`meta:豆瓣剧照命中 ${id} → ${out.length} 张横版`);
+    return out;
+  } catch (e) {
+    logger.w?.(`meta:豆瓣剧照 失败 ${(e as Error).message}`);
+    return [];
+  }
+}
+
+/**
  * ★ 2026-09-24：搜索面板「自动联想（豆瓣）」——同一 rexxar 端点，只要标题（不校验封面）。
  * 与 doubanSearchTitle 共用熔断口径；失败/熔断中返回空数组（联想不打扰用户）。
  */

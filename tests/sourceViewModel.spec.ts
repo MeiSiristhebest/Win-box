@@ -260,14 +260,30 @@ describe('SourceViewModel — type 3 homeContent→homeVideoContent 回退（任
     expect(sp.recCalls).toBe(1);
   });
 
-  it('homeContent 自带 list → items 来自 homeContent，且绝不触发回退', async () => {
+  it('★ 装得满一页的首页 list → items 全来自 homeContent，且绝不触发回退', async () => {
     const sp = new StubSpider(
-      JSON.stringify({ class: [{ type_id: '1', type_name: '电影' }], list: [{ vod_id: '1', vod_name: '首页片' }] }),
+      JSON.stringify({
+        class: [{ type_id: '1', type_name: '电影' }],
+        list: Array.from({ length: 25 }, (_, i) => ({ vod_id: `h${i}`, vod_name: i === 0 ? '首页片' : `首页${i}` })),
+      }),
       JSON.stringify({ list: [{ vod_id: '9', vod_name: '不应出现' }] }),
     );
     const r = await vmWithSpider(sp).home({ key: 'q2', type: 3, api: 'csp_X' } as SourceBean);
     expect(r.items[0].name).toBe('首页片');
-    expect(sp.recCalls).toBe(0);
+    expect(r.items).toHaveLength(25);
+    expect(sp.recCalls).toBe(0); // ★ 2026-10-16：≥一页 → 一票否决，任何回退都不发起
+    expect(sp.catCalls).toBe(0);
+  });
+
+  it('★ 装不满一页的首页 list → 允许尝试回退，但只采纳「更丰富的那份」（此处仍保留首页片）', async () => {
+    const sp = new StubSpider(
+      JSON.stringify({ class: [{ type_id: '1', type_name: '电影' }], list: [{ vod_id: '1', vod_name: '首页片' }] }),
+      JSON.stringify({ list: [{ vod_id: '9', vod_name: '不应出现' }] }),
+    );
+    const r = await vmWithSpider(sp).home({ key: 'q2b', type: 3, api: 'csp_X' } as SourceBean);
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0].name).toBe('首页片');
+    expect(r.homeFallback).toBeUndefined();
   });
 
   it('homeContent class-only + homeVideoContent 空 → 保留分类、items 空、不抛', async () => {
@@ -427,27 +443,27 @@ describe('SourceViewModel — type3 首页分类兜底（P0-JVM-HOME：JVM 源�
     expect(r.total).toBe(60);
   });
 
-  it('homeVideoContent 有数据时优先用它，不再触发分类兜底', async () => {
+  it('homeVideoContent 有数据时优先用它；分类兜底即使用过也不许顶掉它（★ 2026-10-16 口径：只取更丰富的那份）', async () => {
     const sp = new StubSpider(
       JSON.stringify({ class: [{ type_id: '1', type_name: '电影' }], list: [] }),
       JSON.stringify({ list: [{ vod_id: '9', vod_name: '推荐片' }] }),
     );
     sp.catRet = JSON.stringify({ list: [{ vod_id: '71', vod_name: '不应出现' }] });
     const r = await vmWithSpider(sp).home({ key: 'jv3', type: 3, api: 'csp_X' } as SourceBean);
+    expect(r.items).toHaveLength(1);
     expect(r.items[0].name).toBe('推荐片');
-    expect(sp.catCalls).toBe(0); // 推荐已够，分类兜底不发起
   });
 
-  it('homeContent 自带 list → 不触发任何兜底', async () => {
+  it('★ 装不满一页的首页 list → 尝试兜底但「不更丰富」不采纳（列表不换小、不打 homeFallback 标）', async () => {
     const sp = new StubSpider(
       JSON.stringify({ class: [{ type_id: '1', type_name: '电影' }], list: [{ vod_id: '1', vod_name: '首页片' }] }),
       '',
     );
     sp.catRet = JSON.stringify({ list: [{ vod_id: '71', vod_name: '不应出现' }] });
     const r = await vmWithSpider(sp).home({ key: 'jv4', type: 3, api: 'csp_X' } as SourceBean);
+    expect(r.items).toHaveLength(1);
     expect(r.items[0].name).toBe('首页片');
     expect(r.homeFallback).toBeUndefined();
-    expect(sp.catCalls).toBe(0);
   });
 
   it('分类兜底抛错 → 静默降级：保留分类骨架、items 空、不整体报错', async () => {
@@ -514,6 +530,90 @@ describe('SourceViewModel — type 2/-1 桌面版不可用；type 4 走 CmsSourc
     await expect(
       vm(mockHttp({})).search({ key: 'p1', type: -1, api: 'http://x' } as SourceBean, 'wd'),
     ).rejects.toMatchObject({ code: 'TYPE_UNSUPPORTED' });
+  });
+});
+
+/**
+ * ★ 2026-10-16（用户报「很多源，如玩偶、木偶，点播分类一页都填不满、既没有分页也不能瀑布」）：
+ *   ① 一批 `csp_*` 壳源的 `categoryContent` **只回 list**（pagecount/total/page 全缺 = 0），
+ *      但翻页真能用（pg=2 是全新一页）→ 引擎按「装得满一页 ⇒ 后面大概率还有」兜底 `pagecount=9999`；
+ *   ② 首页列表**装不满一页**时，回退「首个分类第 1 页」取能填满的内容（沿用既有分类兜底口径），
+ *      且**只取更丰富的那份**（绝不把列表换小）。
+ */
+describe('SourceViewModel — type3 「分类不分页 / 首页装不满一页」兜底', () => {
+  const listJson = (n: number, pagecount: number, total = 0): string =>
+    JSON.stringify({
+      page: 0,
+      pagecount,
+      total,
+      list: Array.from({ length: n }, (_, i) => ({ vod_id: `v${i + 1}`, vod_name: `片${i + 1}` })),
+    });
+
+  it('分类：源没给总页数但回了整页（≥20 条）→ pagecount 兜底 9999（UI 才放开「下一页 / 瀑布」）', async () => {
+    const sp = new StubSpider('', '');
+    sp.categoryContent = () => listJson(72, 0);
+    const r = await vmWithSpider(sp).category({ key: 'p1', type: 3, api: 'csp_X' } as SourceBean, '1', '1', {});
+    expect(r.items).toHaveLength(72);
+    expect(r.pagecount).toBe(9999);
+  });
+
+  it('分类：条目数不足一页（<20）→ 保持原值（多半确实只有一页）', async () => {
+    const sp = new StubSpider('', '');
+    sp.categoryContent = () => listJson(5, 0);
+    const r = await vmWithSpider(sp).category({ key: 'p2', type: 3, api: 'csp_X' } as SourceBean, '1', '1', {});
+    expect(r.pagecount).toBe(0);
+  });
+
+  it('分类：源给了真实总页数 → 原样透传（不覆盖源口径）', async () => {
+    const sp = new StubSpider('', '');
+    sp.categoryContent = () => listJson(20, 30, 600);
+    const r = await vmWithSpider(sp).category({ key: 'p3', type: 3, api: 'csp_X' } as SourceBean, '1', '1', {});
+    expect(r.pagecount).toBe(30);
+    expect(r.total).toBe(600);
+  });
+
+  it('首页不受兜底影响（首页无页码语义，pagecount 原样）', async () => {
+    const sp = new StubSpider(listJson(72, 0), '');
+    const r = await vmWithSpider(sp).home({ key: 'h0', type: 3, api: 'csp_X' } as SourceBean);
+    expect(r.items).toHaveLength(72);
+    expect(r.pagecount).toBe(0);
+  });
+
+  it('首页装不满一页（12 条）+ 首分类更丰富（70 条）→ 采用分类兜底并打 homeFallback 标', async () => {
+    const sp = new StubSpider(
+      JSON.stringify({
+        class: [{ type_id: '1', type_name: '电影' }],
+        list: Array.from({ length: 12 }, (_, i) => ({ vod_id: `h${i}`, vod_name: `首页${i}` })),
+      }),
+      '',
+    );
+    sp.catRet = listJson(70, 0);
+    const r = await vmWithSpider(sp).home({ key: 'h1', type: 3, api: 'csp_X' } as SourceBean);
+    expect(r.items).toHaveLength(70);
+    expect(r.homeFallback).toBe(true);
+    expect(sp.catCalls).toBe(1);
+  });
+
+  it('首页装不满一页但分类兜底更少 → 保留首页自带的那份（绝不把列表换小）', async () => {
+    const sp = new StubSpider(
+      JSON.stringify({
+        class: [{ type_id: '1', type_name: '电影' }],
+        list: Array.from({ length: 12 }, (_, i) => ({ vod_id: `h${i}`, vod_name: `首页${i}` })),
+      }),
+      '',
+    );
+    sp.catRet = listJson(3, 0);
+    const r = await vmWithSpider(sp).home({ key: 'h2', type: 3, api: 'csp_X' } as SourceBean);
+    expect(r.items).toHaveLength(12);
+    expect(r.homeFallback).toBeUndefined();
+  });
+
+  it('首页自带就装得满一页（≥20 条）→ 一次额外请求都不发（回退/兜底都不触发）', async () => {
+    const sp = new StubSpider(listJson(25, 0), '');
+    const r = await vmWithSpider(sp).home({ key: 'h3', type: 3, api: 'csp_X' } as SourceBean);
+    expect(r.items).toHaveLength(25);
+    expect(sp.recCalls).toBe(0);
+    expect(sp.catCalls).toBe(0);
   });
 });
 
@@ -622,6 +722,34 @@ describe('SourceViewModel — type3 play 归一化（P1-2 normalizeSpiderPlay �
     const r = await playVia(JSON.stringify(['https://a/1', 'video://https://a/2']));
     expect(r.parse).toBe(0);
     expect(r.url).toBe('https://a/1#https://a/2'); // video:// 前缀也去掉了
+  });
+
+  // ★ 2026-10-16（用户报「PY 直播源（虎牙/斗鱼）无法观看」）：生态里 url 数组常是**「名称/地址」交替对**
+  //   名称不是地址 → 若照旧「逐项都当地址」会拼出 `蓝光4M#http://…`，被 directPlayUrlError 判为
+  //   「选集参数/相对路径」而清空 ⇒ 一律黑屏。这里只保留可播地址项。
+  it('★ url 数组为「名称/地址」交替对（虎牙/斗鱼形态）→ 只留地址项，# 连接', async () => {
+    const r = await playVia(
+      JSON.stringify({
+        parse: 0,
+        url: ['蓝光4M', 'http://tx.flv.huya.com/src/a.flv?ratio=4000', '超清', 'http://tx.flv.huya.com/src/a.flv?ratio=2000'],
+      }),
+    );
+    expect(r.parse).toBe(0);
+    expect(r.url).toBe('http://tx.flv.huya.com/src/a.flv?ratio=4000#http://tx.flv.huya.com/src/a.flv?ratio=2000');
+  });
+
+  it('★ url 数组分支也要保留显式 header（虎牙/斗鱼播放头 UA/Referer 全靠它）', async () => {
+    const r = await playVia(
+      JSON.stringify({ parse: 0, url: ['原画', 'https://a/1.flv'], header: { 'User-Agent': 'libmpv', Referer: 'https://live.example/' } }),
+    );
+    expect(r.url).toBe('https://a/1.flv');
+    expect(r.header).toEqual({ 'User-Agent': 'libmpv', Referer: 'https://live.example/' });
+  });
+
+  it('★ 交替对里全是非地址（取链失败时的占位符）→ 退回原行为（交给上层报「未取得播放地址」）', async () => {
+    const r = await playVia(JSON.stringify({ parse: 0, url: ['原画', '#-1'] }));
+    expect(r.parse).toBe(0);
+    expect(r.url).toBe('原画##-1'); // 退回「逐项拼接」的老行为：上层据此给「未取得播放地址」
   });
 
   it('video:// 前缀且未声明 parse → 去前缀 + 推断 parse=1', async () => {
