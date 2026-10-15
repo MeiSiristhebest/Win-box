@@ -49,6 +49,25 @@ export function normalizeKernelPref(v: unknown): KernelPref {
   return v === 'html5' || v === 'mpv' ? v : 'auto';
 }
 
+/**
+ * ★ 2026-10-17（用户要求「音轨设置」）：**本会话内**记住的音轨（语言 → 标题 → id 的标识）。
+ *
+ * 刻意**不落盘**（选了某语言不该影响别的片），但必须是**模块级变量**：播放器组件在换集时会
+ * 重挂载（实测：`pref` 被重置成空 → 下一集不再自动沿用），组件内的 ref 扛不住。
+ */
+let sessionAudioPref = '';
+
+/** 读「本会话记住的音轨」（空 = 用户还没选过，走内核默认） */
+export function getSessionAudioPref(): string {
+  return sessionAudioPref;
+}
+
+/** 记「本会话记住的音轨」（用户在音轨面板点选时写入） */
+export function setSessionAudioPref(key: string): void {
+  sessionAudioPref = String(key || '');
+}
+
+
 const KEY = 'winbox-player-prefs';
 
 export const DEFAULT_PLAYER_PREFS: PlayerPrefs = { vol: 1, rate: 1, subOffset: 0, fit: 'contain', kernel: 'auto' };

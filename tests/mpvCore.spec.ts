@@ -5,12 +5,14 @@ import { describe, it, expect } from 'vitest';
 import {
   buildMpvArgs,
   initialKernelState,
+  mpvAudioTracks,
   mpvCmdLine,
   mpvCommandLines,
   mpvFitProps,
   mpvObserveLines,
   reduceMpvMessage,
   resolveMpvPath,
+  sameAudioTracks,
 } from '../src/main/player/mpvCore';
 import { mpvFontSize, mpvSubPos } from '../src/shared/player';
 
@@ -64,14 +66,14 @@ describe('mpvCore · JSON IPC 协议', () => {
     expect(JSON.parse(line.trim())).toEqual({ command: ['loadfile', 'http://x/a.mkv', 'replace'] });
   });
 
-  it('属性观察覆盖 时间/时长/暂停/缓冲/结束/尺寸/缓存', () => {
+  it('属性观察覆盖 时间/时长/暂停/缓冲/结束/尺寸/缓存/音轨', () => {
     const names = mpvObserveLines().map((l) => JSON.parse(l.trim()).command[2]);
-    for (const n of ['time-pos', 'duration', 'pause', 'paused-for-cache', 'eof-reached', 'width', 'height', 'cache-speed', 'demuxer-cache-time']) {
+    for (const n of ['time-pos', 'duration', 'pause', 'paused-for-cache', 'eof-reached', 'width', 'height', 'cache-speed', 'demuxer-cache-time', 'track-list', 'aid']) {
       expect(names).toContain(n);
     }
   });
 
-  it('控制命令 → mpv 命令（play/pause/seek/volume/rate/fit/字幕）', () => {
+  it('控制命令 → mpv 命令（play/pause/seek/volume/rate/fit/字幕/音轨）', () => {
     expect(mpvCommandLines({ type: 'play' })[0]).toContain('"pause","no"');
     expect(mpvCommandLines({ type: 'pause' })[0]).toContain('"pause","yes"');
     expect(mpvCommandLines({ type: 'seek', value: 42 })[0]).toContain('"seek",42,"absolute"');
@@ -79,6 +81,10 @@ describe('mpvCore · JSON IPC 协议', () => {
     expect(mpvCommandLines({ type: 'fit', value: 'r43' }).join('')).toContain('"video-aspect-override","4:3"');
     expect(mpvCommandLines({ type: 'sub-font', value: 30 })[0]).toContain('"sub-font-size",60');
     expect(mpvCommandLines({ type: 'sub-pos', value: 88 })[0]).toContain('"sub-pos",88');
+    // ★ 2026-10-17：切音轨 → set_property aid；非法/非正 id 不发明 API
+    expect(mpvCommandLines({ type: 'aid', value: 2 })[0]).toContain('"set_property","aid",2');
+    expect(mpvCommandLines({ type: 'aid', value: 0 })).toEqual([]);
+    expect(mpvCommandLines({ type: 'aid', value: Number.NaN })).toEqual([]);
   });
 
   it('未知命令返回空（不发明 API）', () => {
@@ -264,6 +270,53 @@ describe('mpvCore · 状态归一', () => {
     expect(reduceMpvMessage(s, { event: 'property-change', name: 'width', data: -3 })).toBe(false);
     expect(s.time).toBeNull();
     expect(s.videoW).toBe(0);
+  });
+});
+
+describe('mpvCore · 音轨设置（track-list / aid）', () => {
+  it('track-list → 只留 audio，字段归一（声道兼容两种键名；非法项丢弃）', () => {
+    const list = mpvAudioTracks([
+      { id: 1, type: 'video', codec: 'h264' },
+      { id: 2, type: 'audio', title: '国语', lang: 'chi', codec: 'aac', 'demux-channel-count': 2, selected: true },
+      { id: 3, type: 'audio', lang: 'jpn', 'demux-channels': 6 },
+      { id: 'x', type: 'audio' }, // 非数字 id → 丢
+      null,
+      'str',
+      42,
+    ]);
+    expect(list).toHaveLength(2);
+    expect(list[0]).toEqual({ id: 2, title: '国语', lang: 'chi', codec: 'aac', channels: '2', selected: true });
+    expect(list[1]).toEqual({ id: 3, title: undefined, lang: 'jpn', codec: undefined, channels: '6', selected: undefined });
+  });
+
+  it('非数组/空 → 空表（不崩）', () => {
+    expect(mpvAudioTracks(null)).toEqual([]);
+    expect(mpvAudioTracks('x')).toEqual([]);
+    expect(mpvAudioTracks([])).toEqual([]);
+  });
+
+  it('track-list / aid 落到状态；内容不变时不再置位（避免无谓推送）', () => {
+    const st = initialKernelState();
+    expect(st.audioTracks).toEqual([]);
+    expect(st.aid).toBeNull();
+
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'track-list', data: [{ id: 2, type: 'audio', title: '国语' }] })).toBe(true);
+    expect(st.audioTracks.map((t) => t.id)).toEqual([2]);
+    // 同样内容再来一次 → false（MpvController 据此跳过推送）
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'track-list', data: [{ id: 2, type: 'audio', title: '国语' }] })).toBe(false);
+
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'aid', data: 2 })).toBe(true);
+    expect(st.aid).toBe(2);
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'aid', data: 2 })).toBe(false);
+    // mpv 对「无音轨」回传 false → null
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'aid', data: false })).toBe(true);
+    expect(st.aid).toBeNull();
+  });
+
+  it('sameAudioTracks 判等（selected 变化也算变）', () => {
+    expect(sameAudioTracks([{ id: 2, title: '国语', selected: true }], [{ id: 2, title: '国语', selected: true }])).toBe(true);
+    expect(sameAudioTracks([{ id: 2, title: '国语', selected: true }], [{ id: 2, title: '国语' }])).toBe(false);
+    expect(sameAudioTracks([{ id: 2 }], [])).toBe(false);
   });
 });
 

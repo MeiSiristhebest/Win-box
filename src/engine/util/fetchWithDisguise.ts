@@ -27,13 +27,26 @@ export interface DisguiseAttempt {
 }
 
 /** 响应内容的粗分类（用于分档上屏：HTML 拦截页 / 疑似加密 / 灯下黑） */
-export type BodyKind = 'empty' | 'json' | 'html' | 'xml' | 'zip' | 'gzip' | 'hex' | 'base64' | 'text';
+export type BodyKind = 'empty' | 'json' | 'html' | 'xml' | 'zip' | 'gzip' | 'hex' | 'base64' | 'dump' | 'text';
 
 export interface BodySniff {
   kind: BodyKind;
   /** 前 80 字（已把换行压成空格，用于日志/报错；不含完整内容） */
   head: string;
   size: number;
+}
+
+/**
+ * 像不像「十六进制 dump 伪装体」：连续 ≥4 行都是 `16 组 hex + " | "`。
+ * ★ 2026-10-15：`yc.wya6.cn/wykj.php` 的订阅就是这个形态（整段是一个 jar 的 hex dump，
+ *   真配置藏在**末行 ASCII 列**的 `=XXX**` 标记之后）。这里只负责**认出来**并把导入失败的原因
+ *   说清楚（否则只会笼统报「纯文本」）；真正的提取在 `engine/config/disguiseConfig.ts`。
+ */
+export function looksLikeHexDump(text: string): boolean {
+  const lines = (text || '').slice(0, 4096).split(/\r?\n/);
+  let hit = 0;
+  for (const l of lines) if (/^(?:[0-9A-Fa-f]{2}[ \t])+\|/.test(l)) hit++;
+  return hit >= 4;
 }
 
 /** 嗅探响应体（纯函数） */
@@ -52,6 +65,7 @@ export function sniffBody(buf: Buffer, headLen = 80): BodySniff {
     return { kind: 'html', head, size };
   }
   if (t.startsWith('<?xml') || /^<[a-z!?]/i.test(t)) return { kind: 'xml', head, size };
+  if (looksLikeHexDump(t)) return { kind: 'dump', head, size };
   // 疑似加密/编码：长且**只含**对应字符集（配置被整体加密时就是这样一整串）
   // ★ 顺序很重要：hex 的字符集是 base64 的子集，必须先判 hex，否则 hex 会被误判成 base64。
   const compact = text.trim();
@@ -356,6 +370,7 @@ export function describeFailures(tries: TryInfo[]): string {
         gzip: 'gzip',
         hex: '疑似加密（hex）',
         base64: '疑似加密（base64）',
+        dump: '十六进制 dump 伪装体（配置藏在尾部标记之后）',
         text: '纯文本',
       };
       bits.push(kindZh[t.sniff.kind]);

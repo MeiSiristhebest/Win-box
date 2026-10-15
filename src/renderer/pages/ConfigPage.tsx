@@ -8,7 +8,7 @@ import { EXT_TEMPLATES, validateExtJson } from '../../engine/config/extHelper';
 import { sourceKindInfo } from '../../engine/config/sourceKind';
 import type { AuditItem, SourceDebugReport } from '../../shared/types';
 import { applyTheme, currentTheme } from '../lib/theme';
-import { getShowDiscover, setShowDiscover, getMotionPref, setMotionPref, type MotionPref } from '../lib/uiPrefs';
+import { getShowDiscover, setShowDiscover, getMotionPref, setMotionPref, getNavMode, setNavMode, type MotionPref, type NavMode } from '../lib/uiPrefs';
 import { THEME_LABELS, type Theme } from '../lib/themeTokens';
 import { DEFAULT_META_SETTINGS, type MetaSettings } from '../../shared/meta';
 import { DEFAULT_PLAYER_SETTINGS, type PlayerSettings, type MpvStatus } from '../../shared/player';
@@ -88,6 +88,8 @@ export default function ConfigPage() {
   /** ★ 2026-10-08（用户要求）：详情页是否单独窗口展示（默认关；切换即时生效，见 lib/detailWin.ts） */
   /** ★ 2026-10-08：界面动效三态（跟随系统 / 始终开启 / 关闭）—— 本机系统「动画效果」为关时也能强制开启动效 */
   const [motion, setMotionState] = useState<MotionPref>(() => getMotionPref());
+  /** ★ 2026-10-15（用户要求）：详情/搜索的打开方式 ——「本页内」（伪墓碑，默认）或「独立窗口」 */
+  const [navMode, setNavModeState] = useState<NavMode>(() => getNavMode());
   // 外挂字幕（多源：SubtitleCat 免 token / assrt 需 token）
   const [subToken, setSubToken] = useState('');
   const [subTokenSaved, setSubTokenSaved] = useState(false);
@@ -1763,6 +1765,31 @@ export default function ConfigPage() {
               {label} {motion === v ? '✓' : ''}
             </button>
            ))}
+        </div>
+      </div>
+
+      {/* ★ 2026-10-15（用户要求「详情/搜索改回单页内，并做成可切换」）：页面打开方式。
+          「本页内」= 伪墓碑：切页保持挂载、仅隐藏 → 返回零重载；「独立窗口」= 弹成单独窗口。 */}
+      <div className="card" id="cfg-nav-mode" style={{ padding: 12, marginBottom: 16 }}>
+        <div className="row" style={{ marginBottom: 8 }}>
+          <span className="muted" style={{ fontWeight: 600 }}>详情与搜索的打开方式</span>
+        </div>
+        <div className="pill-switch" role="radiogroup" aria-label="页面打开方式">
+          {([['inline', '本页内'], ['window', '独立窗口']] as [NavMode, string][]).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={navMode === v}
+              className={navMode === v ? 'active' : ''}
+              onClick={() => { setNavModeState(v); setNavMode(v); }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+          本页内：在主界面里直接打开，返回时不再重新加载。独立窗口：把详情/搜索弹成单独窗口。
         </div>
       </div>
 

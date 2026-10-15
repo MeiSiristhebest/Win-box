@@ -87,25 +87,3 @@ export class JsonStore implements KVStore {
     this.schedule();
   }
 }
-
-export class AppStore {
-  constructor(private store: JsonStore) {}
-  get config(): { apiUrl: string; configJson?: string; homeKey?: string } {
-    return this.store.getObject('config', { apiUrl: '' });
-  }
-  set config(v: { apiUrl: string; configJson?: string; homeKey?: string }) {
-    this.store.setObject('config', v);
-  }
-  get history(): Array<{ id: string; name: string; sourceKey: string; url: string; ts: number }> {
-    return this.store.getObject('history', []);
-  }
-  set history(v: Array<{ id: string; name: string; sourceKey: string; url: string; ts: number }>) {
-    this.store.setObject('history', v);
-  }
-  get favorite(): Array<{ id: string; name: string; sourceKey: string; pic: string }> {
-    return this.store.getObject('favorite', []);
-  }
-  set favorite(v: Array<{ id: string; name: string; sourceKey: string; pic: string }>) {
-    this.store.setObject('favorite', v);
-  }
-}

@@ -1,15 +1,23 @@
 // src/renderer/pages/DiscoverPage.tsx — 发现页（★ 2026-09-24 起为**默认首页**，侧边栏第一个）
 // 内容：
-//   ① 推荐（豆瓣电影/剧集五分区；主进程持久缓存，过期后台更新）
-//   ② 分类（国内标签推荐分页，与 TMDB 类型 ID 解耦）
+//   ① 推荐（豆瓣榜单 + 国内热搜；主进程持久缓存，过期后台更新）
+//   ② 级联分类（★ 2026-10-15 用户要求，数据层走**豆瓣**）：分类 → 类型 → 地区 → 年代 → 排序，
+//      **逐级点击才展开下级**；选项表直接用豆瓣自带的类型/地区词表（两页共用，永远一致，且不会空结果）。
 // 交互：点任意影片 → 走 `#/search?agg=<片名>` 用「源」做一次全源搜索（没源时提示去导入）。
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { client } from '../api/client';
 import { openSearchWindow } from '../lib/searchWin';
 import { useTheme } from '../lib/theme';
 import HScrollRow from '../components/HScrollRow';
+import CascadeBar, { type CascadeLevel, type CascadeOption } from '../components/CascadeBar';
 import { useCovers } from '../lib/useCovers';
-import type { DiscoverItem, DiscoverSection, DiscoverGenre } from '../../shared/types';
+import { ALL_TAG, DISCOVER_MEDIA, type DiscoverMediaId, type ExploreVocabulary } from '../../shared/discover';
+import type { DiscoverItem, DiscoverSection } from '../../shared/types';
+
+/** 每页条数（豆瓣 recommend 的 count） */
+const PAGE_SIZE = 20;
+/** 豆瓣 total 上限（接口自身封顶 500） */
+const MAX_TOTAL = 500;
 
 /** 影片卡（推荐区与分类区共用）：点击 → 全源搜索该片名。
    *  playBadge ★ 2026-09-29：仅 Apple 皮肤渲染的「悬停播放徽标」—— 只在 Apple 下渲染元素，
@@ -65,35 +73,38 @@ export default function DiscoverPage() {
   const [sections, setSections] = useState<DiscoverSection[] | null>(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
-  // ---- 分类（TMDB 类型清单 + 按类型翻页）----
-  /**
-   * ★ 2026-09-24（用户定稿）：**父分类（电影/剧集）未被点击前，不展示子分类（类型标签）**。
-   *   故初始为 null（未选），点击父分类后才拉出对应子分类。
-   */
-  const [media, setMedia] = useState<'movie' | 'tv' | null>(null);
-  const [genres, setGenres] = useState<{ movie: DiscoverGenre[]; tv: DiscoverGenre[] }>({ movie: [], tv: [] });
-  const [gSel, setGSel] = useState<DiscoverGenre | null>(null);
-  const [gPage, setGPage] = useState(1);
-  const [gItems, setGItems] = useState<DiscoverItem[]>([]);
-  const [gTotal, setGTotal] = useState(1);
-  const [gLoading, setGLoading] = useState(false);
-  const genreRequest = useRef(0);
-  const [genreError, setGenreError] = useState('');
   /** ★ 2026-10-08（豆风）：海报墙当前分区（顶部 pill 切换 —— 替代「一行行横滑」的堆叠布局） */
   const [wallSec, setWallSec] = useState(0);
-  const coverItem = (it: DiscoverItem) => ({ id: String(it.tmdbId), name: it.title, year: it.year ? String(it.year) : undefined, pic: it.poster });
-  const covers = useCovers((gSel ? gItems : (db ? sections?.[wallSec]?.items || [] : sections?.flatMap(s => s.items) || [])).map(coverItem));
+
+  // ---- 级联分类（★ 2026-10-15；选项表来自豆瓣自带的类型/地区词表）----
+  const [vocab, setVocab] = useState<ExploreVocabulary | null>(null);
+  /** 一级「分类」：null = 未选（此时展示榜单） */
+  const [media, setMedia] = useState<DiscoverMediaId | null>(null);
+  /** 各维度已选值（维度名 → 选项文本；`全部` = 不参与筛选）；缺失 = 该级未选、不展开下级 */
+  const [dims, setDims] = useState<Record<string, string>>({});
+  const [sortId, setSortId] = useState('');
+  const [items, setItems] = useState<DiscoverItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [bLoading, setBLoading] = useState(false);
+  const [bErr, setBErr] = useState('');
+  const reqRef = useRef(0);
+
+  const mediaOpt = DISCOVER_MEDIA.find(m => m.id === media) || null;
+  const mediaType: 'movie' | 'tv' = mediaOpt?.mediaType || 'movie';
+  const coverItem = (it: DiscoverItem) => ({ id: String(it.doubanId || it.tmdbId || it.title), name: it.title, year: it.year ? String(it.year) : undefined, pic: it.poster });
+  /** 预热封面：分类浏览有结果时用它，否则用（默认 / 回退）榜单 */
+  const coverSource = media !== null && items.length > 0
+    ? items
+    : (db ? sections?.[wallSec]?.items || [] : sections?.flatMap(s => s.items) || []);
+  const covers = useCovers(coverSource.map(coverItem));
 
   const goSearch = (title: string): void => { void openSearchWindow(title).catch((e) => window.alert(String(e))); };
 
   /**
    * 拉榜单（走主进程 6h 缓存）。
-   * ★ 2026-09-24：原「刷新」按钮随「发现」那排一起删除（用户定稿：整排冗余）→ 不再有强制刷新入口，
-   *   缓存过期由主进程 TTL 负责；需要立刻重拉时重启应用即可（避免留一个没人用的 refresh 参数）。
-   * ★ 2026-09-25（用户报「发现页经常加载不出来」）：TMDB 是跨境访问，偶发超时会让整页空。
-   *   主进程侧已加「分区重试 + 上次成功结果兜底」；渲染层再补两道：
-   *   ① 首次结果为空 → 1.2s 后**自动重试一次**（不自作多情地循环重试）；
-   *   ② 仍然为空 → 错误提示里给「重试」按钮（用户可手动再拉）。
+   * ★ 2026-09-25（用户报「发现页经常加载不出来」）：跨境/偶发超时会让整页空 → 渲染层补两道：
+   *   ① 首次结果为空 → 1.2s 后自动重试一次；② 仍为空 → 错误提示里给「重试」按钮。
    */
   const load = (): void => {
     setLoading(true);
@@ -119,172 +130,221 @@ export default function DiscoverPage() {
   }, [loading, sections]);
   useEffect(() => {
     load();
-    client.metaGenres().then(setGenres).catch(() => undefined);
+    client.metaExploreVocab()
+      .then((v) => { setVocab(v); setSortId(prev => prev || v.movie.defaultSort); })
+      .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** 选类型 → 取该类型第 page 页 */
-  const loadGenre = (g: DiscoverGenre, page: number, mediaType: 'movie' | 'tv' | null = media): void => {
-    if (!mediaType) return;
-    const requestId = ++genreRequest.current;
-    setGSel(g);
-    setGPage(page);
-    setGLoading(true);
-    setGenreError('');
-    setGItems([]);
-    client
-      .metaGenrePage(mediaType, g.id, page)
-      .then((r) => { if (requestId === genreRequest.current) { setGItems(r.items); setGTotal(r.totalPages); if (!r.items.length) setGenreError('该分类暂时无法获取，请稍后重试'); } })
-      .catch(() => { if (requestId === genreRequest.current) { setGenreError('分类请求失败，请稍后重试'); setGTotal(1); } })
-      .finally(() => { if (requestId === genreRequest.current) setGLoading(false); });
-  };
-  /** 点击父分类：切换选中；再次点击已选中的父分类 = 取消（子分类随之隐藏，回到推荐） */
-  const switchMedia = (m: 'movie' | 'tv'): void => {
-    ++genreRequest.current;
-    setGLoading(false);
-    const next = media === m ? null : m;
-    setMedia(next);
-    setGSel(null);
-    setGItems([]);
-    setGTotal(1);
-  };
-  const backToRecommend = (): void => { ++genreRequest.current; setGLoading(false); setGSel(null); setGItems([]); };
+  /** 当前分类可用的维度（综艺没有「类型」——它本身就是类型） */
+  const dimensions = useMemo(() => {
+    if (!vocab || !media) return [];
+    if (media === 'movie') return vocab.movie.dimensions;
+    if (media === 'tv') return vocab.tv.dimensions;
+    return vocab.tv.dimensions.filter(d => d.key !== '类型');
+  }, [vocab, media]);
+  const sorts = media === 'tv' || media === 'variety' ? vocab?.tv.sorts : vocab?.movie.sorts;
 
-  const genreList = media === 'movie' ? genres.movie : media === 'tv' ? genres.tv : [];
-  const hasGenres = genres.movie.length > 0 || genres.tv.length > 0;
+  /** 当前选择对应的豆瓣 tags（跳过「全部」） */
+  const tagsOf = (sel: Record<string, string>): string[] =>
+    [mediaOpt?.baseTag || '', ...Object.values(sel).filter(v => v && v !== ALL_TAG)].filter(Boolean);
+
+  const fetchPage = (pg: number, sel = dims): void => {
+    if (!media || !mediaOpt) return;
+    const id = ++reqRef.current;
+    setBLoading(true);
+    setBErr('');
+    client
+      .metaDiscoverQuery({
+        mediaType,
+        tags: tagsOf(sel),
+        ...(sortId ? { sort: sortId } : {}),
+        start: (pg - 1) * PAGE_SIZE,
+        count: PAGE_SIZE,
+      })
+      .then((r) => {
+        if (id !== reqRef.current) return;
+        setItems(r.items);
+        setTotal(r.total);
+        setPage(pg);
+        if (r.items.length === 0) setBErr('该组合暂无结果，可放宽「类型 / 地区 / 年代」，或换一种「排序」再试');
+      })
+      .catch(() => { if (id === reqRef.current) { setItems([]); setBErr('豆瓣分类请求失败，请稍后重试'); } })
+      .finally(() => { if (id === reqRef.current) setBLoading(false); });
+  };
+
+  /** 筛选变化 → 从第 1 页重取（★ 逐级点击才走到这里：每级选定都会即时出结果） */
+  useEffect(() => {
+    if (!media) {
+      ++reqRef.current;
+      setItems([]); setPage(1); setTotal(0); setBErr(''); setBLoading(false);
+      return;
+    }
+    fetchPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [media, dims, sortId]);
+
+  /** 级联点选：同级再点 = 取消（同时清掉其下各维度，保证「上级一变，下级重来」） */
+  const onPick = (levelKey: string, id: string): void => {
+    if (levelKey === 'media') {
+      setMedia(media === id ? null : id as DiscoverMediaId);
+      setDims({});
+      return;
+    }
+    if (levelKey === 'sort') { setSortId(id); return; }
+    const order: string[] = dimensions.map(d => d.key);
+    const idx = order.indexOf(levelKey);
+    const next: Record<string, string> = {};
+    for (let i = 0; i < idx; i++) {
+      const k = order[i];
+      if (dims[k] !== undefined) next[k] = dims[k];
+    }
+    if (dims[levelKey] !== id) next[levelKey] = id;
+    setDims(next);
+  };
+
+  const backToRecommend = (): void => {
+    setMedia(null); setDims({});
+    void load();
+  };
+
+  /** 级联各级：**只把该出现的级放进来**（上一级选定后才出现），即「点击后才展开下级分类」 */
+  const levels: CascadeLevel[] = [{ key: 'media', label: '分类', value: media, options: DISCOVER_MEDIA.map(m => ({ id: m.id, label: m.name })) }];
+  {
+    let prevChosen = media !== null;
+    for (const d of dimensions) {
+      if (!prevChosen) break;
+      const v = dims[d.key];
+      levels.push({
+        key: d.key,
+        label: d.label,
+        value: v === undefined ? null : v,
+        options: d.values.filter(x => x !== ALL_TAG).map(x => ({ id: x, label: x })) as CascadeOption[],
+        allLabel: ALL_TAG,
+      });
+      prevChosen = v !== undefined;
+    }
+    if (prevChosen && sorts && sorts.length) {
+      levels.push({ key: 'sort', label: '排序', value: sortId, options: sorts.map(s => ({ id: s.id, label: s.label })) });
+    }
+  }
+
+  /** 当前选择的摘要（「电影 · 喜剧 · 中国大陆 · 2024 · 综合排序」），不写废话 */
+  const summary = ((): string => {
+    if (!mediaOpt) return '';
+    const parts = [mediaOpt.name];
+    for (const d of dimensions) {
+      const v = dims[d.key];
+      if (v !== undefined) parts.push(v === ALL_TAG ? `全部${d.label}` : v);
+    }
+    const s = sorts?.find(x => x.id === sortId);
+    if (s) parts.push(s.label);
+    return parts.join(' · ');
+  })();
+
+  const totalPages = Math.max(1, Math.ceil(Math.min(total, MAX_TOTAL) / PAGE_SIZE));
+
+  /** 推荐榜单（默认视图 / 分类不可用时的回退视图共用） */
+  const sectionsView = (): React.ReactNode =>
+    db ? (
+      <div className="db-wall">
+        <div className="db-wall-chips" key={`chips-${sections?.length || 0}`}>
+          {(sections || []).map((s, i) => (
+            <button key={s.id} type="button" className={'db-wall-chip' + (i === wallSec ? ' active' : '')} onClick={() => setWallSec(i)}>
+              {s.title}
+            </button>
+          ))}
+        </div>
+        <div className="grid db-wall-grid" key={`wall-${wallSec}`}>
+          {((sections || [])[Math.min(wallSec, Math.max(0, (sections || []).length - 1))]?.items || []).map((it, i) => (
+            <ItemCard key={`${it.title}-${i}`} it={it} poster={covers.picOf(coverItem(it))} onError={url => covers.onError(coverItem(it), url)} onOpen={() => goSearch(it.title)} dbPlay dbYear />
+          ))}
+        </div>
+      </div>
+    ) : (
+      (sections || []).map((s) => (
+        <div key={s.id} className={nf ? 'nf-row' : ap ? 'ap-row' : undefined} style={nf || ap ? undefined : { marginBottom: 22 }}>
+          <h3 className={nf ? 'nf-row-title' : ap ? 'ap-row-title' : undefined} style={nf || ap ? undefined : { margin: '0 0 10px' }}>{s.title}</h3>
+          {/* 横向滚动条：滚轮在行内 → 横向滚动（见 HScrollRow）；行外空白 → 页面上下滚动 */}
+          <HScrollRow
+            className={nf ? 'nf-row-scroll' : ap ? 'ap-row-scroll' : undefined}
+            style={nf || ap ? undefined : { display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6 }}
+          >
+            {s.items.map((it, i) => (
+              <div key={`${it.title}-${i}`} style={nf ? undefined : { flex: ap ? '0 0 168px' : '0 0 132px', minWidth: 0 }}>
+                <ItemCard
+                  it={it}
+                  poster={covers.picOf(coverItem(it))}
+                  onError={url => covers.onError(coverItem(it), url)}
+                  playBadge={ap}
+                  onOpen={() => goSearch(it.title)}
+                />
+              </div>
+            ))}
+          </HScrollRow>
+        </div>
+      ))
+    );
+
   return (
     <>
       <div className="content">
-        {/* ★ 2026-09-24（用户定稿）：原来那排「发现 ……… 【刷新】」整排删除（标题与刷新按钮都属冗余）；
-            ★ 2026-09-26（用户指令）：无源时的「还没有导入任何源 —— 去导入源」提示条也整条删除。 */}
-        {/* ---- 分类条（父分类：电影/剧集；子分类：类型标签 —— 父分类未点击前不展示子分类）---- */}
-        {/* ★ 2026-10-08（豆风）：改成豆瓣式「标签行」（左侧小标签 + 右侧胶囊 chips），与顶栏胶囊导航同一套观感 */}
-        {hasGenres && db && (
-          <div className="db-filters">
-            <div className="db-filter-row">
-              <span className="db-filter-label">分类</span>
-              <span className={`tag ${media === 'movie' ? 'active' : ''}`} onClick={() => switchMedia('movie')}>电影</span>
-              <span className={`tag ${media === 'tv' ? 'active' : ''}`} onClick={() => switchMedia('tv')}>剧集</span>
+        {/* ---- 级联分类条：分类 → 类型 → 地区 → 年代 → 排序（逐级点击才展开下级）---- */}
+        <CascadeBar levels={levels} onPick={onPick} />
+        {media === null || !mediaOpt ? (
+          loading && !sections ? (
+            <div className="empty"><span className="spinner" aria-hidden="true" />加载中…</div>
+          ) : err && (!sections || sections.length === 0) ? (
+            <div className="err">
+              {err}
+              <button
+                style={{ marginLeft: 10 }}
+                onClick={() => {
+                  autoRetriedRef.current = true;
+                  load();
+                }}
+              >
+                重试
+              </button>
             </div>
-            {media !== null && genreList.length > 0 && (
-              <div className="db-filter-row">
-                <span className="db-filter-label">类型</span>
-                {genreList.map((g) => (
-                  <span key={g.id} className={`tag ${gSel?.id === g.id ? 'active' : ''}`} onClick={() => loadGenre(g, 1)}>
-                    {g.name}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {hasGenres && !db && (
-          <div className="row" style={{ marginBottom: 14 }}>
-            <span className="muted">分类：</span>
-            <span className={`tag ${media === 'movie' ? 'active' : ''}`} onClick={() => switchMedia('movie')}>电影</span>
-            <span className={`tag ${media === 'tv' ? 'active' : ''}`} onClick={() => switchMedia('tv')}>剧集</span>
-            {media !== null && <span style={{ width: 10 }} />}
-            {media !== null &&
-              genreList.map((g) => (
-                <span key={g.id} className={`tag ${gSel?.id === g.id ? 'active' : ''}`} onClick={() => loadGenre(g, 1)}>
-                  {g.name}
-                </span>
-              ))}
-            {media === null && <span className="muted" style={{ fontSize: 12 }}>（选「电影 / 剧集」后显示类型）</span>}
-          </div>
-        )}
-        {gSel ? (
+          ) : (
+            sectionsView()
+          )
+        ) : (
           <>
             <div className="row" style={{ marginBottom: 10 }}>
-              <h3 style={{ margin: 0 }}>{media === 'tv' ? '剧集' : '电影'} · {gSel.name}</h3>
+              <h3 style={{ margin: 0 }}>{summary}</h3>
               <div style={{ flex: 1 }} />
               <button style={{ flex: '0 0 auto' }} onClick={backToRecommend}>返回推荐</button>
             </div>
-            {gLoading && gItems.length === 0 ? (
+            {bLoading && items.length === 0 ? (
               <div className="empty"><span className="spinner" aria-hidden="true" />加载中…</div>
-            ) : gItems.length === 0 ? (
-              <div className="empty">{genreError || '该分类暂无数据'} <button onClick={() => loadGenre(gSel, gPage)}>重试</button></div>
+            ) : items.length === 0 ? (
+              // 豆瓣取不到（失败/风控）或该组合确实无结果 → 可读提示 + 回退榜单
+              <>
+                <div className="empty">
+                  {bErr || '该组合暂无结果'}
+                  <button style={{ marginLeft: 10 }} onClick={() => fetchPage(1)}>重试</button>
+                </div>
+                {sectionsView()}
+              </>
             ) : (
               <>
                 <div className="grid">
-                  {gItems.map((it, i) => (
-                    <ItemCard key={`${it.title}-${i}`} it={it} poster={covers.picOf(coverItem(it))} onError={url => covers.onError(coverItem(it), url)} onOpen={() => goSearch(it.title)} dbPlay={db} dbYear={db} />
+                  {items.map((it, i) => (
+                    <ItemCard key={`${it.title}-${i}`} it={it} poster={covers.picOf(coverItem(it))} onError={url => covers.onError(coverItem(it), url)} onOpen={() => goSearch(it.title)} playBadge={ap} dbPlay={db} dbYear={db} />
                   ))}
                 </div>
-                {gTotal > 1 && (
+                {totalPages > 1 && (
                   <div className="row" style={{ justifyContent: 'center', marginTop: 16 }}>
-                    <button disabled={gPage <= 1 || gLoading} onClick={() => loadGenre(gSel, gPage - 1)}>上一页</button>
-                    <span className="status">{gPage} / {gTotal}</span>
-                    <button disabled={gPage >= gTotal || gLoading} onClick={() => loadGenre(gSel, gPage + 1)}>下一页</button>
+                    <button disabled={page <= 1 || bLoading} onClick={() => fetchPage(page - 1)}>上一页</button>
+                    <span className="status">{page} / {totalPages}</span>
+                    <button disabled={page >= totalPages || bLoading} onClick={() => fetchPage(page + 1)}>下一页</button>
                   </div>
                 )}
               </>
             )}
           </>
-        ) : loading && !sections ? (
-          <div className="empty"><span className="spinner" aria-hidden="true" />加载中…</div>
-        ) : err && (!sections || sections.length === 0) ? (
-          <div className="err">
-            {err}
-            <button
-              style={{ marginLeft: 10 }}
-              onClick={() => {
-                autoRetriedRef.current = true; // 手动重试后不再触发自动重试
-                load();
-              }}
-            >
-              重试
-            </button>
-          </div>
-        ) : (
-          /* ★ 2026-10-08（豆风）：**海报墙** —— 分区 pill（豆瓣「热门电影/热播剧集」那排）切换，
-             下面一屏海报网格（悬停浮出播放钮 + 左下角年份角标）；不再是一行行横向滚动。 */
-          db ? (
-            <div className="db-wall">
-              <div className="db-wall-chips" key={`chips-${sections?.length || 0}`}>
-                {(sections || []).map((s, i) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    className={'db-wall-chip' + (i === wallSec ? ' active' : '')}
-                    onClick={() => setWallSec(i)}
-                  >
-                    {s.title}
-                  </button>
-                ))}
-              </div>
-              <div className="grid db-wall-grid" key={`wall-${wallSec}`}>
-                {((sections || [])[Math.min(wallSec, Math.max(0, (sections || []).length - 1))]?.items || []).map((it, i) => (
-                  <ItemCard key={`${it.title}-${i}`} it={it} poster={covers.picOf(coverItem(it))} onError={url => covers.onError(coverItem(it), url)} onOpen={() => goSearch(it.title)} dbPlay dbYear />
-                ))}
-              </div>
-            </div>
-          ) : (
-            (sections || []).map((s) => (
-              <div key={s.id} className={nf ? 'nf-row' : ap ? 'ap-row' : undefined} style={nf || ap ? undefined : { marginBottom: 22 }}>
-                <h3 className={nf ? 'nf-row-title' : ap ? 'ap-row-title' : undefined} style={nf || ap ? undefined : { margin: '0 0 10px' }}>{s.title}</h3>
-                {/* 横向滚动条：滚轮在行内 → 横向滚动（见 HScrollRow）；行外空白 → 页面上下滚动 */}
-                <HScrollRow
-                  className={nf ? 'nf-row-scroll' : ap ? 'ap-row-scroll' : undefined}
-                  style={nf || ap ? undefined : { display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6 }}
-                >
-                  {s.items.map((it, i) => (
-                    // ★ 2026-09-29：minWidth:0 —— 超长片名（.name 为 nowrap）会经 flex 项 min-width:auto
-                    //   把固定宽度的项撑宽，封面随 2:3 一起变高，整行被拉高留白（Netflix 同因同修，见 netflix.css）。
-                    <div key={`${it.title}-${i}`} style={nf ? undefined : { flex: ap ? '0 0 168px' : '0 0 132px', minWidth: 0 }}>
-                      <ItemCard
-                        it={it}
-                        poster={covers.picOf(coverItem(it))}
-                        onError={url => covers.onError(coverItem(it), url)}
-                        playBadge={ap}
-                        onOpen={() => goSearch(it.title)}
-                      />
-                    </div>
-                  ))}
-                </HScrollRow>
-              </div>
-            ))
-          )
         )}
       </div>
     </>

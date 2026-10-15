@@ -419,7 +419,9 @@
 :root[data-theme='apple'] .content > h4 { font-size: 13px; color: var(--text-dim); font-weight: 600; }
 
 /* ================= 播放器（独立窗口 / 内嵌）：暗色舞台 + 系统蓝进度 ================= */
-:root[data-theme='apple'] .vplayer { background: #000; border-radius: 14px; }
+/* 舞台直角已由**基类**统一决定（见 global.css 的 `.vplayer` 注释），皮肤不要再加圆角
+   （`overflow:hidden` + 圆角会切掉视频画面自身的四角）。 */
+:root[data-theme='apple'] .vplayer { background: #000; }
 :root[data-theme='apple'] .vp-controls {
   background: linear-gradient(to top, rgba(0, 0, 0, .86) 0%, rgba(0, 0, 0, .45) 58%, transparent 100%);
   padding: 22px 18px 12px;
@@ -450,16 +452,28 @@
   backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
 }
 :root[data-theme='apple'] .vp-vfill { background: var(--ap-blue); }
-/* 播放器窗口（独立 BrowserWindow）：整窗暗色（观看时不要浅色玻璃） */
-:root[data-theme='apple'] .app.pwin,
-:root[data-theme='apple'] .app.pwin .main { background: #000; }
-:root[data-theme='apple'] .app.pwin .titlebar { background: #1c1c1e; border-bottom: none; box-shadow: none; }
-:root[data-theme='apple'] .app.pwin .tb-title { color: #f2f2f7; }
-:root[data-theme='apple'] .app.pwin .tb-btn { color: #8e8e93; }
-:root[data-theme='apple'] .app.pwin .tb-btn:hover { background: rgba(255, 255, 255, .12); color: #fff; }
-:root[data-theme='apple'] .app.pwin .tb-btn.tb-close:hover { background: var(--ap-red); color: #fff; }
-/* 小窗口细拖拽条 */
-:root[data-theme='apple'] .mini-strip { background: rgba(28, 28, 30, .6); color: #d1d1d6; }
+/* 播放器窗口（独立 BrowserWindow）：★ 2026-10-15（用户要求「大果的播放器外壳也应该是白色的」）——
+   与大豆 / 哔哔**同口径**：外壳（窗口壳 / 标题栏 / 小窗条）用浅色，只有视频舞台 `.vplayer` 保持暗色。
+   此前这里写成 `.app.pwin`（无 `pvwin` 限定）⇒ 连**独立详情窗口**也被涂黑，且与另两套浅色皮肤不一致。
+   `pvwin` 只挂在真正的播放器窗口上（App.tsx 的 isPlayerWin 分支），详情窗口是 `app pwin`。 */
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin,
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin .main { background: #fff; }
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin .titlebar {
+  background: #fff; border-bottom: 1px solid var(--ap-hairline); box-shadow: none;
+}
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin .tb-title { color: var(--text); }
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin .tb-btn { color: var(--text-dim); }
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin .tb-btn:hover { background: var(--ap-fill); color: var(--text); }
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin .tb-btn.tb-close:hover { background: var(--ap-red); color: #fff; }
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin .tb-btn.tb-pin-on { color: var(--accent); background: var(--accent-soft); }
+/* 小窗口细拖拽条：基类 `mini-btn` 是为**深色**设计的（hover 白叠加 + 白字），浅底上必须换一套 */
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin .mini-strip { background: rgba(255, 255, 255, .92); color: var(--text-dim); }
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin .mini-btn { color: var(--text-dim); }
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin .mini-btn:hover { background: rgba(0, 0, 0, .08); color: var(--text); }
+:root[data-theme='apple']:not([data-mpv]) .app.pwin.pvwin .mini-strip-close:hover { background: var(--ap-red); color: #fff; }
+/* mpv 内核：外壳转透明（global.css 同款），此处只保证浮层上的字色仍是浅色 */
+:root[data-theme='apple'][data-mpv] .app.pwin.pvwin .tb-title { color: #f2f2f7; }
+:root[data-theme='apple'][data-mpv] .app.pwin.pvwin .tb-btn { color: #8e8e93; }
 
 /* ================= 滚动条（macOS overlay 观感） ================= */
 :root[data-theme='apple'] ::-webkit-scrollbar { width: 11px; height: 11px; }

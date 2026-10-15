@@ -10,17 +10,17 @@ import { getSessionSort, setSessionSort } from '../lib/sessionSort';
 import { makeStaleGuard } from '../lib/staleGuard';
 import { appendUniqueItems, pageSignature } from '../lib/listAppend';
 import { useWaterfall, setWaterfall as setWaterfallPref } from '../lib/uiPrefs';
-import { useTheme } from '../lib/theme';
+import { usePageActive } from '../lib/keepAlive';
 import { needsDriveBind } from '../../shared/driveProvider';
 import { useCovers } from '../lib/useCovers';
+import CascadeBar, { type CascadeLevel } from '../components/CascadeBar';
+import { ALL_TAG, LOCAL_SORTS, applyLocalFilters, localDimensions, sortLocal, type ExploreDimensionKey } from '../../shared/discover';
 import DriveBindModal from '../components/DriveBindModal';
 import { isSearchWindow, openSearchWindow } from '../lib/searchWin';
 
 type SortClassView = { id: string; name: string; flag?: string; filters?: FilterGroup[] };
 
 export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string, id: string, pic?: string, name?: string) => void }) {
-  /** ★ 2026-10-08（豆风）：分类/筛选条走豆瓣式「标签行」（左小标签 + 右胶囊 chips），见下方 db 分支 */
-  const db = useTheme() === 'douban';
   /**
    * ★ 2026-09-24（用户定稿）：点播页**不放源内搜索与换源入口** ——
    *   三套皮肤（网飝 / 哔哔 / 大果）的顶栏/工具栏都已自带「全源搜索 + 换源」，此处再放一遍是重复。
@@ -31,6 +31,18 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   const [tid, setTid] = useState<string>('');
   /** 当前分类已选中的筛选（分组 key → 选中 value） */
   const [filtersActive, setFiltersActive] = useState<Record<string, string>>({});
+  /**
+   * ★ 2026-10-15（用户要求「点播页分类要和发现页一样丰富」）：我们自建四维（类型/地区/年代/排序）。
+   *   源**有**对应筛选组的维度走 `filtersActive`（服务端筛选，精确）；
+   *   源**没有**的维度走这里的 `localSel`（在源已返回的条目上**本地过滤**，数据仍来自本源，不走聚合）。
+   */
+  const [localSel, setLocalSel] = useState<Record<string, string>>({});
+  const [localSort, setLocalSort] = useState('default');
+  /** 本地过滤需要多页累积才有意义：累积到的原始列表（null = 尚未累积）与推进代数见 accumulate() */
+  const rawRef = useRef<VodItem[] | null>(null);
+  const [rawInfo, setRawInfo] = useState({ pages: 0, total: 0 });
+  /** 累积页数上限（首轮 4 页；底部「继续加载更多」按 +4 递增） */
+  const [localCap, setLocalCap] = useState(4);
   const [items, setItems] = useState<VodItem[]>([]);
   const [pg, setPg] = useState(1);
   const [pageInfo, setPageInfo] = useState({ page: 0, pagecount: 0, total: 0 });
@@ -221,6 +233,11 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
       setClasses(r.sortClasses);
       setTid('');
       setFiltersActive({});
+      // ★ 2026-10-15：重新浏览某源 → 本地维度选择与累积列表一并作废
+      setLocalSel({});
+      setLocalSort('default');
+      setLocalCap(4);
+      rawRef.current = null;
       setItems(r.items);
       setPageInfo({ page: r.page, pagecount: r.pagecount, total: r.total });
       setPg(1);
@@ -325,7 +342,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
             setTid(mem.tid);
             setFiltersActive(mem.filters || {});
             setPg(mem.pg || 1);
-            void loadCategory(mem.tid, mem.pg || 1, mem.filters || {});
+            void loadCategory(mem.tid, mem.pg || 1, cleanExtend(mem.filters || {}));
           } else {
             void loadHome(pick);
           }
@@ -379,6 +396,11 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     setLoading(true);
     setErr('');
     setFallback(false); // 明确点分类 = 用户主动浏览，不再是首页回退
+    if (!append) {
+      // ★ 2026-10-15：整页拉取 = 这是一份新的服务端结果 → 本地累积列表作废
+      rawRef.current = null;
+      setRawInfo({ pages: 0, total: 0 });
+    }
     try {
       const r = t
         ? await client.category({ key: k, tid: t, pg: String(page), extend })
@@ -438,11 +460,20 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     return classes.find((c) => String(c.id) === tid);
   }
 
+  /** 下发前剔除「全部」（空值）——避免把 `{"area":""}` 之类空筛选送给源 */
+  const cleanExtend = (f: Record<string, string>): Record<string, string> =>
+    Object.fromEntries(Object.entries(f).filter(([, v]) => v !== ''));
+
   /** 切换分类（含「全部」）：记住上一个分类的筛选/页码，恢复目标分类的会话内状态。 */
   function chooseCategory(t: string) {
     // ★ 2026-09-30（瀑布模式）：瀑布下 `pg` = 「已连续加载到第几页」，与「翻页模式的第 N 页」不是一个语义
     //   （items 里是 1..N 页的合集）→ 会话记忆固定存 1，切走再切回从第 1 页重看、下滑继续追加。
     if (tid) setSessionSort(keyRef.current, tid, { filter: filtersActive, pg: waterfall ? 1 : pg });
+    // ★ 2026-10-15：换分类 = 换一份数据 → 我们的本地维度选择与累积列表一并作废
+    setLocalSel({});
+    setLocalSort('default');
+    setLocalCap(4);
+    rawRef.current = null;
     if (!t) {
       setTid('');
       setFiltersActive({});
@@ -456,34 +487,241 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     setFiltersActive(extend || {});
     const targetPg = restored ? restored.pg : 1;
     setPg(targetPg);
-    void loadCategory(t, targetPg, extend || {});
+    void loadCategory(t, targetPg, cleanExtend(extend || {}));
   }
 
-  /** 选择/取消某个筛选值：唯一触发点（不复用 effect），保证单次请求（CMS filterSelect 双发加固）。 */
-  function chooseFilter(gkey: string, value: string) {
-    const next = { ...filtersActive };
-    if (next[gkey] === value) delete next[gkey];
-    else next[gkey] = value;
+  /**
+   * ★ 2026-10-15（用户要求「点播页分类要和发现页一样丰富」）：
+   *   一级 = **源分类**（保留源自有分类，不替换）；其下固定四维：类型 / 地区 / 年代 / 排序。
+   *   · 源有同名（含别名）筛选组 → 用**源自己的选项**（服务端筛选，精确）；
+   *   · 源没有该组 → 用通用词表 + **本地过滤**（条目仍来自本源，绝不走聚合）；
+   *   · 源连条目字段都没有（例如根本不返回 area）→ 该维**诚实地隐藏**，不给死筛选。
+   *   源里其它筛选组（语言 / 明星 …）原样保留，排在四维之后。逐级展开：上一级选定（含「全部」）才出下一级。
+   */
+  const DIM_KEYS: ExploreDimensionKey[] = ['类型', '地区', '年代'];
+  const GROUP_PAT: Record<string, RegExp> = {
+    类型: /类型|片种|题材|genre|类别|影片类型/i,
+    地区: /地区|国家|区域|产地|area|region|country/i,
+    年代: /年代|年份|时间|year|era/i,
+    排序: /排序|顺序|sort|排列/i,
+  };
+  const dimSpecs = (() => {
+    const groups = currentClass()?.filters ?? [];
+    const used = new Set<string>();
+    const probeList = rawRef.current ?? items;
+    const specs: Array<{ key: ExploreDimensionKey; label: string; mode: 'server' | 'local' | 'none'; storeKey: string; options: Array<{ id: string; label: string }> }> = [];
+    for (const key of DIM_KEYS) {
+      const g = groups.find((x) => GROUP_PAT[key].test(x.name) && !used.has(x.key));
+      if (g) {
+        used.add(g.key);
+        specs.push({ key, label: key, mode: 'server', storeKey: g.key, options: g.value.filter((o) => o.v !== '').map((o) => ({ id: o.v, label: o.n })) });
+        continue;
+      }
+      const field = key === '地区' ? 'area' : key === '年代' ? 'year' : 'type';
+      const viable = probeList.length === 0 || probeList.some((it) => String((it as unknown as Record<string, unknown>)[field] || '').trim());
+      specs.push({
+        key,
+        label: key,
+        mode: viable ? 'local' : 'none',
+        storeKey: key,
+        options: (localDimensions().find((d) => d.key === key)?.values || []).filter((v) => v !== ALL_TAG).map((v) => ({ id: v, label: v })),
+      });
+    }
+    return specs;
+  })();
+  const sortGroup = (currentClass()?.filters ?? []).find((x) => GROUP_PAT['排序'].test(x.name));
+  /** 源里没被四维吃掉、也不是排序的其它筛选组（语言 / 明星 …）——原样保留 */
+  const extraGroups = (currentClass()?.filters ?? []).filter(
+    (g) => !dimSpecs.some((s) => s.mode === 'server' && s.storeKey === g.key) && g.key !== sortGroup?.key,
+  );
+
+  /** 本地维度是否真在起作用（决定要不要多页累积） */
+  const localActive = Object.entries(localSel).some(([, v]) => v && v !== ALL_TAG) || localSort !== 'default';
+
+  /** 某个维度当前选中值（server 走 filtersActive；local 走 localSel） */
+  const dimValue = (s: { mode: string; key: string; storeKey: string }): string | undefined =>
+    s.mode === 'server' ? filtersActive[s.storeKey] : localSel[s.key];
+
+  const classLevels: CascadeLevel[] = (() => {
+    const out: CascadeLevel[] = [
+      {
+        key: 'class',
+        label: '分类',
+        value: tid === '' ? '' : tid,
+        allLabel: '全部',
+        options: classes.map((c) => ({ id: String(c.id), label: c.name })),
+      },
+    ];
+    // 逐级展开：上一级「已选定」（值非 undefined）才放进下一级
+    let prevChosen = true;
+    const push = (lv: CascadeLevel, chosen: boolean): void => {
+      if (!prevChosen) return;
+      out.push(lv);
+      prevChosen = chosen;
+    };
+    for (const s of dimSpecs) {
+      if (s.mode === 'none') continue;
+      const v = dimValue(s);
+      push({ key: s.key, label: s.label, value: v === undefined ? null : v, allLabel: '全部', options: s.options }, v !== undefined);
+    }
+    for (const g of extraGroups) {
+      const v = filtersActive[g.key];
+      // 源自带的空值选项（「全部/不限」）语义等同本组 allLabel → 剔掉，避免两个「全部」
+      push({ key: `g:${g.key}`, label: g.name, value: v === undefined ? null : v, allLabel: '全部', options: g.value.filter((o) => o.v !== '').map((o) => ({ id: o.v, label: o.n })) }, v !== undefined);
+    }
+    if (prevChosen) {
+      out.push({
+        key: '排序',
+        label: '排序',
+        value: sortGroup ? (filtersActive[sortGroup.key] ?? null) : localSort,
+        ...(sortGroup ? { allLabel: '全部' } : {}),
+        options: sortGroup
+          ? sortGroup.value.filter((o) => o.v !== '').map((o) => ({ id: o.v, label: o.n }))
+          : LOCAL_SORTS.map((s) => ({ id: s.id, label: s.label })),
+      });
+    }
+    return out;
+  })();
+
+  /** 选中/取消一个服务端筛选值（'' = 该组「全部」） */
+  const toggleExtend = (prev: Record<string, string>, key: string, id: string): Record<string, string> => {
+    const next = { ...prev };
+    if (id === '') {
+      if (next[key] === '') delete next[key];
+      else next[key] = '';
+    } else if (next[key] === id) {
+      delete next[key];
+    } else {
+      next[key] = id;
+    }
+    return next;
+  };
+
+  /** 服务端筛选变化后的统一重载：本地维度在用时走多页累积，否则按整页拉 */
+  function reloadWithServer(next: Record<string, string>): void {
     setFiltersActive(next);
     setSessionSort(keyRef.current, tid, { filter: next, pg: 1 });
-    void loadCategory(tid, 1, next);
+    rawRef.current = null;
+    // ★ 注意：setState 是异步的 → 这里必须把**新** extend 显式传下去，否则累积请求会用到旧的 filtersActive
+    if (localActive) void accumulate(localCap, cleanExtend(next));
+    else void loadCategory(tid, 1, cleanExtend(next));
   }
+
+  /** 级联点选（源分类 / 四维 / 源的其它筛选组 / 排序） */
+  function onCascadePick(levelKey: string, id: string): void {
+    if (levelKey === 'class') {
+      chooseCategory(id === '' || tid === id ? '' : id);
+      return;
+    }
+    if (levelKey === '排序') {
+      if (sortGroup) reloadWithServer(toggleExtend(filtersActive, sortGroup.key, id));
+      else setLocalSort(id);
+      return;
+    }
+    if (levelKey.startsWith('g:')) {
+      reloadWithServer(toggleExtend(filtersActive, levelKey.slice(2), id));
+      return;
+    }
+    const spec = dimSpecs.find((s) => s.key === levelKey);
+    if (!spec) return;
+    if (spec.mode === 'server') {
+      reloadWithServer(toggleExtend(filtersActive, spec.storeKey, id));
+      return;
+    }
+    // 本地维度：只在内存里过滤（数据仍来自本源）
+    setLocalSel((prev) => {
+      const next = { ...prev };
+      if (next[spec.key] === id) delete next[spec.key];
+      else next[spec.key] = id;
+      return next;
+    });
+  }
+
+  /**
+   * ★ 2026-10-15：本地维度的多页累积 —— 一页（20~40 条）里凑不出「某地区/某年代」，必须多抓几页才有意义。
+   *   封顶 `max` 页（默认 4；底部「继续加载更多」按 +4 递增），命中末页/空页即停；与 `loadCategory` 共用代数守卫。
+   */
+  async function accumulate(max = localCap, extend = cleanExtend(filtersActive)): Promise<void> {
+    const k = keyRef.current;
+    if (!k || !tid) return;
+    const gen = listGen.current.next();
+    setLoading(true);
+    setErr('');
+    setFallback(false);
+    const acc: VodItem[] = [];
+    const seen = new Set<string>();
+    let pages = 0;
+    try {
+      for (let p = 1; p <= max; p++) {
+        const r = await client.category({ key: k, tid, pg: String(p), extend });
+        if (!listGen.current.isCurrent(gen)) return; // 过期：用户已换分类/换源/进搜索
+        pages = p;
+        if (p === 1) setPageInfo({ page: r.page, pagecount: r.pagecount, total: r.total });
+        if (!r.items.length) break;
+        for (const it of r.items) {
+          if (seen.has(it.id)) continue;
+          seen.add(it.id);
+          acc.push(it);
+        }
+        if (r.pagecount > 0 && r.pagecount <= 999 && p >= r.pagecount) break;
+      }
+      rawRef.current = acc;
+      setRawInfo({ pages, total: acc.length });
+      setItems(sortLocal(applyLocalFilters(acc, localSel), localSort));
+    } catch (e) {
+      if (listGen.current.isCurrent(gen)) setErr((e as Error).message);
+    } finally {
+      if (listGen.current.isCurrent(gen)) setLoading(false);
+    }
+  }
+
+  /** 本地维度变化：已有累积就直接重筛（瞬时），否则先累积多页 */
+  useEffect(() => {
+    if (!tid) return;
+    if (rawRef.current) {
+      setItems(sortLocal(applyLocalFilters(rawRef.current, localSel), localSort));
+      return;
+    }
+    if (!localActive) return;
+    void accumulate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localSel, localSort, tid, localCap]);
 
   function chooseSource(k: string) {
     if (!k || k === keyRef.current) return;
     setKey(k);
     setTid('');
     setFiltersActive({});
+    // ★ 2026-10-15：换源 = 换一份数据 → 本地维度选择与累积列表一并作废
+    setLocalSel({});
+    setLocalSort('default');
+    setLocalCap(4);
+    rawRef.current = null;
     setItems([]);
+    // ★ 2026-10-15（伪墓碑）：单页内模式下搜索页就在主界面里 —— 换源＝进浏览态，
+    //   同时把 URL 上的 `?agg=` 清掉（只在 /search 路由生效，见 syncSearchUrl），避免「界面已是浏览态、URL 还带搜索词」。
+    syncSearchUrl('');
     client.cfgSetActiveSource(k).catch(() => undefined);
     void loadHome(k);
   }
+
+  /**
+   * ★ 2026-10-15（伪墓碑）：本页是否可见 —— 隐藏的实例**不做换源/换档案这类重活**
+   *   （否则「切源」会让每个缓存页都跟着重载一遍）；等本页重新可见时再按全局状态对齐一次（见下方 align effect）。
+   *   监听器只注册一次 → 事件里必须读 ref 里的**最新可见态**，不能捕获首轮的值。
+   */
+  const pageActive = usePageActive();
+  const pageActiveRef = useRef(pageActive);
+  /** 隐藏期间发生过的「档案切换」：它换的可能是**同名 key**（靠对齐当前源查不出来），必须补做一次 */
+  const pendingProfileRef = useRef(false);
+  /** 首次可见 = 首次挂载，交给首载 effect；对齐只处理「从隐藏变回可见」 */
+  const everActiveRef = useRef(false);
 
   // ★ 2026-09-24：侧栏/顶栏的 SourcePicker 换源后广播事件 → 本页同步切换（避免「源名已换、列表还是旧源」）
   useEffect(() => {
     const onChanged = (e: Event): void => {
       const k = (e as CustomEvent<string>).detail;
-      if (typeof k === 'string' && k) chooseSource(k);
+      if (typeof k === 'string' && k && pageActiveRef.current) chooseSource(k);
     };
     window.addEventListener('winbox:source-changed', onChanged);
     return () => window.removeEventListener('winbox:source-changed', onChanged);
@@ -495,6 +733,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   //   只靠 source-changed 会被 chooseSource 的「同名即忽略」守卫挡掉，界面会停在旧档案的数据上。
   useEffect(() => {
     const onProfile = (e: Event): void => {
+      if (!pageActiveRef.current) { pendingProfileRef.current = true; return; }
       const k = (e as CustomEvent<string>).detail;
       void client
         .cfgGet()
@@ -518,6 +757,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   //     首载 effect 即将选中的源抢走（实测会跳到列表里第一个可用源）。
   useEffect(() => {
     const onSources = (): void => {
+      if (!pageActiveRef.current) return; // 隐藏时不重取；重新可见时由 align effect 刷新源列表
       void client.cfgGet().then((cfg) => {
         const s = cfg.sources;
         setSites(s);
@@ -531,6 +771,31 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     return () => window.removeEventListener('winbox:sources-changed', onSources);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * ★ 2026-10-15（伪墓碑）：本页从隐藏变回可见 → 对齐一次全局状态
+   *   （隐藏期间换过的源 / 源列表 / 档案都补上；隐藏时不做重活，避免多份缓存实例重复重载）。
+   */
+  useEffect(() => {
+    pageActiveRef.current = pageActive;
+    if (!pageActive) return;
+    if (!everActiveRef.current) { everActiveRef.current = true; return; }
+    const redoProfile = pendingProfileRef.current;
+    pendingProfileRef.current = false;
+    void client
+      .cfgGet()
+      .then((cfg) => {
+        setSites(cfg.sources);
+        const cur = cfg.ui.activeSourceKey;
+        if (redoProfile) {
+          if (cur) { setKey(cur); void loadHome(cur); }
+          return;
+        }
+        if (cur && cur !== keyRef.current) chooseSource(cur);
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageActive]);
 
   /**
    * ★ 2026-09-30（用户要求「瀑布模式」）：底部哨兵的可见性驱动加载下一页。
@@ -1189,44 +1454,9 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
           )
         ) : (
           <>
-            {classes.length > 0 && !err && (
-              <div className={db ? 'db-filter-row' : 'row'} style={db ? undefined : { marginBottom: 14 }}>
-                {db && <span className="db-filter-label">分类</span>}
-                <span className={`tag ${tid === '' ? 'active' : ''}`} onClick={() => chooseCategory('')}>全部</span>
-                {classes.map((c) => (
-                  <span
-                    key={c.id}
-                    className={`tag ${String(c.id) === tid ? 'active' : ''}`}
-                    onClick={() => chooseCategory(String(c.id))}
-                  >
-                    {c.name}
-                  </span>
-                ))}
-              </div>
-            )}
-            {/* ★ 分类筛选面板（class[].filters）：单选；选择即单次请求（见 chooseFilter） */}
-            {currentClass() && currentClass()!.filters && currentClass()!.filters!.length > 0 && (
-              <div className={db ? 'db-filters' : 'card'} style={db ? undefined : { padding: 10, marginBottom: 14 }}>
-                {currentClass()!.filters!.map((g) => (
-                  <div key={g.key} className="row" style={{ flexWrap: 'wrap', marginBottom: 6, gap: 6, alignItems: 'center' }}>
-                    <span className="muted" style={{ fontSize: 11, marginRight: 6 }}>{g.name}：</span>
-                    {g.value.map((opt) => {
-                      const on = filtersActive[g.key] === opt.v;
-                      return (
-                        <span
-                          key={`${g.key}:${opt.v}`}
-                          className={`tag ${on ? 'active' : ''}`}
-                          style={{ fontSize: 11, opacity: on ? 1 : 0.7 }}
-                          onClick={() => chooseFilter(g.key, opt.v)}
-                        >
-                          {opt.n}
-                        </span>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* ★ 2026-10-15（用户要求「级联分类·保留源分类」）：分类条 + 该分类的筛选组
+                改成**逐级展开**（一级选定才出下一级）—— 见 classLevels / onCascadePick */}
+            {classes.length > 0 && !err && <CascadeBar levels={classLevels} onPick={onCascadePick} />}
             {/* 站级预设分类（SourceBean.categories）：映射到同名/同 id 分类则点击可切，否则只读展示 */}
             {siteCats.length > 0 && !err && (
               <div className="row" style={{ marginBottom: 14 }}>
@@ -1275,10 +1505,19 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
                 </div>
                 )}
                 {/* ★ 2026-09-30（瀑布模式）：底部哨兵 —— 进入预取范围即自动追加下一页（见上方 effect） */}
-                {waterfall && tid !== '' && pageInfo.pagecount > 1 && (
+                {waterfall && tid !== '' && !localActive && pageInfo.pagecount > 1 && (
                   <div ref={wfSentinelRef} style={{ height: 1 }} aria-hidden="true" />
                 )}
-                {pageInfo.pagecount > 1 && (waterfall && tid !== '' ? (
+                {localActive ? (
+                  // ★ 2026-10-15：本地维度（源没有对应筛选组）在用时，列表是「多页累积 + 本地筛选」的产物 ——
+                  //   翻页按钮没有意义，这里只给状态与「继续加载更多」
+                  <div className="row" style={{ justifyContent: 'center', marginTop: 16 }}>
+                    <span className="status">已从本源取 {rawInfo.pages} 页 / 共 {rawInfo.total} 条 · 本地筛选后 {items.length} 条</span>
+                    {rawInfo.pages >= localCap && rawInfo.pages < 1000 && (
+                      <button disabled={loading} onClick={() => { setLocalCap((n) => n + 4); }}>继续加载更多</button>
+                    )}
+                  </div>
+                ) : pageInfo.pagecount > 1 && (waterfall && tid !== '' ? (
                   // 瀑布模式：底部只留进度（加载由哨兵自动驱动，无需按钮）
                   <div className="row" style={{ justifyContent: 'center', marginTop: 16 }}>
                     <span className="status">{wfStatusText()}</span>

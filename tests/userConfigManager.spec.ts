@@ -478,4 +478,56 @@ describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播
     expect(m.snapshot().lives[0].name).toBe('X2');
     expect(() => m.addLive(liveBean('bad', ''))).toThrow(/地址为空/);
   });
+
+  // ---------------------------------------------------------------------------
+  // ★ 2026-10-15（用户报「导入的 TXT 直播源重启软件会消失」）：
+  // 本地导入的 TXT/M3U 线路是一份**独立于订阅的本地订阅** —— 订阅导入 / 7 天自动刷新 /
+  // 档案切换都会全量替换 lives，它们必须活下来（否则重启即被自动刷新清掉）。
+  // ---------------------------------------------------------------------------
+  const LOCAL = 'http://127.0.0.1:9978/file/local-live/%E6%88%91%E7%9A%84%E7%9B%B4%E6%92%AD.txt';
+
+  it('订阅导入（自动刷新路径）替换 lives 后，本地导入线路仍在；重载（重启等价）后仍在', () => {
+    const dir = tmpDir();
+    const m = newManager(dir);
+    m.addLive(liveBean('我的直播', LOCAL));
+    // 启动时自动刷新 = importConfig → replaceFromImport：订阅自带一条远端线路
+    const cfg = fullConfig([bean('s1')]);
+    cfg.lives = [liveBean('远端线路', 'https://host/live.m3u')];
+    m.replaceFromImport(cfg, 'https://host/sub.json');
+    expect(m.lives().map((l) => l.name)).toEqual(['远端线路', '我的直播']);
+
+    const m2 = newManager(dir);
+    expect(m2.load()).toBe(true);
+    expect(m2.lives().map((l) => l.url)).toContain(LOCAL);
+    expect(m2.lives().map((l) => l.name)).toEqual(['远端线路', '我的直播']);
+  });
+
+  it('本地线路不写进档案 json；切走再切回仍在；重命名保留', () => {
+    const dir = tmpDir();
+    const m = newManager(dir);
+    m.replaceFromImport(fullConfig([bean('a1')]), 'https://host/a.json');
+    const aId = m.activeProfileId();
+    m.addLive(liveBean('本地X', LOCAL));
+    const b = m.saveAsProfile('配置B');
+    const bJson = JSON.parse(m.rawProfiles().find((p) => p.id === b.id)!.json) as { lives: unknown[] };
+    expect(bJson.lives).toEqual([]); // 存档不带本机线路
+
+    m.activateProfile(aId);
+    expect(m.lives().map((l) => l.url)).toEqual([LOCAL]);
+    m.updateLiveName(0, '改过名');
+    m.activateProfile(b.id);
+    m.activateProfile(aId);
+    expect(m.lives()).toHaveLength(1);
+    expect(m.lives()[0].name).toBe('改过名');
+  });
+
+  it('删除本地线路后，后续订阅替换不会让它复活', () => {
+    const dir = tmpDir();
+    const m = newManager(dir);
+    m.addLive(liveBean('本地Y', LOCAL));
+    m.deleteLive(0);
+    expect(m.lives()).toEqual([]);
+    m.replaceFromImport(fullConfig([bean('s1')]), 'https://host/s.json');
+    expect(m.lives()).toEqual([]);
+  });
 });

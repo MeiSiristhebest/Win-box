@@ -167,6 +167,25 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   html:not([data-motion='on']) .page-anim { animation: none; }
 }
 
+/* ---- ★ 2026-10-15（用户要求「伪墓碑」）：单页内跳转时上一个页面**保持挂载、仅隐藏** ----
+   新页面只替换可见内容，返回时零重载（滚动/分类/搜索态原样保留）。
+   隐藏页不参与布局与命中测试（display:none），页面内的懒加载/观察器也随之停摆。 */
+.page-anim.keep-page[data-active='0'] { display: none; }
+
+/* ---- ★ 2026-10-15：胶囊开关（两态分段）—— 配置页「页面打开方式」 ---- */
+.pill-switch {
+  display: inline-flex; padding: 3px; gap: 3px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--bg-elev);
+}
+.pill-switch > button {
+  border: 0; background: transparent; color: var(--text-dim); box-shadow: none;
+  border-radius: 999px; padding: 6px 14px; font-size: 12px; line-height: 1;
+  transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard);
+}
+.pill-switch > button:hover { border: 0; background: var(--accent-soft); color: var(--text); box-shadow: none; }
+.pill-switch > button.active,
+.pill-switch > button.active:hover { background: var(--accent); color: #0b0d12; font-weight: 600; box-shadow: none; }
+
 /* ---- ★ 2026-09-24：换源（手机 TVBox 式：源名纯文字，长按/右键弹列表）与顶栏搜索面板 ---- */
 .srcpick { position: relative; flex: 0 0 auto; }
 .srcpick-name {
@@ -305,6 +324,12 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
   transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard), border-color var(--dur-quick) var(--ease-standard); }
 .tag:hover { border-color: var(--accent); }
 .tag.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+/* ---- 级联分类条（★ 2026-10-15：逐级点击才展开下级；豆风走 .db-filters 组，其余皮肤走这里） ---- */
+.cascade { display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px; }
+.cascade-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-height: 22px; }
+.cascade-label { flex: 0 0 auto; color: var(--text-dim); font-size: 11px; margin-right: 6px; }
+.cascade-row + .cascade-row { border-top: 1px solid var(--border-soft); padding-top: 4px; }
 .empty { color: var(--text-dim); text-align: center; padding: 64px 20px; }
 
 /* ---- 点播网格 ---- */
@@ -390,6 +415,20 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
 .hist-undo .linkbtn { margin-left: auto; }
 .hist-undo .muted-btn { margin-left: 0; color: var(--text-dim); }
 
+/* ---- ★ 2026-10-17（用户要求「详情页加收藏按钮 + 收藏列表」）---- */
+/* 详情页操作区的收藏按钮（与「▶ 播放选中」同一行） */
+.fav-btn { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+/* 皮肤里针对 button / .tag 的选择器特异度更高 → 带 `:root[data-theme]` 前缀保证「已收藏」态生效（§C54 教训） */
+:root[data-theme] .fav-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+:root[data-theme] .fav-btn.active:hover { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* 收藏页：备注行（点击即编辑）与卡片内行内编辑面板 */
+.fav-note {
+  margin-top: 4px; font-size: 10px; color: var(--accent-2); cursor: text;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fav-edit { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-top: 1px solid var(--border-soft); }
+.fav-edit input { font-size: 11px; padding: 5px 7px; width: 100%; }
+
 /* ---- 表格 ---- */
 table { border-collapse: collapse; }
 th { font-weight: 600; }
@@ -399,8 +438,12 @@ tr.selectable:hover { background: var(--bg-elev); }
 tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rgba(91,140,255,.45); outline-offset: -1px; }
 
 /* ---- 播放器（现代化） ---- */
+/* ★ 2026-10-15（用户要求「大豆/大果的播放器被改成圆角，做回正常的直角播放器」→ 四套皮肤一起）：
+   舞台 `.vplayer` 必须是**直角**。它带 `overflow:hidden`，一旦有圆角就会**把视频画面自身的四角切掉**
+   （画面满铺时肉眼可见）；浅色外壳的皮肤（大豆 / 大果）还会在黑色舞台四周露出圆角缺口。
+   故圆角在**基类**统一置 0 —— 各皮肤不得再给 `.vplayer` 加圆角（原值 10px 为开源初始口径）。 */
 .vplayer { position: relative; flex: 1; background: #000; min-height: 0; overflow: hidden;
-  font-family: inherit; border-radius: 10px; }
+  font-family: inherit; border-radius: 0; }
 .vplayer video { width: 100%; height: 100%; object-fit: contain; outline: none; }
 
 /* ★ 2026-09-26（用户报「部分比例的视频会让播放器底部 UI 消失」）——
@@ -608,7 +651,7 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
   width: 14px; height: 14px; border-radius: 50%;
   background: #fff; box-shadow: 0 0 6px rgba(0, 0, 0, .5); transition: bottom .1s linear;
 }
-.vplayer:fullscreen { border-radius: 0; }
+.vplayer video { width: 100%; height: 100%; object-fit: contain; outline: none; }
 /*
    全屏光标跟随操作栏状态：移动时显示，播放中静止后隐藏。
    HTML5 使用 :fullscreen，MPV 使用 vfull；边缘缩放由主进程 setResizable 管理，
@@ -633,15 +676,8 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
 .about-link { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
   border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elev); color: var(--text); font-size: 13px; }
 .about-link:hover { border-color: var(--accent); color: var(--accent); }
-.about-link.about-sponsor:hover { border-color: #ff7a9a; color: #ff7a9a; }
-.about-link.about-group:hover { border-color: #5aa9ff; color: #5aa9ff; }
 .sp-hot-score { flex: 0 0 auto; font-size: 11px; margin-left: auto; }
 .about-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.about-support-dialog {
-  max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); padding: 14px;
-  border: 1px solid var(--border); border-radius: 14px; background: var(--bg-elev); color: var(--text);
-  box-sizing: border-box; overflow: auto; box-shadow: 0 18px 60px rgba(0,0,0,.5);
-}
 :root[data-theme][data-player-fullscreen] .app.pwin .titlebar { display: none; }
 /* Theme-wide button rules must not add padding or a background to window controls. */
 :root[data-theme][data-theme] .titlebar .tb-btn {
@@ -650,10 +686,6 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
 :root[data-theme][data-theme] .titlebar .tb-btn:not(:hover):not(.tb-pin-on) { background: transparent; }
 /* Mouse focus is not a selected state. Preserve a visible ring only for keyboard navigation. */
 :root[data-theme][data-theme] button:focus:not(:focus-visible) { outline: none; }
-.about-support-dialog::backdrop { background: rgba(0,0,0,.55); backdrop-filter: blur(4px); }
-.about-support-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
-.about-support-header h3 { margin: 0; font-size: 16px; }
-.about-support-image { display: block; width: min(440px, calc(100vw - 62px), calc(100vh - 112px)); height: auto; border-radius: 8px; }
 
 /* ---- 外挂字幕渲染（原生 TextTrack + VTTCue，用 CSS 变量控制字号/位置） ---- */
 .vplayer video::cue { font-size: var(--sub-font, 20px); font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
@@ -698,6 +730,15 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
 .vp-skipmenu-item:disabled { opacity: .45; cursor: not-allowed; }
 .vp-skipmenu-item:disabled:hover { background: none; }
 .vp-skipmenu-cancel { color: var(--muted, #9aa3b2); }
+/* ★ 2026-10-15（用户要求）：播放器右键菜单（复用 .vp-skipmenu 观感，宽度自适应内容） */
+.vp-ctxmenu { width: auto; min-width: 132px; }
+/* ★ 2026-10-15（用户要求）：右键「详情信息」→ 画面右上角浮层（紧凑、不拦截鼠标） */
+.vp-info { position: absolute; top: 10px; right: 10px; z-index: 27; pointer-events: none;
+  max-width: min(48%, 260px); padding: 7px 10px; border-radius: 8px; text-align: right;
+  background: rgba(0,0,0,.55); backdrop-filter: blur(6px); color: #fff;
+  font-size: 12px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.vp-info-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-info-row { opacity: .88; }
 .vp-toast { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); z-index: 26; pointer-events: none;
   padding: 8px 16px; border-radius: 999px; background: rgba(0,0,0,.72); color: #fff; font-size: 13px;
   border: 1px solid rgba(255,255,255,.14); }

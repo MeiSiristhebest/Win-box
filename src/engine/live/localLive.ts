@@ -2,6 +2,7 @@
 // ★ 2026-09-30（用户要求）：本地 TXT / M3U 直播源导入的纯函数（形态校验 + 取流地址）。
 //   导入后的线路走 `<userData>/local-live/<文件名>`，由本机 9978 的 `/file/` 路由提供给直播页加载
 //   （与 ext 指向 `/file/...` 的既有用法同一条链路；android 侧 URL 归一化对 `http://127.0.0.1` 开头原样保留）。
+import { LOCAL_PROXY_BASE } from '../../shared/constants';
 
 /**
  * 内容是否「像」直播源（TXT / M3U）。
@@ -19,6 +20,18 @@ export function looksLikeLiveSourceText(text: string): boolean {
 /** 本机 /file 路由的直播源地址（文件名逐段 encode；`/file/` 根 = userData 目录） */
 export function localLiveUrl(proxyBase: string, fileName: string): string {
   return `${proxyBase}/file/local-live/${encodeURIComponent(fileName)}`;
+}
+
+/** localLiveUrl 产物形态的前缀（本机已导入的本地直播线路以此判定） */
+const LOCAL_LIVE_URL_PREFIX = `${LOCAL_PROXY_BASE}/file/local-live/`;
+
+/**
+ * ★ 2026-10-15（用户报「导入的 TXT 直播源重启后消失」）：是否为**本机导入的 TXT / M3U 直播线路**。
+ *   这些线路是一份独立于订阅的本地订阅：订阅导入 / 7 天自动刷新 / 档案切换都会用「订阅自带线路」
+ *   全量替换 lives，必须把它们单独并回来（见 UserConfigManager 的 withLocalLives）。
+ */
+export function isLocalLiveUrl(url: string): boolean {
+  return String(url || '').trim().startsWith(LOCAL_LIVE_URL_PREFIX);
 }
 
 /**

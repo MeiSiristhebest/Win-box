@@ -33,6 +33,10 @@ export const IPC = {
   // ★ 发现页「分类」浏览（TMDB 类型清单 + 按类型翻页）
   META_GENRES: 'meta:genres',
   META_GENRE_PAGE: 'meta:genrePage',
+  /** ★ 2026-10-15（级联分类）：发现页「分类浏览」（豆瓣 recommend；start 偏移分页） */
+  META_DISCOVER_QUERY: 'meta:discoverQuery',
+  /** ★ 2026-10-15（级联分类）：级联词表（豆瓣自带的类型/地区 + 排序；两页共用） */
+  META_EXPLORE_VOCAB: 'meta:exploreVocab',
   // ★ 2026-09-24 元数据来源配置（TMDB 自填 Key/代理/镜像 + 来源策略）与搜索联想
   META_GET_SETTINGS: 'meta:getSettings',
   META_SET_SETTINGS: 'meta:setSettings',
@@ -155,8 +159,6 @@ export const IPC = {
   LIVE_GROUPS: 'live:groups',
   /** ★ 2026-09-29 EPG 节目单：按线路取各频道「当前 / 下一档」（XMLTV 拉取+缓存+匹配在主进程） */
   LIVE_EPG: 'live:epg',
-  STORE_HISTORY: 'store:history',
-  STORE_FAVORITE: 'store:favorite',
   // 独立播放器窗口
   PLAYER_OPEN: 'player:open',
   PLAYER_SWITCH_EP: 'player:switchEp',

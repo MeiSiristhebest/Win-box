@@ -5,6 +5,7 @@ import { IPC } from '../shared/ipc-channels';
 import type { SiteConfig, ImportReport, SourceBean, SourceMoveDirection, SourceUpdatePatch, UserConfig, UserProfile, MetaHit, MetaExtra, DiscoverSection, DiscoverGenre, DiscoverGenrePage, MetaImages } from '../shared/types';
 import type { SubtitleFetchResult } from '../shared/subtitle';
 import type { MetaSettings, MetaSettingsView, MetaSuggestion } from '../shared/meta';
+import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../shared/discover';
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<IpcResult<T>> =>
   ipcRenderer.invoke(channel, ...args);
@@ -169,6 +170,9 @@ const api = {
     genres: () => invoke<{ movie: DiscoverGenre[]; tv: DiscoverGenre[] }>(IPC.META_GENRES),
     genrePage: (mediaType: 'movie' | 'tv', genreId: number, page: number) =>
       invoke<DiscoverGenrePage>(IPC.META_GENRE_PAGE, mediaType, genreId, page),
+    // ★ 2026-10-15（级联分类）：发现页「分类浏览」（豆瓣 recommend，start 偏移分页）与级联词表
+    discoverQuery: (q: ExploreQuery) => invoke<ExplorePage>(IPC.META_DISCOVER_QUERY, q),
+    exploreVocab: () => invoke<ExploreVocabulary>(IPC.META_EXPLORE_VOCAB),
     // ★ 2026-09-24：元数据来源配置（TMDB 自填 Key/代理/镜像 + 策略）与搜索面板联想
     //   只读取用户自己的凭据；hasBuiltin 固定 false。
     getSettings: () => invoke<MetaSettingsView>(IPC.META_GET_SETTINGS),

@@ -34,6 +34,7 @@ import type {
 import type { DanmakuAnime, DanmakuCandidate, DanmakuSettings } from '../../shared/danmaku';
 import type { MetaHit, MetaExtra, DiscoverSection, DiscoverGenre, DiscoverGenrePage, MetaImages, MovieHotList } from '../../shared/types';
 import type { MetaSettings, MetaSettingsView, MetaSuggestion } from '../../shared/meta';
+import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../../shared/discover';
 import type { PlayerSettings, MpvStatus, MpvStartOptions, MpvCommand, MpvStateEvent } from '../../shared/player';
 import type { BackupExportResult, BackupImportResult } from '../../shared/backup';
 import type { DavBrowseResult, DavServer } from '../../shared/webdav';
@@ -176,6 +177,10 @@ declare global {
         /** ★ 发现页「分类」：类型清单与按类型翻页 */
         genres: () => Promise<IpcResult<{ movie: DiscoverGenre[]; tv: DiscoverGenre[] }>>;
         genrePage: (mediaType: 'movie' | 'tv', genreId: number, page: number) => Promise<IpcResult<DiscoverGenrePage>>;
+        /** ★ 2026-10-15（级联分类）：发现页「分类浏览」取一页（豆瓣 recommend，start 偏移分页） */
+        discoverQuery: (q: ExploreQuery) => Promise<IpcResult<ExplorePage>>;
+        /** ★ 2026-10-15（级联分类）：级联词表（豆瓣自带的类型/地区 + 排序；发现页与点播页共用） */
+        exploreVocab: () => Promise<IpcResult<ExploreVocabulary>>;
         /** ★ 2026-09-24 元数据来源配置（TMDB Key/代理/镜像 + 策略）与搜索联想 */
         getSettings: () => Promise<IpcResult<MetaSettingsView>>;
         setSettings: (patch: Partial<MetaSettings>) => Promise<IpcResult<MetaSettingsView>>;
@@ -442,6 +447,10 @@ export const client = {
   metaGenres: () => unwrap(window.api.meta.genres()),
   /** ★ 发现页「分类」：按类型取一页 */
   metaGenrePage: (mediaType: 'movie' | 'tv', genreId: number, page: number) => unwrap(window.api.meta.genrePage(mediaType, genreId, page)),
+  /** ★ 2026-10-15（级联分类）：发现页「分类浏览」取一页（豆瓣 recommend） */
+  metaDiscoverQuery: (q: ExploreQuery) => unwrap(window.api.meta.discoverQuery(q)),
+  /** ★ 2026-10-15（级联分类）：级联词表（发现页 / 点播页共用同一份选项） */
+  metaExploreVocab: () => unwrap(window.api.meta.exploreVocab()),
   /** ★ 2026-09-24：元数据来源配置（读取返回能力布尔 + 用户自填值，**绝不含内置密文**） */
   metaGetSettings: () => unwrap(window.api.meta.getSettings()),
   metaSetSettings: (patch: Partial<MetaSettings>) => unwrap(window.api.meta.setSettings(patch)),

@@ -1,10 +1,12 @@
-import { NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, Route, Routes, UNSAFE_LocationContext, useNavigate } from 'react-router-dom';
 import TitleBar from './components/TitleBar';
 import SearchPanel from './components/SearchPanel';
 import PageErrorBoundary from './components/PageErrorBoundary';
 import SourcePicker from './components/SourcePicker';
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
+import type { Location } from 'react-router-dom';
+import { cacheGroupOf, cacheKeyOf, cacheLimitOf, isCacheableRoute, PageActiveContext, pickEvictions } from './lib/keepAlive';
 import ConfigPage from './pages/ConfigPage';
 import HomePage from './pages/HomePage';
 import DiscoverPage from './pages/DiscoverPage';
@@ -15,15 +17,21 @@ import LivePage from './pages/LivePage';
 import StoragePage from './pages/StoragePage';
 import HistoryPage from './pages/HistoryPage';
 import AboutPage from './pages/AboutPage';
+// ★ 2026-10-17（用户要求）：「收藏」页（详情页收藏按钮 + 列表增删改查）
+import FavoritesPage from './pages/FavoritesPage';
 /** ★ 2026-09-29：启动更新提示（本地版本低于 GitHub 最新 Release 时由用户决定是否更新） */
 import UpdateGate from './components/UpdateGate';
 import { loadUiMemory, sameEpProgress, saveUiMemory, markHistoryOnlyWriter } from './lib/uiMemory';
+// ★ 2026-10-17（用户要求）：二次修改与再分发的免责条款（说明页与首启弹窗共用同一句话）
+import { MODIFIED_BUILD_DISCLAIMER } from './lib/disclaimerText';
+// ★ 2026-10-17（用户要求）：收藏（独立 localStorage 键，不并入 uiMemory）
+import { FAVORITES_EVENT, loadFavorites } from './lib/favorites';
 // ★ 2026-09-30（用户要求）：显式绑定第三方播放器时点播直接由它播放（详见 lib/externalPlay.ts）
 import { playVodExternal } from './lib/externalPlay';
 import { useShowDiscover } from './lib/uiPrefs';
 // 详情打开方式统一入口 + 固定窗口身份判定。
 import { isDetailWindow, openDetailRoute } from './lib/detailWin';
-import { isSearchWindow, openSearchWindow } from './lib/searchWin';
+import { isSearchWindow, bindSearchNav } from './lib/searchWin';
 import { useTheme } from './lib/theme';
 import { client } from './api/client';
 import type { Episode } from '../shared/types';
@@ -40,11 +48,13 @@ const NAV = [
   { to: '/', label: '发现', ico: '🧭', end: true },
   { to: '/home', label: '点播', ico: '▶' },
   { to: '/history', label: '历史', ico: '🕘' },
+  // ★ 2026-10-17（用户要求）：收藏（详见 pages/FavoritesPage.tsx）
+  { to: '/favorites', label: '收藏', ico: '⭐' },
   { to: '/live', label: '直播', ico: '📡' },
   // ★ 2026-09-29（WebDAV 存储）：把自建 OpenList/AList/Nextcloud 等当媒体库浏览播放
   { to: '/storage', label: '存储', ico: '🗄' },
   { to: '/config', label: '配置', ico: '⚙' },
-  // 说明页（详细免责声明 + GitHub / 支持作者入口）
+  // 说明页（详细免责声明 + GitHub 主页）
   { to: '/about', label: '说明', ico: 'ℹ' },
 ];
 
@@ -102,11 +112,17 @@ const AP_ICONS: Record<string, React.ReactNode> = {
       <path d="M8 7.3v3.4M8 5.2h.01" />
     </svg>
   ),
+  // 收藏 = star
+  '/favorites': (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
+      <path d="M8 1.9l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.7l-3.8 2 .7-4.3-3.1-3 4.3-.6z" />
+    </svg>
+  ),
 };
 
 /** Apple 皮肤侧边栏的**分组**（HIG：侧边栏最多两级、分组标签要简短） */
 const AP_GROUPS: { label: string; items: typeof NAV }[] = [
-  { label: '媒体', items: NAV.filter((n) => ['/', '/home', '/history', '/live', '/storage'].includes(n.to)) },
+  { label: '媒体', items: NAV.filter((n) => ['/', '/home', '/history', '/favorites', '/live', '/storage'].includes(n.to)) },
   { label: '其他', items: NAV.filter((n) => ['/config', '/about'].includes(n.to)) },
 ];
 
@@ -124,6 +140,84 @@ function PageShell() {
   );
 }
 
+/**
+ * ★ 2026-10-15（用户要求「伪墓碑：不真关上一个页面、只让它消失」）：
+ *   主界面回到**单页内跳转**后，切页**不卸载**上一个页面 —— 保持挂载、仅隐藏（`display:none`），
+ *   新页面只替换可见内容，返回时零重载、滚动/分类/搜索态原样保留。刻意不做「真墓碑」
+ *   （卸载后序列化/恢复状态）——那套在多窗口下易出错，也是用户反馈「经常出 bug」的根源。
+ *
+ * 实现要点：
+ *   · 每个缓存条目渲染自己那份 `<Routes location={loc}>`，并把该 location 覆盖进
+ *     `UNSAFE_LocationContext` —— 于是隐藏页的 `useLocation/useParams/useSearchParams`
+ *     仍取到**自己**那份路由（导航仍走全局 NavigationContext，`useNavigate` 不受影响）。
+ *   · `KeepEntry` 只在 `(loc, active)` 变化时重渲：**激活的条目每轮把 loc 刷成当前 location**
+ *     ⇒ 返回既有实例又拿到当轮路由；隐藏的条目冻结在自己的旧 location 上。
+ *   · 卡片按 `routeKey` 缓存：详情一部片一个实例（LRU 4），其余页面各 1 个；直播/存储/配置/说明不缓存。
+ */
+interface KeepEntryItem { loc: Location; group: string; order: number }
+
+/**
+ * react-router 把该字段定义成**字符串枚举**（`Action`，未公开导出）——这里用 Context 反推其字段类型，
+ * 避免依赖内部枚举名；断言只此一处（值就是 `'POP'`）。
+ */
+type LocationContextValue = NonNullable<React.ContextType<typeof UNSAFE_LocationContext>>;
+const CTX_NAV_POP = 'POP' as LocationContextValue['navigationType'];
+
+const KeepEntry = memo(function KeepEntry(
+  { loc, active, children }: { loc: Location; active: boolean; children: React.ReactNode },
+) {
+  return (
+    <div className="page-anim keep-page" data-active={active ? '1' : '0'}>
+      <PageActiveContext.Provider value={active}>
+        <UNSAFE_LocationContext.Provider value={{ location: loc, navigationType: CTX_NAV_POP }}>
+          <Routes location={loc}>{children}</Routes>
+        </UNSAFE_LocationContext.Provider>
+      </PageActiveContext.Provider>
+    </div>
+  );
+}, (a, b) => a.loc === b.loc && a.active === b.active);
+
+function KeepAliveRoutes({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const cacheRef = useRef<Map<string, KeepEntryItem>>(new Map());
+  const orderRef = useRef(0);
+  const pathname = location.pathname;
+  const cacheable = isCacheableRoute(pathname);
+
+  if (cacheable) {
+    // 本条目按「当轮 location」重渲（激活即刷新自己的路由）；并做同组 LRU 淘汰。
+    orderRef.current += 1;
+    const key = cacheKeyOf(pathname);
+    cacheRef.current.set(key, { loc: location, group: cacheGroupOf(pathname), order: orderRef.current });
+    const evict = pickEvictions(
+      Array.from(cacheRef.current, ([k, e]) => ({ key: k, group: e.group, order: e.order })),
+      key,
+      cacheGroupOf(pathname),
+      cacheLimitOf(pathname),
+    );
+    for (const k of evict) cacheRef.current.delete(k);
+  }
+
+  return (
+    <>
+      {Array.from(cacheRef.current, ([key, e]) => (
+        <KeepEntry key={key} loc={e.loc} active={cacheable && key === cacheKeyOf(pathname)}>
+          {children}
+        </KeepEntry>
+      ))}
+      {/**
+        * 非缓存页（直播/存储/配置/说明）：当场渲染、切走即卸载 —— 保持既有语义
+        * （配置页要拿刷新态；隐藏的直播会继续出声，故一律不缓存）。
+        */}
+      {!cacheable && (
+        <KeepEntry key="__direct__" loc={location} active>
+          {children}
+        </KeepEntry>
+      )}
+    </>
+  );
+}
+
 export default function App() {
   return (
     <UpdateGate>
@@ -135,6 +229,8 @@ export default function App() {
 function AppShell() {
   const nav = useNavigate();
   const loc = useLocation();
+  // ★ 2026-10-15：把本窗口的导航函数交给搜索入口 —— 「单页内」模式下搜索在**本窗口内**跳转（伪墓碑）。
+  useEffect(() => { bindSearchNav((to) => nav(to)); }, [nav]);
   /** ★ 2026-09-30（用户要求）：皮肤体系 —— 网飝 / 哔哔（都是「顶部导航一体化」外壳）+ 大果 / 豆风（各自独立外壳，见下）。
    *  两个经典主题（经典深/浅）与 sidebar 版式已删除。 */
   const theme = useTheme();
@@ -182,6 +278,7 @@ function AppShell() {
         : loc.pathname.startsWith('/search') ? '全源搜索'
           : loc.pathname.startsWith('/detail') ? '影片详情'
             : loc.pathname.startsWith('/history') ? '观看历史'
+              : loc.pathname.startsWith('/favorites') ? '我的收藏'
               : loc.pathname.startsWith('/live') ? '直播'
                 : loc.pathname.startsWith('/config') ? '配置'
                   : loc.pathname.startsWith('/about') ? '说明'
@@ -223,6 +320,8 @@ function AppShell() {
   // 初始化加载历史记录
   useEffect(() => {
     loadUiMemory();
+    // ★ 2026-10-17（用户要求）：收藏（独立 localStorage 键）——启动即加载，跨启动保留
+    loadFavorites();
     // ★ 2026-09-30（用户要求「软件关闭后，所有的墓碑机制都应该脱钩」）：
     //   页面状态类记忆（搜索态/浏览态/详情态）的**脱钩在 renderer/main.tsx 挂载前完成** ——
     //   必须早于首屏渲染，否则 HomePage 会先从 uiMem 恢复出上一次的搜索界面（用户报的现象）。
@@ -238,6 +337,9 @@ function AppShell() {
         // ★ 播放器窗口写在共享 localStorage 的历史，主窗口在恢复可见时重载，
         //   否则主窗口启动时只 load 一次（当时为空），历史页永远读不到播放器窗口的记录。
         loadUiMemory();
+        // ★ 2026-10-17：收藏同款（辅助窗口点收藏/移除后，切回主窗口即同步）
+        loadFavorites();
+        window.dispatchEvent(new Event(FAVORITES_EVENT));
       }
     });
     return () => {
@@ -288,6 +390,9 @@ function AppShell() {
     const onFocus = () => {
       loadUiMemory();
       window.dispatchEvent(new Event('winbox:history-refresh'));
+      // ★ 2026-10-17：收藏同款 —— 在独立详情/搜索窗口里点的收藏，回到主窗口即能看到
+      loadFavorites();
+      window.dispatchEvent(new Event(FAVORITES_EVENT));
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
@@ -328,10 +433,12 @@ function AppShell() {
           <p style={{ margin: '0 0 8px' }}>
             本项目<b>不含任何盈利行为</b>，不提供服务、不存储、不推送任何影视资源与内容，主要用途是个人学习研究，尤其是「Vibe Coding」编程体验。
           </p>
-          <p style={{ margin: 0 }}>
+          <p style={{ margin: '0 0 8px' }}>
             你在使用过程中自行配置/导入的播放源与资源均来自<b>第三方</b>，与本软件及作者无关。
             因使用第三方来源所引发的一切后果（含版权、侵权、内容合法性）由用户与第三方自行承担，作者免责。
           </p>
+          {/* ★ 2026-10-17（用户要求）：与说明页「八、二次修改与再分发」同一句话（见 lib/disclaimerText） */}
+          <p style={{ margin: 0 }}>{MODIFIED_BUILD_DISCLAIMER}</p>
         </div>
         <div className="row" style={{ justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
           {/* ★ 2026-10-14：`flex: 0` = `0 1 0%` ⇒ flex-basis 归零后按 min-content 收缩，
@@ -452,32 +559,44 @@ function AppShell() {
   }
 
   /**
-   * 路由表（★ 2026-09-29：抽成变量 —— Apple 独立外壳与经典/Netflix 外壳**共用同一份**，
-   * 避免两套 return 各写一遍 Routes 而漏改）。
-   * ★ 2026-09-24（用户定稿）：页面切换过渡动画 —— 布局路由 PageShell 以 pathname 为 key，
-   * 切页时容器重建并播放一次「淡入 + 轻微上移」。
+   * 路由表（★ 2026-09-29：抽成数组 —— 三套外壳与辅助窗口**共用同一份**，避免漏改）。
+   * ★ 2026-10-15：抽成「路径 + 元素」数组，主界面与辅助窗口两种挂载方式复用同一份路由。
+   */
+  const routeDefs: Array<{ path: string; el: React.ReactElement }> = [
+    // ★ 2026-09-24（用户定稿）：「发现」= 默认首页（软件打开即进这里）；「点播」= 源主页 /home
+    { path: '/', el: <DiscoverPage /> },
+    { path: '/home', el: <HomePage onOpenDetail={openDetail} /> },
+    /**
+     * ★ 2026-09-24：全源搜索专用路由 —— 详情页「演员/相关推荐」与发现页卡片点击后跳这里，
+     * 由 HomePage 读 `?agg=<关键词>` 自动执行一次全源搜索。
+     */
+    { path: '/search', el: <HomePage onOpenDetail={openDetail} /> },
+    { path: '/history', el: <HistoryPage /> },
+    // ★ 2026-10-17（用户要求）：收藏列表（增删改查）
+    { path: '/favorites', el: <FavoritesPage /> },
+    { path: '/detail/:key/:id', el: <DetailPage onPlay={onDetailPlay} /> },
+    { path: '/live', el: <LivePage /> },
+    // ★ 2026-09-29：WebDAV 存储（只读）—— 浏览自建 OpenList/AList/Nextcloud 等并播放
+    { path: '/storage', el: <StoragePage /> },
+    { path: '/config', el: <ConfigPage /> },
+    { path: '/about', el: <AboutPage /> },
+  ];
+  const routeChildren = routeDefs.map((d) => <Route key={d.path} path={d.path} element={d.el} />);
+
+  /**
+   * ★ 辅助窗口（详情 / 搜索）用的一次性路由：每次切路由重挂 + 过渡动画。
+   * ★ 2026-09-24（用户定稿）：布局路由 PageShell 以 pathname 为 key，切页时容器重建并播放一次动画。
    */
   const routesNode = (
     <Routes>
-      <Route element={<PageShell />}>
-        {/* ★ 2026-09-24（用户定稿）：「发现」= 默认首页（软件打开即进这里）；「点播」= 源主页 /home */}
-        <Route path="/" element={<DiscoverPage />} />
-        <Route path="/home" element={<HomePage onOpenDetail={openDetail} />} />
-        {/**
-          * ★ 2026-09-24：全源搜索专用路由 —— 详情页「演员/相关推荐」与发现页卡片点击后跳这里，
-          * 由 HomePage 读 `?agg=<关键词>` 自动执行一次全源搜索。
-          */}
-        <Route path="/search" element={<HomePage onOpenDetail={openDetail} />} />
-        <Route path="/history" element={<HistoryPage />} />
-        <Route path="/detail/:key/:id" element={<DetailPage onPlay={onDetailPlay} />} />
-        <Route path="/live" element={<LivePage />} />
-        {/* ★ 2026-09-29：WebDAV 存储（只读）—— 浏览自建 OpenList/AList/Nextcloud 等并播放 */}
-        <Route path="/storage" element={<StoragePage />} />
-        <Route path="/config" element={<ConfigPage />} />
-        <Route path="/about" element={<AboutPage />} />
-      </Route>
+      <Route element={<PageShell />}>{routeChildren}</Route>
     </Routes>
   );
+
+  /**
+   * ★ 主界面用的**伪墓碑**路由（见 KeepAliveRoutes）：切页保持挂载、仅隐藏，返回零重载。
+   */
+  const mainRoutesNode = <KeepAliveRoutes>{routeChildren}</KeepAliveRoutes>;
 
   /**
    * ★ 2026-10-08（用户要求「详情页独立窗口」）：详情窗口 = **无侧栏的极简外壳**（与 `#/player` 同款），
@@ -540,7 +659,7 @@ function AppShell() {
             <div className="ap-side-spacer" />
             <SourcePicker variant="sidebar" />
           </aside>
-          <main className="ap-main">{routesNode}</main>
+          <main className="ap-main">{mainRoutesNode}</main>
         </div>
       </div>
     );
@@ -577,7 +696,7 @@ function AppShell() {
             ))}
           </nav>
         </header>
-        <main className="db-main">{routesNode}</main>
+        <main className="db-main">{mainRoutesNode}</main>
       </div>
     );
   }
@@ -601,7 +720,7 @@ function AppShell() {
           <SourcePicker />
           <TitleBar />
         </nav>
-        {routesNode}
+        {mainRoutesNode}
       </main>
     </div>
   );

@@ -33,6 +33,7 @@ import type { DlnaCastTarget, DlnaDevice } from '../../shared/dlna';
 import type { DlnaService } from '../dlna/DlnaService';
 import type { UpdateProgress } from '../../shared/update';
 import type { UpdateService } from '../update/UpdateService';
+import type { ExploreQuery } from '../../shared/discover';
 // 独立播放器窗口
 import { openPlayerWindow, playerSwitchEpisode, isPlayerOpen, closePlayerWindow, playerSetMini, playerIsMini, playerWindow, playerResendInit, onPlayerWindowClosed, isPlayerWindow, playerSetFullscreen, playerIsFullscreen, playerSetResizable } from '../player/PlayerWindow';
 // ★ 2026-10-08 MPV 高兼容播放内核（独立播放器窗口内嵌 --wid）
@@ -247,6 +248,9 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   // ★ 2026-09-24：发现页「分类」（TMDB 类型清单 + 按类型翻页）
   registerHandler(IPC.META_GENRES, () => host.metaGenres(), log);
   registerHandler(IPC.META_GENRE_PAGE, (_e: any, mediaType: string, genreId: number, page: number) => host.metaGenrePage(String(mediaType || 'movie'), Number(genreId) || 0, Number(page) || 1), log);
+  // ★ 2026-10-15（级联分类）：发现页「分类浏览」（豆瓣 recommend；start 偏移分页）与级联词表
+  registerHandler(IPC.META_DISCOVER_QUERY, (_e: any, q: ExploreQuery) => host.metaDiscoverQuery(q || { mediaType: 'movie', tags: [] }), log);
+  registerHandler(IPC.META_EXPLORE_VOCAB, () => host.metaExploreVocab(), log);
   // ★ 2026-09-24：元数据来源配置（TMDB Key/代理/镜像 + 策略）与搜索面板联想
   registerHandler(IPC.META_GET_SETTINGS, () => host.metaGetSettings(), log);
   registerHandler(IPC.META_SET_SETTINGS, (_e: any, patch: unknown) => host.metaSetSettings((patch || {}) as Partial<MetaSettings>), log);

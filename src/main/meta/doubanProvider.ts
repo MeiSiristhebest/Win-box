@@ -119,7 +119,8 @@ export function __resetDoubanBreakerForTest(): void {
   breakerUntil = 0;
 }
 
-async function getJson(url: string, headersTimeoutMs: number): Promise<RexxarResp> {
+/** 豆瓣 rexxar 通用 GET（导出供 doubanExplore 复用，保持同一套 UA/Referer/出站链） */
+export async function doubanJson(url: string, headersTimeoutMs: number): Promise<RexxarResp> {
   // ★ 2026-09-25：出站链 —— 用户设了代理则代理优先（豆瓣在部分网络被墙），否则 系统 DNS → DoH
   const chain = dispatchChain(url, agent, dohFallback);
   for (let i = 0; i < chain.length; i++) {
@@ -201,7 +202,7 @@ export async function doubanSearchTitle(logger: Logger, name: string, year?: str
   // 顺序请求（省得同时打两个；豆瓣无需年份参数——按片名即召回，结果含年份供消歧）
   const candidates: MetaHit[] = [];
   for (const url of urls) {
-    const resp = await getJson(url, 12000);
+    const resp = await doubanJson(url, 12000);
     if (resp.status === 200) {
       noteDoubanStatus(200);
       try {
@@ -237,7 +238,7 @@ export async function doubanSuggest(logger: Logger, name: string, limit = 8): Pr
   const out: MetaSuggestion[] = [];
   const seen = new Set<string>();
   for (const type of ['movie', 'tv'] as const) {
-    const resp = await getJson(`${SEARCH_API}?q=${q}&type=${type}`, 8000);
+    const resp = await doubanJson(`${SEARCH_API}?q=${q}&type=${type}`, 8000);
     if (resp.status !== 200) {
       if (resp.status !== 0 && noteDoubanStatus(resp.status)) {
         logger.w('meta:豆瓣 联想触发风控熔断，暂停豆瓣兜底');

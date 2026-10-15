@@ -7,7 +7,7 @@
 //     窗口必须 transparent + 播放区页面透明；HTML 覆盖层仍绘制在 mpv 画面之上，点击归 HTML）；
 //   · `--input-ipc-server=\\.\pipe\<name>` + Node `net.connect` 可用（loadfile / set_property /
 //     observe_property 全通）；属性事件以 JSON 行推送。
-import type { MpvCommand, MpvKernelState } from '../../shared/player';
+import type { MpvAudioTrack, MpvCommand, MpvKernelState } from '../../shared/player';
 import { mpvFontSize, mpvSubPos } from '../../shared/player';
 import { playerCandidates } from '../torrent/externalPlayer';
 
@@ -28,6 +28,8 @@ export function initialKernelState(live = false): MpvKernelState {
     cacheKbps: 0,
     cacheTime: null,
     exited: false,
+    audioTracks: [],
+    aid: null,
   };
 }
 
@@ -42,7 +44,49 @@ export const MPV_OBSERVED: ReadonlyArray<{ id: number; name: string }> = [
   { id: 7, name: 'height' },
   { id: 8, name: 'cache-speed' },
   { id: 9, name: 'demuxer-cache-time' },
+  // ★ 2026-10-17（用户要求「音轨设置」）：观察音轨表与当前音轨，渲染层据此列出/高亮（无需新 IPC）
+  { id: 10, name: 'track-list' },
+  { id: 11, name: 'aid' },
 ];
+
+/**
+ * ★ 2026-10-17：mpv `track-list` → 只要 audio 轨道（紧凑结构；缺字段就不写）。
+ * 声道兼容两种历史键名（`demux-channel-count` / `demux-channels`）。
+ */
+export function mpvAudioTracks(data: unknown): MpvAudioTrack[] {
+  if (!Array.isArray(data)) return [];
+  const out: MpvAudioTrack[] = [];
+  for (const raw of data) {
+    const t = raw as Record<string, unknown> | null;
+    if (!t || typeof t !== 'object') continue;
+    if (String(t.type || '') !== 'audio') continue;
+    const id = Number(t.id);
+    if (!Number.isFinite(id)) continue;
+    const str = (v: unknown): string | undefined => {
+      const s = typeof v === 'number' ? String(v) : typeof v === 'string' ? v : '';
+      return s ? s : undefined;
+    };
+    out.push({
+      id,
+      title: str(t.title),
+      lang: str(t.lang),
+      codec: str(t.codec),
+      channels: str(t['demux-channel-count']) ?? str(t['demux-channels']),
+      selected: t.selected === true ? true : undefined,
+    });
+  }
+  return out;
+}
+
+/** 音轨列表内容是否相同（避免每次 property-change 都 setState 触发重渲染） */
+export function sameAudioTracks(a: readonly MpvAudioTrack[], b: readonly MpvAudioTrack[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => {
+    const y = b[i];
+    return x.id === y.id && x.title === y.title && x.lang === y.lang
+      && x.codec === y.codec && x.channels === y.channels && x.selected === y.selected;
+  });
+}
 
 /** JSON IPC 一行（命令或属性观察） */
 export function mpvCmdLine(cmd: unknown[]): string {
@@ -57,7 +101,7 @@ export function mpvObserveLines(): string[] {
 /**
  * 归一 mpv 推送的一行消息到内核状态（就地更新，返回是否有变化）。
  * 覆盖：property-change（time-pos/duration/pause/paused-for-cache/eof-reached/width/height/
- * cache-speed/demuxer-cache-time）、file-loaded、end-file。
+ * cache-speed/demuxer-cache-time/track-list/aid）、file-loaded、end-file。
  */
 export function reduceMpvMessage(state: MpvKernelState, msg: unknown): boolean {
   const m = msg as { event?: string; name?: string; data?: unknown; reason?: string; error?: unknown } | null;
@@ -146,6 +190,19 @@ export function reduceMpvMessage(state: MpvKernelState, msg: unknown): boolean {
         const v = num(m.data);
         if (v === state.cacheTime) return false;
         state.cacheTime = v;
+        return true;
+      }
+      // ★ 2026-10-17（用户要求「音轨设置」）：音轨表 / 当前音轨
+      case 'track-list': {
+        const list = mpvAudioTracks(m.data);
+        if (sameAudioTracks(state.audioTracks, list)) return false;
+        state.audioTracks = list;
+        return true;
+      }
+      case 'aid': {
+        const v = num(m.data);
+        if (v === state.aid) return false;
+        state.aid = v;
         return true;
       }
       default:
@@ -267,6 +324,12 @@ export function mpvCommandLines(cmd: MpvCommand): string[] {
       return [mpvCmdLine(['set_property', 'sub-font-size', mpvFontSize(cmd.value)])];
     case 'sub-pos':
       return [mpvCmdLine(['set_property', 'sub-pos', Math.max(0, Math.min(100, Math.round(Number(cmd.value) || 90)))])];
+    // ★ 2026-10-17（用户要求「音轨设置」）：切音轨（mpv 的 aid = 音轨 id）
+    case 'aid': {
+      const id = Number(cmd.value);
+      if (!Number.isFinite(id) || id <= 0) return [];
+      return [mpvCmdLine(['set_property', 'aid', Math.round(id)])];
+    }
     default:
       return [];
   }

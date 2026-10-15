@@ -140,3 +140,49 @@ export function useMotionPref(): MotionPref {
 export function initMotionPref(): void {
   applyMotionPref(getMotionPref());
 }
+
+/**
+ * ★ 2026-10-15（用户要求「详情/搜索的打开方式改回单页内，并做成可切换」）：
+ *   页面打开方式 —— `inline`（本页内跳转，主界面内替换可见内容）/ `window`（独立弹出窗口）。
+ *
+ *   `inline` 走「伪墓碑」：上一个页面**保持挂载、仅隐藏**（见 components 里的 KeepAliveRoutes），
+ *   返回时零重载、状态原样保留 —— 刻意不做「真墓碑」（页面卸载后序列化/恢复状态，多窗口下易错）。
+ *   默认 `inline`（用户反馈希望回到单页状态）。
+ */
+export type NavMode = 'inline' | 'window';
+
+const KEY_NAV_MODE = 'winbox-nav-mode';
+
+/** 页面打开方式（默认「本页内」；只有显式存过 `window` 才是独立窗口） */
+export function getNavMode(): NavMode {
+  try {
+    return localStorage.getItem(KEY_NAV_MODE) === 'window' ? 'window' : 'inline';
+  } catch {
+    return 'inline';
+  }
+}
+
+/** 设置页面打开方式并广播（切换后新的点击立即按新模式分流） */
+export function setNavMode(v: NavMode): void {
+  try {
+    localStorage.setItem(KEY_NAV_MODE, v === 'window' ? 'window' : 'inline');
+  } catch {
+    /* ignore */
+  }
+  try {
+    window.dispatchEvent(new Event(UI_PREFS_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** React Hook：订阅「页面打开方式」（配置页切换后即时生效） */
+export function useNavMode(): NavMode {
+  const [v, setV] = useState<NavMode>(() => getNavMode());
+  useEffect(() => {
+    const onChange = (): void => setV(getNavMode());
+    window.addEventListener(UI_PREFS_EVENT, onChange);
+    return () => window.removeEventListener(UI_PREFS_EVENT, onChange);
+  }, []);
+  return v;
+}

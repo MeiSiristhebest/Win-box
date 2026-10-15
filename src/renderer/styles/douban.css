@@ -351,13 +351,15 @@
 /* ================== 说明页 / 更新门禁 ================== */
 :root[data-theme='douban'] .about-link { background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--db-card-shadow); }
 :root[data-theme='douban'] .about-link:hover { border-color: rgba(46, 150, 41, .5); color: var(--accent); }
-:root[data-theme='douban'] .about-link.about-sponsor:hover { border-color: #FF7A9A; color: #E55A7E; }
 :root[data-theme='douban'] .upd-card { background: #fff; }
 :root[data-theme='douban'] .upd-bar { background: rgba(26, 32, 25, .12); }
 :root[data-theme='douban'] .upd-fill { background: linear-gradient(135deg, #38A932, #1F7A1B); }
 
 /* ================== 播放器（暗色舞台，覆盖在视频上的控件保持白色） ================== */
-:root[data-theme='douban'] .vplayer { background: #000; border-radius: 16px; }
+/* 舞台直角已由**基类**统一决定（见 global.css 的 `.vplayer` 注释），皮肤不要再加圆角：
+   圆角会切掉视频画面四角；而大豆的播放器外壳是**白色**（见上方 `.app.pwin.pvwin` 规则），
+   圆角还会让黑色舞台在白底上露出四个缺口 —— 最刺眼。 */
+:root[data-theme='douban'] .vplayer { background: #000; }
 :root[data-theme='douban'] .vp-big { background: rgba(24, 22, 28, .46); border: none; color: #fff; }
 :root[data-theme='douban'] .vp-big:hover { background: rgba(24, 22, 28, .66); transform: translate(-50%, -50%) scale(1.06); }
 :root[data-theme='douban'] .vp-progress { height: 6px; background: rgba(255, 255, 255, .26); border-radius: 3px; }

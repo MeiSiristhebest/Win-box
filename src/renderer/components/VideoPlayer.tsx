@@ -34,10 +34,10 @@ import ImageViewer from './ImageViewer';
 import AudioPlayer from './AudioPlayer';
 // ★ 2026-09-29 DLNA 投屏（SSDP 发现 + AVTransport 三动作；对位 CatClaw Dlna.cs）
 import { parseCastTarget, type DlnaDevice } from '../../shared/dlna';
-import { loadPlayerPrefs, savePlayerPrefs, PLAYER_FITS, type PlayerPrefs, type PlayerFit } from '../lib/playerPrefs';
+import { loadPlayerPrefs, savePlayerPrefs, PLAYER_FITS, getSessionAudioPref, setSessionAudioPref, type PlayerPrefs, type PlayerFit } from '../lib/playerPrefs';
 // ★ 2026-10-08（用户拍板「内置官方构建」）：MPV 高兼容播放内核 —— 双内核选择纯函数
 import { resolveKernel, type Kernel, type KernelPref } from '../lib/kernel';
-import { mpvSubPos, type MpvKernelState, type MpvStateEvent, type MpvStatus } from '../../shared/player';
+import { mpvSubPos, type MpvAudioTrack, type MpvKernelState, type MpvStateEvent, type MpvStatus } from '../../shared/player';
 import { subtitleEmptyReason, subtitleSourceLabel } from '../lib/subtitleText';
 import DriveBindModal from './DriveBindModal';
 import { driveProviderFromUrl, driveProviderLabel } from '../../shared/driveProvider';
@@ -252,6 +252,11 @@ interface VideoPlayerProps {
   onNext?: () => void;
   /** 当前资源名（剧名+集号），用于外挂字幕检索。缺省则不显示字幕搜索。 */
   resourceName?: string;
+  /**
+   * ★ 2026-10-15（用户要求「详情信息」里只显示播放详情里的片名、不显示第几集）：
+   *   **不含集号的片名**（详情页主标题）。缺省（直播 / 无集数源）则「详情信息」不显示片名行。
+   */
+  playTitle?: string;
   /** 视频分辨率回传到窗口标题；未知/换源时为空。 */
   onResolutionChange?: (resolution: string) => void;
   /** 可搜索的剧名副名（用于弹幕匹配）。缺省（如直播/无集数源）则不显示弹幕按钮。 */
@@ -292,7 +297,7 @@ interface VideoPlayerProps {
 /** 长按判定阈值（ms）：与右键同为「打开调整框」 */
 
 export default function VideoPlayer(props: VideoPlayerProps) {
-  const { url, canPrev, canNext, onPrev, onNext, resourceName, danmakuTitle, mini = false, driveBindProvider = null } = props;
+  const { url, canPrev, canNext, onPrev, onNext, resourceName, danmakuTitle, mini = false, driveBindProvider = null, playTitle = '' } = props;
   /**
    * ★ 2026-09-30（用户要求「图片和音乐要有独立的播放器」）：先判型再分流 ——
    *   图片（图集源的每一「集」= 一张图）与音频（mp3/flac…）分别由 ImageViewer / AudioPlayer 接管，
@@ -327,6 +332,16 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   const [paused, setPaused] = useState(true);
   const [cur, setCur] = useState(0);
   const [dur, setDur] = useState(0);
+  /**
+   * ★ 2026-10-15（用户要求「播放器右键菜单 → 详情信息」）：
+   *   `resText` = 画面右上角浮层要显示的分辨率（与窗口标题同源，见 reportResolution）；
+   *   `ctxMenu` = 右键菜单的屏幕坐标（null = 关闭）；`infoOpen` = 详情浮层是否打开；
+   *   `nowTick` = 「现在时间」的刷新脉冲（暂停时 cur 不再变，靠它每 15s 走一次字）。
+   */
+  const [resText, setResText] = useState('');
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [, setNowTick] = useState(0);
   // ★ 2026-09-29 DLNA 投屏：设备弹层状态
   const [castOpen, setCastOpen] = useState(false);
   const [castBusy, setCastBusy] = useState(false);
@@ -369,6 +384,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const next = formatVideoResolution(width, height);
     if (resolutionRef.current === next) return;
     resolutionRef.current = next;
+    setResText(next); // ★ 2026-10-15：右键「详情信息」浮层与窗口标题用同一个值
     resolutionCallbackRef.current?.(next);
   }, []);
   useEffect(() => {
@@ -431,6 +447,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     cacheKbps: 0,
     cacheTime: null,
     exited: false,
+    // ★ 2026-10-17（用户要求「音轨设置」）
+    audioTracks: [],
+    aid: null,
   });
   const mpvTimeRef = useRef(0); // 弹幕时间源（number）
   const mpvSizeRef = useRef({ w: 0, h: 0 }); // 弹幕绘制区（画面物理像素）
@@ -441,6 +460,15 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   const html5ResumeRef = useRef(0);
   const handoffRef = useRef<{ url: string; paused: boolean } | null>(null);
   const volRef = useRef(prefsRef.current!.vol);
+  /**
+   * ★ 2026-10-15（用户要求「长按画面/长按右键 = 临时 1.5 倍速，松开恢复」）：
+   *   `rateRef` = **用户设定的倍速**（与倍速选择框一致；临时加速不改它，只读它做恢复）；
+   *   `boostRef` = 当前是否处于临时加速。
+   */
+  const rateRef = useRef(prefsRef.current!.rate);
+  const boostRef = useRef(false);
+  /** 临时加速的提示（>0 时在画面上方显示「1.5x」） */
+  const [boostTip, setBoostTip] = useState(0);
   const [mpvErr, setMpvErr] = useState('');
   /** mpv 状态推送入口（由 mpv 会话 effect 安装，保证闭包读到最新一集上下文） */
   const mpvPushRef = useRef<((s: MpvStateEvent) => void) | null>(null);
@@ -491,7 +519,25 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   const kSetRate = (r: number) => {
     if (kIsMpv()) void client.mpvCmd({ type: 'rate', value: r }).catch(() => undefined);
     else if (ref.current) ref.current.playbackRate = r;
+    rateRef.current = r; // ★ 用户设定倍速（临时加速不经过这里，故不会被 1.5 污染）
     setRate(r);
+  };
+
+  /** 长按画面 / 长按 → 键的判定阈值；右键长按触发临时倍速的阈值 */
+  const LONG_PRESS_MS = 450;
+  const KEY_BOOST_MS = 500;
+
+  /**
+   * ★ 2026-10-15（用户要求）：**长按临时 1.5 倍速** —— 按住鼠标画面、或按住 → 键时 1.5x，松开立即恢复。
+   *   只改「当前播放倍速」，**不动倍速选择框里的持久值**（`rate`/`rateRef` 保持用户设定）。
+   */
+  const kSetBoost = (on: boolean) => {
+    if (boostRef.current === on) return;
+    boostRef.current = on;
+    const target = on ? 1.5 : rateRef.current;
+    if (kIsMpv()) void client.mpvCmd({ type: 'rate', value: target }).catch(() => undefined);
+    else if (ref.current) ref.current.playbackRate = target;
+    setBoostTip(on ? 1.5 : 0);
   };
 
   // MPV 可用性（仅播放器窗口需要；一处探活供切换按钮/自动选择用）
@@ -691,44 +737,15 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   const volTrackRef = useRef<HTMLDivElement>(null);
   const [volHover, setVolHover] = useState(false);
 
-  // ---- 自动下一集（播完 → 5 秒倒计时可取消；默认开启）----
-  const [nextCount, setNextCount] = useState<number | null>(null);
+  // ---- 自动下一集（★ 2026-10-17 用户要求：**不加倒计时，播完立即连播**；最后一集只提示已播完）----
   const [endAll, setEndAll] = useState(false);
-  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // ref 承载最新 props，供 ended 监听使用（避免因此重挂 url effect）
   const canNextRef = useRef(canNext);
   const onNextRef = useRef(onNext);
   canNextRef.current = canNext;
   onNextRef.current = onNext;
-  const clearAuto = useCallback(() => {
-    if (autoTimerRef.current) {
-      clearInterval(autoTimerRef.current);
-      autoTimerRef.current = null;
-    }
-    setNextCount(null);
-    setEndAll(false);
-  }, []);
-  const startCountdown = useCallback(() => {
-    clearAuto();
-    let n = 5;
-    setNextCount(n);
-    autoTimerRef.current = setInterval(() => {
-      n -= 1;
-      if (n <= 0) {
-        clearAuto();
-        const next = onNextRef.current;
-        if (next) next();
-      } else {
-        setNextCount(n);
-      }
-    }, 1000);
-  }, [clearAuto]);
-  const cancelCountdown = useCallback(() => {
-    clearAuto();
-    // ★ 2026-10-08：内核无关的暂停（mpv/HTML5 走适配层；helper 读 ref，闭包不过期）
-    if (!kPaused()) kPause();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clearAuto]);
+  /** 收掉「已播完」提示（换集 / 换 url / 出错 / 跳过片尾时都要收） */
+  const clearAuto = useCallback(() => setEndAll(false), []);
   const handlePrev = useCallback(() => {
     clearAuto();
     onPrev?.();
@@ -743,6 +760,25 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   // ★ 2026-09-26：画面比例（播放器设置记忆；见 lib/playerPrefs.ts 的 PlayerFit）
   const [fit, setFit] = useState<PlayerFit>(() => prefsRef.current!.fit);
   const [fitPanel, setFitPanel] = useState(false);
+  /**
+   * ★ 2026-10-17（用户要求「音轨设置」）：音轨面板 + 音轨表。
+   *   数据来源随内核：MPV → `MPV_STATE` 推送的 `track-list`；内置 → hls.js 的 `audioTracks`
+   *   （Chromium 的 `<video>` **不实现** `audioTracks`，非 HLS 的内置内核无法切换，面板里如实说明）。
+   */
+  const [audioPanel, setAudioPanel] = useState(false);
+  const [audioTracks, setAudioTracks] = useState<MpvAudioTrack[]>([]);
+  const [audioAid, setAudioAid] = useState<number | null>(null);
+  /** 音轨表签名（内容不变就不 setState，避免状态推送频繁时无谓重渲染） */
+  const audioSigRef = useRef('');
+  /** ★ 本会话记住的音轨标识放在 `lib/playerPrefs` 的**模块级变量**里（组件换集会重挂载，ref 扛不住）；
+   *  `audioAppliedRef` = 本实例已自动套用过的 url（实例内即可）。 */
+  const audioAppliedRef = useRef('');
+  /** 换片/换集 → 音轨表清空（等当前内核重新上报；否则会残留上一片的列表） */
+  useEffect(() => {
+    setAudioTracks([]);
+    setAudioAid(null);
+    audioSigRef.current = '';
+  }, [url]);
   // ★ 2026-09-28（用户要求）：进度条悬停气泡（指向的时间）+ 拖动状态
   const progRef = useRef<HTMLDivElement>(null);
   const seekDragRef = useRef(false);
@@ -1195,12 +1231,12 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
   // 字幕/弹幕/画面比例面板打开：同步 ref + 清闲置计时并锁定显示（关闭面板恢复自动隐藏）
   useEffect(() => {
-    panelOpenRef.current = !!(subPanel || dmPanel || fitPanel || skipPanel || volOpen);
+    panelOpenRef.current = !!(subPanel || dmPanel || fitPanel || audioPanel || skipPanel || volOpen);
     if (panelOpenRef.current) {
       if (idleTimer.current) clearTimeout(idleTimer.current);
       setUi(true);
     }
-  }, [subPanel, dmPanel, fitPanel, skipPanel, volOpen]);
+  }, [subPanel, dmPanel, fitPanel, audioPanel, skipPanel, volOpen]);
 
   // 键盘 ↑/↓ 调节音量时，短暂展开音量面板（1s 后自动淡出）
   const flashVol = useCallback(() => {
@@ -1392,8 +1428,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     setErr('播放出错：视频加载失败或源不可用');
   };
   const onEnded = () => {
-    // ★ 自动下一集：有下一集 → 5 秒倒计时可取消；否则（最后一集）只提示已播完
-    if (canNextRef.current && onNextRef.current) startCountdown();
+    // ★ 2026-10-17（用户要求「取消 5 秒等待，无缝连播」）：有下一集 → 立即切下一集；否则提示已播完
+    if (canNextRef.current && onNextRef.current) onNextRef.current();
     else setEndAll(true);
   };
   v.addEventListener('timeupdate', onTime);
@@ -1441,7 +1477,11 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         hlsRef.current = hls;
         hls.loadSource(htmlUrl);
         hls.attachMedia(v);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => start());
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          start();
+          // ★ 2026-10-17（用户要求「音轨设置」）：HLS 音轨表就绪 —— 列出/沿用本会话选过的音轨
+          syncHlsAudio();
+        });
         /**
          * ★★ 2026-09-30（用户报「直播不会被识别到直播里」）★★
          *   直播判定必须用 **hls 的 `details.live`**：hls.js 默认 `liveDurationInfinity=false`，
@@ -1455,6 +1495,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           liveKindRef.current = live;
           setIsLive(live);
         });
+        // ★ 2026-10-17（用户要求「音轨设置」）：HLS 音轨表更新 / 切换完成 → 刷新列表与高亮
+        hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => syncHlsAudio());
+        hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, () => syncHlsAudio());
         // ★ 实时网速：分片加载完成后统计（loaded 字节 / loading 耗时）
         hls.on(Hls.Events.FRAG_LOADED, (_e, d) => {
           const s = (d as { stats?: { loading: number; loaded: number } }).stats;
@@ -1635,6 +1678,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       cacheKbps: 0,
       cacheTime: null,
       exited: false,
+      // ★ 2026-10-17（用户要求「音轨设置」）：新会话先清空，等 mpv 上报 track-list
+      audioTracks: [],
+      aid: null,
     };
     mpvTimeRef.current = startAt;
     mpvSizeRef.current = { w: 0, h: 0 };
@@ -1674,6 +1720,16 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       else if (s.session !== mpvSessionRef.current) return;
       const st = s.state;
       mpvStateRef.current = { ...mpvStateRef.current, ...st };
+      // ★ 2026-10-17（用户要求「音轨设置」）：音轨表/当前音轨 —— 内容变了才 setState（推送很频繁）
+      const t = st.audioTracks || [];
+      const tSig = t.map((x) => `${x.id}|${x.lang || ''}|${x.title || ''}|${x.channels || ''}|${x.selected ? 1 : 0}`).join(',');
+      if (tSig !== audioSigRef.current) {
+        audioSigRef.current = tSig;
+        setAudioTracks(t);
+      }
+      // 每次推送都跑一遍（内部很快早退）：未生效时会限次重发，生效后即标记收工
+      autoApplyAudio(t, st.aid);
+      setAudioAid(st.aid);
       liveKindRef.current = st.live;
       setIsLive(st.live);
       mpvTimeRef.current = st.time ?? 0;
@@ -1703,8 +1759,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         if (!st.playbackStarted) {
           setMpvErr('视频流无法解析（分片读取失败）—— 可换线路或切回内置内核重试');
           setLoading(false);
-        } else if (canNextRef.current && onNextRef.current) startCountdown();
-        else setEndAll(true);
+        } else if (canNextRef.current && onNextRef.current) {
+          onNextRef.current(); // ★ 2026-10-17：取消 5 秒倒计时，播完立即连播
+        } else setEndAll(true);
       }
       if (st.exited) {
         setMpvErr('MPV 进程已退出（可切回内置内核重试）');
@@ -1742,6 +1799,127 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   };
 
   /**
+   * ★ 2026-10-15（用户要求）：**长按画面 = 临时 1.5 倍速**，松开立即恢复原速度。
+   *   · 450ms 才判定为长按（与单击区分）；判定后置 `boostAteClickRef` 吞掉松手时的 click，
+   *     否则长按会顺带切播放/暂停；
+   *   · 「松开」用 **window 级 mouseup** 判定 —— 指针拖出画面后松手也算松开，不会卡在 1.5x；
+   *   · 按下点同时挂在 `.vp-stage` 与 `.vp-big`（控制层可见时画面正中就是那个圆形播放键 ——
+   *     不挂它的话「按画面正中」会只按到按钮，长按加速在最自然的落点失效）；
+   *   · MPV 内核同样有效（走 kSetBoost 的内核适配层）。
+   */
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pressHeldRef = useRef(false);
+  const boostAteClickRef = useRef(false);
+  const onSurfaceDown = (e: React.MouseEvent) => {
+    if (e.button !== 0 || mini) return;
+    pressHeldRef.current = true;
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    pressTimerRef.current = setTimeout(() => {
+      pressTimerRef.current = null;
+      if (!pressHeldRef.current) return;
+      kSetBoost(true);
+      boostAteClickRef.current = true; // 长按已生效 → 松手后的 click 不再切播放/暂停
+    }, LONG_PRESS_MS);
+  };
+  useEffect(() => {
+    const onUp = () => {
+      pressHeldRef.current = false;
+      if (pressTimerRef.current) {
+        clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = null;
+      }
+      kSetBoost(false);
+    };
+    window.addEventListener('mouseup', onUp, true);
+    return () => {
+      window.removeEventListener('mouseup', onUp, true);
+      if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * ★ 2026-10-15（用户要求「播放器右键菜单」）：右键画面弹菜单（首项「详情信息」）。
+   *   · 进度条自带右键（「跳过设置」）会 `stopPropagation` ⇒ 这里不会被连带触发；
+   *   · 菜单 fixed 定位在指针处、越界向屏内收；点菜单外空白 / Esc 关闭；
+   *   · 小窗口（mini）没有画面区，不弹。
+   */
+  const ctxMenuRef = useRef<HTMLDivElement>(null);
+  const onPlayerContextMenu = (e: React.MouseEvent) => {
+    if (e.defaultPrevented || mini) return;
+    e.preventDefault();
+    setCtxMenu({
+      x: Math.max(8, Math.min(e.clientX, window.innerWidth - 152)),
+      // ★ 2026-10-17：菜单加到 2 项 → 纵向收边留的距离同步加大（原先按 1 项量的 88）
+      y: Math.max(8, Math.min(e.clientY, window.innerHeight - 124)),
+    });
+  };
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const onDown = (ev: MouseEvent) => {
+      const el = ctxMenuRef.current;
+      if (el && ev.target instanceof Node && el.contains(ev.target)) return; // 点菜单自身不关闭
+      setCtxMenu(null);
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setCtxMenu(null);
+    };
+    window.addEventListener('mousedown', onDown, true);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('mousedown', onDown, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [ctxMenu]);
+
+  /**
+   * ★ 2026-10-17（用户要求「右键菜单 → 复制视频地址」）：
+   *   优先复制**原始播放地址**（源给的 m3u8 / mp4 / 磁力…，即本集 episode url）——
+   *   解析后的直链多为**限时签名地址**或本机中继地址，复制出去没有意义；
+   *   原始地址缺失/不是地址形态时退回解析后的地址。结果用播放器自带提示条回执。
+   */
+  const copyVideoUrl = (): void => {
+    const txt = /^[a-z][a-z0-9+.-]*:/i.test(skipEpisodeKey) ? skipEpisodeKey : (url || '').trim();
+    if (!txt) return;
+    /** 兜底：剪贴板 API 不可用（权限/非安全上下文）时用隐藏 textarea + execCommand */
+    const legacy = (): boolean => {
+      try {
+        const el = document.createElement('textarea');
+        el.value = txt;
+        el.setAttribute('readonly', '');
+        el.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+        document.body.appendChild(el);
+        el.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(el);
+        return ok;
+      } catch {
+        return false;
+      }
+    };
+    const done = (): void => showSkipToast('视频地址已复制');
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(txt).then(done).catch(() => { if (legacy()) done(); });
+      return;
+    }
+    if (legacy()) done();
+  };
+
+  /** ★ 2026-10-15：详情浮层打开期间每 15s 走一次字（播放中 cur 更新本就会重渲染，暂停时靠它） */
+  useEffect(() => {
+    if (!infoOpen) return;
+    const t = setInterval(() => setNowTick((n) => n + 1), 15000);
+    return () => clearInterval(t);
+  }, [infoOpen]);
+
+  /** ★ 2026-10-15（用户要求）：现在时间（格式 xx点xx分） */
+  const nowText = (() => {
+    const d = new Date();
+    return `${d.getHours()}点${String(d.getMinutes()).padStart(2, '0')}分`;
+  })();
+
+  /**
    * ★ 2026-09-26（用户要求）：**单击暂停 / 双击全屏的判别**。
    *   浏览器总在 dblclick 之前先派发两轮 click → 旧实现下「双击全屏」必然先暂停再播（观感：全屏前老要暂停一下）。
    *   修复：单击动作延迟到双击窗口（280ms，与系统双击间隔阈值一致）后再执行；
@@ -1749,6 +1927,12 @@ export default function VideoPlayer(props: VideoPlayerProps) {
    *   小窗口模式没有双击全屏，单击立即生效（否则暂停有可感知的延迟）。
    */
   const onSurfaceClick = () => {
+    // ★ 2026-10-15（用户要求）：刚结束的长按已经「临时加速」过 → 吞掉随之而来的 click，
+    //   否则松手会顺带切播放/暂停（长按与单击必须互斥）
+    if (boostAteClickRef.current) {
+      boostAteClickRef.current = false;
+      return;
+    }
     if (mini) {
       togglePlay();
       return;
@@ -1773,11 +1957,14 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
   // ★ 播放器键盘（参照用户期望 / Playhub 快捷键）：
   //   空格：播放/暂停；
-  //   ←/→ 单击：±5s；长按(>500ms 仍按住)：每 40ms 持续 ±2s（连续快退/快进）；
+  //   ←/→ 单击：±5s；← 长按(>500ms)：每 40ms 持续 −2s（连续快退）；
+  //   ★ 2026-10-15（用户要求）：→ 长按(>500ms)：**临时 1.5 倍速**，松开立即恢复（不再连续快进）；
   //   ↑/↓：音量 +/− 5%（0..1）。
   //   用 window 级监听（video 元素不可聚焦）；输入框内不拦截；返回键(Backspace/Alt+←)仍在 App 全局处理。
   const holdTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const holdStart = useRef(0);
+  /** ★ 2026-10-15（用户要求）：右键长按「临时加速」的计时器 */
+  const boostTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const clearHold = () => {
       if (holdTimer.current) {
@@ -1810,13 +1997,21 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         const clamp = (n: number) => Math.max(0, Math.min(n, dur > 0 ? dur : n));
         kSeek(clamp(kTime() + dir * 5));
         holdStart.current = Date.now();
-        // 长按：500ms 后进入连续快退/快进
         clearHold();
-        holdTimer.current = setInterval(() => {
-          const d = kDur();
-          const cl = (n: number) => Math.max(0, Math.min(n, d > 0 ? d : n));
-          kSeek(cl(kTime() + dir * 2));
-        }, 40);
+        if (dir > 0) {
+          // ★ 2026-10-15（用户要求）：**右键长按 = 临时 1.5 倍速**（不再连续快进），松开即恢复
+          boostTimer.current = setTimeout(() => {
+            boostTimer.current = null;
+            kSetBoost(true);
+          }, KEY_BOOST_MS);
+        } else {
+          // 长按：500ms 后进入连续快退
+          holdTimer.current = setInterval(() => {
+            const d = kDur();
+            const cl = (n: number) => Math.max(0, Math.min(n, d > 0 ? d : n));
+            kSeek(cl(kTime() + dir * 2));
+          }, 40);
+        }
       } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         e.preventDefault();
         const dir = e.key === 'ArrowUp' ? 1 : -1;
@@ -1826,7 +2021,16 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') clearHold();
+      if (e.key === 'ArrowRight') {
+        // ★ 2026-10-15（用户要求）：松开 → 键 = 松开长按 → 立即恢复原倍速
+        if (boostTimer.current) {
+          clearTimeout(boostTimer.current);
+          boostTimer.current = null;
+        }
+        kSetBoost(false);
+        return;
+      }
+      if (e.key === 'ArrowLeft') clearHold();
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -1834,6 +2038,11 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       clearHold();
+      if (boostTimer.current) {
+        clearTimeout(boostTimer.current);
+        boostTimer.current = null;
+      }
+      kSetBoost(false); // 卸载时（切集/关窗）别把 1.5x 留下
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1911,7 +2120,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   }, [dur, mini, isLive]);
 
   // ★ 2026-09-28（用户要求）：字幕/弹幕图标手势 —— 左键单击=开关，右键或长按=打开调整框（三者互斥）
-  const openPanel = (which: 'sub' | 'dm' | 'fit') => {
+  const openPanel = (which: 'sub' | 'dm' | 'fit' | 'audio') => {
     subHover.cancel();
     dmHover.cancel();
     volumeHover.cancel();
@@ -1921,6 +2130,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     setSubPanel(which === 'sub');
     setDmPanel(which === 'dm');
     setFitPanel(which === 'fit');
+    setAudioPanel(which === 'audio');
     setSkipPanel(false); // ★ 与跳过面板互斥
     poke();
   };
@@ -1939,6 +2149,75 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   });
   const subPanelHost = usePlayerPanelPosition(subPanel, wrapRef);
   const dmPanelHost = usePlayerPanelPosition(dmPanel, wrapRef);
+  const audioPanelHost = usePlayerPanelPosition(audioPanel, wrapRef);
+  /**
+   * ★ 2026-10-17（用户要求「音轨设置」）：音轨处理 ——
+   *   · `audioTrackKey`：本会话记忆用的标识（语言优先 → 标题 → id 兜底）；
+   *   · `applyAudio`：切音轨（MPV → `aid` 命令；内置+HLS → `hls.audioTrack = 索引`）；
+   *   · `autoApplyAudio`：换片/换集后，若本会话选过同一语言/标题的音轨就自动套用一次（不必每集重选）；
+   *   · `syncHlsAudio`：内置内核从 hls.js 读音轨（Chromium 的 `<video>` 不实现 `audioTracks`）。
+   */
+  const audioTrackKey = (t: { id: number; lang?: string; title?: string }): string =>
+    (t.lang || t.title || `id:${t.id}`).trim();
+  const audioTrackLabel = (t: MpvAudioTrack, i: number): string => {
+    const parts = [t.lang, t.title, t.codec, t.channels ? `${t.channels}声道` : ''].filter(Boolean);
+    return parts.length ? parts.join(' · ') : `音轨 ${i + 1}`;
+  };
+  const applyAudio = (t: MpvAudioTrack): void => {
+    if (kIsMpv()) void client.mpvCmd({ type: 'aid', value: t.id }).catch(() => undefined);
+    else {
+      const hls = hlsRef.current;
+      if (hls) hls.audioTrack = t.id;
+    }
+    // 本会话记住（换片/换集沿用）。★ 不做「乐观高亮」：等内核状态回来再高亮，免得失败也显示成功
+    setSessionAudioPref(audioTrackKey(t));
+  };
+  /**
+   * 换片/换集后自动套用上次选的音轨。
+   * ★ 不能乐观标记「已套用」：mpv 在新文件还没换完时可能**忽略一次** `set aid`
+   *   （实测切下一集后音轨被打回默认）——所以用「内核当前音轨 == 目标」作为生效判据，
+   *   未生效就限次重发（≤3 次），发不进去就放弃（避免无限重发）。
+   */
+  const audioRetryRef = useRef<{ url: string; id: number; n: number }>({ url: '', id: -1, n: 0 });
+  const autoApplyAudio = (list: MpvAudioTrack[], current: number | null): void => {
+    const pref = getSessionAudioPref();
+    if (!pref || !list.length || audioAppliedRef.current === url) return;
+    const hit = list.find((t) => audioTrackKey(t) === pref);
+    if (!hit) return;
+    if (current === hit.id) {
+      audioAppliedRef.current = url; // 内核已是这条 → 记住并收工
+      return;
+    }
+    const seen = audioRetryRef.current;
+    const n = seen.url === url && seen.id === hit.id ? seen.n : 0;
+    if (n >= 3) {
+      audioAppliedRef.current = url;
+      return;
+    }
+    audioRetryRef.current = { url, id: hit.id, n: n + 1 };
+    applyAudio(hit);
+  };
+  const syncHlsAudio = (): void => {
+    const hls = hlsRef.current;
+    if (!hls) return;
+    const list: MpvAudioTrack[] = (hls.audioTracks || []).map((raw, i) => {
+      const t = raw as unknown as { name?: string; lang?: string; attrs?: Record<string, string> };
+      return {
+        id: i, // hls.audioTrack 是数组下标
+        title: t.name || undefined,
+        lang: t.lang || undefined,
+        channels: t.attrs?.CHANNELS || undefined,
+        selected: hls.audioTrack === i ? true : undefined,
+      };
+    });
+    const sig = list.map((t) => `${t.id}|${t.title || ''}|${t.lang || ''}|${t.selected ? 1 : 0}`).join(',');
+    if (sig === audioSigRef.current) return;
+    audioSigRef.current = sig;
+    setAudioTracks(list);
+    const cur = hls.audioTrack >= 0 ? hls.audioTrack : null;
+    setAudioAid(cur);
+    autoApplyAudio(list, cur);
+  };
   const fullBusyRef = useRef(false);
 
   // 进入小窗口模式时退出元素全屏（mini 下全屏功能消失）
@@ -2117,13 +2396,19 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       onMouseMove={poke}
       onMouseLeave={() => { if (!panelOpenRef.current) setUi(false); }}
       onDoubleClick={mini ? undefined : toggleFull}
+      onContextMenu={onPlayerContextMenu}
     >
       {/* ★ 2026-09-26：画面比例（用户要求）—— video 包进 stage/ratio 两层：
           · `.vp-stage` 绝对定位、撑满 `.vplayer` 且 `overflow:hidden` → **画面永不越出播放器区域**；
           · `.vp-ratio` 承载「强制 16:9 / 4:3」的定比盒子（其余模式为 100%×100%）；
           · 具体缩放交由 `object-fit`（contain/fill/cover/none），不改变元素盒尺寸。
-          这同时修掉「某些比例的视频把底部控制条挤出可视区」的老问题（flex min-height 链见 global.css）。 */}
-      <div className={`vp-stage fit-${fit}`} onClick={onSurfaceClick}>
+          这同时修掉「某些比例的视频把底部控制条挤出可视区」的老问题（flex min-height 链见 global.css）。
+          ★ 2026-10-15（用户要求）：`vp-stage` 上挂「长按画面 = 临时 1.5 倍速」，松手（window 级 mouseup）即恢复。 */}
+      <div
+        className={`vp-stage fit-${fit}`}
+        onClick={onSurfaceClick}
+        onMouseDown={onSurfaceDown}
+      >
         <div className="vp-ratio">
           <video ref={ref} style={{ width: '100%', height: '100%' }} playsInline />
         </div>
@@ -2143,8 +2428,51 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         speed={dmCfg.speed}
         offset={dmCfg.offset}
       />
-      {/* ★ 2026-10-08（用户要求）：跳过片头片尾的短暂提示（2.5s 淡出；不拦截鼠标） */}
-      {skipToast && <div className="vp-toast">{skipToast}</div>}
+      {/* ★ 2026-10-15（用户要求）：右键画面 → 播放器右键菜单（首项「详情信息」；后续功能继续往这里加） */}
+      {ctxMenu && (
+        <div
+          ref={ctxMenuRef}
+          className="vp-skipmenu vp-ctxmenu"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          role="menu"
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <button
+            className="vp-skipmenu-item"
+            role="menuitem"
+            onClick={() => {
+              setInfoOpen((v) => !v);
+              setCtxMenu(null);
+            }}
+          >
+            详情信息
+          </button>
+          {/* ★ 2026-10-17（用户要求）：复制视频地址（原始播放地址优先，见 copyVideoUrl） */}
+          <button
+            className="vp-skipmenu-item"
+            role="menuitem"
+            onClick={() => {
+              copyVideoUrl();
+              setCtxMenu(null);
+            }}
+          >
+            复制视频地址
+          </button>
+        </div>
+      )}
+      {/* ★ 2026-10-15（用户要求）：右键「详情信息」→ 画面右上角浮层（紧凑、不拦截鼠标）
+          · 片名只取播放详情里的片名（不含第几集）；进度 mm:ss/mm:ss；分辨率与窗口标题同源；现在时间 xx点xx分 */}
+      {infoOpen && !mini && (
+        <div className="vp-info">
+          {playTitle.trim() && <div className="vp-info-name" title={playTitle.trim()}>{playTitle.trim()}</div>}
+          <div className="vp-info-row">{fmt(cur)}/{fmt(dur)}</div>
+          {resText && <div className="vp-info-row">{resText}</div>}
+          <div className="vp-info-row">{nowText}</div>
+        </div>
+      )}
+      {/* ★ 2026-10-08（用户要求）：跳过片头片尾的短暂提示（2.5s 淡出；不拦截鼠标）
+          ★ 2026-10-15（用户要求）：长按临时加速时同一位置显示「1.5x」 */}
+      {(skipToast || boostTip > 0) && <div className="vp-toast">{skipToast || `${boostTip}x`}</div>}
       {/* 加载 / 缓冲 */}
       {(loading || buffering) && !err && !mpvErr && (
         <div className="vp-loading">
@@ -2160,7 +2488,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       )}
       {/* 中央大按钮（小窗口只保留控制条的 上/下集 + 播放暂停） */}
       {!loading && !err && !mpvErr && !mini && (
-        <button className="vp-big" onClick={onSurfaceClick} title={paused ? '播放' : '暂停'}>
+        <button className="vp-big" onClick={onSurfaceClick} onMouseDown={onSurfaceDown} title={paused ? '播放' : '暂停'}>
           {paused ? (
             <svg width="44" height="44" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
           ) : (
@@ -2227,17 +2555,10 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           </div>
         </div>
       )}
-      {/* 自动下一集倒计时 / 已播完 */}
-      {(nextCount !== null || endAll) && (
+      {/* 已播完（最后一集） */}
+      {endAll && (
         <div className="vp-next" onDoubleClick={(e) => e.stopPropagation()}>
-          {endAll ? (
-            <span>已播完全部剧集</span>
-          ) : (
-            <>
-              <span>{nextCount} 秒后播放下一集</span>
-              <button className="primary" onClick={cancelCountdown}>取消</button>
-            </>
-          )}
+          <span>已播完全部剧集</span>
         </div>
       )}
       {/* 控制条（小窗口：只保留 上/下集 + 播放暂停） */}
@@ -2823,6 +3144,49 @@ export default function VideoPlayer(props: VideoPlayerProps) {
               选择随播放器设置记忆（localStorage）保留到下次播放
               ★ 2026-09-28（用户要求）：面板改为「悬停开 / 鼠标离开即收」（与音量条一致）；
               间隙用 .vp-fithost 的 padding 桥接，避免移动中丢 hover */}
+          {/* ★ 2026-10-17（用户要求「音轨设置」）：列出/切换音轨（MPV: aid；内置+HLS: hls.audioTrack） */}
+          <div
+            className="vp-vol"
+            onPointerEnter={() => { setSubPanel(false); setDmPanel(false); setFitPanel(false); setAudioPanel(true); poke(); }}
+            onPointerLeave={() => setAudioPanel(false)}
+          >
+            <button
+              className="vp-ctl"
+              title={audioTracks.length ? `音轨：${audioTracks.length} 条（悬停选择）` : '音轨（悬停查看）'}
+              onClick={() => openPanel('audio')}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24">
+                <path d="M3 10.2v3.6M7 7v10M11 4.4v15.2M15 7.8v8.4M19 10.2v3.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+              {audioTracks.length > 1 && <span className="vp-subdot" />}
+            </button>
+            <div className={`vp-fithost${audioPanel ? ' open' : ''}`}>
+              <div ref={audioPanelHost} className="vp-subpanel vp-fitpanel vp-audiopanel" onClick={(e) => e.stopPropagation()}>
+                <div className="vsp-row" style={{ marginBottom: 6 }}>
+                  <span className="muted" style={{ fontSize: 11 }}>音轨（切换后本会话内自动沿用）</span>
+                </div>
+                {audioTracks.length === 0 ? (
+                  <div className="vsp-row">
+                    <span className="muted" style={{ fontSize: 11 }}>
+                      {kIsMpv() ? '未检测到音轨' : '当前内核不支持切换音轨（可切到 MPV 内核）'}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="vsp-fits">
+                    {audioTracks.map((t, i) => (
+                      <button
+                        key={t.id}
+                        className={`vsp-btn${audioAid === t.id ? ' active' : ''}`}
+                        onClick={() => applyAudio(t)}
+                      >
+                        {audioTrackLabel(t, i)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
           <div
             className="vp-vol"
             onPointerEnter={() => { setSubPanel(false); setDmPanel(false); setFitPanel(true); poke(); }}

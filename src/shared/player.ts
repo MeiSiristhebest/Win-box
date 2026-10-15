@@ -109,7 +109,25 @@ export type MpvCommand =
   | { type: 'sub-add'; text: string; fileName?: string } // SRT 文本（主进程落临时文件后 sub-add）
   | { type: 'sub-clear' }
   | { type: 'sub-font'; value: number } // CSS px（主进程换算 mpv 字号）
-  | { type: 'sub-pos'; value: number }; // 0..100（距顶部百分比）
+  | { type: 'sub-pos'; value: number } // 0..100（距顶部百分比）
+  // ★ 2026-10-17（用户要求）：音轨切换（mpv 的 aid；内置内核走 hls.js 的 audioTrack，不走这里）
+  | { type: 'aid'; value: number };
+
+/** ★ 2026-10-17（用户要求「音轨设置」）：音轨条目（mpv `track-list` 里的 audio 项归一后） */
+export interface MpvAudioTrack {
+  /** mpv 音轨 id（切换时用；也用于高亮当前项） */
+  id: number;
+  /** 轨道标题（如「国语」） */
+  title?: string;
+  /** 语言代码（如 chi/zho/jpn） */
+  lang?: string;
+  /** 编码（如 aac/ac3/eac3/dts） */
+  codec?: string;
+  /** 声道数/布局（如 2/6） */
+  channels?: string;
+  /** 是否 mpv 当前选中 */
+  selected?: boolean;
+}
 
 /** mpv 内核状态（主进程节流推送，渲染层据此驱动进度条/弹幕/跳过片头片尾） */
 export interface MpvKernelState {
@@ -137,6 +155,10 @@ export interface MpvKernelState {
   cacheTime: number | null;
   /** mpv 进程已退出 */
   exited: boolean;
+  /** ★ 2026-10-17（用户要求「音轨设置」）：可用音轨（track-list 里 type=audio 的项） */
+  audioTracks: MpvAudioTrack[];
+  /** ★ 2026-10-17：当前音轨 id（aid）；无音轨/未知 null */
+  aid: number | null;
 }
 
 /** 主进程 → 渲染层：内核状态推送（带会话号，晚到的旧会话事件被丢弃） */

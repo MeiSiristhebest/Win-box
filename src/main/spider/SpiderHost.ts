@@ -46,6 +46,8 @@ import type {
   LiveEpgResult,
 } from '../../shared/types';
 import type { EngineHost } from '../../engine/ports';
+import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../../shared/discover';
+import { doubanExplorePage, doubanExploreVocabulary } from '../meta/doubanExplore';
 // ★★ 2026-09-30：JS 沙箱改在 worker 线程执行（同步 req 不再冻主进程，见 engine/js/worker/protocol.ts）
 import { createPooledSandboxFactory } from '../../engine/js/worker/JsWorkerPool';
 import { userDataDir, cacheDir, resourcesDir, spiderCacheDir, distDir } from '../util/paths';
@@ -96,6 +98,8 @@ import {
 } from '../../engine/util/fetchWithDisguise';
 import { tryDecryptConfig } from '../net/configDecrypt';
 import { extractStegoConfig, looksLikeImage } from '../../engine/util/imageStego';
+// ★ 2026-10-15：订阅「伪装体」（十六进制 dump 外壳 + 尾部标记后 base64 载荷）提取，见模块头注释
+import { extractDisguiseConfig } from '../../engine/config/disguiseConfig';
 import { classifyPlayLink } from '../../engine/vod/playLink';
 import type { TorrentPlay } from '../torrent/torrentPlay';
 import { SubtitleStore } from '../subtitle/SubtitleStore';
@@ -1055,6 +1059,25 @@ export class SpiderHost {
     }
   }
 
+  /**
+   * ★ 2026-10-15（用户要求「级联分类」）：发现页「分类浏览」——数据层走**豆瓣**（大陆直连稳定，无需任何 Key）。
+   *   返回空页即表示豆瓣失败/风控 → 渲染层给出可读提示并回退榜单。
+   */
+  async metaDiscoverQuery(q: ExploreQuery): Promise<ExplorePage> {
+    const mediaType: 'movie' | 'tv' = q?.mediaType === 'tv' ? 'tv' : 'movie';
+    try {
+      return await doubanExplorePage(this.logger, { ...q, mediaType });
+    } catch (e) {
+      this.logger.w(`meta:豆瓣 分类浏览查询失败: ${(e as Error).message}`);
+      return { items: [], start: 0, total: 0, hasMore: false };
+    }
+  }
+
+  /** ★ 2026-10-15：级联词表（豆瓣自带的类型/地区 + 排序；失败回退内置快照）——两页共用同一份选项 */
+  metaExploreVocab(): Promise<ExploreVocabulary> {
+    return doubanExploreVocabulary(this.logger);
+  }
+
   /** ★ 2026-09-24 发现页「分类」：按类型取一页（popularity 排序） */
   async metaGenrePage(mediaType: string, genreId: number, page: number): Promise<DiscoverGenrePage> {
     const t: 'movie' | 'tv' = String(mediaType) === 'tv' ? 'tv' : 'movie';
@@ -1637,6 +1660,17 @@ export class SpiderHost {
       return stego.text;
     }
     const raw = res.last ? res.last.toString('utf-8') : '';
+    // ★ 2026-10-15：**伪装体**兜底（例 `https://yc.wya6.cn/wykj.php`）—— 真体整段是一个 jar 的
+    //   十六进制 dump，真配置藏在末行 ASCII 列的 `=XXX**` 标记之后（base64）。属「本地可解释」手段，
+    //   故排在图片隐写之后、第三方解密服务之前（见 disguiseConfig.ts 头注释）。
+    const disguise = extractDisguiseConfig(raw);
+    if (disguise) {
+      this.logger.i(
+        `订阅伪装体：已提取配置（${disguise.how}${disguise.marker ? `，marker=${disguise.marker}` : ''}，` +
+          `载荷起于 ${disguise.offset}，${disguise.text.length}B）：${url}`,
+      );
+      return disguise.text;
+    }
     // ★ 解密兜底：本地编码优先，其次第三方解密服务（仅此处、且仅在所有伪装手段失败后）
     const dec = await tryDecryptConfig(this.http, url, raw, this.logger);
     if (dec) return dec.text;
@@ -1646,6 +1680,9 @@ export class SpiderHost {
     this.lastConfigFetchHint =
       (encrypted ? '该地址返回的内容疑似**加密配置**（普通客户端无法直接使用）。' : '') +
       (image ? '该地址返回的是**图片**（疑似图片尾部隐写，但未从中提取到配置）。' : '') +
+      (sn?.kind === 'dump'
+        ? '该地址返回的是**十六进制 dump 伪装体**（真配置通常藏在尾部 `=XXX**` 标记之后，但本次未能提取）。'
+        : '') +
       (sn ? `最后响应为 ${sn.kind}（${sn.size}B）${sn.head ? `，开头是「${sn.head.slice(0, 60)}」` : ''}。` : '所有尝试都没有拿到响应体。') +
       `已尝试：${describeFailures(res.tries)}`;
     return raw;

@@ -47,6 +47,8 @@ export default function PlayerPage() {
   const [epIndex, setEpIndex] = useState(0);
   const [activeUrl, setActiveUrl] = useState('');
   const [curName, setCurName] = useState('');
+  /** ★ 2026-10-15（用户要求）：不含集号的片名 —— 右键「详情信息」浮层显示用（只显示片名，不显示第几集） */
+  const [playName, setPlayName] = useState('');
   const [resolution, setResolution] = useState('');
   const windowTitle = playerWindowTitle(curName, resolution);
   const [resolving, setResolving] = useState(false);
@@ -88,6 +90,7 @@ export default function PlayerPage() {
     const display = mainTitle ? `${mainTitle} - ${label}` : label;
     setEpIndex(idx);
     setCurName(display);
+    setPlayName(mainTitle);
     setResolution('');
     setResolving(true);
     setActiveUrl('');
@@ -385,6 +388,7 @@ export default function PlayerPage() {
             <VideoPlayer
               url={activeUrl}
               resourceName={curName}
+              playTitle={playName}
               onResolutionChange={setResolution}
               danmakuTitle={((init?.subtitleTitle || init?.title) || '').trim()}
               driveBindProvider={driveBind}

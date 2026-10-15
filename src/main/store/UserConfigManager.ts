@@ -11,6 +11,7 @@ import type { JsonStore } from './JsonStore';
 import { parseSite } from '../../engine/config/SiteParser';
 import { parseSiteConfig } from '../../engine/config/ApiConfigParser';
 import { parseLives } from '../../engine/config/LiveConfigParser';
+import { isLocalLiveUrl } from '../../engine/live/localLive';
 import type {
   LiveBean,
   Logger,
@@ -171,7 +172,8 @@ export class UserConfigManager {
    * 与导入（replaceFromImport）不同：这里是**还原**，保留备份里的 sources/lives/profiles/ui 原样。
    */
   restore(raw: UserConfig): void {
-    this.apply(this.normalizeLoaded(raw));
+    // ★ 2026-10-15：备份还原同样把「本机导入的本地直播线路」并回来（见 withLocalLives）
+    this.apply(this.withLocalLives(this.normalizeLoaded(raw)));
   }
 
   sources(): SourceBean[] {
@@ -228,8 +230,11 @@ export class UserConfigManager {
     if (!next.sources.some((s) => s.key === next.ui.activeSourceKey)) {
       next.ui.activeSourceKey = '';
     }
-    next.ui.activeLiveIndex = clampIndex(next.ui.activeLiveIndex, next.lives.length);
-    this.apply(next);
+    // ★ 2026-10-15（用户报「导入的 TXT 直播源重启后消失」）：订阅导入 / 自动刷新只替换**订阅自带**的线路，
+    //   本机导入的 TXT / M3U 线路属于独立的一份「本地订阅」，必须并回来（否则下一次订阅往返即丢失）。
+    const merged = this.withLocalLives(next);
+    merged.ui.activeLiveIndex = clampIndex(merged.ui.activeLiveIndex, merged.lives.length);
+    this.apply(merged);
   }
 
   /** 将当前状态存为新档案并切换过去（多 JSON 源管理）。返回新 profile。 */
@@ -248,7 +253,8 @@ export class UserConfigManager {
       id: slug(name) + '-' + Date.now().toString(36).slice(-4),
       name: name.trim() || '未命名配置',
       apiUrl,
-      json: serializeImport(parsed as SiteConfig),
+      // ★ 2026-10-15：档案存档不烤入「本机导入的本地直播线路」——它们不随档案切换走（见 withLocalLives）
+      json: serializeImport({ ...parsed, lives: this.serializableLives(parsed.lives) } as SiteConfig),
       sourceCount: parsed.sites.length,
       importedAt: new Date().toISOString(),
     };
@@ -268,7 +274,7 @@ export class UserConfigManager {
         : {}),
     };
     if (!next.sources.some((s) => s.key === next.ui.activeSourceKey)) next.ui.activeSourceKey = '';
-    this.apply(next);
+    this.apply(this.withLocalLives(next));
     return { ...p };
   }
 
@@ -296,10 +302,12 @@ export class UserConfigManager {
       lives: parsed.lives.map((l) => ({ ...l })),
       parses: realParses(parsed.parses),
     };
-    if (pickKey && next.sources.some((s) => s.key === pickKey)) next.ui.activeSourceKey = pickKey;
-    else if (!next.sources.some((s) => s.key === next.ui.activeSourceKey)) next.ui.activeSourceKey = '';
-    next.ui.activeLiveIndex = clampIndex(next.ui.activeLiveIndex, next.lives.length);
-    this.apply(next);
+    // ★ 2026-10-15：档案切换会从存档 json 全量重建 lives —— 本机导入的本地直播线路不随档案走，并回来
+    const merged = this.withLocalLives(next);
+    if (pickKey && merged.sources.some((s) => s.key === pickKey)) merged.ui.activeSourceKey = pickKey;
+    else if (!merged.sources.some((s) => s.key === merged.ui.activeSourceKey)) merged.ui.activeSourceKey = '';
+    merged.ui.activeLiveIndex = clampIndex(merged.ui.activeLiveIndex, merged.lives.length);
+    this.apply(merged);
   }
 
   /** 删除档案（不可删除当前生效档案；可传 force 在无其它档案时同时清空状态） */
@@ -538,7 +546,8 @@ export class UserConfigManager {
     if (!id || !next.profiles.some((p) => p.id === id)) return next;
     const json = serializeImport({
       sites: next.sources,
-      lives: next.lives,
+      // ★ 2026-10-15：本地导入的直播线路不写进档案 json（它们由 withLocalLives 独立保住）
+      lives: this.serializableLives(next.lives),
       spider: next.global.spider,
       flags: next.global.flags,
       parses: next.parses,
@@ -547,6 +556,33 @@ export class UserConfigManager {
       ...next,
       profiles: next.profiles.map((p) => (p.id === id ? { ...p, json, sourceCount: next.sources.length } : p)),
     };
+  }
+
+  /**
+   * ★ 2026-10-15（用户报「导入的 TXT 直播源重启后消失」）：
+   *   本机导入的 TXT / M3U 直播线路（url = `…/file/local-live/<文件>`）是**一份独立于订阅的本地订阅**。
+   *   订阅导入（`replaceFromImport`）、启动时的 7 天自动刷新、「新订阅另存为新档案」（`saveAsProfile`）
+   *   与档案切换（`activateProfile`）都会用「订阅自带线路」**全量替换** `lives` —— 若不单独并回来，
+   *   用户的本地直播源就会在任何一次订阅往返后消失（重启即触发自动刷新 → 观感 =「重启软件就没了」）。
+   *   这里按 url 去重追加回当前 `snap` 里的本地线路（保留用户已重命名 / 已编辑的字段，避免档案 json 重复带回）。
+   */
+  private withLocalLives(next: UserConfig): UserConfig {
+    const locals = this.snap.lives.filter((l) => isLocalLiveUrl(l.url));
+    if (!locals.length) return next;
+    const seen = new Set(next.lives.map((l) => String(l.url || '').trim()));
+    const lives = [...next.lives];
+    for (const l of locals) {
+      const u = String(l.url || '').trim();
+      if (seen.has(u)) continue;
+      lives.push({ ...l, header: l.header ? { ...l.header } : undefined });
+      seen.add(u);
+    }
+    return lives.length === next.lives.length ? next : { ...next, lives };
+  }
+
+  /** 写进档案存档 json 的线路（本地导入的线路不进 json —— 它们不随档案切换走） */
+  private serializableLives(lives: LiveBean[]): LiveBean[] {
+    return lives.filter((l) => !isLocalLiveUrl(l.url));
   }
 
   private persist(): void {

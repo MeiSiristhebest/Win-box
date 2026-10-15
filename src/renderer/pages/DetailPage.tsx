@@ -17,12 +17,8 @@ import { makeStaleGuard } from '../lib/staleGuard';
 import { detailIsEmpty } from '../../engine/config/sourceKind';
 import DriveBindModal from '../components/DriveBindModal';
 import { useTheme } from '../lib/theme';
-
-/**
- * ★ 2026-09-29：本会话已因「该源无剧集详情」自动跳到全源搜索的 item（键 = `<key>:<id>`）。
- *   模块级（跨挂载保留）——用户从搜索结果返回时不再被重复跳转。
- */
-const AUTO_AGG_DONE = new Set<string>();
+// ★ 2026-10-17（用户要求）：收藏 —— 本片加入/移出收藏（列表页在 pages/FavoritesPage.tsx）
+import { FAVORITES_EVENT, addFavorite, findFavorite, removeFavorite } from '../lib/favorites';
 
 export default function DetailPage({
   onPlay,
@@ -79,12 +75,62 @@ export default function DetailPage({
   const playIntentRef = useRef('');
   // 原始 pathname 只解码一次；不要再次 decode 路由参数。
   const memKey = `${key || ''}:${id || ''}`;
-  /** ★ 2026-09-29：本会话已「无详情 → 自动全源搜索」跳过的 item（返回时不再重复跳） */
-  const autoAggRef = useRef(AUTO_AGG_DONE.has(memKey));
   /** ★ 2026-09-24：展示用片名 —— 详情自带优先，缺失时用列表页带入的（立播等源详情不返回 vod_name） */
   const displayName = (detail?.name || fromListName || '').trim();
   /** 无可播剧集时搜索用片名：去掉「 - 副标题」尾巴 */
   const detailName = displayName.split(' - ')[0]?.trim() || '';
+
+  /**
+   * ★ 2026-10-17（用户要求）：收藏状态。
+   *   · 收藏键含「订阅档案 id」（同订阅同源同片一条）→ 先取当前档案；
+   *   · 状态订阅 `winbox:favorites-changed`：在收藏页移除后回到本页会即时同步。
+   */
+  const [favMeta, setFavMeta] = useState<{ profileId: string; sourceName: string }>({ profileId: '', sourceName: '' });
+  const [favOn, setFavOn] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    client
+      .cfgGet()
+      .then((cfg) => {
+        if (!alive) return;
+        setFavMeta({ profileId: cfg.activeProfileId, sourceName: cfg.sources.find((s) => s.key === key)?.name || '' });
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  useEffect(() => {
+    const sync = (): void =>
+      setFavOn(findFavorite({ sourceKey: key, vodId: id, name: displayName, profileId: favMeta.profileId }) !== null);
+    sync();
+    window.addEventListener(FAVORITES_EVENT, sync);
+    return () => window.removeEventListener(FAVORITES_EVENT, sync);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, id, displayName, favMeta.profileId]);
+
+  /** 收藏 / 取消收藏（按当前档案；无 key/id 时按钮禁用） */
+  const toggleFavorite = async (): Promise<void> => {
+    if (!key || !id) return;
+    const ref = { sourceKey: key, vodId: id, name: displayName, profileId: favMeta.profileId };
+    const hit = findFavorite(ref);
+    if (hit) {
+      removeFavorite(hit.key);
+      setFavOn(false);
+      return;
+    }
+    addFavorite({
+      name: displayName || detailName,
+      sourceKey: key,
+      vodId: id,
+      profileId: favMeta.profileId || undefined,
+      sourceName: favMeta.sourceName || undefined,
+      pic: detail?.pic || fromListPic || undefined,
+      remarks: detail?.remarks || undefined,
+      year: detail?.year || undefined,
+      type: detail?.type || undefined,
+    });
+    setFavOn(true);
+  };
 
   useEffect(() => {
     if (!key || !id) return;
@@ -92,7 +138,6 @@ export default function DetailPage({
     const i = id;
     let alive = true;
     setDetail(null);
-    autoAggRef.current = AUTO_AGG_DONE.has(memKey);
     setLoading(true);
     setErr('');
     playGenRef.current.next(); // ★ 换了一部片 → 上一条解析作废（并放开 busy，避免按钮被旧请求卡住）
@@ -251,22 +296,24 @@ export default function DetailPage({
   const goSearch = (kw: string): void => { void openSearchWindow(kw).catch((e) => setErr(String(e))); };
 
   /**
-   * ★ 2026-09-29（用户报「sun.json 有分类/封面，点进去无详情」- 通解）：
-   *   详情**没有可播剧集**（豆瓣类/搜索聚合源/源侧 jar 自校验失败）→ 该详情页对用户无意义，
-   *   自动（一次）用片名做一次**全源聚合搜索**，直接换到能出剧集的源；返回后不再重复跳
-   *   （模块级集合记「本会话已自动跳过的 item」）。
+   * ★ 2026-10-17（用户要求）：收藏按钮 —— 操作区与「该源无资源」两个分支都渲染它
+   *   （独立详情窗口不渲染 topbar，故不放顶栏；两分支都可见才不会被漏掉）。
    */
-  useEffect(() => {
-    if (loading || !detail || autoAggRef.current) return;
-    if (!detailIsEmpty(detail)) return;
-    const kw = (detailName || detail.name || '').trim();
-    if (!kw) return;
-    autoAggRef.current = true;
-    AUTO_AGG_DONE.add(memKey);
-    const t = setTimeout(() => goSearch(kw), 1200);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, detail, detailName]);
+  const favoriteBtn = (
+    <button
+      type="button"
+      className={`fav-btn${favOn ? ' active' : ''}`}
+      disabled={!key || !id}
+      aria-pressed={favOn}
+      title={favOn ? '取消收藏' : '加入收藏（在「收藏」页查看）'}
+      onClick={() => { void toggleFavorite(); }}
+    >
+      <svg width="13" height="13" viewBox="0 0 24 24" fill={favOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+        <path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />
+      </svg>
+      {favOn ? '已收藏' : '收藏'}
+    </button>
+  );
 
   return (
     <>
@@ -337,8 +384,9 @@ export default function DetailPage({
                 </div>
               </div>
             </div>
-            {/* ★ 2026-09-29（用户报「有分类/封面，点进去无详情」）：详情为空（豆瓣类/搜索聚合源常见）
-                 → 不再只留个空壳，直接给「全源搜索」出口（换到能出剧集的源） */}
+            {/* ★ 2026-10-15（用户要求「点播页点击后，优先匹配该源的资源，没有再提示…」）：
+                该源没有可播剧集（豆瓣类/搜索聚合源/源侧 jar 自校验失败）→ **问一句**是否进入聚合搜索
+                （此前是 1.2s 后自动跳转，现已改为用户确认，避免"莫名其妙被换页"）。 */}
             {detail.flags.length > 0 && !detailIsEmpty(detail) ? (
               <>
                 <div className="row" style={{ marginBottom: 10 }}>
@@ -370,20 +418,20 @@ export default function DetailPage({
                     );
                   })}
                 </div>
-                <div className="row" style={{ marginTop: 14, alignItems: 'center' }}>
+                <div className="row" style={{ marginTop: 14, alignItems: 'center', gap: 10 }}>
                   <button className={`primary${nf ? ' nf-play-btn' : ''}`} disabled={busy} onClick={() => { void play(); }}>
                     {busy ? '正在解析播放地址…' : '▶ 播放选中'}
                   </button>
+                  {favoriteBtn}
                 </div>
               </>
             ) : (
-              <div className="row" style={{ marginTop: 12, flexWrap: 'wrap', gap: 8 }}>
-                <span className="muted" style={{ fontSize: 12 }}>
-                  该源无剧集详情（豆瓣类/搜索聚合源常见）：用片名做一次全源搜索，换个能播的源
-                </span>
+              <div className="row" style={{ marginTop: 12, flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                <span style={{ fontSize: 13 }}>该源没有「{detailName || detail.name || ''}」的资源，是否进入聚合搜索？</span>
                 <button className={`primary${nf ? ' nf-play-btn' : ''}`} onClick={() => goSearch(detailName || detail.name || '')}>
-                  全源搜索「{detailName || detail.name || ''}」
+                  进入聚合搜索
                 </button>
+                {favoriteBtn}
               </div>
             )}
             {castList.length > 0 && (
