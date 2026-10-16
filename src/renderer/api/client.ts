@@ -35,12 +35,13 @@ import type { DanmakuAnime, DanmakuCandidate, DanmakuSettings } from '../../shar
 import type { MetaHit, MetaExtra, DiscoverSection, DiscoverGenre, DiscoverGenrePage, MetaImages, MovieHotList } from '../../shared/types';
 import type { MetaSettings, MetaSettingsView, MetaSuggestion } from '../../shared/meta';
 import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../../shared/discover';
-import type { PlayerSettings, MpvStatus, MpvStartOptions, MpvCommand, MpvStateEvent } from '../../shared/player';
+import type { PlayerSettings, MpvStatus, MpvStartOptions, MpvCommand, MpvStateEvent, MediaStateEvent } from '../../shared/player';
 import type { PluginView, SrState } from '../../shared/plugin';
 import type { BackupExportResult, BackupImportResult } from '../../shared/backup';
 import type { DavBrowseResult, DavServer } from '../../shared/webdav';
 import type { DlnaCastResult, DlnaCastTarget, DlnaDevice } from '../../shared/dlna';
 import type { UpdateCheckResult, UpdateProgress } from '../../shared/update';
+import type { UiScalePref, UiScaleState } from '../../shared/uiScale';
 
 interface HomeResult {
   sortClasses: { id: string; name: string; flag?: string; filters?: FilterGroup[] }[];
@@ -248,6 +249,11 @@ declare global {
         onMini: (cb: (mini: boolean) => void) => () => void;
         onFullscreen: (cb: (fullscreen: boolean) => void) => () => void;
       };
+      /**
+       * ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）：播放诊断上报（渲染层 → 主进程）。
+       *   fire-and-forget；主进程落盘为 `media:*` 日志，并在 GPU 崩溃那条日志里带出「当时在放什么」。
+       */
+      media: { report: (ev: MediaStateEvent) => void };
       boss: {
         get: () => Promise<IpcResult<BossKeySettings>>;
         set: (patch: Partial<BossKeySettings>) => Promise<IpcResult<{ settings: BossKeySettings; registered: boolean }>>;
@@ -292,6 +298,11 @@ declare global {
         download: () => Promise<IpcResult<{ ok: boolean; path?: string; error?: string }>>;
         install: () => Promise<IpcResult<{ ok: boolean; path: string }>>;
         onProgress: (cb: (p: UpdateProgress) => void) => () => void;
+      };
+      /** ★ 2026-10-16（用户要求）：界面缩放（跟随屏幕 / 指定档位） */
+      ui: {
+        getScale: () => Promise<IpcResult<UiScaleState>>;
+        setScale: (v: UiScalePref) => Promise<IpcResult<UiScaleState>>;
       };
     };
   }
@@ -389,6 +400,8 @@ export const client = {
   playerSetResizable: (resizable: boolean) => unwrap(window.api.player.setResizable(resizable)),
   playerOnMini: (cb: (mini: boolean) => void) => window.api.player.onMini(cb),
   playerOnFullscreen: (cb: (fullscreen: boolean) => void) => window.api.player.onFullscreen(cb),
+  /** ★ 2026-10-16（用户报「播放时画面突然消失、只剩声音」）：播放诊断上报（fire-and-forget；见 main/util/mediaDiag.ts） */
+  mediaReport: (ev: MediaStateEvent) => window.api.media.report(ev),
   bossGet: () => unwrap(window.api.boss.get()),
   bossSet: (patch: Partial<BossKeySettings>) => unwrap(window.api.boss.set(patch)),
   bossOnEnter: (cb: () => void) => window.api.boss.onEnter(cb),
@@ -497,6 +510,9 @@ export const client = {
   updateDownload: () => unwrap(window.api.update.download()),
   updateInstall: () => unwrap(window.api.update.install()),
   onUpdateProgress: (cb: (p: UpdateProgress) => void) => window.api.update.onProgress(cb),
+  /** ★ 2026-10-16（用户要求「自适应屏幕分辨率调节窗口大小与字体大小」）：界面缩放读/写 */
+  uiGetScale: () => unwrap(window.api.ui.getScale()),
+  uiSetScale: (v: UiScalePref) => unwrap(window.api.ui.setScale(v)),
   /** ★ 网络代理设置（DNS 污染 / SNI 阻断站点用） */
   proxyGet: () => unwrap<{ enabled: boolean; url: string }>(window.api.net.proxyGet()),
   proxySet: (patch: { enabled?: boolean; url?: string }) =>

@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { IPC } from '../../shared/ipc-channels';
 import { searchWindowRoute } from '../../shared/searchWin';
 import { applyWindowCorner } from '../util/windowCorner';
+import { applyUiScale, registerUiWindow, scaledWindowFor } from '../ui/uiScale';
 
 declare const __dirname: string;
 let searchWin: BrowserWindow | null = null;
@@ -36,13 +37,17 @@ export function openSearchWindow(term: string): { ok: boolean; reused: boolean }
     return { ok: true, reused: true };
   }
   ready = false;
+  // ★ 2026-10-16（界面缩放）：窗口尺寸随屏幕分辨率放大（内容由 setZoomFactor 等比放大）
+  const size = scaledWindowFor({ width: 1100, height: 760, minWidth: 900, minHeight: 560 });
   const win = new BrowserWindow({
-    width: 1100, height: 760, minWidth: 900, minHeight: 560,
+    width: size.width, height: size.height, minWidth: size.minWidth, minHeight: size.minHeight,
     title: 'Win-Box · 搜索结果', frame: false, autoHideMenuBar: true, show: false,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0c10' : '#dce4ec',
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   });
   searchWin = win;
+  registerUiWindow(win);
+  applyUiScale();
   win.on('ready-to-show', () => { if (!win.isDestroyed()) { win.show(); setTimeout(pushPendingRoute, 80).unref(); } });
   win.on('maximize', () => { applyWindowCorner(win, false); win.webContents.invalidate(); });
   win.on('unmaximize', () => { applyWindowCorner(win, true); win.webContents.invalidate(); });

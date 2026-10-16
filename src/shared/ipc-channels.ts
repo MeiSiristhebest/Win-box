@@ -178,6 +178,12 @@ export const IPC = {
   // 老板键（全局快捷键隐藏/恢复）
   BOSS_GET: 'boss:get',
   BOSS_SET: 'boss:set',
+  /**
+   * ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）：渲染层 → 主进程的播放诊断上报
+   * （fire-and-forget，`send`/`on`）。主进程落盘为 `media:*` 日志并在 `child-process-gone type=GPU`
+   * 那条里带出「崩溃前最后在放什么」；见 main/util/mediaDiag.ts 与 index.ts。
+   */
+  MEDIA_STATE: 'media:state',
   // 夸克落盘文件清理（渲染层播放页/播放器页卸载时触发）
   QUARK_CLEANUP: 'quark:cleanup',
   // ★ 网络代理设置（DNS 污染 / SNI 阻断站点用；配置页可填）
@@ -220,6 +226,12 @@ export const IPC = {
   UPDATE_INSTALL: 'update:install',
   /** 主进程 → 渲染层：下载进度（bytes / 百分比 / 速度） */
   UPDATE_PROGRESS: 'update:progress',
+  /**
+   * ★ 2026-10-16（用户要求「自适应屏幕分辨率调节窗口大小与字体大小」）：
+   * 界面缩放偏好 —— 读当前状态（偏好 + 推导倍率 + 依据的工作区）/ 改档位（主进程立即套用并重排窗口）。
+   */
+  UI_GET_SCALE: 'ui:getScale',
+  UI_SET_SCALE: 'ui:setScale',
   /**
    * ★ 2026-09-29（用户要求）本地包「网页源」：在独立窗口打开 homePage html（fm 桥，见 WebHomeWindow）。
    * 下面三条 `fm:*` 是**网页窗口 preload → 主进程**的桥通道（渲染层不直接调用）。

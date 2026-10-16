@@ -10,6 +10,7 @@
 import { app, BrowserWindow, nativeTheme, shell } from 'electron';
 import { join } from 'node:path';
 import { applyWindowCorner } from '../util/windowCorner';
+import { applyUiScale, registerUiWindow, scaledWindowFor } from '../ui/uiScale';
 import { IPC } from '../../shared/ipc-channels';
 // ★ 路由约定与渲染层共用（纯函数在 shared/detailWin.ts：/detail/… + dw=1 标记）
 import { detailWindowRoute } from '../../shared/detailWin';
@@ -57,11 +58,13 @@ export function openDetailWindow(payload: { key?: string; id?: string; query?: s
     return { ok: true, reused: true };
   }
   ready = false;
+  // ★ 2026-10-16（界面缩放）：窗口尺寸随屏幕分辨率放大（内容由 setZoomFactor 等比放大）
+  const size = scaledWindowFor({ width: 1100, height: 720, minWidth: 900, minHeight: 560 });
   detailWin = new BrowserWindow({
-    width: 1100,
-    height: 720,
-    minWidth: 900,
-    minHeight: 560,
+    width: size.width,
+    height: size.height,
+    minWidth: size.minWidth,
+    minHeight: size.minHeight,
     title: 'Win-Box',
     frame: false,
     autoHideMenuBar: true,
@@ -76,6 +79,9 @@ export function openDetailWindow(payload: { key?: string; id?: string; query?: s
     },
   });
   detailWin.on('ready-to-show', () => { detailWin?.show(); setTimeout(pushPendingRoute, 80).unref(); });
+  // ★ 2026-10-16：登记详情窗口 + 套用界面缩放
+  registerUiWindow(detailWin);
+  applyUiScale();
   // 最大化/还原：圆角偏好 + 强制重绘（与主/播放器窗口同款修复）
   detailWin.on('maximize', () => {
     if (detailWin) { applyWindowCorner(detailWin, false); detailWin.webContents.invalidate(); }

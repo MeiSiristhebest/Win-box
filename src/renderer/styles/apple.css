@@ -735,6 +735,17 @@
 :root[data-theme='apple'] .vp-ctl,
 :root[data-theme='apple'] .mini-btn { background: none; border: none; padding: 0; box-shadow: none; }
 
+/* ★ 2026-10-16（用户要求）：**配置页选项卡改为「圆角长方形」**（参考 Netflix 的页签形态），不要半圆药丸。
+   `.cfg-tab` 是 ConfigPage 的 `<button>`，其**内联样式只把下两角压成 0**，上两角仍吃通用
+   `button { border-radius: 999px }`(0,2,1) ⇒ 顶上是半圆。这里上两角收成皮肤小圆角令牌、下两角平齐于
+   分类行底边线（内联已是 0）→ 与 netflix 的页签同形。特异度 (0,3,0) > (0,2,1)（§C54 教训）。 */
+:root[data-theme='apple'] .cfg-tab {
+  border-top-left-radius: var(--radius-sm);
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
 /* ---- ⑧ 首屏聚光卡：浅色纱幕 + 蓝色品牌点 + 系统蓝 CTA（大果 = 果汁玻璃质感的「浅色聚光卡」） ---- */
 :root[data-theme='apple'] .spot {
   border: 1px solid rgba(255, 255, 255, .7);

@@ -3,6 +3,8 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeThem
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { registerHandler } from '../util/ipcGuard';
 import { fileLogger } from '../util/logger';
+import { noteMediaState } from '../util/mediaDiag';
+import { setUiScalePref, uiScaleState } from '../ui/uiScale';
 import { SpiderHost } from '../spider/SpiderHost';
 import { resourcesDir, userDataDir, spiderCacheDir } from '../util/paths';
 import type { LocalPkgStore } from '../store/LocalPkgStore';
@@ -651,6 +653,16 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
     return true;
   }, log);
 
+  /**
+   * ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）：渲染层 → 主进程的播放诊断上报。
+   *   主窗（内嵌播放）与播放器窗跑同一个 VideoPlayer，故按**窗口身份**区分（排障时一眼看出是哪个窗）。
+   *   fire-and-forget（send/on）：不占 IPC 往返、播放路径零负担；落盘与崩溃时带出见 util/mediaDiag。
+   */
+  ipcMain.on(IPC.MEDIA_STATE, (e, ev: unknown) => {
+    const w = BrowserWindow.fromWebContents(e.sender);
+    noteMediaState(e.sender.id, isPlayerWindow(w) ? 'player' : w ? 'main' : 'gone', ev);
+  });
+
   // ---- ★ 网络代理（DNS 污染 / TLS SNI 阻断站点用；改后即时生效，无需重启）----
   registerHandler(IPC.PROXY_GET, () => proxySettingsView(), log);
   registerHandler(IPC.PROXY_SET, (_e: any, patch: Partial<ProxySettings>) => {
@@ -745,6 +757,9 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
 
   // ★ 2026-09-29 启动更新：检查（失败不影响使用）→ 用户确认后代理加速下载 Setup（进度推送）→ 拉起安装程序
   registerHandler(IPC.UPDATE_CHECK, () => updater.check(), log);
+  // ★ 2026-10-16（用户要求）：界面缩放 —— 读当前状态 / 改档位（改档位时主进程立即套用并重排窗口尺寸）
+  registerHandler(IPC.UI_GET_SCALE, () => uiScaleState(), log);
+  registerHandler(IPC.UI_SET_SCALE, (_e: unknown, v: unknown) => setUiScalePref(v), log);
   registerHandler(IPC.UPDATE_DOWNLOAD, async () => {
     const push = (p: UpdateProgress): void => {
       for (const w of BrowserWindow.getAllWindows()) {

@@ -5,7 +5,7 @@
 // 红线：检查失败（网络不通等）**绝不影响软件使用** —— 直接放行。
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { client } from '../api/client';
-import { formatBytes, type UpdateCheckResult, type UpdateProgress } from '../../shared/update';
+import { formatBytes, type UpdateCheckResult, type UpdateProgress, DISK_UPDATE_URL } from '../../shared/update';
 import { isDetailWinHash } from '../../shared/detailWin';
 import { isSearchWindow } from '../lib/searchWin';
 
@@ -159,6 +159,13 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
               <>
                 <button autoFocus style={{ flex: '0 0 auto' }} onClick={() => setDismissed(true)}>
                   暂不更新
+                </button>
+                {/* ★ 2026-10-16（用户要求）：网盘备用下载 —— 点击用**系统浏览器**打开网盘分享页，用户自行下载。
+                    走 `window.open` 即可：主窗口的 `setWindowOpenHandler` 已把它交给 `shell.openExternal`
+                    （见 main/index.ts），与说明页的 GitHub 链接同款口径，不必新增 IPC。
+                    点它**不关弹窗**：用户下载完可能还要回来点「暂不更新」。 */}
+                <button style={{ flex: '0 0 auto' }} onClick={() => window.open(DISK_UPDATE_URL, '_blank', 'noopener,noreferrer')}>
+                  网盘更新
                 </button>
                 <button className="primary" style={{ flex: '0 0 auto' }} onClick={() => void downloadAndInstall()}>
                   立即更新

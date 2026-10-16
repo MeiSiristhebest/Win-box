@@ -278,7 +278,16 @@
   -webkit-app-region: drag;
 }
 :root[data-theme='bilibili'] .bb-top { display: flex; align-items: center; gap: 14px; height: 54px; padding: 0 18px; }
+/* ★★ 2026-10-16 修复（用户报「哔哔皮肤大部分区域点击后无反应」）★★
+   真因 = 下面的 no-drag 豁免清单**漏了导航 tab** —— `.bb-tab` 是 `<a>`（不是 button/.srcpick/input），
+   而整条 `.bb-head` 是 `-webkit-app-region: drag`：**拖拽区内的鼠标按下被当成"拖动窗口"吞掉，不进渲染进程**
+   ⇒ 哔哔的**整个主导航**（发现/点播/历史/收藏/直播/存储/配置/说明）真鼠标点击全部无反应，
+     顶栏空白处与品牌区同样点不动（只有搜索条 / 换源 / 窗口按钮因已豁免正常）。
+   实测（.tmp/skin-deadzone.cjs，四皮肤同法比对）：哔哔 8/8 个 tab 落在「拖拽区 − 豁免区」＝死区；
+   netflix 靠 `.nf-link` 豁免为 0；大果 / 大豆的导航本就在各自拖拽区之外（它们的拖拽区只有工具栏 / 顶栏那一条）。
+   起因：10-16 大改把导航从 `.nf-link` 换成 `.bb-tab`（且搬进 `.bb-head` 拖拽区内）时没同步补豁免。 */
 :root[data-theme='bilibili'] .bb-head button,
+:root[data-theme='bilibili'] .bb-head a,
 :root[data-theme='bilibili'] .bb-head .srcpick,
 :root[data-theme='bilibili'] .bb-head input { -webkit-app-region: no-drag; }
 :root[data-theme='bilibili'] .bb-brand {
@@ -441,6 +450,17 @@
 }
 :root[data-theme='bilibili'] button.primary:hover {
   background: linear-gradient(180deg, #28b8ea, #0095cc); color: #fff; box-shadow: 0 10px 28px -10px rgba(0, 174, 236, .8);
+}
+
+/* ★ 2026-10-16（用户要求）：**配置页选项卡改为「圆角长方形」**（参考 Netflix 的页签形态），不要半圆药丸。
+   `.cfg-tab` 是 ConfigPage 的 `<button>`，其**内联样式只把下两角压成 0**，上两角仍吃通用
+   `button { border-radius: 999px }`(0,2,1) ⇒ 顶上是半圆。这里上两角收成皮肤小圆角令牌、下两角平齐于
+   分类行底边线（内联已是 0）→ 与 netflix 的页签同形。特异度 (0,3,0) > (0,2,1)（§C54 教训）。 */
+:root[data-theme='bilibili'] .cfg-tab {
+  border-top-left-radius: var(--radius-sm);
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 /* ---- ⑧ 首屏聚光卡：**浅色纱幕** + 蓝粉环境色 + 深色标题（浅色皮肤的可读性解法） ---- */

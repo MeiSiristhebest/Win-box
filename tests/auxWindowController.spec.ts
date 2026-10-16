@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { IPC } from '../src/shared/ipc-channels';
 
 const mocks = vi.hoisted(() => ({ windows: [] as any[] }));
 vi.mock('electron', () => ({
-  app: { isPackaged: true },
+  // ★ 2026-10-16：主进程新增「界面缩放」后，这些窗口模块的导入链会用到 app.getPath（日志/偏好落盘）
+  //   与 screen.getPrimaryDisplay（按屏幕推倍率）——桩要如实提供，否则 window 控制器拿不到真实行为。
+  app: { isPackaged: true, getPath: (name: string) => join(tmpdir(), 'winbox-vitest', name) },
+  screen: { getPrimaryDisplay: () => ({ id: 1, scaleFactor: 1, workAreaSize: { width: 1920, height: 1040 } }) },
   nativeTheme: { shouldUseDarkColors: false },
   shell: { openExternal: vi.fn() },
   BrowserWindow: class {
@@ -21,6 +26,8 @@ vi.mock('electron', () => ({
     isDestroyed() { return this.destroyed; }
     isMinimized() { return this.minimized; }
     on(event: string, cb: (...args: any[]) => void) { this.events.set(event, cb); }
+    /** 界面缩放登记窗口时会挂一次性的 'closed' 清理（桩与 on 同语义即可） */
+    once(event: string, cb: (...args: any[]) => void) { this.events.set(event, cb); }
   },
 }));
 vi.mock('../src/main/util/windowCorner', () => ({ applyWindowCorner: vi.fn() }));

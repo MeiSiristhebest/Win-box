@@ -3,13 +3,17 @@
 //   并在老用户首次启动时自动迁移 %APPDATA%\win-box（见 dataDirBootstrap.ts 头注释）。
 //   必须早于 logger / 各 Store 的模块求值，否则它们会把路径解析到旧位置。
 import { dataDirReport } from './util/dataDirBootstrap';
-import { app, BrowserWindow, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, nativeTheme, shell, webContents } from 'electron';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { registerIpc } from './ipc';
 import { SpiderHost } from './spider/SpiderHost';
 import { LocalProxyServer } from './server/LocalProxyServer';
 import { fileLogger } from './util/logger';
+// ★ 2026-10-16（用户报「播放时画面突然消失、只剩声音」）：播放诊断上报的收集器（见下方 child-process-gone）
+import { lastMediaSummary, lastMediaWcId } from './util/mediaDiag';
+import { applyUiScale, registerUiWindow, scaledWindowFor, setMainWindowProvider } from './ui/uiScale';
+import { BASE_WINDOW } from '../shared/uiScale';
 import { applyWindowCorner } from './util/windowCorner';
 import { bossKey } from './bossKey';
 import { playerWindow, onPlayerWindowClosed } from './player/PlayerWindow';
@@ -131,18 +135,83 @@ app.on('web-contents-created', (_event, contents) => {
   });
   contents.on('unresponsive', () => fileLogger.w(`renderer-unresponsive wc=${contents.id}`));
 });
+/**
+ * ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）★★
+ *
+ * 证据：10-16 日志里唯一非 jvm 异常 = `child-process-gone type=GPU reason=crashed exitCode=34`；
+ *   症状完全吻合 —— GPU 子进程（合成器）死掉后整窗内容不再刷新（连进度条都不动），
+ *   音频走另一条通道继续 ⇒ 用户看到的就是「画面消失、只剩声音」。Chromium 不会自愈（不会自动补拉 GPU 进程）。
+ *
+ * ① 恢复：GPU 崩溃后**主动 reload 一次「最后在播放的那个窗口」**。
+ *    · 目标 = 渲染层最近一次上报的窗口（见 util/mediaDiag）→ 回退播放器窗 → 回退主窗；
+ *    · 播放器窗 reload 后由它自己的 `did-finish-load` + `pendingInit` 重发最后一发 init ⇒ 自动续播；
+ *      主窗是 hash 路由，reload 后仍停在原页面（不会跳到首页）。
+ *    · 退避：60s 滑动窗口内 GPU 崩溃 ≥3 次 → 只记日志、不再自动重载（避免与坏驱动形成「崩→载→崩」风暴）。
+ * ② 诊断：日志带上崩溃前的最后一条播放事件（渲染层上报），否则永远只有一行 GPU 崩溃、无从定位。
+ * ③ 有意不做：不重启整个应用（会丢播放器窗、宿主与蜘蛛状态）；不动渲染策略（见上方 GPU/硬件加速注释）。
+ */
+const gpuCrashAt: number[] = [];
+/** 退避判定（本次计入）：60s 内第 3 次及以后不再自动重载 */
+function gpuRecoverAllowed(): boolean {
+  const now = Date.now();
+  while (gpuCrashAt.length && now - gpuCrashAt[0] > 60_000) gpuCrashAt.shift();
+  gpuCrashAt.push(now);
+  return gpuCrashAt.length < 3;
+}
+/** 恢复目标 = 最后在播放的那个窗口 → 播放器窗 → 主窗（都没有则 null） */
+function gpuRecoveryTarget(): BrowserWindow | null {
+  const id = lastMediaWcId();
+  if (id != null) {
+    const wc = webContents.fromId(id);
+    const w = wc ? BrowserWindow.fromWebContents(wc) : null;
+    if (w && !w.isDestroyed()) return w;
+  }
+  const pw = playerWindow();
+  if (pw && !pw.isDestroyed()) return pw;
+  return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+}
 app.on('child-process-gone', (_event, details) => {
-  fileLogger.w(`child-process-gone type=${details.type} reason=${details.reason} exitCode=${details.exitCode}`);
+  let suffix = '';
+  if (details.type === 'GPU') {
+    suffix = ` | ${lastMediaSummary()}`;
+    if (!gpuRecoverAllowed()) {
+      suffix += ' | 退避：60s 内第 3 次及以上 GPU 崩溃 → 只记日志、不自动重载';
+    } else {
+      const target = gpuRecoveryTarget();
+      if (!target) {
+        suffix += ' | 未找到可重载的窗口（无播放上报且主窗已关）→ 不恢复';
+      } else {
+        const wcId = target.webContents.id;
+        // 稍等再 reload：给 Chromium 一点时间重建 GPU 进程，立刻 reload 可能又撞上未就绪的合成器
+        setTimeout(() => {
+          try {
+            if (!target.isDestroyed()) target.webContents.reload();
+          } catch {
+            /* ignore */
+          }
+        }, 800);
+        suffix += ` | 已触发 GPU 崩溃恢复：800ms 后重载窗口（wc=${wcId}）`;
+      }
+    }
+  }
+  fileLogger.w(`child-process-gone type=${details.type} reason=${details.reason} exitCode=${details.exitCode}${suffix}`);
 });
 
 function createWindow(): void {
-  // 默认跟随系统亮暗（Mica 背景会随之切换深浅）
-  // backgroundMaterial: 'mica' 仅 Win11 有效；旧版本自动降级无副作用
+  /**
+   * ★ 2026-10-16（用户要求「自适应屏幕分辨率调节窗口大小、字体大小」）：
+   *   默认窗口尺寸与最小尺寸都按**当前显示器工作区**推出来的倍率等比放大（见 `ui/uiScale`），
+   *   并用 `setZoomFactor` 把整套 UI（含字号）一起放大 —— 1K 下仍是 1280×800（回归不变），
+   *   4K 下窗口与字体同步变大，不再「UI 特别小」。
+   */
+  const size = scaledWindowFor(BASE_WINDOW);
   const winOpts: Electron.BrowserWindowConstructorOptions = {
-    width: 1280,
-    height: 800,
-    minWidth: 960,
-    minHeight: 600,
+    width: size.width,
+    height: size.height,
+    minWidth: size.minWidth,
+    minHeight: size.minHeight,
+    // 默认跟随系统亮暗（Mica 背景会随之切换深浅）
+    // backgroundMaterial: 'mica' 仅 Win11 有效；旧版本自动降级无副作用
     // ★ 用不透明底色：无边框窗口若背景全透明，放大/最大化时未渲染区域会显示黑色残影/形状异常
     //   （--bg-glass 本身约 90% 不透明，视觉几乎无差异，Mica 磨砂不受影响）
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0c10' : '#dce4ec',
@@ -160,6 +229,10 @@ function createWindow(): void {
     },
   };
   mainWindow = new BrowserWindow(winOpts);
+  // ★ 2026-10-16：登记为主窗口（界面缩放要按倍率重排它的尺寸）+ 立刻套用当前倍率
+  registerUiWindow(mainWindow);
+  setMainWindowProvider(() => mainWindow);
+  applyUiScale();
 
   // ★ Win11 无边框圆角在最大化时露出右上角黑角（关闭钮旁异形）：最大化取消圆角、还原恢复
   const setCorner = (round: boolean) => {
@@ -377,12 +450,35 @@ process.on('beforeExit', () => {
 // 单实例锁
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
+  /**
+   * ★★ 2026-10-16（用户报「卸载软件 → 重装 → 打开会闪退，排查指向 9978 端口占用中」）★★
+   *   真因 = **已有一个实例还在跑，但用户看不到它的窗口** —— 最典型的是老板键
+   *   （默认 `Ctrl+Shift+B`，本机 `bosskey.json` 里 `enabled: true`）：它把**所有窗口连同任务栏图标**
+   *   一起 `hide()`（见 bossKey.ts），用户就以为「软件已关闭」，而它其实活着，
+   *   同时占着 **单实例锁** 与 **本地中继 9978** ⇒ 本次启动拿不到锁 → 走到这里静默 `app.quit()`
+   *   ＝ 既没有窗口、也**不留任何日志**的「闪退」（旧代码这条路径完全无痕，所以日志里查不到）。
+   *   两层修复：① 这里补一行日志（日后「闪退」可定位）；② `second-instance` 里把已有实例**显出来**
+   *   （先退老板模式 → show/restore/focus；没有主窗口就补一个），让用户看到软件其实还在运行。
+   */
+  fileLogger.w(
+    '已有实例在运行（单实例锁被占用）→ 本次启动退出；若界面上看不到窗口，多半是上一实例被老板键（默认 Ctrl+Shift+B）隐藏或残留：'
+    + '按一次老板键可恢复，或在任务管理器结束 Win-Box（本地中继 9978 由该实例占着）',
+  );
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+    fileLogger.w('检测到第二实例启动：已有实例在运行 → 退出老板模式并把窗口显出来');
+    try {
+      if (bossKey.isActive) bossKey.exit(); // 老板键隐藏态：先恢复，否则下面的 show() 也没人看得到
+    } catch {
+      /* ignore */
     }
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      createWindow(); // 残例态（主窗口早没了但进程还在）→ 补一个窗口，别让用户对着"闪退"发呆
+      return;
+    }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
   });
 }

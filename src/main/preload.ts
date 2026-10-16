@@ -260,6 +260,11 @@ const api = {
       return () => ipcRenderer.removeListener('player:fullscreen', l);
     },
   },
+  /**
+   * ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）：播放诊断上报（渲染层 → 主进程）。
+   *   fire-and-forget（send/on）：不占 IPC 往返、播放路径零负担；主进程落盘并在 GPU 崩溃日志里带出。
+   */
+  media: { report: (ev: unknown) => ipcRenderer.send(IPC.MEDIA_STATE, ev) },
   boss: {
     get: () => invoke(IPC.BOSS_GET),
     set: (patch: unknown) => invoke(IPC.BOSS_SET, patch),
@@ -322,6 +327,11 @@ const api = {
   quark: {
     // 夸克落盘文件清理（渲染层播放页/播放器页卸载、窗口关闭时触发）
     cleanup: () => invoke<void>(IPC.QUARK_CLEANUP),
+  },
+  /** ★ 2026-10-16（用户要求）：界面缩放（跟随屏幕/指定档位）—— 读状态 / 改档位 */
+  ui: {
+    getScale: () => invoke(IPC.UI_GET_SCALE),
+    setScale: (v: string) => invoke(IPC.UI_SET_SCALE, v),
   },
 };
 

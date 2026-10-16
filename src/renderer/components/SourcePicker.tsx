@@ -30,8 +30,14 @@ export interface SourcePickerProps {
   disabled?: boolean;
 }
 
-/** 鼠标离开换源区域后多久收起弹层（宽限期：足够越过「按钮↔弹层」那道 6px 缝隙，肉眼无感） */
-const LEAVE_GRACE_MS = 150;
+/**
+ * ★ 2026-10-16（用户要求「换源下拉框常驻时间增加到 3s，3s 后动画回缩」）：
+ *   鼠标离开换源区域（按钮 + 弹层）后弹层**常驻 3s**（期间指针移回区域内即取消；也足够越过
+ *   「按钮 ↔ 弹层」那道 6px 缝隙），到时先播一段「回缩」出场动画、动画走完才真正卸载。
+ */
+const LEAVE_HOLD_MS = 3000;
+/** 「回缩」出场动画时长（与 CSS 的 `--dur-panel` 对齐；动画走完才 setOpen(false)，见 scheduleLeave） */
+const CLOSE_ANIM_MS = 280;
 /** 双栏弹层的期望宽度（与 CSS 的 max-width 对齐；用于判定左锚是否会出窗口右侧） */
 const WIDE_POP_PX = 400;
 
@@ -51,8 +57,14 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   const srcColRef = useRef<HTMLDivElement | null>(null);
   /** ★ 2026-09-30：档案视图请求代次 —— 只认最后一次请求的响应（慢响应不得覆盖新数据） */
   const viewSeqRef = useRef(0);
+  /** ★ 2026-10-16（用户要求「展开即定位当前所在的源」）：当前源那一行的 DOM（定位用，见上面 effect） */
+  const activeRef = useRef<HTMLDivElement | null>(null);
   /** ★ 2026-09-30：鼠标移出的宽限计时器（移回区域内即取消，见 cancelLeave/scheduleLeave） */
   const leaveTimerRef = useRef<number | null>(null);
+  /** ★ 2026-10-16：弹层正在播「回缩」出场动画（播完才 setOpen(false)） */
+  const [closing, setClosing] = useState(false);
+  /** 回缩动画的收尾计时器（与 leaveTimerRef 一起在「移回区域内 / 卸载」时清掉） */
+  const closeTimerRef = useRef<number | null>(null);
 
   const selfLoad = sites === undefined || current === undefined;
   const loadOwn = (): void => {
@@ -130,9 +142,21 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
 
   // ★ 2026-09-30：换订阅 / 改检索词后右栏回到顶部 —— 否则沿用上一份订阅的滚动位置，
   //   看上去像"列表里混着别的源"。
+  // ★ 2026-10-16（用户要求）：**展开弹层时自动定位「当前所在的源」**，不再回到列表顶层 ——
+  //   只有「检索中」与「当前源不在这一栏清单里（切到了别的订阅）」才回顶部；
+  //   其余时机（打开弹层 / 档案视图拉回 / 切回当前订阅）把当前源滚到可视区**中部**。
+  //   ★ 位置用两个 `offsetTop` 相减（同为相对 `.srcpick-pop` 的**布局值**）：不受弹层进场动画
+  //     `popIn` 的 `transform: scale(.97)` 影响，也不受 `.srcpick-pop` 的 6px 内边距干扰。
   useEffect(() => {
-    srcColRef.current?.scrollTo({ top: 0 });
-  }, [paneId, q, views]);
+    const col = srcColRef.current;
+    if (!col) return;
+    const el = activeRef.current;
+    if (q.trim() || !el || !col.contains(el)) {
+      col.scrollTop = 0;
+      return;
+    }
+    col.scrollTop = Math.max(0, el.offsetTop - col.offsetTop - (col.clientHeight - el.offsetHeight) / 2);
+  }, [open, q, paneId, views]);
 
   // 打开时外部点击 / Esc 关闭
   useEffect(() => {
@@ -178,26 +202,39 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
     : paneSites;
 
   // ★ 2026-09-30（用户要求）：鼠标移出换源区域（按钮 + 弹层，弹层是 wrapper 的 DOM 子节点）即自动收起。
-  //   弹层与按钮之间隔着 6px 的绝对定位缝隙，指针穿过时 wrapper 会先收到一次 mouseleave →
-  //   所以不立刻关，留 LEAVE_GRACE_MS 宽限；指针在这段时间内回到区域内（弹层上）就取消。
+  //   ★ 2026-10-16（用户要求）：收起前先**常驻 3s**（原来 150ms 太短，一移开就没了），
+  //     到时再播「回缩」出场动画（CSS `.srcpick-closing`），动画走完才真正卸载。
+  //     ——常驻期间（含回缩动画期间）指针回到区域内 → cancelLeave 全部取消，弹层照旧。
   const cancelLeave = (): void => {
     if (leaveTimerRef.current !== null) {
       clearTimeout(leaveTimerRef.current);
       leaveTimerRef.current = null;
     }
+    // 回缩动画播到一半指针又回来了 → 掐掉收尾计时器、退回常态（弹层不消失）
+    if (closeTimerRef.current !== null) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setClosing((prev) => (prev ? false : prev));
   };
   const scheduleLeave = (): void => {
     if (!open) return;
     cancelLeave();
     leaveTimerRef.current = window.setTimeout(() => {
       leaveTimerRef.current = null;
-      setOpen(false);
-    }, LEAVE_GRACE_MS);
+      setClosing(true); // ① 先展开「回缩」出场动画
+      closeTimerRef.current = window.setTimeout(() => {
+        closeTimerRef.current = null;
+        setOpen(false); // ② 动画走完才卸载
+        setClosing(false);
+      }, CLOSE_ANIM_MS);
+    }, LEAVE_HOLD_MS);
   };
-  // 卸载时清掉宽限计时器
+  // 卸载时清掉两个计时器
   useEffect(
     () => () => {
       if (leaveTimerRef.current !== null) clearTimeout(leaveTimerRef.current);
+      if (closeTimerRef.current !== null) clearTimeout(closeTimerRef.current);
     },
     [],
   );
@@ -303,7 +340,7 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
       </div>
       {open && (
         <div
-          className={`srcpick-pop${pane && multi ? ' srcpick-pop-wide' : ''}${popRight ? ' srcpick-pop-right' : ''}`}
+          className={`srcpick-pop${pane && multi ? ' srcpick-pop-wide' : ''}${popRight ? ' srcpick-pop-right' : ''}${closing ? ' srcpick-closing' : ''}`}
           role="listbox"
         >
           <div className="srcpick-pop-tip">
@@ -357,6 +394,8 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
                   aria-selected={paneIsActive && s.key === cur}
                   tabIndex={0}
                   className={`srcpick-item${paneIsActive && s.key === cur ? ' active' : ''}`}
+                  /* ★ 2026-10-16：当前源那一行挂 ref → 弹层展开时自动定位到它（见上面那个 effect） */
+                  ref={paneIsActive && s.key === cur ? activeRef : undefined}
                   title={`${s.name || s.key}（${s.key}）`}
                   onClick={() => void pickSource(s.key)}
                   onKeyDown={(e) => {

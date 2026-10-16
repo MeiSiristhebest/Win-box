@@ -214,6 +214,29 @@ export interface MpvStateEvent {
   state: MpvKernelState;
 }
 
+// ---------- ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）播放诊断上报 ----------
+//
+// 为什么需要：`vod:play` 返回 URL 后，画面/声音全在渲染层与 GPU 进程里跑，**主进程侧不再有任何日志**，
+//   出事时（最典型 = GPU 进程崩溃：合成器死 → 整窗不再刷新、连进度条都不动，而音频走另一通道继续）
+//   日志里只剩一行 `child-process-gone type=GPU`，看不到「当时在放哪一集、停在哪一帧」。
+// 渲染层负责上报「事件 + 当时的 <video> 快照 + 帧停更检测（frame-stall）」；
+// 主进程侧落到 app-*.log，并在 GPU 崩溃那条日志里带出（见 main/util/mediaDiag.ts 与 index.ts）。
+/** 渲染层 → 主进程：播放中的媒体事件（fire-and-forget） */
+export interface MediaStateEvent {
+  /** 事件名：play/pause/waiting/playing/stalled/emptied/error/frame-stall，或 visibility:<状态> / hls-fatal:<类型>:<明细> */
+  event: string;
+  /** 内核（HTML5 内置 / mpv） */
+  kernel: 'html5' | 'mpv';
+  /** 播放地址（主进程落盘前会去掉查询串：地址可能带凭据与防盗链参数） */
+  url?: string;
+  /** 资源名（不含集号），用于区分「同一地址换了集」这类情况 */
+  title?: string;
+  // ---- 事件发生时的 <video> 快照 ----
+  readyState?: number;
+  currentTime?: number;
+  paused?: boolean;
+}
+
 /** 字幕字号换算：CSS px → mpv `sub-font-size`（mpv 默认 55 ≈ 720p 常规字号；近似 2:1，两侧共用） */
 export function mpvFontSize(px: number): number {
   const n = Number(px);

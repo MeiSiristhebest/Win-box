@@ -99,6 +99,8 @@ export class LocalProxyServer {
   private playCookieJar = new Map<string, string[]>();
   /** 百度成功 CDN 跳转：按 dlink 和凭据隔离，Range 间复用；5 分钟过期、最多 32 项，仅内存。 */
   private baiduPlayNodes = new Map<string, { url: string; expires: number }>();
+  /** ★ 2026-10-16：已 stop（退出中）—— 用于让「端口重试链」立刻停摆 */
+  private stopped = false;
 
   constructor(
     private logger: Logger,
@@ -137,25 +139,48 @@ export class LocalProxyServer {
 
   start(port: number = LOCAL_PROXY_PORT): Promise<void> {
     return new Promise((resolve) => {
-      this.server = createServer((req, res) => this.handle(req, res));
-      // ★ 2026-09-26 真 bug 修复：端口被占用时**必须让 Promise 落定**——旧实现只在 error 里记日志，
-      //   `await proxy.start()`（main/index.ts）会永久挂起 → registerIpc / createWindow 全都不执行
-      //   → 应用"静默不启动"（无窗口、无报错弹窗，进程却在）。这里降级为「本地中继不可用」继续启动。
+      // ★★ 2026-10-16（用户报「卸载重装后打开会闪退，排查指向 9978 被占用」）★★
+      //   实测用户日志：出现过两次 `EADDRINUSE 127.0.0.1:9978`，且那次会话**整场本地中继失效**
+      //   （直播归一化 / `/play` / `/img` 全废）。成因 = **另一个实例还活着占着 9978**
+      //   （本机实测 TIME_WAIT 不挡重新绑定 —— 第 1 次重绑即成功，故只可能是活进程）。
+      //   旧行为：监听失败就当场降级 + 只记一条日志，之后再没人去抢端口 → 整场不可用。
+      //   现行为：**后台静默重试**（每 2s × 15 ≈ 30s），等对方退干净后中继自愈；
+      //   首次失败仍**立即放行启动**（不拖慢开窗），成功后日志会写明「第 N 次尝试成功」。
       let settled = false;
       const done = () => { if (!settled) { settled = true; resolve(); } };
-      this.server.on('error', (e) => {
-        this.logger.e(`proxy 监听失败（${port} 端口占用？本地中继不可用：直播归一化 / /play / /img 会失效）`, e);
-        try { this.server?.close(); } catch { /* ignore */ }
-        done();
-      });
-      this.server.listen(port, '127.0.0.1', () => {
-        this.logger.i(`proxy: 监听 127.0.0.1:${port}`);
-        done();
-      });
+      let tries = 0;
+      const RETRY_MAX = 15;
+      const RETRY_DELAY = 2000;
+      const attempt = (): void => {
+        if (this.stopped) { done(); return; }
+        const first = tries === 0;
+        this.server = createServer((req, res) => this.handle(req, res));
+        this.server.on('error', (e) => {
+          try { this.server?.close(); } catch { /* ignore */ }
+          tries += 1;
+          const code = (e as NodeJS.ErrnoException).code;
+          if (code === 'EADDRINUSE' && tries <= RETRY_MAX && !this.stopped) {
+            this.logger.w(`proxy: ${port} 被占用（多半是上一个实例还没退干净 / 仍在运行）→ 第 ${tries} 次重试将在 ${RETRY_DELAY}ms 后开始`);
+            if (first) done(); // ★ 只有首次放行启动；后续重试不再影响启动流程
+            setTimeout(attempt, RETRY_DELAY).unref?.();
+            return;
+          }
+          // 端口被非 EADDRINUSE（或重试耗尽）→ 沿用既有降级：本地中继不可用，但绝不阻塞启动
+          this.logger.e(`proxy 监听失败（${port} 端口占用？本地中继不可用：直播归一化 / /play / /img 会失效）`, e);
+          done();
+        });
+        this.server.listen(port, '127.0.0.1', () => {
+          this.logger.i(`proxy: 监听 127.0.0.1:${port}${tries ? `（第 ${tries + 1} 次尝试成功）` : ''}`);
+          done();
+        });
+      };
+      attempt();
     });
   }
 
   stop(): void {
+    // ★ 2026-10-16：置位后，重试链立刻停摆（避免「已退出却在后台又抢回 9978」）
+    this.stopped = true;
     this.htmlMedia.stop();
     this.baiduPlayNodes.clear();
     this.server?.close();

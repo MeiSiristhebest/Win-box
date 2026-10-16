@@ -19,6 +19,13 @@ export const UPDATE_RELEASES_API = `https://api.github.com/repos/${UPDATE_REPO}/
 export const UPDATE_RELEASES_PAGE = `https://github.com/${UPDATE_REPO}/releases/latest`;
 
 /**
+ * ★ 2026-10-16（用户要求「在『暂不更新 / 立即更新』之间加一个『网盘更新』，点击打开指定链接」）：
+ *   网盘备用下载地址（123 云盘分享页，用户自己手动下载）—— 与 GitHub 直连/加速下载互为备份。
+ *   ★ 这是**固定链接**（用户维护同一分享、只换里面的文件）；日后若分享地址变更，**只改这一处**。
+ */
+export const DISK_UPDATE_URL = 'https://1824896562.share.123pan.cn/123pan/syh2jv-vxL6h?pwd=KAMI#';
+
+/**
  * GitHub 代理加速前缀池（用法 = 前缀直接拼接原始 GitHub 地址，如
  *   `https://gh.acmsz.top/https://github.com/o/r/releases/download/…`）。
  *

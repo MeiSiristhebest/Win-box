@@ -416,10 +416,22 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
 .hist-undo .muted-btn { margin-left: 0; color: var(--text-dim); }
 
 /* ---- ★ 2026-10-16（用户要求）：点播页「筛选」开关（右上角）----
-   默认**关**（点播页不显示任何分类）；开启才出现源的分类条 + 筛选组（且一次性展开全部），
-   开启态按钮**右下角带一个对号**角标。样式口径与「收藏」按钮的同款「已启用」态一致
-   （`:root[data-theme]` 前缀压过各皮肤 button 规则，§C54 教训）。 */
-.home-filter-row { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+   ★ 2026-10-16 二次调整（用户要求）：「**分类那一列始终显示**，并与「筛选」按钮**同一水平线**；
+     点「筛选」后**下面**再弹出其余全部筛选组」—— 所以
+     · `.home-filter-row` = 一行 flex：左「分类」级（占满剩余宽度，chips 内部换行）+ 右「筛选」按钮（靠 `margin-left:auto`）；
+     · `.home-filters-more` = 下面弹出的其余筛选组（带轻微上浮淡入）。
+   ★ 开启态按钮**右下角带一个对号**角标（`.hf-check`），样式与「收藏」按钮同款口径
+     （`:root[data-theme]` 前缀压过各皮肤 button 规则，§C54 教训）。 */
+.home-filter-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+/* 「分类」那一级撑满剩余宽度；按钮靠右且始终停在第一行 */
+.home-filter-row .cascade { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+.home-filter-row .home-filter-btn { margin-left: auto; flex: 0 0 auto; }
+/* 豆风：这一行只剩「分类」一级 ⇒ 去掉 `.db-filters` 那层白卡（避免"卡里只有一行、按钮在卡外"） */
+:root[data-theme='douban'] .home-filter-row .db-filters {
+  background: none; border: none; box-shadow: none; border-radius: 0; padding: 0; margin-bottom: 0;
+}
+/* 点「筛选」后弹出的其余筛选组：轻微上浮淡入（`popUp` 关键帧在下方进场系统里定义） */
+.home-filters-more { animation: popUp var(--dur-panel) var(--ease-enter) both; }
 .home-filter-btn { position: relative; display: inline-flex; align-items: center; gap: 6px; }
 .home-filter-btn svg { flex: 0 0 auto; }
 :root[data-theme] .home-filter-btn.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
@@ -431,6 +443,25 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
   width: 15px; height: 15px; border-radius: 50%;
   background: var(--accent); color: #fff; font-size: 10px; line-height: 1; font-weight: 700;
 }
+
+/* ---- ★ 2026-10-16（用户要求「瀑布模式下增加回到顶部按钮」「翻页增加输入页码快速跳页」）----
+   模式切换已挪到「配置 → 外观」（点播页不再放切换按钮）：
+   · 瀑布模式：右下角「回到顶部」浮钮（下滚一定距离才出现，见 HomePage 的 scroll 监听）；
+   · 翻页模式：翻页行内的窄输入框 + 「跳页」（复用既有的整页 replace 路径与页码语义）。 */
+/* ★ 特异度：各皮肤有 `:root[data-theme='X'] button {…}`（0,2,1）、`…:hover`（0,3,1）——
+   这里带 `:root[data-theme]` 前缀（0,3,0 / hover 0,4,0）稳压它们（§C54 教训）。 */
+.btn-to-top, :root[data-theme] .btn-to-top {
+  position: fixed; right: 22px; bottom: 22px; z-index: 45;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 42px; height: 42px; padding: 0; border-radius: 50%;
+  background: var(--bg-elev); border: 1px solid var(--border); color: var(--text-dim);
+  box-shadow: var(--shadow); cursor: pointer;
+  animation: popUp var(--dur-state) var(--ease-standard);
+}
+:root[data-theme] .btn-to-top:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); box-shadow: var(--shadow), 0 0 0 3px var(--accent-soft); }
+:root[data-theme] .btn-to-top:active { transform: translateY(1px); }
+/* 跳页输入框：窄、数字居中（其余输入框样式沿用 global 的 input 规则） */
+.pg-jump, :root[data-theme] .pg-jump { width: 64px; text-align: center; padding: 7px 8px; }
 
 /* ---- ★ 2026-10-17（用户要求「详情页加收藏按钮 + 收藏列表」）---- */
 /* 详情页操作区的收藏按钮（与「▶ 播放选中」同一行） */
@@ -717,7 +748,8 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
 .vplayer video { width: 100%; height: 100%; object-fit: contain; outline: none; }
 /*
    全屏光标跟随操作栏状态：移动时显示，播放中静止后隐藏。
-   HTML5 使用 :fullscreen，MPV 使用 vfull；边缘缩放由主进程 setResizable 管理，
+   ★ 2026-10-17：播放器窗口两种内核全屏都用原生窗口全屏 → `.vfull`；主窗口（直播/WebDAV）
+     仍是元素全屏 → `:fullscreen`。边缘缩放由主进程 setResizable 管理，
    不在整个窗口上强制 cursor:none，以免视频区域只有碰到按钮才显示光标。
 */
 .vplayer:fullscreen,
@@ -757,8 +789,9 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
    `:root[data-pwin-ui]`）——播放中鼠标静止后一起淡出，鼠标移到顶部即显形。
    ★ 只在真正的播放器窗口生效（`.app.pvwin`）；详情/搜索辅助窗口（`.app.pwin` 无 `pvwin`）不受影响。
    ★ 用 `:not([data-mpv])` 排除 MPV 内核（其透明链敏感、已有自己的顶层浮层规则），零回归。
-   ★ 全屏：HTML5 元素全屏只显示 `.vplayer`（标题栏在元素外 → 天然隐藏）；MPV 全屏由
-     `[data-player-fullscreen]` 规则 `display:none`。
+   ★ 全屏：播放器窗口的两种内核都用**主进程原生窗口全屏**（HTML5 亦然，2026-10-17 起，见
+     VideoPlayer `nativeFs`）——标题栏由 `[data-player-fullscreen]` 规则 `display:none` 隐藏；
+     `:fullscreen` 规则仍保留，仅供主窗口（直播 / WebDAV）的元素全屏使用。
    ============================================================================ */
 /* ★★ 特异度：四皮肤在 2026-10-16 大改里各自写了
    `:root[data-theme='X']:not([data-mpv]) .app.pwin.pvwin .titlebar {...}`（(0,7,0)，浅色白顶栏）
@@ -1006,11 +1039,20 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
   to { opacity: 1; transform: none; }
 }
 
-/* ③ 弹层进场（搜索面板 / 换源弹层 / 歌单类浮层）：挂载即播放；关闭仍走即时卸载（出场本就该快于进场） */
+/* ③ 弹层进场（搜索面板 / 换源弹层 / 歌单类浮层）：挂载即播放；★ 2026-10-16：换源弹层按用户要求
+     另补了「常驻 3s → 回缩」的**出场**动画（见下方 popOut / popDown），其余弹层仍是即时卸载。 */
 .sp-panel, .srcpick-pop { animation: popIn var(--dur-panel) var(--ease-enter) both; transform-origin: top center; }
 .srcpick-side .srcpick-pop { transform-origin: bottom center; animation-name: popUp; }
 @keyframes popIn { from { opacity: 0; transform: translateY(-7px) scale(.97); } to { opacity: 1; transform: none; } }
 @keyframes popUp { from { opacity: 0; transform: translateY(7px) scale(.97); } to { opacity: 1; transform: none; } }
+/* ★ 2026-10-16（用户要求「换源下拉框常驻 3s 后动画回缩」）：换源弹层的**出场**动画 ——
+   朝锚点缩放淡出（`transform-origin` 沿用上面进场那条：顶栏入口 = top center、侧栏入口 = bottom center，
+   视觉上就是「缩回按钮里」）。★ 必须写在第 1030 行那条之后：`.srcpick-side .srcpick-pop` 也是 (0,2,0)，
+   同特异度靠后加载者胜。时长与 SourcePicker 的 `CLOSE_ANIM_MS`(280ms) 对齐 —— JS 等动画播完才卸载。 */
+.srcpick-pop.srcpick-closing { animation: popOut var(--dur-panel) var(--ease-exit) both; }
+@keyframes popOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.96) translateY(-4px); } }
+.srcpick-side .srcpick-pop.srcpick-closing { animation-name: popDown; }
+@keyframes popDown { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.96) translateY(4px); } }
 
 /* ④ 对话框进场（遮罩淡入 + 卡片上浮缩放）：免责声明 / 网盘绑定 / 更新门禁 */
 .modal-scrim { animation: scrimIn var(--dur-panel) var(--ease-standard) both; }

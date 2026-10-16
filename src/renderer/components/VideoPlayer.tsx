@@ -306,6 +306,13 @@ interface VideoPlayerProps {
 /** ★ 2026-09-28（用户要求）：控制条图标的「长按开面板」手势状态 */
 /** 长按判定阈值（ms）：与右键同为「打开调整框」 */
 
+/**
+ * ★ 2026-10-17（用户报「全屏播放自动换集后，播放器会自动回归小窗口」）：
+ *   播放器窗口最近一次的原生全屏态（模块级记忆）。换集时 PlayerPage 会清空 activeUrl、把本组件
+ *   卸载重挂，若 `full` 每次从 false 起，重挂到主进程全屏事件回来之间会闪一下标题栏；用它初值即可无缝。
+ */
+let lastPlayerFullstate = false;
+
 export default function VideoPlayer(props: VideoPlayerProps) {
   const { url, canPrev, canNext, onPrev, onNext, resourceName, danmakuTitle, mini = false, driveBindProvider = null, playTitle = '' } = props;
   /**
@@ -318,6 +325,15 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   const isImage = mediaKind === 'image';
   const isAudio = mediaKind === 'audio';
   const liveHint = isLikelyLive(url);
+  /**
+   * ★ 2026-10-17（用户报「全屏播放自动换集后，播放器会自动回归小窗口」）：
+   *   独立播放器窗口（allowMpv=true）里的 HTML5 全屏原本走**浏览器元素全屏**（`requestFullscreen`），
+   *   而 `.vplayer` 正是那个全屏元素 —— 换集时 PlayerPage 会清空 activeUrl 把本组件卸载重挂，
+   *   全屏元素一旦离开 DOM，浏览器就会**强制退出全屏**（窗口掉回小窗）。
+   *   修法：播放器窗口的全屏统一走**主进程原生窗口全屏**（与 MPV 内核同一套）—— 全屏是窗口级状态，
+   *   组件卸载/重建与换集都不受影响。主窗口里的直播 / WebDAV 播放仍是元素全屏（不受影响）。
+   */
+  const nativeFs = !!props.allowMpv;
   const ref = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -360,7 +376,11 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   const [buffered, setBuffered] = useState(0);
   const [vol, setVol] = useState(() => prefsRef.current!.vol);
   const [rate, setRate] = useState(() => prefsRef.current!.rate);
-  const [full, setFull] = useState(false);
+  // ★ 2026-10-17：播放器窗口的原生全屏态用模块级记忆做初值（换集重挂时不闪标题栏）
+  const [full, setFull] = useState(nativeFs ? lastPlayerFullstate : false);
+  /** ★ 2026-10-17：最新全屏态（供键盘/内核切换等闭包回调读，避免读到旧 state） */
+  const fullRef = useRef(full);
+  fullRef.current = full;
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
   const [ui, setUi] = useState(true);
@@ -617,15 +637,13 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     clearAuto();
     if (k === 'mpv') mpvResumeRef.current = t;
     else html5ResumeRef.current = t;
-    // MPV fullscreen is a native BrowserWindow state, while HTML5 fullscreen
-    // belongs to the document.  Do not carry one mechanism into the other:
-    // leave the current fullscreen mode first, then switch the kernel.  This
-    // also guarantees the native player bounds are restored before HTML5 takes
-    // over the same window.
+    // ★ 2026-10-17：播放器窗口全屏已统一为**主进程原生窗口全屏**（HTML5 亦然，见 nativeFs 注释）。
+    //   切内核前先退出全屏 —— 原生退出会恢复进入前的窗口 bounds，避免把全屏边界带进另一种内核。
     const finish = () => {
       if (kernelSwitchRef.current !== k) return;
       kernelSwitchRef.current = null;
       setFull(false);
+      lastPlayerFullstate = false;
       setKernel(k);
       // Update the preference only after the fullscreen transition has
       // completed; otherwise the kernel effect can race bounds restoration.
@@ -634,10 +652,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         savePlayerPrefs({ kernel: k });
       }
     };
-    if (kernelRef.current === 'mpv') {
+    if (fullRef.current) {
       void client.playerSetFullscreen(false).then(finish).catch(finish);
-    } else if (document.fullscreenElement) {
-      void document.exitFullscreen().then(finish).catch(finish);
     } else {
       finish();
     }
@@ -1374,6 +1390,56 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     const reportKBps = (kbs: number) => {
       if (Number.isFinite(kbs) && kbs > 0) setNetSpeed(kbs);
     };
+
+    /**
+     * ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）播放诊断上报 ——
+     *   本内核下画面/声音全在渲染层与 GPU 进程里跑，主进程侧没有任何日志：出事时（最典型 = GPU 进程崩溃，
+     *   合成器死 → 整窗不刷新、连进度条都不动，而音频继续）日志里查不到「在放哪一集、停在哪一帧」。
+     *   这里把播放事件 + 帧停更检测报给主进程（见 main/util/mediaDiag.ts 与 index.ts 的 child-process-gone）。
+     */
+    const reportMedia = (event: string) => {
+      try {
+        client.mediaReport({
+          event,
+          kernel: 'html5',
+          url: htmlUrl,
+          title: resourceName,
+          readyState: v.readyState,
+          currentTime: v.currentTime,
+          paused: v.paused,
+        });
+      } catch {
+        /* 上报失败不影响播放 */
+      }
+    };
+    /**
+     * 帧停更检测（「有声音无图像」最直接的证据）：GPU/合成器卡住时 <video> 仍在解码推进
+     *   （音频继续、currentTime 继续走），但**不再有新的呈现帧** → requestVideoFrameCallback 不再回调。
+     *   每 5s 查一次：正在播放（未暂停/未播完/已有数据）却距上一帧 > 5s → 报一次 frame-stall。
+     */
+    let lastFrameAt = performance.now();
+    let stallFired = false;
+    let frameCbId = 0;
+    const rvfc = (v as HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number }).requestVideoFrameCallback;
+    const cancelRvfc = (v as HTMLVideoElement & { cancelVideoFrameCallback?: (id: number) => void }).cancelVideoFrameCallback;
+    if (typeof rvfc === 'function') {
+      const onFrame = () => {
+        lastFrameAt = performance.now();
+        stallFired = false;
+        frameCbId = rvfc.call(v, onFrame);
+      };
+      frameCbId = rvfc.call(v, onFrame);
+    }
+    const stallTimer = setInterval(() => {
+      if (stallFired || v.paused || v.ended || v.readyState < 2) return;
+      if (performance.now() - lastFrameAt > 5000) {
+        stallFired = true;
+        reportMedia('frame-stall');
+      }
+    }, 5000);
+    // 窗口显隐（老板键隐藏 / 最小化 / 切到后台）：此时画面更新会被系统暂停，是「假死」的常见来源，需可区分
+    const onVisibility = () => reportMedia(`visibility:${document.visibilityState}`);
+    document.addEventListener('visibilitychange', onVisibility);
   const onTime = () => {
     setCur(v.currentTime);
     // 挂载后恢复上次位置（一次性；跳过开头 3s 与结尾，避免误跳/看完后重播）
@@ -1463,14 +1529,25 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     setBuffering(false);
     clearAuto();
     poke();
+    reportMedia('play'); // ★ 2026-10-16 诊断上报
   };
   const onPause = () => {
     setPaused(true);
     setUi(true);
+    reportMedia('pause'); // ★ 2026-10-16 诊断上报（自动暂停/系统打断也会走到这里）
   };
-  const onWaiting = () => setBuffering(true);
-  const onPlaying = () => setBuffering(false);
+  const onWaiting = () => {
+    setBuffering(true);
+    reportMedia('waiting'); // ★ 2026-10-16 诊断上报（缓冲：可能是网络，也可能是解码/合成卡住）
+  };
+  const onPlaying = () => {
+    setBuffering(false);
+    reportMedia('playing'); // ★ 2026-10-16 诊断上报（恢复播放；与上一条 waiting 成对即可看出卡了多久）
+  };
+  const onStalled = () => reportMedia('stalled'); // ★ 2026-10-16 数据停供（下载停滞）
+  const onEmptied = () => reportMedia('emptied'); // ★ 2026-10-16 元素被清空（换源/被中断）
   const onErr = () => {
+    reportMedia('error'); // ★ 2026-10-16 媒体错误（含解码失败）
     // ★ 2026-10-08：4K/HEVC 等 Chromium 解不了的形态 → 「自动」偏好下直接改走 mpv（不再上屏误报源不可用）
     if (tryMpvFallback()) return;
     setErr('播放出错：视频加载失败或源不可用');
@@ -1489,6 +1566,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   v.addEventListener('playing', onPlaying);
   v.addEventListener('error', onErr);
   v.addEventListener('ended', onEnded);
+  v.addEventListener('stalled', onStalled);
+  v.addEventListener('emptied', onEmptied);
 
     const start = () => {
       if (handoffRef.current?.url === url && handoffRef.current.paused) {
@@ -1553,6 +1632,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         });
         hls.on(Hls.Events.ERROR, (_e, d) => {
           if (!d.fatal) return;
+          reportMedia(`hls-fatal:${d.type}:${d.details}`); // ★ 2026-10-16 诊断上报（致命 HLS 错误，含自愈前的首次）
           // ① 网络类致命（清单/分片加载失败）：hls.js 不会自动无限重试 → 手动续拉最多 2 次
           if (d.type === Hls.ErrorTypes.NETWORK_ERROR && hlsNetRetryRef.current < 2) {
             hlsNetRetryRef.current++;
@@ -1655,6 +1735,12 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
     return () => {
       if (speedTimer) clearInterval(speedTimer);
+      // ★ 2026-10-16：诊断上报的定时器/监听/帧回调（不清理会在换集后继续对旧 <video> 报 frame-stall）
+      clearInterval(stallTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      if (typeof cancelRvfc === 'function' && frameCbId) cancelRvfc.call(v, frameCbId);
+      v.removeEventListener('stalled', onStalled);
+      v.removeEventListener('emptied', onEmptied);
       v.removeEventListener('timeupdate', onTime);
       v.removeEventListener('canplay', onCanPlay);
       v.removeEventListener('durationchange', onDuration);
@@ -2029,8 +2115,10 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       // ★ 2026-10-08 MPV 内核：无 <video> 也要处理键盘（时间/音量走适配层）
       if (!v && !kIsMpv()) return;
       if (e.repeat) return; // 长按重复由我们自己处理，避免原生 repeat 打断
-      if (e.key === 'Escape' && kIsMpv()) {
-        void client.playerSetFullscreen(false).then(state => setFull(state.fullscreen)).catch(() => undefined);
+      if (e.key === 'Escape' && nativeFs && fullRef.current) {
+        // ★ 2026-10-17：播放器窗口全屏为**原生窗口全屏**（两种内核都是）——浏览器不会自动响应 Esc，
+        //   这里显式退出；主窗口的元素全屏由浏览器自身处理（nativeFs=false 时走不到这里）。
+        void client.playerSetFullscreen(false).then(state => setFull(!!state.fullscreen)).catch(() => undefined);
         return;
       }
       if (e.key === ' ') {
@@ -2291,25 +2379,41 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   };
   const fullBusyRef = useRef(false);
 
-  // 进入小窗口模式时退出元素全屏（mini 下全屏功能消失）
+  // 进入小窗口模式时退出全屏（mini 下全屏功能消失）。
+  // ★ 2026-10-17：播放器窗口全屏 = 主进程原生全屏 —— 主进程 `playerSetMini(true)` 会先退出它并广播
+  //   `player:fullscreen=false`，这里只补一次状态同步；主窗口仍是元素全屏，照旧显式退出。
   useEffect(() => {
-    if (mini && document.fullscreenElement) {
+    if (!mini) return;
+    if (document.fullscreenElement) {
       void document.exitFullscreen().then(() => setFull(false)).catch(() => undefined);
+    } else if (full) {
+      lastPlayerFullstate = false;
+      setFull(false);
     }
-  }, [mini]);
+  }, [mini, full]);
 
+  // ★ 2026-10-17：播放器窗口（nativeFs）的全屏统一订阅主进程原生全屏事件（HTML5 / MPV 同一份）；
+  //   主窗口（直播 / WebDAV）不使用它，仍是元素全屏（见下方单独同步）。
   useEffect(() => {
-    if (!props.allowMpv || kernel !== 'mpv') return;
-    const off = client.playerOnFullscreen((value) => setFull(value));
-    void client.playerIsFullscreen().then((state) => setFull(!!state.fullscreen)).catch(() => undefined);
+    if (!nativeFs) return;
+    const off = client.playerOnFullscreen((value) => {
+      lastPlayerFullstate = value;
+      setFull(value);
+    });
+    void client.playerIsFullscreen()
+      .then((state) => {
+        lastPlayerFullstate = !!state.fullscreen;
+        setFull(!!state.fullscreen);
+      })
+      .catch(() => undefined);
     return off;
-  }, [props.allowMpv, kernel]);
+  }, [nativeFs]);
 
-  // HTML5 元素全屏不会触发 BrowserWindow 的原生全屏事件。播放器窗口是无边框
-  // 且默认可缩放的，因此必须在 document fullscreenchange 时同步锁定系统边缘
-  // 缩放命中区，否则鼠标贴屏幕边缘仍会变成 resize 光标并拖动窗口。
+  // HTML5 元素全屏不会触发 BrowserWindow 的原生全屏事件。主窗口是无边框且默认可缩放的，
+  // 因此必须在 document fullscreenchange 时同步锁定系统边缘缩放命中区，否则鼠标贴屏幕边缘
+  // 仍会变成 resize 光标并拖动窗口。★ 播放器窗口已改走原生全屏（nativeFs）→ 不需要这段。
   useEffect(() => {
-    if (kernel === 'mpv') return;
+    if (nativeFs) return;
     const syncWindowResize = () => {
       const active = !!document.fullscreenElement;
       setFull(active);
@@ -2321,14 +2425,15 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       document.removeEventListener('fullscreenchange', syncWindowResize);
       void client.playerSetResizable(true).catch(() => undefined);
     };
-  }, [kernel]);
+  }, [nativeFs]);
 
   useEffect(() => {
     const root = document.documentElement;
-    if (full && kernel === 'mpv') root.dataset.playerFullscreen = '1';
+    // ★ 2026-10-17：全屏已统一为窗口级状态（播放器窗口的 HTML5 也用原生）→ 标题栏显隐对两种内核一致。
+    //   ★ 卸载时**不删**该标记：换集期间本组件会短暂卸载，删掉会让全屏下的标题栏闪一下。
+    if (full) root.dataset.playerFullscreen = '1';
     else delete root.dataset.playerFullscreen;
-    return () => { delete root.dataset.playerFullscreen; };
-  }, [full, kernel]);
+  }, [full]);
 
   /**
    * ★ 2026-10-16（用户要求）：播放器窗口**顶部标题栏**要和底部控制条一样「鼠标移动才显形」——
@@ -2345,18 +2450,28 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   }, [ui]);
 
   const toggleFull = () => {
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-    if (kernel === 'mpv') {
-      if (fullBusyRef.current) return;
+    if (fullBusyRef.current) return;
+    /**
+     * ★ 2026-10-17：播放器窗口的全屏统一走**主进程原生窗口全屏**（HTML5 亦然）。
+     *   原先 HTML5 用浏览器元素全屏（`requestFullscreen`），而全屏元素 `.vplayer` 在换集时会被
+     *   PlayerPage 卸载重挂 → 浏览器强制退出全屏（用户症状「全屏自动换集后掉回小窗」）。
+     *   原生全屏是窗口级状态，组件卸载/重建、换集都不影响；与 MPV 内核共用同一套（事件驱动）。
+     */
+    if (nativeFs) {
       fullBusyRef.current = true;
       void client.playerIsFullscreen()
         .then(state => client.playerSetFullscreen(!state.fullscreen))
-        .then(state => setFull(!!state.fullscreen))
+        .then(state => {
+          lastPlayerFullstate = !!state.fullscreen;
+          setFull(!!state.fullscreen);
+        })
         .catch(() => undefined)
         .finally(() => { fullBusyRef.current = false; poke(); });
       return;
     }
+    // 主窗口（直播 / WebDAV）：仍是元素全屏
+    const wrap = wrapRef.current;
+    if (!wrap) return;
     if (document.fullscreenElement) void document.exitFullscreen();
     else void wrap.requestFullscreen();
   };

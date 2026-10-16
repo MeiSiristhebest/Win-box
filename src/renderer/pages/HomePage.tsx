@@ -9,7 +9,7 @@ import { uiMem, schedulePersist, saveUiMemory, type HomeSearchMem } from '../lib
 import { getSessionSort, setSessionSort } from '../lib/sessionSort';
 import { makeStaleGuard } from '../lib/staleGuard';
 import { appendUniqueItems, pageSignature } from '../lib/listAppend';
-import { useWaterfall, setWaterfall as setWaterfallPref, useHomeFilters, setHomeFilters } from '../lib/uiPrefs';
+import { useWaterfall, useHomeFilters, setHomeFilters } from '../lib/uiPrefs';
 import { usePageActive } from '../lib/keepAlive';
 import { needsDriveBind } from '../../shared/driveProvider';
 import { useCovers } from '../lib/useCovers';
@@ -34,6 +34,8 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   //   （`localSel` / 多页累积 `accumulate()` / `rawInfo` / `localCap` /「继续加载更多」）—— 见 classLevels 注释。
   const [items, setItems] = useState<VodItem[]>([]);
   const [pg, setPg] = useState(1);
+  /** ★ 2026-10-16（用户要求「翻页模式增加输入页码快速跳页」）：跳页输入框的当前值 */
+  const [jumpPg, setJumpPg] = useState('');
   const [pageInfo, setPageInfo] = useState({ page: 0, pagecount: 0, total: 0 });
   /**
    * ★ 2026-09-30（用户要求「为现在点播分类要翻页的增加一个可以一直下拉的瀑布模式」）：
@@ -60,8 +62,15 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
    * 也有源压根不支持翻页（页码被忽略、恒返回第 1 页）—— 没有这道护栏，哨兵会无限拉取下一页。
    */
   const [wfNoMore, setWfNoMore] = useState(false);
+  /**
+   * ★ 2026-10-16（用户要求「瀑布模式下增加回到顶部按钮」）：
+   *   内容已下滚一定距离时才出现（右下角浮钮），点击把 `.content` 平滑滚回顶部。
+   */
+  const [showTopBtn, setShowTopBtn] = useState(false);
   /** 上一页响应的内容签名（见 lib/listAppend.pageSignature） */
   const wfSigRef = useRef('');
+  /** 上一次的瀑布偏好：偏好从配置页切换后，本页要按新模式回到第 1 页重新对齐（见下方 effect） */
+  const wfPrefRef = useRef(waterfall);
   /** 分类浏览的**列表代数**：replace / append 都 next()，晚到的响应一律不上屏 */
   const listGen = useRef(makeStaleGuard());
   const [wd, setWd] = useState('');
@@ -166,6 +175,9 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     if (!el) return;
     const onScroll = () => {
       uiMem.home.scrollTop = el.scrollTop;
+      // ★ 2026-10-16：只有在「越线」时改状态（其余滚动不改 state → 不触发列表重渲染，见 §C54 卡顿四件套）
+      const next = el.scrollTop > 520;
+      setShowTopBtn((prev) => (prev === next ? prev : next));
     };
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => {
@@ -441,6 +453,40 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     if (pageInfo.pagecount <= 1 || (pageInfo.pagecount <= 999 && pg >= pageInfo.pagecount)) return; // 已到底
     wfBusyRef.current = true;
     void loadCategory(tid, pg + 1, filtersActive, true).finally(() => { wfBusyRef.current = false; });
+  }
+
+  /**
+   * ★ 2026-10-16（用户要求）：瀑布 / 翻页的切换已从点播页挪到「配置 → 外观」——
+   *   偏好变化后本页需按新模式重新对齐：瀑布下 items 是 1..N 页的合集、翻页下只有当前页，
+   *   语义不同 → 回到第 1 页重载，避免「切到瀑布却从后半段开始追加 / 切回翻页却带着几十页合集」。
+   */
+  useEffect(() => {
+    if (wfPrefRef.current === waterfall) return;
+    wfPrefRef.current = waterfall;
+    if (aggMode || !tid) return;
+    setPg(1);
+    void loadCategory(tid, 1, filtersActive);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waterfall]);
+
+  /** ★ 2026-10-16（用户要求「瀑布模式下增加回到顶部按钮」）：平滑滚 `.content` 回顶部 */
+  function scrollToTop(): void {
+    contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  /**
+   * ★ 2026-10-16（用户要求「翻页模式增加输入页码快速跳页」）：按输入页码整页拉取（replace 路径）。
+   *   分母口径同「下一页」：源把 `pagecount` 报成 `2147483647`（>999）时**不设上限**，只保证 ≥1；
+   *   若跳到的页与当前页**零新增**（源没真分页 / 页码被忽略），loadCategory 会回退页码并标记到底。
+   */
+  function jumpToPage(): void {
+    if (loading) return;
+    const n = parseInt(jumpPg.trim(), 10);
+    if (!Number.isFinite(n) || n < 1) return;
+    const p = pageInfo.pagecount > 999 ? n : Math.min(n, pageInfo.pagecount);
+    if (p === pg) return;
+    setPg(p);
+    void loadCategory(tid, p, filtersActive);
   }
 
   /**
@@ -1329,16 +1375,23 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
           )
         ) : (
           <>
-            {/* ★ 2026-10-16（用户要求）：点播页的分类/筛选条由右上角「筛选」按钮开关 ——
-                默认关（**所有分类都不显示**）；开启时**一次性展开全部**（不再逐级展开，逐级展开只留给发现页）。
-                按钮右下角在开启态出现对号；该偏好持久化 ⇒ 换源/重启后仍保持。 */}
+            {/* ★ 2026-10-16（用户要求）：点播页的分类/筛选条由「筛选」按钮开关 ——
+                ★ 二次调整：「**分类」那一列始终显示**（与「筛选」按钮同一水平线），
+                  点「筛选」后才在**下面**弹出其余全部筛选组（剧情/地区/年份/排序…）；
+                  按钮右下角在开启态出现对号；该偏好持久化 ⇒ 换源/重启后仍保持。 */}
             {classes.length > 0 && !err && (
               <div className="row home-filter-row">
+                {/* ★ 2026-10-16（用户要求）：**「分类」那一列始终显示**，且与「筛选」按钮**同一水平线**；
+                    点「筛选」后**下面**再弹出其余全部筛选组（见下方 `.home-filters-more`）。
+                    ⇒ 这里只给 `classLevels` 的**第一级（分类）**，其余级留给下面那块。 */}
+                <CascadeBar levels={classLevels.slice(0, 1)} onPick={onCascadePick} />
+                {/* 按钮固定在这行右侧（与上面「分类」同一水平线）；未选分类时源没有筛选组可展开，
+                    按它只切状态（与旧版一致）——保持"筛选永远在分类行右边"的可预期性。 */}
                 <button
                   type="button"
                   className={`home-filter-btn${filtersOpen ? ' active' : ''}`}
                   aria-pressed={filtersOpen}
-                  title={filtersOpen ? '隐藏源分类与筛选条件' : '显示源分类与筛选条件'}
+                  title={filtersOpen ? '收起源的筛选条件' : '展开源的筛选条件'}
                   onClick={() => setHomeFilters(!filtersOpen)}
                 >
                   {/* 筛选（漏斗）图标 —— 与「收藏」按钮同口径：内联 SVG，随按钮前景色 */}
@@ -1351,8 +1404,14 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
               </div>
             )}
             {/* ★ 2026-10-15（用户要求「级联分类·保留源分类」）：分类条 + 该分类的筛选组。
-                发现页保留**逐级展开**；点播页只在「筛选」开启时出现，且展开全部（见 classLevels / onCascadePick） */}
-            {classes.length > 0 && !err && filtersOpen && <CascadeBar levels={classLevels} onPick={onCascadePick} />}
+                ★ 2026-10-16 调整：「分类」那一级已挪到上面、与「筛选」按钮同行常驻（`levels.slice(0,1)`），
+                  这里只负责点「筛选」后**在下面弹出**其余全部筛选组（剧情/地区/年份/排序…）；
+                  **发现页仍走它自己的逐级展开**，不受影响。 */}
+            {classes.length > 0 && !err && filtersOpen && classLevels.length > 1 && (
+              <div className="home-filters-more">
+                <CascadeBar levels={classLevels.slice(1)} onPick={onCascadePick} />
+              </div>
+            )}
             {/* 站级预设分类（SourceBean.categories）：映射到同名/同 id 分类则点击可切，否则只读展示（随「筛选」一并显隐） */}
             {siteCats.length > 0 && !err && filtersOpen && (
               <div className="row" style={{ marginBottom: 14 }}>
@@ -1405,21 +1464,31 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
                   <div ref={wfSentinelRef} style={{ height: 1 }} aria-hidden="true" />
                 )}
                 {pageInfo.pagecount > 1 && (waterfall && tid !== '' ? (
-                  // 瀑布模式：底部只留进度（加载由哨兵自动驱动，无需按钮）
+                  // 瀑布模式：底部只留进度（加载由哨兵自动驱动，无需按钮；模式切换在「配置 → 外观」）
                   <div className="row" style={{ justifyContent: 'center', marginTop: 16 }}>
                     <span className="status">{wfStatusText()}</span>
-                    <button onClick={() => setWaterfallPref(false)} title="切回逐页翻页">切回翻页</button>
                   </div>
                 ) : (
-                  <div className="row" style={{ justifyContent: 'center', marginTop: 16 }}>
+                  <div className="row" style={{ justifyContent: 'center', marginTop: 16, flexWrap: 'wrap', rowGap: 8 }}>
                     <button disabled={pg <= 1 || loading} onClick={() => { const p = pg - 1; setPg(p); loadCategory(tid, p, filtersActive); }}>上一页</button>
                     {/* ★ 2026-10-16：`wfNoMore`（本页零新增 ⇒ 源其实没有更多页）同样禁用「下一页」并把状态说清楚 */}
                     <span className="status">{wfNoMore ? `${pg} 页 · 已到底（该源无更多内容）` : pageInfo.pagecount > 999 ? `${pg} 页` : `${pg} / ${pageInfo.pagecount}`}</span>
                     <button disabled={pg >= pageInfo.pagecount || loading || wfNoMore} onClick={() => { const p = pg + 1; setPg(p); loadCategory(tid, p, filtersActive); }}>下一页</button>
-                    {/* ★ 2026-09-30（用户要求）：分类浏览可切「瀑布模式」（一直下滑自动加载下一页）。
-                        只在有分页的分类里给入口（tid='' 走 home 接口，没有页码语义）。 */}
+                    {/* ★ 2026-10-16（用户要求「翻页增加输入页码快速跳页」）：只在有真分页语义的分类里给（tid='' 走 home 接口无页码） */}
                     {tid !== '' && (
-                      <button onClick={() => setWaterfallPref(true)} title="开启后：一直下滑，自动加载下一页">瀑布模式</button>
+                      <>
+                        <input
+                          className="pg-jump"
+                          type="text"
+                          inputMode="numeric"
+                          value={jumpPg}
+                          placeholder="页码"
+                          aria-label="跳至指定页码"
+                          onChange={(e) => setJumpPg(e.target.value.replace(/[^0-9]/g, ''))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') jumpToPage(); }}
+                        />
+                        <button disabled={loading || jumpPg.trim() === ''} onClick={jumpToPage} title="跳到输入的页码">跳页</button>
+                      </>
                     )}
                   </div>
                 ))}
@@ -1428,6 +1497,14 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
           </>
         )}
       </div>
+      {/* ★ 2026-10-16（用户要求）：瀑布模式下右下角「回到顶部」浮钮（下滚一定距离才出现，见 scroll 监听） */}
+      {waterfall && showTopBtn && !aggMode && (
+        <button className="btn-to-top" title="回到顶部" aria-label="回到顶部" onClick={scrollToTop}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 19V5M5 12l7-7 7 7" />
+          </svg>
+        </button>
+      )}
       {/* ★ 2026-09-26：源内网盘绑定弹层（保存后刷新绑定状态 + 重载本源首页，让新 cookie 立即生效） */}
       {bindOpen && curSite && (
         <DriveBindModal

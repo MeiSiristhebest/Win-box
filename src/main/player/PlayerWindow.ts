@@ -5,6 +5,7 @@
 import { app, BrowserWindow, screen, shell } from 'electron';
 import { join } from 'node:path';
 import { applyWindowCorner } from '../util/windowCorner';
+import { applyUiScale, registerUiWindow, scaledWindowFor, uiScaleState } from '../ui/uiScale';
 import { applyEpisodeSwitch, type PlayerEpisodeSwitch } from '../../shared/playerEpisode';
 
 // 与渲染层 PlayerPage 约定的初始播放数据（可序列化）
@@ -68,11 +69,15 @@ export function isPlayerWindow(w: BrowserWindow | null | undefined): boolean {
 // ---- 小窗口模式状态 ----
 // 小窗尺寸：宽 384 × 高 216（16:9，无标题栏 —— 渲染层 mini 态改用一条 18px 细拖拽条），
 // 远小于播放器默认 1040×640；用户还可继续拖到最小 240×135。
+// ★ 2026-10-16（界面缩放）：上面这些是 **100% 基准值**，实际用时按 `uiScaleState().scale` 等比放大
+//   （窗口内容已被 setZoomFactor 放大，窗口尺寸必须同步放大，否则小窗里控制条会被裁掉）。
 const MINI_W = 384;
 const MINI_H = 216;
 /** 小窗最小尺寸（16:9）：再小于这个尺寸控制条就点不到了 */
 const MINI_MIN_W = 240;
 const MINI_MIN_H = 135;
+/** 播放器**正常模式**的基准尺寸（100% 档）；实际尺寸由 `scaledWindowFor` 按倍率给 */
+const PLAYER_NORMAL = { width: 1040, height: 640, minWidth: 720, minHeight: 420 } as const;
 let mini = false; // 是否处于小窗口模式
 /** 进入小窗口前的正常窗口 bounds（含用户拖拽后的位置，move/resize 时保持最新） */
 let normalBounds: Electron.Rectangle | null = null;
@@ -226,22 +231,27 @@ export function playerSetMini(isMini: boolean): void {
     const b = w.getBounds();
     const disp = screen.getDisplayMatching(b);
     const { x: ax, y: ay, width: aw, height: ah } = disp.workArea;
+    // ★ 界面缩放：小窗与其最小尺寸都按当前倍率放大
+    const uiScale = uiScaleState().scale;
+    const mw = Math.round(MINI_W * uiScale);
+    const mh = Math.round(MINI_H * uiScale);
     // 优先沿用上次小窗位置，首次则置于所在屏水平居中
     const mb = miniBounds
-      ? { x: Math.max(ax, Math.min(miniBounds.x, ax + aw - MINI_W)), y: Math.max(ay, Math.min(miniBounds.y, ay + ah - MINI_H)) }
-      : { x: Math.round(ax + (aw - MINI_W) / 2), y: Math.round(Math.max(ay, ay + (ah - MINI_H) / 2)) };
+      ? { x: Math.max(ax, Math.min(miniBounds.x, ax + aw - mw)), y: Math.max(ay, Math.min(miniBounds.y, ay + ah - mh)) }
+      : { x: Math.round(ax + (aw - mw) / 2), y: Math.round(Math.max(ay, ay + (ah - mh) / 2)) };
     mini = true; // ★ 先置位再改边界：move/resize 追踪器在 mini 态下只记 miniBounds，避免覆盖 normalBounds
-    w.setMinimumSize(MINI_MIN_W, MINI_MIN_H);
+    w.setMinimumSize(Math.round(MINI_MIN_W * uiScale), Math.round(MINI_MIN_H * uiScale));
     w.setFullScreenable(false);
-    w.setBounds({ ...mb, width: MINI_W, height: MINI_H });
+    w.setBounds({ ...mb, width: mw, height: mh });
     w.webContents.send('player:mini', true);
   } else {
     const nb = normalBounds;
+    const restore = scaledWindowFor(PLAYER_NORMAL);
     mini = false; // ★ 先置位：恢复边界为正常尺寸，追踪器此时只会记录 normalBounds
-    w.setMinimumSize(720, 420);
+    w.setMinimumSize(restore.minWidth, restore.minHeight);
     w.setFullScreenable(true);
     if (nb) w.setBounds(nb);
-    else w.setSize(1040, 640);
+    else w.setSize(restore.width, restore.height);
     w.webContents.send('player:mini', false);
   }
 }
@@ -255,11 +265,13 @@ export function openPlayerWindow(init: PlayerInit): void {
   }
   // ★ 先盖章缓存：窗口加载完成前可能又来了新的 init，did-finish-load 时只发最新那份
   const payload = stampInit(init);
+  // ★ 2026-10-16（界面缩放）：窗口尺寸随屏幕分辨率放大（内容由 setZoomFactor 等比放大）
+  const playerSize = scaledWindowFor(PLAYER_NORMAL);
   playerWin = new BrowserWindow({
-    width: 1040,
-    height: 640,
-    minWidth: 720,
-    minHeight: 420,
+    width: playerSize.width,
+    height: playerSize.height,
+    minWidth: playerSize.minWidth,
+    minHeight: playerSize.minHeight,
     title: init.title || 'Win-Box 播放',
     frame: false,
     autoHideMenuBar: true,
@@ -283,6 +295,9 @@ export function openPlayerWindow(init: PlayerInit): void {
     },
   });
   playerWin.on('ready-to-show', () => playerWin?.show());
+  // ★ 2026-10-16：登记播放器窗口 + 套用界面缩放（放在 ready-to-show 旁，webContents 已可用）
+  registerUiWindow(playerWin);
+  applyUiScale();
   // ★ 最大化/还原：按 Windows 圆角偏好调整避免右上角黑角；并强制重绘防止视口未铺满的"贴左+右侧补背景"
   playerWin.on('maximize', () => {
     if (playerWin) { applyWindowCorner(playerWin, false); playerWin.webContents.invalidate(); }

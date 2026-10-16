@@ -8,9 +8,10 @@ import { EXT_TEMPLATES, validateExtJson } from '../../engine/config/extHelper';
 import { sourceKindInfo } from '../../engine/config/sourceKind';
 import type { AuditItem, SourceDebugReport } from '../../shared/types';
 import { applyTheme, currentTheme } from '../lib/theme';
-import { getShowDiscover, setShowDiscover, getMotionPref, setMotionPref, getNavMode, setNavMode, type MotionPref, type NavMode } from '../lib/uiPrefs';
+import { getShowDiscover, setShowDiscover, getMotionPref, setMotionPref, getNavMode, setNavMode, getWaterfall, setWaterfall, type MotionPref, type NavMode } from '../lib/uiPrefs';
 import { THEME_LABELS, type Theme } from '../lib/themeTokens';
 import { DEFAULT_META_SETTINGS, type MetaSettings } from '../../shared/meta';
+import { UI_SCALE_OPTIONS, type UiScaleState } from '../../shared/uiScale';
 import { DEFAULT_PLAYER_SETTINGS, type PlayerSettings, type MpvStatus } from '../../shared/player';
 import type { PluginView } from '../../shared/plugin';
 import type { DavServer } from '../../shared/webdav';
@@ -91,6 +92,13 @@ export default function ConfigPage() {
   const [motion, setMotionState] = useState<MotionPref>(() => getMotionPref());
   /** ★ 2026-10-15（用户要求）：详情/搜索的打开方式 ——「本页内」（伪墓碑，默认）或「独立窗口」 */
   const [navMode, setNavModeState] = useState<NavMode>(() => getNavMode());
+  /** ★ 2026-10-16（用户要求「瀑布/翻页的切换挪到配置里」）：点播页浏览方式 —— 逐页翻页（默认）/ 瀑布模式 */
+  const [waterfall, setWaterfallState] = useState<boolean>(() => getWaterfall());
+  /** ★ 2026-10-16（用户要求「自适应屏幕分辨率调节窗口大小与字体大小」）：界面缩放（跟随屏幕 / 指定档位） */
+  const [uiScale, setUiScaleState] = useState<UiScaleState>({ pref: 'auto', scale: 1, work: { width: 0, height: 0 } });
+  useEffect(() => {
+    client.uiGetScale().then(setUiScaleState).catch(() => undefined);
+  }, []);
   // 外挂字幕（多源：SubtitleCat 免 token / assrt 需 token）
   const [subToken, setSubToken] = useState('');
   const [subTokenSaved, setSubTokenSaved] = useState(false);
@@ -1868,6 +1876,30 @@ export default function ConfigPage() {
         </div>
       </div>
 
+      {/* ★ 2026-10-16（用户要求「自适应屏幕分辨率调节窗口大小与字体大小」）：界面缩放。
+          默认「跟随屏幕」= 按显示器工作区（DIP）自动推倍率（1K → 100%、2K → 125%、4K → 175%…），
+          主进程据此**等比放大窗口与整套 UI（含字号）**；也可在此固定某个档位。
+          「跟随屏幕」标签上直接显示当前推导出来的百分比，省去猜。 */}
+      <div className="card" id="cfg-ui-scale" style={{ padding: 12, marginBottom: 16 }}>
+        <div className="row" style={{ marginBottom: 8 }}>
+          <span className="muted" style={{ fontWeight: 600 }}>界面缩放</span>
+        </div>
+        <div className="row" style={{ gap: 6 }} role="radiogroup" aria-label="界面缩放">
+          {UI_SCALE_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              role="radio"
+              aria-checked={uiScale.pref === o.value}
+              className={`tag ${uiScale.pref === o.value ? 'active' : ''}`}
+              onClick={() => { void client.uiSetScale(o.value).then(setUiScaleState).catch(() => undefined); }}
+            >
+              {o.value === 'auto' ? `跟随屏幕（当前 ${Math.round(uiScale.scale * 100)}%）` : o.label} {uiScale.pref === o.value ? '✓' : ''}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* ★ 2026-10-08（用户要求「整体重做界面视觉与动效交互」）：界面动效三态。
           默认跟随系统；若系统关了「动画效果」（Windows 设置 → 辅助功能 → 视觉效果），
           系统偏好会让浏览器折叠一切动画 —— 这里可强制开启。 */}
@@ -1916,6 +1948,29 @@ export default function ConfigPage() {
         </div>
         <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
           本页内：在主界面里直接打开，返回时不再重新加载。独立窗口：把详情/搜索弹成单独窗口。
+        </div>
+      </div>
+
+      {/* ★ 2026-10-16（用户要求「瀑布/翻页的切换不做在点播页下方，做成在配置中切换」）：
+          点播页浏览方式 —— 逐页翻页（默认）/ 瀑布模式（一直下滑自动加载下一页）。
+          写同一个 `winbox-waterfall` 偏好 ⇒ 与点播页既有行为一致，换源 / 重启后都保持。 */}
+      <div className="card" id="cfg-home-browse" style={{ padding: 12, marginBottom: 16 }}>
+        <div className="row" style={{ marginBottom: 8 }}>
+          <span className="muted" style={{ fontWeight: 600 }}>点播页浏览方式</span>
+        </div>
+        <div className="row" style={{ gap: 6 }} role="radiogroup" aria-label="点播页浏览方式">
+          {([[false, '逐页翻页'], [true, '瀑布模式']] as [boolean, string][]).map(([v, label]) => (
+            <button
+              key={String(v)}
+              type="button"
+              role="radio"
+              aria-checked={waterfall === v}
+              className={`tag ${waterfall === v ? 'active' : ''}`}
+              onClick={() => { setWaterfallState(v); setWaterfall(v); }}
+            >
+              {label} {waterfall === v ? '✓' : ''}
+            </button>
+          ))}
         </div>
       </div>
 
