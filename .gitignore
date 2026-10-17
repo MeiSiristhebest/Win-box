@@ -11,10 +11,7 @@ Thumbs.db
 
 # --- 本机私有 / 内部计划 ---
 .workbuddy/
-# ★ 2026-10-18（用户要求）：`winbox-plugin` skill 随源码开源 —— 只放行 .trae/skills，其余 .trae 内容仍不入库
-.trae/*
-!.trae/skills/
-!.trae/skills/**
+.trae/
 .tmp/
 # 分发版 EULA（与开源 MIT LICENSE 冲突，不入源码仓库）
 LICENSE.txt
@@ -27,12 +24,8 @@ _e2e_*
 *.tmp.mjs
 *.tmp.ts
 
-# 站点级研究文档（源健康/解密分析等，不开源）；★ 2026-10-18：只放行插件作者要读的两份规范
-docs/*
-!docs/design/
-docs/design/*
-!docs/design/插件制作规范.md
-!docs/design/皮肤与主题规范.md
+# 站点级研究文档（源健康/解密分析等，不开源）
+docs/
 
 # --- 专有 / 运行时 / 编译产物：不随源码分发 ---
 # mpv 播放内核（官方 v0.41.0 构建，约 100MB；GPL/LGPL，随安装包分发，不入源码库）
