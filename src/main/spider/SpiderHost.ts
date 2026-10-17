@@ -2527,6 +2527,15 @@ export class SpiderHost {
   }
 
   /**
+   * ★ 2026-10-17（B1，用户报「播放时太臃肿」）：用户开始播放 → 布防常驻蜘蛛池的**播放期收缩**。
+   *   播放期间不再发搜索请求，池纯属白占内存：整体空闲 30s 后收敛到 1 个热进程
+   *   （见 SpiderProcPool.armPlaybackShrink）。由主进程 `media:state` 的播放器窗口 play/playing 触发。
+   */
+  onPlaybackStarted(): void {
+    this.bridge.armPoolShrink();
+  }
+
+  /**
    * ★「清理缓存」之后重新预热（2026-09-24）：清缓存会删掉 jar 转换产物与常驻进程，
    * 若不重建，用户下一次进源就要在请求里现付「下载 + dex2jar + JVM 冷启动」（实测 37s，会把请求顶成超时）。
    * 这里立刻在后台把全局 jar 重新转换 + 重启热进程；用户再点源时通常已经就绪。

@@ -10,7 +10,7 @@
 //  - PER_KEY_CAP 只在「线程池被占满」时兜底扩容；全局上限（内存自适应）防失控。
 //  - 请求超时 = 调用方给的源 timeout；★ **单请求超时不再 kill 进程**（进程里还有别的源的在途请求）。
 //  - ★ 空结果与失败必须区分：蜘蛛成功返回 '' 是合法结果（空搜索），不误判失败去回退一次性。
-//  - 空闲 60s 回收冗余进程（保留每 key 1 个热进程）。
+//  - 空闲 25s 回收冗余进程（保留每 key 1 个热进程）；★ 2026-10-17（B1）起：用户**开始播放**后池整体空闲 30s 再收敛到 1 个。
 //  - 单测默认禁用（VITEST）或 TVBOX_DISABLE_SPIDER_POOL=1 关闭。
 import type { ChildProcess } from 'node:child_process';
 import { freemem } from 'node:os';
@@ -90,13 +90,15 @@ export interface SpawnFn {
 }
 
 /**
- * 全局存活进程上限（内存自适应）：空闲内存 >1.5GB 用 8，否则退回 6。
- * 依据：实测一个常驻 serve JVM（-Xmx256m + SerialGC，加载 stubs+libs+蜘蛛 jar）**实际足迹 ≈84MB**，
- * 8 个 ≈ 670MB；低内存机器（空闲 <1.5GB）保守到 6，避免 JVM 互相争抢/换页反而集体变慢。
+ * 全局存活进程上限（内存自适应）：空闲内存 >1.5GB 用 4，否则退回 3。
+ * ★ 2026-10-17（B1，用户报「播放时太臃肿」）由 8/6 下调。
+ * 依据：实测一个常驻 serve JVM **≈84MB**、py 蜘蛛 **≈35MB**，原上限 8 ≈ 0.3~0.7GB；
+ *   而「一个 serve 进程内 24 线程并发」（见 MAX_INFLIGHT_PER_PROC）已足够跑完整轮 33 源并发搜索，
+ *   只有「同 key 线程池被占满」时才需要扩容 —— 4/3 才是真正的必要规模。
  * 超限时回收「最久空闲」进程（LRU）而不是拒绝 spawn。
  */
-const GLOBAL_CAP_HIGH = 8;
-const GLOBAL_CAP_LOW = 6;
+const GLOBAL_CAP_HIGH = 4;
+const GLOBAL_CAP_LOW = 3;
 
 export function effectiveGlobalCap(): number {
   try {
@@ -129,9 +131,11 @@ export const PING_METHOD = '__ping__';
 export const WARM_METHOD = '__warm__';
 /** 预热探针超时：JVM 启动 + setupEnv（加载大 jar）留足余量 */
 const WARM_TIMEOUT_MS = 30_000;
-/** 空闲回收：★ 60s（原 30s）—— 全源搜索后短时间内再搜一次仍能命中热进程，不必重付冷启动 */
-export const IDLE_RECLAIM_MS = 60_000;
+/** 空闲回收：★ 25s（2026-10-17 B1 由 60s 下调）—— 冗余进程尽早还内存；再次搜索仍大概率命中热进程 */
+export const IDLE_RECLAIM_MS = 25_000;
 const RECLAIM_INTERVAL_MS = 15_000;
+/** ★ 2026-10-17（B1）：播放期收缩 —— 用户开始播放后，池**整体空闲**这么久就把存活数收敛到 1 */
+export const PLAYBACK_SHRINK_IDLE_MS = 30_000;
 
 export function poolEnabled(): boolean {
   if (process.env.VITEST) return false;
@@ -150,6 +154,8 @@ export class SpiderProcPool {
   private groups = new Map<string, Proc[]>();
   /** 全局上限快照（30s 刷新一次：既随内存压力自适应，又不会因瞬时抖动来回变） */
   private capCache = { at: 0, val: 0 };
+  /** ★ 2026-10-17（B1）：播放期收缩已布防（见 armPlaybackShrink）—— 一次性，收敛后自动解除 */
+  private playbackShrinkArmed = false;
 
   constructor(private readonly spawnFn: SpawnFn) {}
 
@@ -259,6 +265,40 @@ export class SpiderProcPool {
   /** 某 key 当前存活进程数（预热/诊断用） */
   aliveForKey(key: string): number {
     return (this.groups.get(key) ?? []).filter((p) => !p.dead).length;
+  }
+
+  /**
+   * ★ 2026-10-17（B1）播放期收缩：用户开始播放时布防。
+   *   播放期间不会再发搜索请求 ⇒ 常驻池纯属白占内存。布防后由回收器在「**池整体空闲 ≥30s**
+   *   且无在途/排队」时把全局存活数收敛到 1（只留最近用过的那个，被钉住的不动）。
+   *   布防是**一次性**的：收敛后自动解除，下一次播放事件再布防。
+   */
+  armPlaybackShrink(): void {
+    this.playbackShrinkArmed = true;
+  }
+
+  /** 池内最近一次活动时间（无存活进程时返回 0） */
+  private lastActivityAt(): number {
+    let last = 0;
+    for (const procs of this.groups.values()) {
+      for (const p of procs) if (!p.dead) last = Math.max(last, p.lastUsed);
+    }
+    return last;
+  }
+
+  /** 播放期收缩（见 armPlaybackShrink）：整体空闲够久且无活 → 收敛到 1 个热进程 */
+  private shrinkForPlayback(now: number): void {
+    const last = this.lastActivityAt();
+    if (!last || now - last < PLAYBACK_SHRINK_IDLE_MS) return;
+    const all: Proc[] = [];
+    for (const procs of this.groups.values()) all.push(...procs);
+    // 有在途请求 / 排队的进程一个都不动（播放中的本地代理会话、正在跑的搜索都要保）
+    if (all.some((p) => !p.dead && (p.pending.size > 0 || p.queue.length > 0))) return;
+    const live = all.filter((p) => !p.dead && (!p.pinnedUntil || p.pinnedUntil <= now));
+    this.playbackShrinkArmed = false; // 一次性：无论收敛与否都解除，等下一次播放事件
+    if (live.length <= 1) return;
+    live.sort((a, b) => b.lastUsed - a.lastUsed);
+    for (const p of live.slice(1)) this.kill(p, 'idle');
   }
 
   /** 排队：等待期上限 QUEUE_WAIT_MS（排队超时只失败该请求，不牵连进程） */
@@ -418,6 +458,8 @@ export class SpiderProcPool {
       for (const p of idleList) if (p !== keep) this.kill(p, 'idle');
       if (procs.every((p) => p.dead)) this.groups.delete(key);
     }
+    // ★ 2026-10-17（B1）：播放期收缩（每 key 1 个之外，整体空闲够久再收敛到 1）
+    if (this.playbackShrinkArmed) this.shrinkForPlayback(now);
   }
 
   startReclaimTimer(): ReturnType<typeof setInterval> {

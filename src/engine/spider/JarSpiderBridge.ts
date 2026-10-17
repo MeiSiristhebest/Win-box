@@ -1274,6 +1274,11 @@ export class JarSpiderBridge {
     return this.pool?.aliveCount ?? 0;
   }
 
+  /** ★ 2026-10-17（B1）：播放期收缩 —— 布防常驻池在「整体空闲 30s」后收敛到 1 个热进程 */
+  armPoolShrink(): void {
+    this.pool?.armPlaybackShrink();
+  }
+
   /** ★ 嵌入式 Python 运行时是否已落盘（同步判定，全源搜索就绪闸门用；**绝不触发下载**） */
   pyRuntimeReady(): boolean {
     if (!this.pyRuntimeDir) return false;

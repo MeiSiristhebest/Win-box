@@ -155,6 +155,10 @@ export type MpvCommand =
   | { type: 'sub-pos'; value: number } // 0..100（距顶部百分比）
   // ★ 2026-10-17（用户要求）：音轨切换（mpv 的 aid；内置内核走 hls.js 的 audioTrack，不走这里）
   | { type: 'aid'; value: number }
+  // ★ 2026-10-17（阶段2）：字幕轨切换（mpv 的 sid；-1 = 关闭字幕）
+  | { type: 'sid'; value: number }
+  // ★ 2026-10-17（阶段2）：音频源码直通（mpv `audio-spdif`；'' = 关闭直通）
+  | { type: 'audio-spdif'; value: string }
   // ★ 超分插件（M1）：整链替换 mpv 着色器（空数组 = 关闭超分），即时生效、不重启会话
   | { type: 'glsl-shaders'; value: string[] }
   // ★ 超分插件（M1）：换超分档位 —— 渲染层只报档位，**绝对路径由主进程解析**（渲染层不碰文件系统）
@@ -174,6 +178,108 @@ export interface MpvAudioTrack {
   channels?: string;
   /** 是否 mpv 当前选中 */
   selected?: boolean;
+}
+
+/** ★ 2026-10-17（阶段2）：字幕轨条目（mpv `track-list` 里 type=sub 的项归一后） */
+export interface MpvSubtitleTrack {
+  /** mpv 字幕轨 id（切换时用；也用于高亮当前项） */
+  id: number;
+  title?: string;
+  lang?: string;
+  codec?: string;
+  selected?: boolean;
+  /** 外挂字幕（sub-add 进来的） */
+  external?: boolean;
+}
+
+/**
+ * ★ 2026-10-17（阶段2）：视频参数（HDR 标准判定 / 底栏规格标签用）。
+ * 字段名与含义**取自该内核 `video-params` 的实测输出**（不要照搬其它 mpv 版本的键名）：
+ * `pixelformat/primaries/gamma/light/sig-peak` 为 mpv 标准键；
+ * `hdr-vivid` 是 Yaozhi 自编译核心的**自定义扩展键**（只有它才有）。
+ */
+export interface MpvVideoParams {
+  w: number;
+  h: number;
+  pixelformat?: string;
+  primaries?: string;
+  gamma?: string;
+  light?: string;
+  sigPeak?: number;
+  /** ★ 自定义键：HDR Vivid 元数据识别（其它 mpv 构建不提供 → undefined） */
+  hdrVivid?: boolean;
+}
+
+/** ★ 2026-10-17（阶段2）：音频参数（mpv `audio-params` 归一）。注意 `format` 是**采样格式**（floatp/s16），不是编码名 */
+export interface MpvAudioParams {
+  samplerate?: number;
+  /** 声道布局名（mono/stereo/5.1…） */
+  channels?: string;
+  channelCount?: number;
+}
+
+/** 画面标准（格式标签用；纯函数推导，见 `mpvDisplayStandard`） */
+export type MpvDisplayStandard = 'SDR' | 'HLG' | 'HDR Vivid' | 'HDR10';
+
+/**
+ * ★ 2026-10-17（阶段2）：由 mpv `video-params` 推导「画面标准」。
+ * 口径（仅用实测存在的键，不发明）：
+ *   ① `hdr-vivid === true`（Yaozhi 核心自定义键）→ HDR Vivid；
+ *   ② `gamma` 含 `hlg` → HLG；含 `pq` / `smpte2084` → HDR10（BT.2020 与否不改变标签）；
+ *   ③ 其余 → SDR。**DV 不做标签**：该核心未暴露可区分的 DV 专用键，不猜。
+ */
+export function mpvDisplayStandard(v: MpvVideoParams | null | undefined): MpvDisplayStandard {
+  if (!v) return 'SDR';
+  if (v.hdrVivid === true) return 'HDR Vivid';
+  const gamma = String(v.gamma || '').toLowerCase();
+  if (gamma.includes('hlg')) return 'HLG';
+  if (gamma.includes('pq') || gamma.includes('2084')) return 'HDR10';
+  return 'SDR';
+}
+
+/**
+ * ★ 2026-10-17（阶段3）：起播格式标签（参照 Yaozhi 的 startup-format-logos，但我们只做**已知值**的标签）。
+ * 口径：画面标准（SDR/HLG/HDR10/HDR Vivid）必给；BT.2020 仅在 `primaries` 明说时补；
+ * 音频编码（大写）与声道布局有值才补。**不做** DV/Atmos/DTS:X 这类需要专用元数据的标签（不猜）。
+ */
+export function mpvFormatBadges(v: MpvVideoParams | null, aCodec: string, channels?: string): string[] {
+  const out: string[] = [mpvDisplayStandard(v)];
+  const p = String(v?.primaries || '').toLowerCase();
+  if (p.includes('2020')) out.push('BT.2020');
+  const a = String(aCodec || '').trim();
+  if (a) out.push(a.toUpperCase());
+  const ch = String(channels || '').trim();
+  if (ch) out.push(ch);
+  return out;
+}
+
+// ---------- ★ 2026-10-17（阶段3b，用户要求「音频直通开关」）：mpv `audio-spdif` 档位 ----------
+//
+// 语义：把音频**不解码**、按源码直通给功放（HDMI/SPDIF 比特流）。值 = 直接下发给 mpv 的
+//   编解码名**列表串**（mpv 认的键名：ac3 / eac3 / dts / dts-hd / truehd）；'' = 关闭直通（本机解码）。
+//   ★ 只在 MPV 内核生效（HTML5 内核无此能力），且默认关闭（多数场景本机解码更稳）。
+/** 音频直通档位（`value` = 下发给 mpv 的列表串；'' = 关闭） */
+export interface SpdifOption {
+  value: string;
+  label: string;
+  /** 一句话说明（面板 title / 技术详情里用） */
+  hint: string;
+}
+export const SPDIF_OPTIONS: readonly SpdifOption[] = [
+  { value: '', label: '关闭', hint: '由本机解码（默认；兼容性最好）' },
+  { value: 'ac3,eac3,dts,dts-hd,truehd', label: '全部', hint: 'Dolby / DTS 全部源码直通给功放' },
+  { value: 'ac3,eac3,truehd', label: '仅 Dolby', hint: 'AC3 / EAC3 / TrueHD 直通' },
+  { value: 'dts,dts-hd', label: '仅 DTS', hint: 'DTS / DTS-HD 直通' },
+];
+/** 直通档位归一（纯函数）：非法/未知值一律回落 ''（关闭）——避免记忆损坏把声音弄哑 */
+export function normalizeSpdif(v: unknown): string {
+  const s = typeof v === 'string' ? v : '';
+  return SPDIF_OPTIONS.some((o) => o.value === s) ? s : '';
+}
+/** 直通档位人话标签（技术详情面板显示「实际生效」值用） */
+export function spdifLabel(v: unknown): string {
+  const s = normalizeSpdif(v);
+  return SPDIF_OPTIONS.find((o) => o.value === s)?.label ?? '关闭';
 }
 
 /** mpv 内核状态（主进程节流推送，渲染层据此驱动进度条/弹幕/跳过片头片尾） */
@@ -206,6 +312,34 @@ export interface MpvKernelState {
   audioTracks: MpvAudioTrack[];
   /** ★ 2026-10-17：当前音轨 id（aid）；无音轨/未知 null */
   aid: number | null;
+  // ---------- ★ 2026-10-17（阶段2）：MPV 内核「能力面」（只重做 MPV 内核下界面所需） ----------
+  // 数据源与键名均按该内核实测（video-params / audio-params / track-list / hwdec-current / *-bitrate）。
+  /** 字幕轨（track-list 里 type=sub 的项；中文轨道菜单用） */
+  subtitles: MpvSubtitleTrack[];
+  /** 当前字幕轨 id（sid）；无字幕/未选 null */
+  sid: number | null;
+  /** 视频参数（画面尺寸/HDR 标准判定）；无视频 null */
+  video: MpvVideoParams | null;
+  /** 音频参数（采样率/声道）；无音频 null */
+  audio: MpvAudioParams | null;
+  /** 视频编码名（video-format，如 h264/hevc/vvc/av1） */
+  vCodec: string;
+  /** 音频编码名（audio-codec-name，如 aac/ac3/eac3/dts） */
+  aCodec: string;
+  /** 硬件解码方式（hwdec-current；'' 未知 / 'no' 软解 / 其它 = 硬解后端名） */
+  hwdec: string;
+  /** 视频码率 kbps（`video-bitrate` 原始单位是 bps → ÷1000；不可用 = 0） */
+  vBitrateKbps: number;
+  /** 音频码率 kbps（`audio-bitrate` 原始单位是 bps → ÷1000；不可用 = 0） */
+  aBitrateKbps: number;
+  /** 容器帧率（container-fps；未知 0） */
+  fps: number;
+  /** 丢帧数（frame-drop-count） */
+  dropped: number;
+  /** 已缓存时长（demuxer-cache-duration，秒；未知 null） */
+  cacheDuration: number | null;
+  /** 音频源码直通（audio-spdif；'' = 关闭） */
+  spdif: string;
 }
 
 /** 主进程 → 渲染层：内核状态推送（带会话号，晚到的旧会话事件被丢弃） */

@@ -13,10 +13,16 @@ import type { KVStore, Logger } from '../../../shared/types';
 import type { JsSandboxLike, SpiderStyle } from '../JsSandbox';
 import { SAB_HEADER, type HostCall, type WorkerReply, type WorkerTask } from './protocol';
 
-/** 池容量：与 JVM（4）/Python 常驻池同口径，避免大配置（58 个 JS 源）把机器压垮 */
-const POOL_SIZE = 4;
+/**
+ * 池容量：★ 2026-10-17（B2）由 4 下调到 3（用户报「后台跑着五六个子进程、太臃肿」）。
+ * 每个 worker 一份独立 V8 堆（带 js-lib 时更贵）；3 台已够常见并发，第 4 源起改为排队而非再开一台。
+ */
+const POOL_SIZE = 3;
 /** 打开/切换类任务超时 */
 const OPEN_TIMEOUT = 25_000;
+/** ★ 2026-10-17（B2）：空闲回收 —— 某 worker 无任务超过这么久就 terminate（下次 pick 自动重建） */
+const IDLE_RECLAIM_MS = 5 * 60_000;
+const RECLAIM_INTERVAL_MS = 60_000;
 
 interface PoolWorker {
   w: Worker;
@@ -24,6 +30,8 @@ interface PoolWorker {
   keys: Set<string>;
   queue: Array<() => void>;
   running: boolean;
+  /** ★ 2026-10-17（B2）：最近一次承接任务的时刻（空闲回收据此判断，见 reclaimIdle） */
+  lastUsed: number;
   /** 在途任务（open/call；超时/崩溃清账用）—— id → 回执 */
   pending: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>;
   nextId: number;
@@ -85,10 +93,16 @@ export class JsWorkerPool {
   /** key → 已成功 open 的 worker（沙箱生命周期与 worker 绑定；worker 摘除时同步失效） */
   private openedOn = new Map<string, PoolWorker>();
 
+  /** ★ 2026-10-17（B2）：空闲回收定时器（`unref`，不阻进程退出） */
+  private reclaimTimer: ReturnType<typeof setInterval> | null = null;
+
   constructor(
     private readonly host: EngineHost,
     private readonly workerFile: string,
-  ) {}
+  ) {
+    this.reclaimTimer = setInterval(() => this.reclaimIdle(), RECLAIM_INTERVAL_MS);
+    this.reclaimTimer.unref?.();
+  }
 
   /** 懒读 worker 代码（打包态在 asar 内也能 readFileSync；用 eval 启动，避路径解析问题） */
   private workerCode(): string {
@@ -105,7 +119,7 @@ export class JsWorkerPool {
       },
       name: 'winbox-js-spider',
     });
-    const pw: PoolWorker = { w, keys: new Set(), queue: [], running: false, pending: new Map(), nextId: 1, down: false };
+    const pw: PoolWorker = { w, keys: new Set(), queue: [], running: false, lastUsed: Date.now(), pending: new Map(), nextId: 1, down: false };
     w.on('message', (msg: WorkerReply | HostCall) => this.onMessage(pw, msg));
     w.on('error', (error: unknown) => this.onDown(pw, error instanceof Error ? error.message : String(error)));
     w.on('exit', (code) => {
@@ -217,6 +231,7 @@ export class JsWorkerPool {
     return new Promise<T>((resolve, reject) => {
       const go = (): void => {
         pw.running = true;
+        pw.lastUsed = Date.now(); // ★ 2026-10-17（B2）：刷新活跃时刻（空闲回收据此判断）
         fn()
           .then(resolve, reject)
           .finally(() => {
@@ -313,8 +328,29 @@ export class JsWorkerPool {
     this.openedOn.delete(key);
   }
 
+  /**
+   * ★ 2026-10-17（B2）：空闲回收 —— 无 pending / 无排队且闲置超过 IDLE_RECLAIM_MS 的 worker 直接 terminate
+   *   （走 onDown 摘除：路由与沙箱标记同步失效，下次 `pick` 自动重建，语义与「超时被杀」完全一致）。
+   *   至少保留 1 台，避免下次调用还要付「起 worker + 加载脚本」。
+   */
+  private reclaimIdle(): void {
+    if (this.disposed) return;
+    const now = Date.now();
+    for (const w of [...this.workers]) {
+      if (this.workers.filter((x) => !x.down).length <= 1) break; // 至少留 1 台热 worker
+      if (w.down || w.pending.size > 0 || w.queue.length > 0 || now - w.lastUsed <= IDLE_RECLAIM_MS) continue;
+      this.host.logger.i(`js-worker 池：空闲回收 worker（>${Math.round(IDLE_RECLAIM_MS / 60_000)} 分钟无任务），下次调用自动重建`);
+      void w.w.terminate();
+      this.onDown(w, '空闲回收');
+    }
+  }
+
   dispose(): void {
     this.disposed = true;
+    if (this.reclaimTimer) {
+      clearInterval(this.reclaimTimer);
+      this.reclaimTimer = null;
+    }
     for (const w of this.workers) void w.w.terminate();
     this.workers = [];
     this.route.clear();

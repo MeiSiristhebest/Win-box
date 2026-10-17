@@ -7,7 +7,7 @@
 //     窗口必须 transparent + 播放区页面透明；HTML 覆盖层仍绘制在 mpv 画面之上，点击归 HTML）；
 //   · `--input-ipc-server=\\.\pipe\<name>` + Node `net.connect` 可用（loadfile / set_property /
 //     observe_property 全通）；属性事件以 JSON 行推送。
-import type { MpvAudioTrack, MpvCommand, MpvKernelState } from '../../shared/player';
+import type { MpvAudioParams, MpvAudioTrack, MpvCommand, MpvKernelState, MpvSubtitleTrack, MpvVideoParams } from '../../shared/player';
 import { mpvFontSize } from '../../shared/player';
 import { playerCandidates } from '../torrent/externalPlayer';
 
@@ -30,6 +30,20 @@ export function initialKernelState(live = false): MpvKernelState {
     exited: false,
     audioTracks: [],
     aid: null,
+    // ★ 2026-10-17（阶段2）：能力面
+    subtitles: [],
+    sid: null,
+    video: null,
+    audio: null,
+    vCodec: '',
+    aCodec: '',
+    hwdec: '',
+    vBitrateKbps: 0,
+    aBitrateKbps: 0,
+    fps: 0,
+    dropped: 0,
+    cacheDuration: null,
+    spdif: '',
   };
 }
 
@@ -47,10 +61,46 @@ export const MPV_OBSERVED: ReadonlyArray<{ id: number; name: string }> = [
   // ★ 2026-10-17（用户要求「音轨设置」）：观察音轨表与当前音轨，渲染层据此列出/高亮（无需新 IPC）
   { id: 10, name: 'track-list' },
   { id: 11, name: 'aid' },
+  // ---------- ★ 2026-10-17（阶段2）：MPV 内核「能力面」（只重做 MPV 内核下界面所需） ----------
+  // 键名与单位均按该内核**实测**输出（见 .tmp/yaozhi-poc/mpv-props.cjs 的 dump）：
+  //   · `video-params` 里 `hdr-vivid` 是 Yaozhi 自编译核心的自定义键；
+  //   · `audio-bitrate` / `video-bitrate` 单位是 **bps**（不是 kbps）；
+  //   · `track-list` 的 `language`/`title` 在 **`metadata`** 里（顶层没有）。
+  { id: 12, name: 'video-params' },
+  { id: 13, name: 'audio-params' },
+  { id: 14, name: 'video-format' },
+  { id: 15, name: 'audio-codec-name' },
+  { id: 16, name: 'hwdec-current' },
+  { id: 17, name: 'audio-bitrate' },
+  { id: 18, name: 'video-bitrate' },
+  { id: 19, name: 'container-fps' },
+  { id: 20, name: 'frame-drop-count' },
+  { id: 21, name: 'demuxer-cache-duration' },
+  { id: 22, name: 'audio-spdif' },
+  { id: 23, name: 'sid' },
 ];
+
+/** 归一：任意值 → 非空字符串（数字转字符串；空/其它 → undefined） */
+function mpvStr(v: unknown): string | undefined {
+  const s = typeof v === 'number' ? String(v) : typeof v === 'string' ? v : '';
+  return s ? s : undefined;
+}
+
+/** 有限数字 → number，否则 undefined */
+function mpvNum(v: unknown): number | undefined {
+  return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
+}
+
+/** 轨道 `metadata`（★实测：本内核的 `language`/`title` 在这里，顶层没有） */
+function mpvTrackMeta(t: Record<string, unknown>): Record<string, unknown> {
+  const m = t.metadata;
+  return m && typeof m === 'object' ? (m as Record<string, unknown>) : {};
+}
 
 /**
  * ★ 2026-10-17：mpv `track-list` → 只要 audio 轨道（紧凑结构；缺字段就不写）。
+ * ★ 2026-10-17（阶段2）修正：`lang`/`title` 在本内核里位于 **`metadata`**（顶层没有），
+ *   此前只读顶层 ⇒ 音轨标签恒为空。现两处都读（兼容其它 mpv 版本）。
  * 声道兼容两种历史键名（`demux-channel-count` / `demux-channels`）。
  */
 export function mpvAudioTracks(data: unknown): MpvAudioTrack[] {
@@ -62,20 +112,74 @@ export function mpvAudioTracks(data: unknown): MpvAudioTrack[] {
     if (String(t.type || '') !== 'audio') continue;
     const id = Number(t.id);
     if (!Number.isFinite(id)) continue;
-    const str = (v: unknown): string | undefined => {
-      const s = typeof v === 'number' ? String(v) : typeof v === 'string' ? v : '';
-      return s ? s : undefined;
-    };
+    const meta = mpvTrackMeta(t);
     out.push({
       id,
-      title: str(t.title),
-      lang: str(t.lang),
-      codec: str(t.codec),
-      channels: str(t['demux-channel-count']) ?? str(t['demux-channels']),
+      title: mpvStr(t.title) ?? mpvStr(meta.title),
+      lang: mpvStr(t.lang) ?? mpvStr(meta.language),
+      codec: mpvStr(t.codec),
+      channels: mpvStr(t['demux-channel-count']) ?? mpvStr(t['demux-channels']),
       selected: t.selected === true ? true : undefined,
     });
   }
   return out;
+}
+
+/** ★ 2026-10-17（阶段2）：mpv `track-list` → 字幕轨（type=sub） */
+export function mpvSubtitleTracks(data: unknown): MpvSubtitleTrack[] {
+  if (!Array.isArray(data)) return [];
+  const out: MpvSubtitleTrack[] = [];
+  for (const raw of data) {
+    const t = raw as Record<string, unknown> | null;
+    if (!t || typeof t !== 'object') continue;
+    if (String(t.type || '') !== 'sub') continue;
+    const id = Number(t.id);
+    if (!Number.isFinite(id)) continue;
+    const meta = mpvTrackMeta(t);
+    out.push({
+      id,
+      title: mpvStr(t.title) ?? mpvStr(meta.title),
+      lang: mpvStr(t.lang) ?? mpvStr(meta.language),
+      codec: mpvStr(t.codec),
+      selected: t.selected === true ? true : undefined,
+      external: t.external === true ? true : undefined,
+    });
+  }
+  return out;
+}
+
+/** ★ 2026-10-17（阶段2）：mpv `video-params` → 归一视频参数（w/h 缺失 = 无视频 → null） */
+export function mpvVideoParams(data: unknown): MpvVideoParams | null {
+  const v = data as Record<string, unknown> | null;
+  if (!v || typeof v !== 'object') return null;
+  const w = mpvNum(v.w) ?? mpvNum(v.dw) ?? 0;
+  const h = mpvNum(v.h) ?? mpvNum(v.dh) ?? 0;
+  if (w <= 0 || h <= 0) return null;
+  return {
+    w,
+    h,
+    pixelformat: mpvStr(v.pixelformat),
+    primaries: mpvStr(v.primaries),
+    gamma: mpvStr(v.gamma),
+    light: mpvStr(v.light),
+    sigPeak: mpvNum(v['sig-peak']),
+    // ★ 本内核自定义键（其余构建不提供 → undefined）
+    hdrVivid: v['hdr-vivid'] === true ? true : undefined,
+  };
+}
+
+/** ★ 2026-10-17（阶段2）：mpv `audio-params` → 归一音频参数（无有效字段 → null） */
+export function mpvAudioParams(data: unknown): MpvAudioParams | null {
+  const a = data as Record<string, unknown> | null;
+  if (!a || typeof a !== 'object') return null;
+  const out: MpvAudioParams = {};
+  const sr = mpvNum(a.samplerate);
+  if (sr) out.samplerate = sr;
+  const cc = mpvNum(a['channel-count']);
+  if (cc) out.channelCount = cc;
+  const ch = mpvStr(a.channels);
+  if (ch) out.channels = ch;
+  return Object.keys(out).length ? out : null;
 }
 
 /** 音轨列表内容是否相同（避免每次 property-change 都 setState 触发重渲染） */
@@ -86,6 +190,31 @@ export function sameAudioTracks(a: readonly MpvAudioTrack[], b: readonly MpvAudi
     return x.id === y.id && x.title === y.title && x.lang === y.lang
       && x.codec === y.codec && x.channels === y.channels && x.selected === y.selected;
   });
+}
+
+/** ★ 阶段2：字幕轨列表判等 */
+export function sameSubtitleTracks(a: readonly MpvSubtitleTrack[], b: readonly MpvSubtitleTrack[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => {
+    const y = b[i];
+    return x.id === y.id && x.title === y.title && x.lang === y.lang
+      && x.codec === y.codec && x.selected === y.selected && x.external === y.external;
+  });
+}
+
+/** ★ 阶段2：键序稳定的浅比较（这两个对象都是我们按固定键序构造的） */
+function sameFlat(a: object | null, b: object | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** ★ 阶段2：视频/音频参数判等（避免无谓推送） */
+export function sameVideoParams(a: MpvVideoParams | null, b: MpvVideoParams | null): boolean {
+  return sameFlat(a, b);
+}
+export function sameAudioParams(a: MpvAudioParams | null, b: MpvAudioParams | null): boolean {
+  return sameFlat(a, b);
 }
 
 /** JSON IPC 一行（命令或属性观察） */
@@ -207,16 +336,95 @@ export function reduceMpvMessage(state: MpvKernelState, msg: unknown): boolean {
         return true;
       }
       // ★ 2026-10-17（用户要求「音轨设置」）：音轨表 / 当前音轨
+      // ★ 2026-10-17（阶段2）：同一次 track-list 事件里**顺便**归一出字幕轨（不新增观察项）
       case 'track-list': {
-        const list = mpvAudioTracks(m.data);
-        if (sameAudioTracks(state.audioTracks, list)) return false;
-        state.audioTracks = list;
-        return true;
+        const audio = mpvAudioTracks(m.data);
+        const subs = mpvSubtitleTracks(m.data);
+        let changed = false;
+        if (!sameAudioTracks(state.audioTracks, audio)) { state.audioTracks = audio; changed = true; }
+        if (!sameSubtitleTracks(state.subtitles, subs)) { state.subtitles = subs; changed = true; }
+        return changed;
       }
       case 'aid': {
         const v = num(m.data);
         if (v === state.aid) return false;
         state.aid = v;
+        return true;
+      }
+      // ---------- ★ 2026-10-17（阶段2）：MPV 内核能力面 ----------
+      case 'video-params': {
+        const v = mpvVideoParams(m.data);
+        if (sameVideoParams(state.video, v)) return false;
+        state.video = v;
+        return true;
+      }
+      case 'audio-params': {
+        const v = mpvAudioParams(m.data);
+        if (sameAudioParams(state.audio, v)) return false;
+        state.audio = v;
+        return true;
+      }
+      case 'video-format': {
+        const s = mpvStr(m.data) ?? '';
+        if (s === state.vCodec) return false;
+        state.vCodec = s;
+        return true;
+      }
+      case 'audio-codec-name': {
+        const s = mpvStr(m.data) ?? '';
+        if (s === state.aCodec) return false;
+        state.aCodec = s;
+        return true;
+      }
+      case 'hwdec-current': {
+        const s = mpvStr(m.data) ?? '';
+        if (s === state.hwdec) return false;
+        state.hwdec = s;
+        return true;
+      }
+      // ★ 实测：这两个属性的单位是 **bps**（不是 kbps）→ 统一存 kbps（÷1000 四舍五入）
+      case 'video-bitrate':
+      case 'audio-bitrate': {
+        const bps = mpvNum(m.data) ?? 0;
+        const kbps = bps > 0 ? Math.round(bps / 1000) : 0;
+        if (m.name === 'video-bitrate') {
+          if (kbps === state.vBitrateKbps) return false;
+          state.vBitrateKbps = kbps;
+        } else {
+          if (kbps === state.aBitrateKbps) return false;
+          state.aBitrateKbps = kbps;
+        }
+        return true;
+      }
+      case 'container-fps': {
+        const v = num(m.data);
+        if (v === null || v === state.fps) return false;
+        state.fps = v;
+        return true;
+      }
+      case 'frame-drop-count': {
+        const v = mpvNum(m.data);
+        if (v === undefined || v === state.dropped) return false;
+        state.dropped = v;
+        return true;
+      }
+      case 'demuxer-cache-duration': {
+        const v = num(m.data);
+        if (v === state.cacheDuration) return false;
+        state.cacheDuration = v;
+        return true;
+      }
+      case 'audio-spdif': {
+        const s = mpvStr(m.data) ?? '';
+        if (s === state.spdif) return false;
+        state.spdif = s;
+        return true;
+      }
+      case 'sid': {
+        // mpv 对「无字幕」回传 false/null → null（与 aid 同口径）
+        const v = m.data === false || m.data === null ? null : num(m.data);
+        if (v === state.sid) return false;
+        state.sid = v;
         return true;
       }
       default:
@@ -300,6 +508,14 @@ export function buildMpvArgs(o: BuildMpvArgsOptions): string[] {
     '--input-default-bindings=no',
     '--input-vo-keyboard=no',
     '--msg-level=all=error',
+    /**
+     * ★ 2026-10-17（内存优化专项 A3，用户拍板「可接受」）：**给 mpv 的 demuxer 缓存封顶**。
+     *   此前带 `--no-config` 且未覆盖缓存 → 取 mpv 默认（前向 `demuxer-max-bytes` ≈150MB +
+     *   回看 `demuxer-max-back-bytes` ≈50MB）。封顶到 64/16 MiB 后单进程可省 ~120MB；
+     *   代价 = **大范围拖拽 seek 的回填变慢**（用户已确认接受）。
+     */
+    '--demuxer-max-bytes=64MiB',
+    '--demuxer-max-back-bytes=16MiB',
     `--wid=${o.wid}`,
     `--input-ipc-server=${o.pipe}`,
   ];
@@ -344,6 +560,18 @@ export function mpvCommandLines(cmd: MpvCommand): string[] {
       if (!Number.isFinite(id) || id <= 0) return [];
       return [mpvCmdLine(['set_property', 'aid', Math.round(id)])];
     }
+    // ★ 2026-10-17（阶段2）：切字幕轨（mpv 的 sid）。
+    // ★★ 实测坑（勿改回数字）：`sid` 在本内核是**字符串型**属性 —— `set_property sid -1`（数字）会回
+    //   `unsupported format for accessing property`，**命令静默失败**（IPC 层只知写管道成功）。
+    //   必须传字符串：`"no"`（关闭字幕，实测回 `sid=false` → 我们归一成 null）或 id 的十进制字符串。
+    case 'sid': {
+      const id = Math.round(Number(cmd.value));
+      if (!Number.isFinite(id) || id === 0 || id < -1) return [];
+      return [mpvCmdLine(['set_property', 'sid', id < 0 ? 'no' : String(id)])];
+    }
+    // ★ 2026-10-17（阶段2）：音频源码直通（'' 合法 = 关闭直通；只接受 mpv 认的编解码名列表串）
+    case 'audio-spdif':
+      return [mpvCmdLine(['set_property', 'audio-spdif', String(cmd.value ?? '')])];
     // ★ 超分插件（M1）：整链替换着色器（空数组 = 清空 = 关闭超分）
     case 'glsl-shaders':
       return mpvShadersCmd(cmd.value ?? []);

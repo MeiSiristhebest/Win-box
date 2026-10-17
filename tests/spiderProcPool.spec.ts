@@ -4,12 +4,13 @@
 // ③达 PER_KEY_CAP 后排队（空闲即执行）；④排队超时只失败该请求、不牵连进程；
 // ⑤执行超时 kill 进程 + 失败语义；⑥exit 崩溃 → 失败语义；⑦全局上限 LRU 回收；
 // ⑧空闲回收（并行多开的进程收敛到每 key 1 个）；⑨行协议信封不被日志碎片打穿；
-// ⑩★ 空结果是**合法结果**（ok:true, data=''）—— 不再被误判失败去回退一次性。
+// ⑩★ 空结果是**合法结果**（ok:true, data=''）—— 不再被误判失败去回退一次性；
+// ⑪★ 2026-10-17（B1）播放期收缩：布防后池整体空闲 30s 收敛到 1 个热进程。
 // ★ 行协议契约：子进程每条响应必须以 '\n' 结尾（与 SpiderRunner.println/runner.py print 一致），
 //   池按物理换行分帧 —— 假子进程必须带 '\n'，否则帧永不收敛（测试挂起）。
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { SpiderProcPool, PER_KEY_CAP, IDLE_RECLAIM_MS, MAX_INFLIGHT_PER_PROC, effectiveGlobalCap } from '../src/engine/spider/SpiderProcPool';
+import { SpiderProcPool, PER_KEY_CAP, IDLE_RECLAIM_MS, PLAYBACK_SHRINK_IDLE_MS, MAX_INFLIGHT_PER_PROC, effectiveGlobalCap } from '../src/engine/spider/SpiderProcPool';
 
 type FakeChild = ReturnType<typeof fakeChild>;
 
@@ -272,6 +273,26 @@ describe('SpiderProcPool — 复用 / 并行 / 排队 / 失败语义', () => {
     await vi.advanceTimersByTimeAsync(IDLE_RECLAIM_MS + 20_000);
     expect(pool.aliveCount).toBe(1); // 保留最近使用的那一个
     clearInterval(timer);
+  });
+
+  // ★ 2026-10-17（B1）：播放期收缩 —— 未布防时每 key 各留 1 个热进程（搜索再命中不付冷启动）；
+  //   布防（= 用户开始播放，播放期间不再发搜索请求）后，池整体空闲够久即收敛到 1 个。
+  it('播放期收缩：布防后池整体空闲 30s 收敛到 1（未布防则保持每 key 1 个热进程）', async () => {
+    vi.useFakeTimers();
+    const { pool, spawned } = makeEnv(false);
+    const keys = ['k1', 'k2', 'k3'];
+    const pending = keys.map((k) => pool.submit(k, { ...SPEC, key: k }, REQ(`r-${k}`)));
+    for (let i = 0; i < keys.length; i++) reply(spawned[i].child, `r-${keys[i]}`, `OK-${keys[i]}`);
+    expect((await Promise.all(pending)).every((r) => r.ok)).toBe(true);
+    expect(pool.aliveCount).toBe(3);
+    const timer = pool.startReclaimTimer();
+    await vi.advanceTimersByTimeAsync(PLAYBACK_SHRINK_IDLE_MS + 20_000);
+    expect(pool.aliveCount).toBe(3); // ★ 未布防：每 key 各保留 1 个热进程
+    pool.armPlaybackShrink();
+    await vi.advanceTimersByTimeAsync(PLAYBACK_SHRINK_IDLE_MS + 20_000);
+    expect(pool.aliveCount).toBe(1); // ★ 播放期：整体空闲够久 → 收敛到 1
+    clearInterval(timer);
+    pool.dispose();
   });
 
   // ★ 2026-09-23 预热（warm）：启动/配置应用后先付掉 JVM 冷启动（发 __ping__），

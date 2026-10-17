@@ -67,6 +67,23 @@ function fmtNet(kbs: number): string {
   return kbs >= 1024 ? `${(kbs / 1024).toFixed(2).replace(/\.?0+$/, '')} M/S` : `${Math.round(kbs)} K/S`;
 }
 
+/**
+ * ★ 2026-10-17（阶段3b，用户要求「中文快捷键一览」）：只读键位表。
+ *   ★ 与实现一一对应（见本文件 onKeyDown/onKeyUp 与画面手势）：只列**现有**键位，不做重绑定。
+ */
+const KEY_SHORTCUTS: ReadonlyArray<{ keys: string; desc: string }> = [
+  { keys: '空格', desc: '播放 / 暂停' },
+  { keys: '← / →', desc: '后退 / 前进 5 秒' },
+  { keys: '长按 ←', desc: '连续快退' },
+  { keys: '长按 →', desc: '临时 1.5 倍速（松开恢复）' },
+  { keys: '↑ / ↓', desc: '音量 +5% / −5%' },
+  { keys: 'Esc', desc: '退出全屏（原生全屏时）' },
+  { keys: '单击画面', desc: '播放 / 暂停' },
+  { keys: '双击画面', desc: '全屏 / 退出全屏' },
+  { keys: '长按画面', desc: '临时 1.5 倍速' },
+  { keys: '右键画面', desc: '播放器菜单（详情信息 / 复制地址）' },
+];
+
 // 可选换集导航：由外层（PlayPage）传入当前集可否切换与回调。
 // 不传 props 时（如直播/无集数源）不渲染换集按钮，保持播放器纯净。
 interface VideoPlayerProps {
@@ -265,6 +282,20 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     exited: false,
     audioTracks: [],
     aid: null,
+    // ★ 2026-10-17（阶段3）：能力面（与 mpvCore.initialKernelState 同口径）
+    subtitles: [],
+    sid: null,
+    video: null,
+    audio: null,
+    vCodec: '',
+    aCodec: '',
+    hwdec: '',
+    vBitrateKbps: 0,
+    aBitrateKbps: 0,
+    fps: 0,
+    dropped: 0,
+    cacheDuration: null,
+    spdif: '',
   });
   const mpvTimeRef = useRef(0); // 弹幕时间源（number）
   const mpvSizeRef = useRef({ w: 0, h: 0 }); // 弹幕绘制区（画面物理像素）
@@ -552,7 +583,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   //   prefsRef 同步指向最新值，供 url effect / onCanPlay 等闭包读取（避免闭包读到旧 state）。
   //   老板键（暂停+静音）期间只更新 ref、不写盘 —— 临时静音不该覆盖用户的上次音量。
   useEffect(() => {
-    prefsRef.current = { vol, rate, subOffset, fit, kernel: kernelPrefRef.current };
+    prefsRef.current = { vol, rate, subOffset, fit, kernel: kernelPrefRef.current, spdif };
     volRef.current = vol; // ★ 2026-10-08：适配层（kSetVol/键盘/老板键）读它
     if (bossActiveRef.current) return;
     savePlayerPrefs({ vol, rate, subOffset, fit });
@@ -989,6 +1020,34 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           </div>
         ) : (
         <>
+        {/* ★ 2026-10-17（阶段3）：**MPV 内核专属**技术信息条（随控制条一起显隐；数据源 = MPV_STATE 推送）。
+            参照 Yaozhi「底栏信息密度」：解码方式 / 画面规格·标准 / 视频编码 / 音频编码·声道 / 码率 / 帧率·丢帧 / 网速。
+            ★ 只做「有值才显示」的项，拿不到的属性不占位（不猜、不造数据）。 */}
+        {kernel === 'mpv' && !mpvErr && mpvTech && (
+          <div className="vp-tech">
+            {mpvTech.hwdec ? (
+              <span className="vp-tech-chip">{mpvTech.hwdec === 'no' ? '软解' : `硬解·${mpvTech.hwdec}`}</span>
+            ) : null}
+            {mpvTech.w > 0 ? (
+              <span className="vp-tech-chip">{mpvTech.w}×{mpvTech.h}{mpvTech.standard !== 'SDR' ? ` · ${mpvTech.standard}` : ''}</span>
+            ) : null}
+            {mpvTech.vCodec ? <span className="vp-tech-chip">{mpvTech.vCodec.toUpperCase()}</span> : null}
+            {mpvTech.aCodec ? (
+              <span className="vp-tech-chip">{mpvTech.aCodec.toUpperCase()}{mpvTech.channels ? ` · ${mpvTech.channels}` : ''}</span>
+            ) : null}
+            {mpvTech.vKbps > 0 ? (
+              <span className="vp-tech-chip">{(mpvTech.vKbps / 1000).toFixed(2)} Mbps</span>
+            ) : mpvTech.aKbps > 0 ? (
+              <span className="vp-tech-chip">{(mpvTech.aKbps / 1000).toFixed(2)} Mbps</span>
+            ) : null}
+            {mpvTech.fps > 0 ? (
+              <span className="vp-tech-chip">
+                {mpvTech.fps.toFixed(2).replace(/\.?0+$/, '')} fps{mpvTech.dropped > 0 ? ` · 丢帧 ${mpvTech.dropped}` : ''}
+              </span>
+            ) : null}
+            {mpvTech.speedKbps > 0 ? <span className="vp-tech-chip">{fmtNet(mpvTech.speedKbps)}</span> : null}
+          </div>
+        )}
         {!isLive && (
           <PlayerProgressBar
             currentTime={cur}

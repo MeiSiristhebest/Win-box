@@ -416,6 +416,14 @@ app.whenReady().then(async () => {
     fileLogger.w('插件初始化失败：' + (e instanceof Error ? e.message : String(e)));
   }
   registerIpc(host, dav, dlna, updater, localPkgs, uiPreferences, plugins);
+  /**
+   * ★ 2026-10-17：内存基线探针 —— 启动后 15s 采一次「空闲基线」（此时预热常驻池已就绪），
+   *   供与「播放中」的采样对照；播放中的 60s 采样由 ipc 的 `media:state`（播放器窗口）触发。
+   *   口径与隐私说明见 util/memProbe（只记内存数字与进程名，不含 URL / 凭据）。
+   */
+  setTimeout(() => {
+    void import('./util/memProbe').then((m) => m.sampleMemory('idle@15s')).catch(() => undefined);
+  }, 15_000).unref?.();
   // 老板键：注入窗口提供者（主窗口 + 播放器窗口）并按上次设置注册全局快捷键
   bossKey.start(() => {
     const ws: BrowserWindow[] = [];

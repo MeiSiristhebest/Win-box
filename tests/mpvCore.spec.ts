@@ -5,17 +5,20 @@ import { describe, it, expect } from 'vitest';
 import {
   buildMpvArgs,
   initialKernelState,
+  mpvAudioParams,
   mpvAudioTracks,
   mpvCmdLine,
   mpvCommandLines,
   mpvFitProps,
   mpvObserveLines,
   mpvShadersCmd,
+  mpvSubtitleTracks,
+  mpvVideoParams,
   reduceMpvMessage,
   resolveMpvPath,
   sameAudioTracks,
 } from '../src/main/player/mpvCore';
-import { mpvFontSize, mpvSubPos } from '../src/shared/player';
+import { mpvDisplayStandard, mpvFontSize, mpvSubPos, normalizeSpdif, spdifLabel, SPDIF_OPTIONS } from '../src/shared/player';
 
 describe('mpvCore · 启动参数', () => {
   it('关键旗标齐全：--wid 嵌入 / JSON IPC / idle / keep-open / 硬解 / 不抢输入', () => {
@@ -353,6 +356,145 @@ describe('mpvCore · 音轨设置（track-list / aid）', () => {
     expect(sameAudioTracks([{ id: 2, title: '国语', selected: true }], [{ id: 2, title: '国语', selected: true }])).toBe(true);
     expect(sameAudioTracks([{ id: 2, title: '国语', selected: true }], [{ id: 2, title: '国语' }])).toBe(false);
     expect(sameAudioTracks([{ id: 2 }], [])).toBe(false);
+  });
+});
+
+// ---------- ★ 2026-10-17（阶段2）：MPV 内核能力面 ----------
+// 键名/单位全部取自该内核实测 dump（.tmp/yaozhi-poc/mpv-props.cjs）：
+//   · track-list 的 language/title 在 metadata 里，顶层没有；
+//   · video-params 的 hdr-vivid 是本内核自定义键；
+//   · *-bitrate 单位是 bps。
+describe('mpvCore · 能力面（阶段2）', () => {
+  it('track-list：lang/title 从 metadata 读出（本内核顶层没有）', () => {
+    const list = mpvAudioTracks([
+      { id: 1, type: 'video', codec: 'h264', metadata: { language: 'und' } },
+      { id: 2, type: 'audio', codec: 'aac', 'demux-channel-count': 6, metadata: { language: 'chi', title: '国语' }, selected: true },
+    ]);
+    expect(list).toEqual([{ id: 2, title: '国语', lang: 'chi', codec: 'aac', channels: '6', selected: true }]);
+  });
+
+  it('track-list：字幕轨归一（type=sub；external 透传；非 audio/sub 丢弃）', () => {
+    const subs = mpvSubtitleTracks([
+      { id: 1, type: 'video' },
+      { id: 3, type: 'sub', codec: 'ass', external: true, selected: true, metadata: { language: 'chi', title: '简体' } },
+      { id: 'x', type: 'sub' },
+      null,
+    ]);
+    expect(subs).toEqual([{ id: 3, title: '简体', lang: 'chi', codec: 'ass', selected: true, external: true }]);
+    expect(mpvSubtitleTracks(null)).toEqual([]);
+  });
+
+  it('同一次 track-list 事件同时刷新音轨与字幕轨；都无变化时 false', () => {
+    const st = initialKernelState();
+    const data = [
+      { id: 2, type: 'audio', codec: 'aac' },
+      { id: 3, type: 'sub', codec: 'ass', selected: true },
+    ];
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'track-list', data })).toBe(true);
+    expect(st.audioTracks.map((t) => t.id)).toEqual([2]);
+    expect(st.subtitles.map((t) => t.id)).toEqual([3]);
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'track-list', data })).toBe(false);
+  });
+
+  it('video-params：w/h 取自 w/h 或 dw/dh；hdr-vivid 自定义键透传；无尺寸 → null', () => {
+    const v = mpvVideoParams({ w: 1280, h: 720, pixelformat: 'yuv420p', primaries: 'bt.709', gamma: 'bt.1886', light: 'display', 'sig-peak': 0, 'hdr-vivid': false });
+    expect(v).toEqual({ w: 1280, h: 720, pixelformat: 'yuv420p', primaries: 'bt.709', gamma: 'bt.1886', light: 'display', sigPeak: 0, hdrVivid: undefined });
+    expect(mpvVideoParams({ dw: 1920, dh: 1080, 'hdr-vivid': true })).toEqual({ w: 1920, h: 1080, pixelformat: undefined, primaries: undefined, gamma: undefined, light: undefined, sigPeak: undefined, hdrVivid: true });
+    expect(mpvVideoParams({})).toBeNull();
+    expect(mpvVideoParams('x')).toBeNull();
+  });
+
+  it('audio-params：只留有效字段；全空 → null（format 是采样格式，不当作编码）', () => {
+    expect(mpvAudioParams({ samplerate: 48000, 'channel-count': 1, channels: 'mono', 'hr-channels': 'mono', format: 'floatp' }))
+      .toEqual({ samplerate: 48000, channelCount: 1, channels: 'mono' });
+    expect(mpvAudioParams({})).toBeNull();
+    expect(mpvAudioParams(null)).toBeNull();
+  });
+
+  it('画面标准推导：hdr-vivid 优先 → HDR Vivid；hlg；pq/smpte2084 → HDR10；其余 SDR', () => {
+    expect(mpvDisplayStandard(null)).toBe('SDR');
+    expect(mpvDisplayStandard({ w: 1, h: 1, gamma: 'bt.1886' })).toBe('SDR');
+    expect(mpvDisplayStandard({ w: 1, h: 1, gamma: 'hlg' })).toBe('HLG');
+    expect(mpvDisplayStandard({ w: 1, h: 1, gamma: 'pq' })).toBe('HDR10');
+    expect(mpvDisplayStandard({ w: 1, h: 1, gamma: 'smpte2084' })).toBe('HDR10');
+    expect(mpvDisplayStandard({ w: 1, h: 1, gamma: 'pq', hdrVivid: true })).toBe('HDR Vivid');
+  });
+
+  it('编码/硬解/帧率/丢帧/缓存时长/直通落到状态；内容不变不置位', () => {
+    const st = initialKernelState();
+    const ch = (name: string, data: unknown): boolean => reduceMpvMessage(st, { event: 'property-change', name, data });
+    expect(ch('video-format', 'hevc')).toBe(true);
+    expect(st.vCodec).toBe('hevc');
+    expect(ch('video-format', 'hevc')).toBe(false);
+    expect(ch('audio-codec-name', 'eac3')).toBe(true);
+    expect(st.aCodec).toBe('eac3');
+    expect(ch('hwdec-current', 'd3d11va')).toBe(true);
+    expect(st.hwdec).toBe('d3d11va');
+    expect(ch('container-fps', 23.976)).toBe(true);
+    expect(st.fps).toBe(23.976);
+    expect(ch('frame-drop-count', 12)).toBe(true);
+    expect(st.dropped).toBe(12);
+    expect(ch('demuxer-cache-duration', 2.5)).toBe(true);
+    expect(st.cacheDuration).toBe(2.5);
+    expect(ch('audio-spdif', 'eac3,dts')).toBe(true);
+    expect(st.spdif).toBe('eac3,dts');
+    expect(ch('audio-spdif', 'eac3,dts')).toBe(false);
+  });
+
+  it('码率：原始单位是 bps → 存 kbps（÷1000 四舍五入）；拿不到 = 0', () => {
+    const st = initialKernelState();
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'audio-bitrate', data: 126766 })).toBe(true);
+    expect(st.aBitrateKbps).toBe(127);
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'video-bitrate', data: 7492714 })).toBe(true);
+    expect(st.vBitrateKbps).toBe(7493);
+    // 不可用（mpv 报 property unavailable，不会推 property-change）→ 初始仍是 0
+    expect(initialKernelState().vBitrateKbps).toBe(0);
+  });
+
+  it('sid：数字落到状态；无字幕回传 false/null → null', () => {
+    const st = initialKernelState();
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'sid', data: 3 })).toBe(true);
+    expect(st.sid).toBe(3);
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'sid', data: 3 })).toBe(false);
+    expect(reduceMpvMessage(st, { event: 'property-change', name: 'sid', data: false })).toBe(true);
+    expect(st.sid).toBeNull();
+  });
+
+  it('控制命令：切字幕轨（**必须传字符串**，数字会被 mpv 拒；-1 → "no"）；直通（空串合法）', () => {
+    // ★ 实测：`set_property sid -1`（数字）→ mpv 回 `unsupported format for accessing property`（静默失败）
+    expect(mpvCommandLines({ type: 'sid', value: 3 })[0]).toContain('"set_property","sid","3"');
+    expect(mpvCommandLines({ type: 'sid', value: -1 })[0]).toContain('"set_property","sid","no"');
+    expect(mpvCommandLines({ type: 'sid', value: 0 })).toEqual([]);
+    expect(mpvCommandLines({ type: 'sid', value: -2 })).toEqual([]);
+    expect(mpvCommandLines({ type: 'audio-spdif', value: '' })[0]).toContain('"set_property","audio-spdif",""');
+    expect(mpvCommandLines({ type: 'audio-spdif', value: 'ac3,dts' })[0]).toContain('"audio-spdif","ac3,dts"');
+  });
+
+  it('★ 阶段3b：音频直通档位归一 —— 只认白名单，非法值回落「关闭」', () => {
+    for (const o of SPDIF_OPTIONS) {
+      expect(normalizeSpdif(o.value)).toBe(o.value);
+      expect(spdifLabel(o.value)).toBe(o.label);
+    }
+    // 非法 / 未知 / 空 / 非字符串 → ''（关闭）
+    expect(normalizeSpdif('ac3')).toBe('');
+    expect(normalizeSpdif('ALL')).toBe('');
+    expect(normalizeSpdif(null)).toBe('');
+    expect(normalizeSpdif(undefined)).toBe('');
+    expect(normalizeSpdif(3)).toBe('');
+    expect(spdifLabel('unknown')).toBe('关闭');
+    expect(normalizeSpdif('')).toBe('');
+    // 档位值必须唯一（否则面板高亮会选错档）
+    const values = SPDIF_OPTIONS.map((o) => o.value);
+    expect(new Set(values).size).toBe(values.length);
+  });
+
+  it('属性观察覆盖新增能力面项（12~23）', () => {
+    const names = mpvObserveLines().map((l) => JSON.parse(l.trim()).command[2]);
+    for (const n of ['video-params', 'audio-params', 'video-format', 'audio-codec-name', 'hwdec-current', 'audio-bitrate', 'video-bitrate', 'container-fps', 'frame-drop-count', 'demuxer-cache-duration', 'audio-spdif', 'sid']) {
+      expect(names).toContain(n);
+    }
+    const ids = mpvObserveLines().map((l) => JSON.parse(l.trim()).command[1]);
+    expect(new Set(ids).size).toBe(ids.length); // id 唯一（否则属性事件会串号）
   });
 });
 

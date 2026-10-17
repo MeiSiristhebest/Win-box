@@ -7,6 +7,7 @@
 //   ★ 不在此重复持久化的项：字幕字号/位置/开关（主进程 subtitleSet → subtitle.json）、
 //     弹幕设置（主进程 danmakuSet → danmaku.json），二者已是跨窗口持久的。
 import type { KernelPref } from './kernel';
+import { normalizeSpdif } from '../../shared/player';
 
 export interface PlayerPrefs {
   /** 音量 0..1（0 = 静音） */
@@ -19,6 +20,12 @@ export interface PlayerPrefs {
   fit: PlayerFit;
   /** ★ 2026-10-08 新增：播放内核偏好（auto = 按资源形态自动；手动切换后记住显式值） */
   kernel: KernelPref;
+  /**
+   * ★ 2026-10-17（阶段3b，用户要求「音频直通开关」）：MPV 内核的**音频源码直通**档位
+   *   （值 = mpv `audio-spdif` 的编解码列表串；'' = 关闭，见 shared/player.ts 的 SPDIF_OPTIONS）。
+   *   ★ 只在 MPV 内核生效；每次起播时按此偏好下发一次（HTML5 内核无关）。
+   */
+  spdif: string;
 }
 
 /**
@@ -70,7 +77,7 @@ export function setSessionAudioPref(key: string): void {
 
 const KEY = 'winbox-player-prefs';
 
-export const DEFAULT_PLAYER_PREFS: PlayerPrefs = { vol: 1, rate: 1, subOffset: 0, fit: 'contain', kernel: 'auto' };
+export const DEFAULT_PLAYER_PREFS: PlayerPrefs = { vol: 1, rate: 1, subOffset: 0, fit: 'contain', kernel: 'auto', spdif: '' };
 
 /** 数值兜底：非法（NaN/Infinity/越界）一律退回默认值，避免「记忆」把音量记成 0 这类静默故障 */
 function num(v: unknown, def: number, lo: number, hi: number): number {
@@ -91,6 +98,7 @@ export function loadPlayerPrefs(): PlayerPrefs {
       subOffset: num(o.subOffset, DEFAULT_PLAYER_PREFS.subOffset, -60, 60),
       fit: normalizeFit(o.fit),
       kernel: normalizeKernelPref(o.kernel),
+      spdif: normalizeSpdif(o.spdif),
     };
   } catch {
     return { ...DEFAULT_PLAYER_PREFS };
