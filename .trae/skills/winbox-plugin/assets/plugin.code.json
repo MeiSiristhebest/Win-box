@@ -1,0 +1,20 @@
+{
+  "manifestVersion": 1,
+  "id": "my-code-plugin",
+  "name": "我的代码插件",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "code",
+  "main": "main.js",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "在沙箱里跑自己的逻辑（出网 / 存数据 / 控制播放）",
+  "permissions": ["net", "kv", "log"],
+  "permissionNotes": {
+    "net": "用于从站点接口获取数据",
+    "kv": "用于保存自己的缓存"
+  },
+  "contributes": [],
+  "updateCheckUrl": "https://api.github.com/repos/you/repo/releases/latest"
+}

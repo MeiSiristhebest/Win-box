@@ -1,0 +1,21 @@
+{
+  "manifestVersion": 1,
+  "id": "my-asset-plugin",
+  "name": "我的声明式插件",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "asset",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "一句话说明这个插件做什么",
+  "permissions": [],
+  "contributes": [
+    {
+      "type": "mpv.shaders",
+      "modes": [
+        { "id": "efficiency", "label": "效率档", "hint": "弱机可用", "shaders": ["a.glsl", "b.glsl"] }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "manifestVersion": 1,
+  "id": "super-resolution",
+  "name": "超分辨率",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "asset",
+  "author": "Win-Box",
+  "license": "MIT",
+  "homepage": "https://github.com/yagami-hue/Win-box",
+  "description": "Anime4K / RAVU-Lite / FSRCNNX 实时超分辨率（MPV 内核）",
+  "permissions": [],
+  "contributes": [
+    {
+      "type": "mpv.shaders",
+      "modes": [
+        {
+          "id": "efficiency",
+          "label": "效率档",
+          "hint": "Anime4K Lite，弱机可用",
+          "shaders": [
+            "Anime4K_Clamp_Highlights.glsl",
+            "Anime4K_Restore_CNN_M.glsl",
+            "Anime4K_Restore_CNN_S.glsl",
+            "Anime4K_Upscale_CNN_x2_M.glsl",
+            "Anime4K_AutoDownscalePre_x2.glsl",
+            "Anime4K_AutoDownscalePre_x4.glsl",
+            "Anime4K_Upscale_CNN_x2_S.glsl"
+          ]
+        },
+        {
+          "id": "quality",
+          "label": "质量档",
+          "hint": "Anime4K 完整，吃显卡",
+          "shaders": [
+            "Anime4K_Clamp_Highlights.glsl",
+            "Anime4K_Restore_CNN_VL.glsl",
+            "Anime4K_Upscale_CNN_x2_VL.glsl",
+            "Anime4K_AutoDownscalePre_x2.glsl",
+            "Anime4K_AutoDownscalePre_x4.glsl",
+            "Anime4K_Upscale_CNN_x2_M.glsl"
+          ]
+        },
+        {
+          "id": "general",
+          "label": "通用档",
+          "hint": "RAVU-Lite，真人/实拍通用、轻量",
+          "shaders": ["ravu-lite-r4.hook"]
+        },
+        {
+          "id": "high",
+          "label": "高质量档",
+          "hint": "FSRCNNX，通用、吃显卡",
+          "shaders": ["FSRCNNX_x2_8-0-4-1.glsl"]
+        }
+      ]
+    }
+  ]
+}

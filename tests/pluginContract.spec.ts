@@ -239,7 +239,7 @@ describe('plugin 契约 — 示例清单校验', () => {
 
   it('★ 2026-10-18：skill 里的皮肤骨架必须通过校验（词表 / 布局枚举 / base 全对口径）', () => {
     const p = fileURLToPath(
-      new URL('../../.trae/skills/winbox-plugin/assets/plugin.theme.json', import.meta.url),
+      new URL('../.trae/skills/winbox-plugin/assets/plugin.theme.json', import.meta.url),
     );
     const m = JSON.parse(readFileSync(p, 'utf-8')) as PluginManifest;
     expect(validatePluginManifest(m)).toEqual({ ok: true });
@@ -254,7 +254,7 @@ describe('plugin 契约 — 示例清单校验', () => {
 
   it('★ 2026-10-18：skill 归档的示例皮肤包（.winbox）必须是「可安装的发布产物」', async () => {
     const p = fileURLToPath(
-      new URL('../../.trae/skills/winbox-plugin/assets/theme-sakura.winbox', import.meta.url),
+      new URL('../.trae/skills/winbox-plugin/assets/theme-sakura.winbox', import.meta.url),
     );
     const entries = await extractArchiveEntries(readFileSync(p));
     const names = entries.map((e) => e.name);
