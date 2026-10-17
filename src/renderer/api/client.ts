@@ -23,6 +23,8 @@ import type {
   AuditItem,
   FilterGroup,
   BossKeySettings,
+  SubscriptionImportProgressEvent,
+  SubscriptionRefreshResolution,
 } from '../../shared/types';
 import type {
   SubtitleCandidate,
@@ -41,6 +43,7 @@ import type { BackupExportResult, BackupImportResult } from '../../shared/backup
 import type { DavBrowseResult, DavServer } from '../../shared/webdav';
 import type { DlnaCastResult, DlnaCastTarget, DlnaDevice } from '../../shared/dlna';
 import type { UpdateCheckResult, UpdateProgress } from '../../shared/update';
+import type { UiPreferencesPatch, UiPreferencesSnapshot } from '../../shared/uiPreferences';
 import type { UiScalePref, UiScaleState } from '../../shared/uiScale';
 
 interface HomeResult {
@@ -64,7 +67,17 @@ interface ImportReturn {
 declare global {
   interface Window {
     api: {
-      system: { ping: () => Promise<IpcResult<string>>; icon: () => Promise<IpcResult<string>>; setTheme: (t: string) => Promise<IpcResult<void>>; quit: () => Promise<IpcResult<void>>; dataDir: () => Promise<IpcResult<DataDirInfo>>; sessionId: () => Promise<IpcResult<string>> };
+      system: {
+        ping: () => Promise<IpcResult<string>>;
+        icon: () => Promise<IpcResult<string>>;
+        quit: () => Promise<IpcResult<void>>;
+        dataDir: () => Promise<IpcResult<DataDirInfo>>;
+        sessionId: () => Promise<IpcResult<string>>;
+        getUiPreferences: () => Promise<IpcResult<UiPreferencesSnapshot>>;
+        initializeUiPreferences: (legacy: UiPreferencesPatch) => Promise<IpcResult<UiPreferencesSnapshot>>;
+        updateUiPreferences: (patch: UiPreferencesPatch) => Promise<IpcResult<UiPreferencesSnapshot>>;
+        onUiPreferencesChanged: (cb: (snapshot: UiPreferencesSnapshot) => void) => () => void;
+      };
       config: {
         import: (a: { url?: string; json?: string }) => Promise<IpcResult<ImportReturn>>;
         listSites: () => Promise<IpcResult<SourceBean[]>>;
@@ -78,6 +91,16 @@ declare global {
         setActiveSource: (key: string) => Promise<IpcResult<void>>;
         setActiveLive: (index: number) => Promise<IpcResult<void>>;
         importUrl: (url: string, name?: string) => Promise<IpcResult<ImportReturn>>;
+        startSubscriptionImport: (url: string, name?: string) => Promise<IpcResult<SubscriptionImportProgressEvent>>;
+        cancelSubscriptionImport: (jobId: string) => Promise<IpcResult<SubscriptionImportProgressEvent>>;
+        retryFailedSubscriptionImport: (jobId: string) => Promise<IpcResult<SubscriptionImportProgressEvent>>;
+        continueSubscriptionImport: (jobId: string) => Promise<IpcResult<SubscriptionImportProgressEvent>>;
+        getSubscriptionImport: (jobId: string) => Promise<IpcResult<SubscriptionImportProgressEvent | null>>;
+        listSubscriptionImports: () => Promise<IpcResult<SubscriptionImportProgressEvent[]>>;
+        resumeSubscriptionImport: (jobId: string) => Promise<IpcResult<SubscriptionImportProgressEvent>>;
+        onSubscriptionImportProgress: (cb: (event: SubscriptionImportProgressEvent) => void) => () => void;
+        removeSubscriptionGroupMember: (groupId: string, memberId: string) => Promise<IpcResult<void>>;
+        resolveSubscriptionGroupRefresh: (groupId: string, memberId: string, resolution: SubscriptionRefreshResolution) => Promise<IpcResult<void>>;
         // ★ 2026-09-27：本地 .json 订阅文件导入（文件选择器；档案名默认取原始文件名）
         importJsonLocal: (name?: string) =>
           Promise<IpcResult<{ ok: boolean; file?: string; name?: string; error?: string; result?: ImportReturn }>>;
@@ -108,6 +131,7 @@ declare global {
         cfgProfiles: () => Promise<IpcResult<Omit<UserProfile, 'json'>[]>>;
         /** ★ 2026-09-30（用户要求）：换源弹层「左订阅 / 右源」视图 */
         profileSites: () => Promise<IpcResult<ProfileSitesView>>;
+        profileSources: (profileId: string) => Promise<IpcResult<SourceBean[]>>;
         /** ★ 2026-09-30（用户要求）：一步完成「切换档案 + 选中该档案下的源」 */
         switchProfileSource: (a: { profileId: string; key: string }) => Promise<IpcResult<void>>;
         vodDebug: (key: string) => Promise<IpcResult<SourceDebugReport>>;
@@ -118,15 +142,15 @@ declare global {
         onNavDriveBind: (cb: () => void) => () => void;
       };
       vod: {
-        home: (key: string) => Promise<IpcResult<HomeResult>>;
-        category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string> }) => Promise<IpcResult<HomeResult>>;
-        detail: (a: { key: string; ids: string[] }) => Promise<IpcResult<VodDetail | null>>;
-        search: (a: { key: string; wd: string }) => Promise<IpcResult<VodItem[]>>;
+  home: (key: string, profileId?: string) => Promise<IpcResult<HomeResult>>;
+  category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }) => Promise<IpcResult<HomeResult>>;
+  detail: (a: { key: string; ids: string[]; profileId?: string }) => Promise<IpcResult<VodDetail | null>>;
+  search: (a: { key: string; wd: string; profileId?: string }) => Promise<IpcResult<VodItem[]>>;
         /** ★ 全源搜索：refresh=true 忽略本地缓存强制重搜（「重新搜索」按钮）；默认命中缓存即秒回 */
-        searchAll: (wd: string, opts?: { refresh?: boolean }) => Promise<IpcResult<SearchAllReport>>;
+  searchAll: (wd: string, opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] }) => Promise<IpcResult<SearchAllReport>>;
         /** ★ 聚合搜索逐源进度（边搜边出）：返回退订函数 */
         onSearchAllProgress: (cb: (ev: SearchAllProgressEvent) => void) => () => void;
-        play: (a: { key: string; flag: string; id: string }) => Promise<IpcResult<PlayResult>>;
+  play: (a: { key: string; flag: string; id: string; profileId?: string }) => Promise<IpcResult<PlayResult>>;
         /** ★ 2026-09-30（用户要求）：点播外部播放器（与磁力分开绑定）——探测本机播放器 / 用当前地址拉起 */
         detectPlayers: () => Promise<IpcResult<Array<{ id: string; name: string; path: string }>>>;
         openExternal: (a: { url: string; path?: string; seek?: number }) => Promise<IpcResult<{ ok: boolean; player?: string; error?: string }>>;
@@ -222,7 +246,7 @@ declare global {
         isAlwaysOnTop: () => Promise<IpcResult<boolean>>;
         // ★ 2026-10-08（用户要求）：详情页独立窗口（已开则复用并通知换路由）
         openDetail: (a: { key: string; id: string; query?: string }) => Promise<IpcResult<{ ok: boolean; reused: boolean }>>;
-        openSearch: (term: string) => Promise<IpcResult<{ ok: boolean; reused: boolean }>>;
+        openSearch: (args: { term: string; profileId?: string }) => Promise<IpcResult<{ ok: boolean; reused: boolean }>>;
         routeReady: () => Promise<IpcResult<void>>;
         reportError: (message: string) => Promise<IpcResult<void>>;
         onNavigate: (cb: (route: string) => void) => () => void;
@@ -317,7 +341,10 @@ async function unwrap<T>(p: Promise<IpcResult<T>>): Promise<T> {
 export const client = {
   ping: () => unwrap(window.api.system.ping()),
   appIcon: () => unwrap(window.api.system.icon()),
-  setTheme: (t: string) => unwrap(window.api.system.setTheme(t)),
+  getUiPreferences: () => unwrap(window.api.system.getUiPreferences()),
+  initializeUiPreferences: (legacy: UiPreferencesPatch) => unwrap(window.api.system.initializeUiPreferences(legacy)),
+  updateUiPreferences: (patch: UiPreferencesPatch) => unwrap(window.api.system.updateUiPreferences(patch)),
+  onUiPreferencesChanged: (cb: (snapshot: UiPreferencesSnapshot) => void) => window.api.system.onUiPreferencesChanged(cb),
   importConfig: (a: { url?: string; json?: string }) => unwrap(window.api.config.import(a)),
   listSites: () => unwrap(window.api.config.listSites()),
   diagnose: () => unwrap(window.api.config.diagnose()),
@@ -330,6 +357,20 @@ export const client = {
   cfgSetActiveSource: (key: string) => unwrap(window.api.config.setActiveSource(key)),
   cfgSetActiveLive: (index: number) => unwrap(window.api.config.setActiveLive(index)),
   cfgImportUrl: (url: string, name?: string) => unwrap(window.api.config.importUrl(url, name)),
+  cfgStartSubscriptionImport: (url: string, name?: string) =>
+    unwrap(window.api.config.startSubscriptionImport(url, name)),
+  cfgCancelSubscriptionImport: (jobId: string) => unwrap(window.api.config.cancelSubscriptionImport(jobId)),
+  cfgRetryFailedSubscriptionImport: (jobId: string) => unwrap(window.api.config.retryFailedSubscriptionImport(jobId)),
+  cfgContinueSubscriptionImport: (jobId: string) => unwrap(window.api.config.continueSubscriptionImport(jobId)),
+  cfgGetSubscriptionImport: (jobId: string) => unwrap(window.api.config.getSubscriptionImport(jobId)),
+  cfgListSubscriptionImports: () => unwrap(window.api.config.listSubscriptionImports()),
+  cfgResumeSubscriptionImport: (jobId: string) => unwrap(window.api.config.resumeSubscriptionImport(jobId)),
+  onSubscriptionImportProgress: (cb: (event: SubscriptionImportProgressEvent) => void) =>
+    window.api.config.onSubscriptionImportProgress(cb),
+  cfgRemoveSubscriptionGroupMember: (groupId: string, memberId: string) =>
+    unwrap(window.api.config.removeSubscriptionGroupMember(groupId, memberId)),
+  cfgResolveSubscriptionGroupRefresh: (groupId: string, memberId: string, resolution: SubscriptionRefreshResolution) =>
+    unwrap(window.api.config.resolveSubscriptionGroupRefresh(groupId, memberId, resolution)),
   cfgImportJsonLocal: (name?: string) => unwrap(window.api.config.importJsonLocal(name)),
   cfgImportPyLocal: () => unwrap(window.api.config.importPyLocal()),
   /** ★ 2026-09-29：导入本地包（目录包）—— 返回包根/命中订阅/源数，用于结果提示 */
@@ -344,6 +385,7 @@ export const client = {
   cfgProfiles: () => unwrap(window.api.config.cfgProfiles()),
   /** ★ 2026-09-30（用户要求）：换源弹层「左订阅 / 右源」视图（每份档案的源 key/name 清单） */
   cfgProfileSites: () => unwrap(window.api.config.profileSites()),
+  cfgProfileSources: (profileId: string) => unwrap(window.api.config.profileSources(profileId)),
   /** ★ 2026-09-30（用户要求）：一步完成「切换档案 + 选中该档案下的源」 */
   cfgSwitchProfileSource: (profileId: string, key: string) =>
     unwrap(window.api.config.switchProfileSource({ profileId, key })),
@@ -377,7 +419,7 @@ export const client = {
   winIsAlwaysOnTop: () => unwrap(window.api.win.isAlwaysOnTop()),
   // ★ 2026-10-08（用户要求）：详情页独立窗口
   winOpenDetail: (a: { key: string; id: string; query?: string }) => unwrap(window.api.win.openDetail(a)),
-  winOpenSearch: (term: string) => unwrap(window.api.win.openSearch(term)),
+  winOpenSearch: (term: string, profileId?: string) => unwrap(window.api.win.openSearch({ term, profileId })),
   winRouteReady: () => unwrap(window.api.win.routeReady()),
   winReportError: (message: string) => unwrap(window.api.win.reportError(message)),
   winOnNavigate: (cb: (route: string) => void) => window.api.win.onNavigate(cb),
@@ -423,13 +465,13 @@ export const client = {
   ucTvQrCreate: () => unwrap(window.api.drives.ucTvQrCreate()),
   ucTvQrPoll: () => unwrap(window.api.drives.ucTvQrPoll()),
   ucTvRemove: () => unwrap(window.api.drives.ucTvRemove()),
-  home: (key: string) => unwrap(window.api.vod.home(key)),
-  category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string> }) => unwrap(window.api.vod.category(a)),
-  detail: (a: { key: string; ids: string[] }) => unwrap(window.api.vod.detail(a)),
-  search: (a: { key: string; wd: string }) => unwrap(window.api.vod.search(a)),
-  searchAll: (wd: string, opts?: { refresh?: boolean }) => unwrap(window.api.vod.searchAll(wd, opts)),
+  home: (key: string, profileId?: string) => unwrap(window.api.vod.home(key, profileId)),
+  category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }) => unwrap(window.api.vod.category(a)),
+  detail: (a: { key: string; ids: string[]; profileId?: string }) => unwrap(window.api.vod.detail(a)),
+  search: (a: { key: string; wd: string; profileId?: string }) => unwrap(window.api.vod.search(a)),
+  searchAll: (wd: string, opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] }) => unwrap(window.api.vod.searchAll(wd, opts)),
   onSearchAllProgress: (cb: (ev: SearchAllProgressEvent) => void) => window.api.vod.onSearchAllProgress(cb as (ev: unknown) => void),
-  play: (a: { key: string; flag: string; id: string }) => unwrap(window.api.vod.play(a)),
+  play: (a: { key: string; flag: string; id: string; profileId?: string }) => unwrap(window.api.vod.play(a)),
   loadLive: (index: number) => unwrap(window.api.live.load(index)),
   liveMeta: () => unwrap(window.api.live.meta()),
   liveEpg: (index: number, channels: EpgChannelRef[]) => unwrap(window.api.live.epg(index, channels)),

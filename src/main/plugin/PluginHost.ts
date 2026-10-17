@@ -16,7 +16,7 @@ import { JsonStore } from '../store/JsonStore';
 import { PluginInstaller } from './PluginInstaller';
 import { PluginRegistry, BUILTIN_MARKER, type PluginEntry } from './PluginRegistry';
 import { shaderModes, shadersForMode, type PluginView, type SrState } from '../../shared/plugin';
-import { srModeUsable, type SrMode } from '../../shared/player';
+import { srModeUsable } from '../../shared/player';
 
 export interface PluginOpResult {
   ok: boolean;

@@ -2,9 +2,11 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import App from './App';
+import { AppDialogProvider } from './components/AppDialog';
 import { initTheme } from './lib/theme';
 import { dropSessionUiMemoryIfRestarted } from './lib/uiMemory';
 import { initMotionPref } from './lib/uiPrefs';
+import { syncUiPreferencesFromMain } from './lib/preferenceStore';
 import { client } from './api/client';
 import './styles/global.css';
 import './styles/netflix.css';
@@ -34,11 +36,15 @@ initTheme();
 // ★ 2026-10-08：挂载前应用「界面动效」偏好（写 <html data-motion>）——首屏就按用户档位渲染动效
 initMotionPref();
 
-void bootUiMemory().finally(() => {
+void Promise.all([bootUiMemory(), syncUiPreferencesFromMain().catch(() => undefined)]).finally(() => {
+  initTheme();
+  initMotionPref();
   createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <HashRouter>
-        <App />
+        <AppDialogProvider>
+          <App />
+        </AppDialogProvider>
       </HashRouter>
     </React.StrictMode>,
   );

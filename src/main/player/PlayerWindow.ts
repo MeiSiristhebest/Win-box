@@ -59,8 +59,7 @@ export function onPlayerWindowClosed(cb: () => void): void {
  * ★★ 2026-10-08（用户报「b蓝光 / 自建 4K-2 有声音无图像」根因修复）★★
  *   本窗口是**透明窗**（mpv 画面从播放区透明处透出），任何把它改回不透明底色的路径
  *   都会把 mpv 画面整块盖住（实测：`setBackgroundColor('#0a0c10')` 后透明失效、屏幕全黑）。
- *   已知来源：`THEME_SET` IPC 处理器会按暗/亮给**发起窗口**设置不透明底色，而播放器窗口
- *   自己也跑主题引导（`renderer/lib/theme.ts` → `client.setTheme`）——因此必须排除本窗口。
+ *   主进程偏好服务按主题更新普通窗口底色，并始终排除播放器窗口。
  */
 export function isPlayerWindow(w: BrowserWindow | null | undefined): boolean {
   return !!w && w === playerWin && !w.isDestroyed();

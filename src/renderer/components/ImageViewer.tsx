@@ -7,6 +7,7 @@
 //   · 页码指示、加载中/失败提示（失败可重试）；
 //   · 鼠标静止 2.5s 淡出工具条（鼠标一动即回）。
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { isNativeModalOpen } from '../lib/modalScope';
 
 export interface ImageViewerProps {
   url: string;
@@ -26,24 +27,30 @@ export interface ImageViewerProps {
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 5;
 
-export default function ImageViewer({ url, name, index, total, canPrev, canNext, onPrev, onNext, mini = false }: ImageViewerProps) {
+export default function ImageViewer(props: ImageViewerProps) {
+  const [reload, setReload] = useState(0);
+  const src = reload > 0 ? `${props.url}${props.url.includes('?') ? '&' : '?'}_r=${reload}` : props.url;
+  return (
+    <ImageViewerContent
+      key={src}
+      {...props}
+      src={src}
+      onRetry={() => setReload((value) => value + 1)}
+    />
+  );
+}
+
+type ImageViewerContentProps = Omit<ImageViewerProps, 'url'> & { src: string; onRetry: () => void };
+
+function ImageViewerContent({ src, name, index, total, canPrev, canNext, onPrev, onNext, mini = false, onRetry }: ImageViewerContentProps) {
   const [scale, setScale] = useState(1);
   const [off, setOff] = useState({ x: 0, y: 0 });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [ui, setUi] = useState(true);
-  /** 重新加载计数（失败重试用：加个查询参数绕开失败缓存） */
-  const [reload, setReload] = useState(0);
+  const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // 换图 → 复位视图与状态
-  useEffect(() => {
-    setScale(1);
-    setOff({ x: 0, y: 0 });
-    setLoading(true);
-    setErr('');
-  }, [url, reload]);
 
   const poke = useCallback(() => {
     setUi(true);
@@ -51,11 +58,11 @@ export default function ImageViewer({ url, name, index, total, canPrev, canNext,
     idleTimer.current = setTimeout(() => setUi(false), 2500);
   }, []);
   useEffect(() => {
-    poke();
+    idleTimer.current = setTimeout(() => setUi(false), 2500);
     return () => {
       if (idleTimer.current) clearTimeout(idleTimer.current);
     };
-  }, [poke, url]);
+  }, []);
 
   const zoom = useCallback((next: number) => {
     setScale(Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(next.toFixed(2)))));
@@ -64,6 +71,7 @@ export default function ImageViewer({ url, name, index, total, canPrev, canNext,
   // 键盘：←/→ 换图、+/- 缩放、0 复位
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (isNativeModalOpen()) return;
       if (e.key === 'ArrowLeft' && canPrev) onPrev?.();
       else if (e.key === 'ArrowRight' && canNext) onNext?.();
       else if (e.key === '+' || e.key === '=') zoom(scale + 0.25);
@@ -73,8 +81,6 @@ export default function ImageViewer({ url, name, index, total, canPrev, canNext,
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [canPrev, canNext, onPrev, onNext, scale, zoom]);
-
-  const src = reload > 0 ? `${url}${url.includes('?') ? '&' : '?'}_r=${reload}` : url;
 
   return (
     <div
@@ -91,6 +97,7 @@ export default function ImageViewer({ url, name, index, total, canPrev, canNext,
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         dragRef.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y };
+        setDragging(true);
         try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
       }}
       onPointerMove={(e) => {
@@ -98,9 +105,9 @@ export default function ImageViewer({ url, name, index, total, canPrev, canNext,
         if (!d) return;
         setOff({ x: d.ox + (e.clientX - d.x), y: d.oy + (e.clientY - d.y) });
       }}
-      onPointerUp={() => { dragRef.current = null; }}
-      onPointerCancel={() => { dragRef.current = null; }}
-      style={{ cursor: dragRef.current ? 'grabbing' : 'grab' }}
+      onPointerUp={() => { dragRef.current = null; setDragging(false); }}
+      onPointerCancel={() => { dragRef.current = null; setDragging(false); }}
+      style={{ cursor: dragging ? 'grabbing' : 'grab' }}
     >
       {!err && (
         <img
@@ -123,7 +130,7 @@ export default function ImageViewer({ url, name, index, total, canPrev, canNext,
         <div className="vp-err" onDoubleClick={(e) => e.stopPropagation()}>
           <div>{err}</div>
           <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
-            <button className="primary" onClick={() => setReload((n) => n + 1)}>重试</button>
+            <button className="primary" onClick={onRetry}>重试</button>
           </div>
         </div>
       )}
@@ -131,28 +138,28 @@ export default function ImageViewer({ url, name, index, total, canPrev, canNext,
         <span className="ivi-title" title={name}>{name || '图片'}</span>
         <span className="ivi-page">{index && total ? `${index} / ${total}` : ''}</span>
         <span className="ivi-zoom">{Math.round(scale * 100)}%</span>
-        <button className="vp-ctl" title="缩小" onClick={() => zoom(scale - 0.25)}>−</button>
-        <button className="vp-ctl" title="放大" onClick={() => zoom(scale + 0.25)}>+</button>
-        <button className="vp-ctl" title="复位（双击画面同效）" onClick={() => { zoom(1); setOff({ x: 0, y: 0 }); }}>
+        <button className="vp-ctl" aria-label="缩小" title="缩小" onClick={() => zoom(scale - 0.25)}>−</button>
+        <button className="vp-ctl" aria-label="放大" title="放大" onClick={() => zoom(scale + 0.25)}>+</button>
+        <button className="vp-ctl" aria-label="复位缩放和位置" title="复位（双击画面同效）" onClick={() => { zoom(1); setOff({ x: 0, y: 0 }); }}>
           <svg width="15" height="15" viewBox="0 0 24 24"><path d="M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z" fill="currentColor" /></svg>
         </button>
-        <button className="vp-ctl vp-nav" title="上一张" disabled={!canPrev} onClick={onPrev}>
+        <button className="vp-ctl vp-nav" aria-label="上一张" title="上一张" disabled={!canPrev} onClick={onPrev}>
           <svg width="16" height="16" viewBox="0 0 24 24"><path d="M15 5.5v13l-11-6.5z" fill="currentColor" /></svg>
         </button>
-        <button className="vp-ctl vp-nav" title="下一张" disabled={!canNext} onClick={onNext}>
+        <button className="vp-ctl vp-nav" aria-label="下一张" title="下一张" disabled={!canNext} onClick={onNext}>
           <svg width="16" height="16" viewBox="0 0 24 24"><path d="M9 5.5v13l11-6.5z" fill="currentColor" /></svg>
         </button>
       </div>
       {!mini && (
         <div className={`ivi-nav ivi-left${ui ? '' : ' ivi-hide'}`}>
-          <button className="ivi-nav-btn" disabled={!canPrev} title="上一张（←）" onClick={onPrev}>
+          <button className="ivi-nav-btn" aria-label="上一张" disabled={!canPrev} title="上一张（←）" onClick={onPrev}>
             <svg width="26" height="26" viewBox="0 0 24 24"><path d="M15 5.5v13l-11-6.5z" fill="currentColor" /></svg>
           </button>
         </div>
       )}
       {!mini && (
         <div className={`ivi-nav ivi-right${ui ? '' : ' ivi-hide'}`}>
-          <button className="ivi-nav-btn" disabled={!canNext} title="下一张（→）" onClick={onNext}>
+          <button className="ivi-nav-btn" aria-label="下一张" disabled={!canNext} title="下一张（→）" onClick={onNext}>
             <svg width="26" height="26" viewBox="0 0 24 24"><path d="M9 5.5v13l11-6.5z" fill="currentColor" /></svg>
           </button>
         </div>

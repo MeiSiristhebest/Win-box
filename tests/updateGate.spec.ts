@@ -17,6 +17,7 @@ const source = readFileSync(new URL('../src/renderer/components/UpdateGate.tsx',
 const compiled = transformSync(source + '\nglobalThis.component = UpdateGate;', {
   loader: 'tsx', jsxFactory: 'h', jsxFragment: 'Fragment', target: 'es2022',
 }).code;
+const appModal = Symbol('AppModal');
 const available: UpdateCheckResult = {
   localVersion: '1.21.1', remoteVersion: '1.21.2', tag: 'release1.21.2', updateAvailable: true,
   releaseNotes: '详细更新说明\n- 支持纯 Python 包', publishedAt: '2026-10-13T08:00:00Z',
@@ -36,7 +37,7 @@ function host(hash = '#/', search = false) {
     onUpdateProgress: vi.fn((cb: typeof onProgress) => { onProgress = cb; return vi.fn(); }),
   };
   const context: any = {
-    client, formatBytes, isDetailWinHash, isSearchWindow: () => search,
+    client, formatBytes, isDetailWinHash, isSearchWindow: () => search, AppModal: appModal,
     window: { location: { hash } }, Fragment: 'fragment',
     h: (type: unknown, props: Record<string, any> | null, ...children: any[]): Node => ({ type, props: props || {}, children }),
     useState: (initial: unknown) => {
@@ -113,7 +114,7 @@ describe('启动更新提示（真实 TSX 组件行为）', () => {
     const h = host(); h.render(); await settle();
     button(h.render(), '暂不更新').props.onClick();
     const tree = h.render();
-    expect(nodes(tree).some(n => n.props.role === 'dialog')).toBe(false);
+    expect(nodes(tree).some(n => n.type === appModal)).toBe(false);
     expect(tree.children[0].props.inert).toBeUndefined();
     expect(tree.children[0].children[0]).toBe(h.child);
     expect(h.client.updateCheck).toHaveBeenCalledTimes(1);
@@ -151,7 +152,7 @@ describe('启动更新提示（真实 TSX 组件行为）', () => {
     h.render(); await settle(); button(h.render(), '立即更新').props.onClick(); await settle();
     expect(text(h.render())).toContain('无法启动安装程序');
     button(h.render(), '暂不更新').props.onClick();
-    expect(nodes(h.render()).some(n => n.props.role === 'dialog')).toBe(false);
+    expect(nodes(h.render()).some(n => n.type === appModal)).toBe(false);
   });
 
   it.each(['reject', 'current', 'no-asset'])('检查异常/无更新/无安装包正常放行：%s', async mode => {
@@ -159,7 +160,7 @@ describe('启动更新提示（真实 TSX 组件行为）', () => {
     if (mode === 'reject') h.client.updateCheck.mockRejectedValueOnce(new Error('offline'));
     else h.client.updateCheck.mockResolvedValueOnce({ ...available, updateAvailable: mode !== 'current', asset: undefined });
     h.render(); await settle();
-    expect(nodes(h.render()).some(n => n.props.role === 'dialog')).toBe(false);
+    expect(nodes(h.render()).some(n => n.type === appModal)).toBe(false);
     expect(h.client.updateDownload).not.toHaveBeenCalled();
   });
 

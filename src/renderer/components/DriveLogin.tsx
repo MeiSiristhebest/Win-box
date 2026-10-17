@@ -38,7 +38,7 @@ export default function DriveLogin({ provider, onBound }: Props) {
       ) : (
         <span className="muted" style={{ fontSize: 11 }}>该网盘暂不支持网页扫码，请手动粘贴凭据</span>
       )}
-      {msg && <span className="muted" style={{ fontSize: 11 }} role="status">{msg}</span>}
+      {msg && <output className="muted" style={{ fontSize: 11 }}>{msg}</output>}
     </div>
   );
 }

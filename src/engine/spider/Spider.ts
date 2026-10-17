@@ -54,7 +54,7 @@ export abstract class Spider {
   }
 
   /** 首页分类 + 推荐。filter=true 时返回分类筛选 */
-  homeContent(filter: boolean): Promise<string> | string {
+  homeContent(_filter: boolean): Promise<string> | string {
     return '';
   }
 
@@ -64,12 +64,12 @@ export abstract class Spider {
   }
 
   /** 分类列表：tid=分类id, pg=页码, extend=筛选参数 */
-  categoryContent(tid: string, pg: string, filter: boolean, extend: Record<string, string>): Promise<string> | string {
+  categoryContent(_tid: string, _pg: string, _filter: boolean, _extend: Record<string, string>): Promise<string> | string {
     return '';
   }
 
   /** 详情：ids[0]=vod_id */
-  detailContent(ids: string[]): Promise<string> | string {
+  detailContent(_ids: string[]): Promise<string> | string {
     return '';
   }
 
@@ -88,12 +88,12 @@ export abstract class Spider {
   }
 
   /** 播放信息：flag=播放源标识, id=剧集id, vipFlags=需解析的flag列表 */
-  playerContent(flag: string, id: string, vipFlags: string[]): Promise<string> | string {
+  playerContent(_flag: string, _id: string, _vipFlags: string[]): Promise<string> | string {
     return '';
   }
 
   /** webview 嗅探时判断 url 是否视频 —— Windows v1 不做嗅探，恒 false */
-  isVideoFormat(url: string): boolean {
+  isVideoFormat(_url: string): boolean {
     return false;
   }
 
@@ -102,7 +102,7 @@ export abstract class Spider {
   }
 
   /** 直播列表（lives.type=3 的 .js 源） */
-  liveContent(url: string): Promise<string> | string {
+  liveContent(_url: string): Promise<string> | string {
     return '';
   }
 
@@ -111,7 +111,7 @@ export abstract class Spider {
   destroy(): void {}
 
   /** 本地代理：返回 [mimeType, bytes/Stream] —— v1 不做 */
-  proxyLocal(params: Record<string, string>): unknown[] | null {
+  proxyLocal(_params: Record<string, string>): unknown[] | null {
     return null;
   }
 
@@ -121,7 +121,7 @@ export abstract class Spider {
     return r == null ? '' : JSON.stringify(r);
   }
 
-  action(action: string): string | null {
+  action(_action: string): string | null {
     return null;
   }
 

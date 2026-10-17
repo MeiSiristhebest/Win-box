@@ -7,14 +7,14 @@
 // 单条移除后可**撤销**（无损还原，含原进度与时间），因为它是不可逆的数据丢失操作。
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { recentWatch, clearUiMemory, deleteWatch, restoreWatch, loadUiMemory, loadLatestWatch, watchedEpisodeOf, latestEpisodeOf, type WatchHistory } from '../lib/uiMemory';
+import { recentWatch, clearUiMemory, deleteWatch, restoreWatch, loadUiMemory, loadLatestWatch, watchedEpisodeOf, latestEpisodeOf, historyGroupKey, type WatchHistory } from '../lib/uiMemory';
 import { client } from '../api/client';
 import { useCovers } from '../lib/useCovers';
 // ★ 2026-09-30（用户要求）：显式绑定第三方播放器时，从历史直接由它续播（起播位置作为启动参数）
 import { playVodExternal } from '../lib/externalPlay';
 // 所有详情统一由独立窗口展示。
 import { openDetailRoute } from '../lib/detailWin';
-import { restoreHistorySource } from '../lib/historySource';
+import { resolveHistorySource } from '../lib/historySource';
 import { historyCategories } from '../lib/historyCategories';
 import type { ProfileSitesView } from '../../shared/types';
 
@@ -43,6 +43,14 @@ function fmtDate(ts: number): string {
   return `${d.getMonth() + 1}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+function historyItemKey(item: WatchHistory): string {
+  return historyGroupKey(item) || item.url;
+}
+
+function historyUpdateKey(item: WatchHistory): string {
+  return JSON.stringify([historyItemKey(item), item.rawUrl || item.url]);
+}
+
 export default function HistoryPage() {
   const nav = useNavigate();
   const [items, setItems] = useState<WatchHistory[]>([]);
@@ -51,7 +59,7 @@ export default function HistoryPage() {
   const groups = historyCategories(items, profileView);
   const activeCategory = groups.some((g) => g.key === category) ? category : '';
   const visibleGroups = activeCategory ? groups.filter((g) => g.key === activeCategory) : groups;
-  const coverItem = (it: WatchHistory) => ({ id: it.url, name: baseNameOf(it.name), pic: it.pic });
+  const coverItem = (it: WatchHistory) => ({ id: historyItemKey(it), name: baseNameOf(it.name), pic: it.pic });
   const covers = useCovers(items.map(coverItem));
   const picOf = (it: WatchHistory) => covers.picOf(coverItem(it));
   const picErr = (it: WatchHistory) => (e: React.SyntheticEvent<HTMLImageElement>) =>
@@ -96,10 +104,10 @@ export default function HistoryPage() {
   useEffect(() => {
     if (!items.length || updBusyRef.current) return;
     const todo = items
-      .filter((it) => it.sourceKey && it.vodId && !updQueriedRef.current.has(it.url))
+      .filter((it) => it.sourceKey && it.vodId && !updQueriedRef.current.has(historyUpdateKey(it)))
       .slice(0, MAX_UPDATE_CHECK);
     if (!todo.length) return;
-    for (const it of todo) updQueriedRef.current.add(it.url);
+    for (const it of todo) updQueriedRef.current.add(historyUpdateKey(it));
     updBusyRef.current = true;
     void (async () => {
       const hits: string[] = [];
@@ -112,8 +120,9 @@ export default function HistoryPage() {
           const watched = watchedEpisodeOf(it);
           if (!watched) continue; // 电影/无集号 → 无「更新」概念
           try {
-            const d = await client.detail({ key: it.sourceKey!, ids: [it.vodId!] });
-            if (d && latestEpisodeOf(d) > watched) hits.push(it.url);
+            const source = await resolveHistorySource(client, it);
+            const d = await client.detail({ key: source.key, ids: [it.vodId!], profileId: source.profileId });
+            if (d && latestEpisodeOf(d) > watched) hits.push(historyUpdateKey(it));
           } catch {
             /* 源不可用/超时：静默（不误报「有更新」） */
           }
@@ -121,7 +130,7 @@ export default function HistoryPage() {
       };
       await Promise.all(Array.from({ length: Math.min(UPDATE_CONCURRENCY, todo.length) }, worker));
       updBusyRef.current = false;
-      if (hits.length) setUpd((prev) => ({ ...prev, ...Object.fromEntries(hits.map((u) => [u, true])) }));
+      if (hits.length) setUpd((prev) => ({ ...prev, ...Object.fromEntries(hits.map((key) => [key, true])) }));
       setUpdWave((w) => w + 1); // 还有未检测的历史（>MAX_UPDATE_CHECK）→ 再走一批
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,13 +157,12 @@ export default function HistoryPage() {
     // ★ 2026-09-20 修复：本页 items 是挂载时的内存快照 —— 播放器窗口关闭时刚把最新进度
     //   写入 localStorage，若直接用 it 续播会回到**上次打开位置**而非快进后的位置。
     //   故点开前重读该 url 的最新记录（updatedAt 最新），拿不到才回退快照。
-    const latest = loadLatestWatch(it.url) || it;
+    const latest = loadLatestWatch(historyItemKey(it)) || it;
     const base = (latest.name || '').split(' - ')[0] || latest.name || '';
     setNotice('');
     void (async () => {
-      // 先恢复所属订阅，再打开播放器/外部播放器；不能把旧 key 交给当前的其他订阅。
-      const source = await restoreHistorySource(client, latest);
-      window.dispatchEvent(new CustomEvent('winbox:sources-changed'));
+      // 历史项按所属订阅解析，不改全局活动订阅。
+      const source = await resolveHistorySource(client, latest);
       /**
        * ★ 2026-09-30（用户要求）：显式绑定了第三方播放器 → 直接由它续播（不再开内置播放器窗口）。
        *   ★ 2026-10-08：改为**勾选项**总开关 —— 未勾选「启用点播外部播放器」时一律走内置播放器（即使填了路径）。
@@ -203,10 +211,10 @@ export default function HistoryPage() {
 
   const openDetail = (it: WatchHistory) => {
     if (it.sourceKey && it.vodId) {
-      const latest = loadLatestWatch(it.url) || it;
-      void restoreHistorySource(client, latest).then((source) => {
-        window.dispatchEvent(new CustomEvent('winbox:sources-changed'));
-        return openDetailRoute((to) => nav(to), source.key, latest.vodId!);
+      const latest = loadLatestWatch(historyItemKey(it)) || it;
+      void resolveHistorySource(client, latest).then((source) => {
+        const query = new URLSearchParams({ profileId: source.profileId }).toString();
+        return openDetailRoute((to) => nav(to), source.key, latest.vodId!, query);
       }).catch((e) => setNotice(`打开详情失败：${e instanceof Error ? e.message : String(e)}`));
     }
     else play(it);
@@ -217,7 +225,7 @@ export default function HistoryPage() {
    * 记住被删的整条快照，供撤销无损还原。
    */
   const del = (it: WatchHistory) => {
-    if (deleteWatch(it.url)) setLastDeleted(it);
+    if (deleteWatch(historyItemKey(it))) setLastDeleted(it);
     refresh();
   };
 
@@ -252,27 +260,27 @@ export default function HistoryPage() {
       </div>
       {/* 撤销条：单条移除后出现，可无损还原（含原进度与时间） */}
       {lastDeleted && (
-        <div className="hist-undo" role="status">
+        <output className="hist-undo">
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             已移除「{lastDeleted.name}」
           </span>
           <button className="linkbtn" onClick={undo}>撤销</button>
           <button className="linkbtn muted-btn" onClick={() => setLastDeleted(null)}>关闭</button>
-        </div>
+        </output>
       )}
       {/* ★ 2026-09-29：来源已不在当前订阅等提示 */}
       {notice && (
-        <div className="hist-undo" role="status">
+        <output className="hist-undo">
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{notice}</span>
           <button className="linkbtn muted-btn" onClick={() => setNotice('')}>关闭</button>
-        </div>
+        </output>
       )}
       <div className="content hist-content">
         {items.length === 0 ? (
           <div className="empty" style={{ marginTop: 40 }}>暂无观看记录 —— 播放任意资源后会自动出现在这里</div>
         ) : (
           <>
-            <div className="quick-picks hist-filters" role="group" aria-label="历史来源分类">
+            <section className="quick-picks hist-filters" aria-label="历史来源分类">
               <span className="muted">按来源筛选：</span>
               <button className={`tag ${activeCategory === '' ? 'active' : ''}`} aria-pressed={activeCategory === ''} onClick={() => setCategory('')}>全部 {items.length}</button>
               {groups.map((group) => (
@@ -281,7 +289,7 @@ export default function HistoryPage() {
                   {group.label} {group.items.length}
                 </button>
               ))}
-            </div>
+            </section>
             {visibleGroups.map((group) => (
             <section className="hist-group" key={group.key}>
               <h3>{group.label}<span className="muted"> · {group.items.length} 条</span></h3>
@@ -290,12 +298,13 @@ export default function HistoryPage() {
                 // 封面：与其他页面同规则（搜索补图为准 → 源图占位/兜底）
                 const cover = picOf(it);
                 return (
-                <div className="card-media hist-media" key={it.url} onClick={() => play(it)}>
-                  <div className="card">
+                <div className="card-media hist-media" key={historyItemKey(it)}>
+                  <button type="button" className="card hist-card-action ui-action" aria-label={`播放 ${it.name}`} onClick={() => play(it)}>
                     <div style={{ position: 'relative' }}>
                       {cover ? (
                         <img
                           src={cover}
+                          alt={it.name}
                           // ★ 2026-09-24：坏图改用状态驱动占位（此前写 el.style.opacity 会残留成灰蒙层）；
                           //   同时按「中继/补图/源图」三档回退（见 picErr）
                           onError={picErr(it)}
@@ -317,16 +326,6 @@ export default function HistoryPage() {
                           一眼可见 —— 此前只有悬停卡片才浮出的操作条，实际很难被发现。 */}
                       <div className="hist-corner">
                         {it.time > 0 && <span className="badge">▶ {fmtTime(it.time)}</span>}
-                        <button
-                          className="hist-del"
-                          title="移除这条记录"
-                          aria-label={`移除 ${it.name}`}
-                          onClick={(e) => { e.stopPropagation(); del(it); }}
-                        >
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-                            <path d="M6 6l12 12M18 6L6 18" />
-                          </svg>
-                        </button>
                       </div>
                       {/* 来源 chip（左上）：显示**资源来自哪个源**（源名），不再重复片名 */}
                       {(it.sourceName || srcNames[it.sourceKey || '']) && (
@@ -341,7 +340,7 @@ export default function HistoryPage() {
                         </span>
                       )}
                       {/* ★ 2026-09-26：源内已更新（现在集数 > 已看到的那一集） */}
-                      {upd[it.url] && (
+                      {upd[historyUpdateKey(it)] && (
                         <span
                           style={{
                             position: 'absolute', left: 6, bottom: 6, background: 'var(--danger)', color: '#fff',
@@ -362,20 +361,30 @@ export default function HistoryPage() {
                         )}
                       </div>
                     </div>
-                    {/* hover 操作：续播为主，详情/移除为辅 */}
-                    <div className="hist-ops">
-                      {it.sourceKey && it.vodId && (
-                        <button title="打开详情" onClick={(e) => { e.stopPropagation(); openDetail(it); }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
-                          详情
-                        </button>
-                      )}
-                      <button title="从历史移除" onClick={(e) => { e.stopPropagation(); del(it); }}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
-                        移除
+                  </button>
+                  {/* hover 操作：详情和移除 */}
+                  <div className="hist-ops">
+                    {it.sourceKey && it.vodId && (
+                      <button title="打开详情" onClick={() => openDetail(it)}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></svg>
+                        详情
                       </button>
-                    </div>
+                    )}
+                    <button title="从历史移除" onClick={() => del(it)}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
+                      移除
+                    </button>
                   </div>
+                  <button
+                    className="hist-del"
+                    title="移除这条记录"
+                    aria-label={`移除 ${it.name}`}
+                    onClick={() => del(it)}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+                      <path d="M6 6l12 12M18 6L6 18" />
+                    </svg>
+                  </button>
                 </div>
                 );
               })}

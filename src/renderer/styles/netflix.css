@@ -1,10 +1,12 @@
-/* netflix.css — Win-Box 皮肤：Netflix 风格
-   ★ 2026-10-16 现代化重做（impeccable 口径：配色 / 动效 / 风格协调统一）：
-     · 影院级纯黑舞台（#0F0F10 系暖黑）+ Netflix 红 #E50914 只服务品牌与主行动；
-     · 导航 = 下划线扫入动画 + 毛玻璃渐变；卡片 = 弹簧悬停 + 海报内部慢推变焦 + 逐个错开入场；
-     · 控件统一走全站动效令牌（--ease-x / --dur-x），按压 100ms 内到位，焦点环 Netflix 红。
-   原规范：背景 #141414 系 / 红 #E50914 / 白底播放键 / 顶部导航 / hover 放大卡片 / 红色进度条。
-   ★ 全部规则限定在 `[data-theme='netflix']` 下，其余主题不受影响。 */
+@layer legacy {
+/* netflix.css — Win-Box 第三套皮肤：Netflix 风格（★ 2026-09-24 新增）
+   规范来源（联网查证 #141414 底 / #E50914 红 / 白底播放键 / 顶部导航 / hover 放大卡片 / 红色进度条）：
+     · 背景 #141414（纯黑用于沉浸区），表层 #1F1F1F / #2D2D2D，文字 #FFF / #BCBCBC / #808080
+     · 强调色仅用于「品牌与主行动」：logo、CTA、进度条、New 徽标（#E50914，hover #B20710）
+     · 按钮：主行动=白底深字（半径 4px）；次要=rgba(109,109,110,.7) 白字；圆角一律 ≤8px
+     · 布局：**无侧边栏**，顶部导航（logo 左 + 导航项），内容行横向滚动、卡片无边框无底、hover 放大 1.05 + 信息面板
+     · 字体：Netflix Sans（系统无此字体 → Helvetica Neue / Segoe UI 回退），字重不细于 400
+   ★ 全部规则限定在 `[data-theme='netflix']` 下，经典亮/暗主题完全不受影响。 */
 
 :root[data-theme='netflix'] {
   /* ---- 设计令牌：暖黑影院调色板 ---- */
@@ -647,3 +649,4 @@
 }
 :root[data-theme='netflix'] .vp-next { background: rgba(10, 10, 11, .93); border-radius: 6px; }
 :root[data-theme='netflix'] .vp-next button { background: var(--nf-red); }
+}

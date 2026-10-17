@@ -126,7 +126,6 @@ async function quarkTransferInner(
   opts: { innerFid?: string; innerName?: string; stoken?: string; passcode?: string; logger?: Logger } = {},
 ): Promise<QuarkTransferResult> {
   const log = opts.logger ?? { i: () => {}, w: () => {}, e: () => {} } as Logger;
-  const base = BASE + Q;
 
   // 1) 分享 token（免 cookie）
   let stoken = opts.stoken;

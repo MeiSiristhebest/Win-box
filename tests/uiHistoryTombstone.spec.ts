@@ -21,8 +21,11 @@ import {
   pruneTombstones,
   tombstoneActive,
   loadLatestWatch,
+  historyGroupKey,
   TOMB_KEEP_MS,
   TOMB_MAX,
+  getPlayTime,
+  setPlayTime,
   type WatchHistory,
 } from '../src/renderer/lib/uiMemory';
 
@@ -49,6 +52,7 @@ function snapshot(rows: Array<[string, number]>): Map<string, WatchHistory> {
 function reloadFromDisk(): void {
   uiMem.history.clear();
   uiMem.deleted.clear();
+  uiMem.playTime.clear();
   loadUiMemory();
 }
 
@@ -136,6 +140,19 @@ describe('删除墓碑 — 核心回归（删了就是删了）', () => {
     expect(loadLatestWatch('a')).toBeNull();
   });
 
+  it('episode URL 相同时，按档案分组键读取对应历史', () => {
+    recordWatch({ url: 'shared', name: 'A', sourceKey: 'same', vodId: 'v1', profileId: 'profile-a', time: 11 });
+    recordWatch({ url: 'shared', name: 'B', sourceKey: 'same', vodId: 'v1', profileId: 'profile-b', time: 22 });
+    saveUiMemory();
+    const keyA = historyGroupKey({ sourceKey: 'same', vodId: 'v1', profileId: 'profile-a' });
+    const keyB = historyGroupKey({ sourceKey: 'same', vodId: 'v1', profileId: 'profile-b' });
+
+    expect(loadLatestWatch(keyA)?.profileId).toBe('profile-a');
+    expect(loadLatestWatch(keyA)?.time).toBe(11);
+    expect(loadLatestWatch(keyB)?.profileId).toBe('profile-b');
+    expect(loadLatestWatch(keyB)?.time).toBe(22);
+  });
+
   it('撤销（restoreWatch）清墓碑：重新载入后条目仍在', () => {
     const it = seed('a', 1000);
     saveUiMemory();
@@ -214,5 +231,29 @@ describe('墓碑清理 — 不无限增长', () => {
   it('非法墓碑（空 key / 非数字）被丢弃且不抛异常', () => {
     const pruned = pruneTombstones(new Map([['', 1], ['x', Number.NaN]]), 10);
     expect(pruned.size).toBe(0);
+  });
+});
+
+describe('档案化播放进度', () => {
+  it('相同 URL 的不同档案进度隔离并可从存储恢复', () => {
+    const url = 'shared-playback-url';
+    const sourceA = { profileId: 'profile-a', key: 'shared-source' };
+    const sourceB = { profileId: 'profile-b', key: 'shared-source' };
+
+    setPlayTime(url, 12, sourceA);
+    setPlayTime(url, 34, sourceB);
+    setPlayTime(url, 56);
+
+    expect(getPlayTime(url, sourceA)).toBe(12);
+    expect(getPlayTime(url, sourceB)).toBe(34);
+    expect(getPlayTime(url)).toBe(56);
+
+    saveUiMemory();
+    uiMem.playTime.clear();
+    loadUiMemory();
+
+    expect(getPlayTime(url, sourceA)).toBe(12);
+    expect(getPlayTime(url, sourceB)).toBe(34);
+    expect(getPlayTime(url)).toBe(56);
   });
 });

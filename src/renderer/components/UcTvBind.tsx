@@ -43,7 +43,7 @@ export default function UcTvBind({ onBound, cookieBound }: Props) {
     };
   }, [stopPolling]);
 
-  const poll = useCallback(async () => {
+  const poll = useCallback(async function poll(): Promise<void> {
     if (!alive.current) return;
     try {
       const r = await client.ucTvQrPoll();

@@ -28,6 +28,8 @@ export interface MultiConfigEntry {
 
 export interface SourceBean {
   key: string; // 必填
+  /** Host-only execution namespace. Set on transient copies; never persisted in user configuration. */
+  runtimeScope?: string;
   name: string; // 默认 = key
   type: number; // 必填：0/1/2/3/4/-1
   api: string; // 必填
@@ -148,6 +150,12 @@ export interface LiveEpgResult {
 }
 
 // ---------- 点播 ----------
+/** Stable identity for a source inside one saved subscription profile. */
+export interface SourceRef {
+  profileId: string;
+  key: string;
+}
+
 export interface VodItem {
   id: string;
   name: string;
@@ -157,6 +165,8 @@ export interface VodItem {
   area: string;
   type: string;
   sourceKey: string;
+  /** Profile that produced this result, so later detail/play requests do not follow a different active profile. */
+  sourceRef?: SourceRef;
   /**
    * ★ 2026-09-30（用户报「其他接口的盘搜类型源搜索结果无法展示详情」）：
    * 源侧 `vod_tag` 原样透传 —— `folder` = **文件夹条目**（盘搜/网盘的「夸克 (92个)」这类），
@@ -174,11 +184,14 @@ export interface Episode {
 /** 聚合结果条目：继承点播条目并标注来源 */
 export interface AggVodItem extends VodItem {
   sourceName?: string; // 命中来源显示名
+  sourceProfileName?: string; // Subscription name when the result combines profiles
   sameFromOtherSources?: number; // 同名片在其它源也命中的数量（去重后计数）
 }
 
 /** 单源搜索结果状态 */
 export interface SearchPerSource {
+  profileId?: string;
+  profileName?: string;
   key: string;
   name: string;
   status: 'ok' | 'empty' | 'error';
@@ -231,12 +244,15 @@ export interface SearchAllReport {
 export interface SearchAllProgressEvent {
   /** 本次搜索关键词（渲染层据此丢弃过期事件） */
   wd: string;
+  /** Scope for progress sent to multiple renderer windows. */
+  profileId?: string;
+  profileName?: string;
   /**
    * 该源的结果（结构同 mergeSearchResults 的输入）。
    * ★ 2026-09-24：**可选** —— 快速窗口到点时会推一条「不带 source」的进度，
    * 只用于告诉 UI「已出 X 个、其余 N 个仍在补搜」（用户不必干等所有慢源）。
    */
-  source?: { key: string; name: string; status: 'ok' | 'empty' | 'error'; items?: VodItem[]; error?: string; ms?: number };
+  source?: { profileId?: string; profileName?: string; key: string; name: string; status: 'ok' | 'empty' | 'error'; items?: VodItem[]; error?: string; ms?: number };
   /** 已完成的源数 / 总源数 */
   done: number;
   total: number;
@@ -257,6 +273,7 @@ export interface VodDetail {
   remarks: string;
   flags: string[];
   episodes: Record<string, Episode[]>;
+  sourceRef?: SourceRef;
 }
 
 export interface PlayResult {
@@ -416,7 +433,7 @@ export interface UserUiState {
 
 /** 持久化在 JsonStore('user-config') 键下的完整结构 */
 export interface UserConfig {
-  version: number; // 结构版本（当前 2），升级迁移钩子看这里
+  version: number; // 结构版本（当前 3），升级迁移钩子看这里
   apiUrl: string; // 当前配置来源地址（空 = 手动/粘贴管理）
   global: UserGlobalConfig;
   sources: SourceBean[]; // 有序 = UI 顺序（当前 profile 的有效源）
@@ -432,6 +449,8 @@ export interface UserConfig {
   /** 多配置档案：每份保存一份可离线重建的订阅 JSON（新增于 v2） */
   profiles: UserProfile[];
   activeProfileId: string; // 当前生效 profile id（'' = 无档案管理，仅源列表）
+  /** 多仓父订阅及其独立子档案；旧配置迁移时为空数组。 */
+  subscriptionGroups: SubscriptionGroup[];
   /**
    * ★ 2026-10-15（用户报「配置里删掉的源，换源下拉里还在」）：**用户手动删除过的源 key 墓碑**。
    *   订阅是"全量替换"语义（导入 / 启动时 7 天自动刷新 / 档案切换都用订阅自带源重建 `sources`）——
@@ -450,6 +469,70 @@ export interface UserProfile {
   json: string; // 归一化订阅 JSON（{spider,flags,sites,lives}，可再经 parseSiteConfig 解析）
   sourceCount: number; // 该档案含源数（展示用，归一化时重算）
   importedAt: string; // ISO 时间
+  /** Last successful upstream snapshot; absent on legacy profiles until their first refresh. */
+  upstreamJson?: string;
+  /** Candidate snapshot held until a user resolves the first-refresh diff of a legacy profile. */
+  pendingUpstreamJson?: string;
+  /** Versioned local source edits, deletions, additions, and order relative to upstreamJson. */
+  sourceOverridesJson?: string;
+  groupId?: string;
+  memberId?: string;
+}
+
+export type SubscriptionMemberStatus = 'ready' | 'failed' | 'pending' | 'pending-removal' | 'needs-review';
+
+/** 多仓中的一个独立子订阅。失败或已从父清单移除时仍保留 profileId 与上次成功快照。 */
+export interface SubscriptionGroupMember {
+  id: string;
+  profileId?: string;
+  name: string;
+  url: string;
+  line?: number;
+  status: SubscriptionMemberStatus;
+  error?: string;
+  lastAttemptAt?: string;
+  lastSuccessAt?: string;
+  /** First refresh against a legacy profile without a saved upstream baseline. */
+  refreshDiff?: SubscriptionSourceRefreshDiff;
+}
+
+export interface SubscriptionSourceRefreshDiff {
+  addedKeys: string[];
+  removedKeys: string[];
+  changed: Array<{ key: string; fields: string[] }>;
+}
+
+export type SubscriptionRefreshResolution = 'keep-current' | 'use-upstream';
+
+/** 多仓父订阅。成员顺序与上游清单一致，父清单删除成员时先标记待处理。 */
+export interface SubscriptionGroup {
+  id: string;
+  name: string;
+  url: string;
+  members: SubscriptionGroupMember[];
+  status: 'complete' | 'partial' | 'failed';
+  createdAt: string;
+  updatedAt: string;
+  lastRefreshAt?: string;
+}
+
+export type SubscriptionImportJobState = 'resolving' | 'running' | 'completed' | 'partial' | 'failed' | 'cancelled' | 'interrupted';
+
+/** 主进程多仓任务状态；页面关闭后继续运行，应用重启后恢复已保存的任务快照。 */
+export interface SubscriptionImportProgressEvent {
+  jobId: string;
+  revision: number;
+  url: string;
+  name: string;
+  state: SubscriptionImportJobState;
+  total: number;
+  completed: number;
+  succeeded: number;
+  failed: number;
+  pending: number;
+  currentName?: string;
+  message?: string;
+  updatedAt: string;
 }
 
 /**
@@ -545,6 +628,8 @@ export interface HttpRequest {
   timeoutMs?: number;
   /** 整个请求（含重定向和响应体读取）的总期限；未设置时沿用 timeoutMs 的阶段超时语义。 */
   totalTimeoutMs?: number;
+  /** 允许调用方取消排队任务和正在进行的网络请求。 */
+  signal?: AbortSignal;
   redirect?: 0 | 1;
   charset?: string;
   buffer?: 0 | 1 | 2; // 0 文本 / 1 字节数组 / 2 base64

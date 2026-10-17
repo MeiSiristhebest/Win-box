@@ -1,7 +1,6 @@
 // src/engine/parse/Movie.ts
 // 苹果 CMS 统一数据模型（Movie/Video/UrlBean/UrlInfo/AbsXml）+ JSON→Movie 解析。
 // 1:1 对齐 ref3/.../bean/AbsJson.java 的 toAbsXml()。
-import { safeJsonString, safeJsonInt } from '../util/json';
 import { normalizeVodId, normalizeVodPic } from '../vod/itemNormalize';
 import type { FilterGroup } from '../../shared/types';
 

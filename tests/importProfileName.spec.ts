@@ -70,7 +70,7 @@ describe('导入订阅的档案命名（★ 用户自填名优先）', () => {
     await host.importConfig({ json: cfg('b'), name: '第二个订阅' });
     const names = host.cfgProfiles().map((p) => p.name);
     expect(names).toHaveLength(2);
-    expect(names.some((n) => /^旧订阅 /.test(n))).toBe(true);
+    expect(names.some((n) => n.startsWith('旧订阅 '))).toBe(true);
     expect(activeName(host)).toBe('第二个订阅');
   });
 

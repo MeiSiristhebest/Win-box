@@ -1,12 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { makeHoverDelay } from './hoverDelay';
 
 export function useHoverDelay(change: (open: boolean) => void) {
-  const changeRef = useRef(change);
-  changeRef.current = change;
-  const delayRef = useRef<ReturnType<typeof makeHoverDelay> | null>(null);
-  if (!delayRef.current) delayRef.current = makeHoverDelay(open => changeRef.current(open));
-  const delay = delayRef.current;
+  const [delay] = useState(() => makeHoverDelay(change));
+  useLayoutEffect(() => { delay.update(change); }, [change, delay]);
   useEffect(() => () => delay.cancel(), [delay]);
   return delay;
 }

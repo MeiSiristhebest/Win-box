@@ -292,7 +292,7 @@ export function buildPrefsMemClass(): Buffer {
   const seedAttr = codeAttr(cp, aSeed, 4, 8, [['try', 'tryEnd', 'handler', 'java/lang/Throwable']]);
 
   // get(String)Mem
-  const mGet = cp.method(A_SP + '$Mem', 'get', '(Ljava/lang/String;)Landroid/content/SharedPreferences$Mem;');
+  cp.method(A_SP + '$Mem', 'get', '(Ljava/lang/String;)Landroid/content/SharedPreferences$Mem;');
   const cSelf = cp.klass(A_SP + '$Mem');
   const aGet = new Asm();
   aGet.emit(0xb2, ...u2(fInst)).emit(0x2a).emit(0xb9, ...u2(mMapGet), 0x02, 0x00).emit(0x4c); // o = INST.get(name)

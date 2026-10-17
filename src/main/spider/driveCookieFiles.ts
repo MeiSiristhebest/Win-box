@@ -291,7 +291,7 @@ export function syncPizazzCookieFiles(tokens: Record<string, string>, tmp = tmpd
   }
   // Iterate the known file set rather than the input object so removed or empty
   // credentials cannot leave a stale cookie that a jar treats as authenticated.
-  for (const provider of [...new Set(Object.keys(PIZAZZ_COOKIE_FILES).map((p) => p === 'alipan' ? 'ali' : p))]) {
+  for (const provider of new Set(Object.keys(PIZAZZ_COOKIE_FILES).map((p) => p === 'alipan' ? 'ali' : p))) {
     const value = normalized[provider] || '';
     const path = value ? writePizazzCookieFile(provider, value, tmp) : '';
     if (path) written.push(path);

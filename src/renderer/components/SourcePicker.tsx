@@ -16,6 +16,7 @@
 //   （IPC `cfg:moveSource` / `cfg:deleteSource` 未动）。
 import { useEffect, useRef, useState } from 'react';
 import { client } from '../api/client';
+import { isNativeModalOpen } from '../lib/modalScope';
 import type { ProfileSitesView, SourceBean } from '../../shared/types';
 
 export interface SourcePickerProps {
@@ -53,12 +54,13 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   const [q, setQ] = useState('');
   /** 弹层右锚（顶栏右侧入口左锚会把宽弹层推出窗口） */
   const [popRight, setPopRight] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const srcColRef = useRef<HTMLDivElement | null>(null);
   /** ★ 2026-09-30：档案视图请求代次 —— 只认最后一次请求的响应（慢响应不得覆盖新数据） */
   const viewSeqRef = useRef(0);
   /** ★ 2026-10-16（用户要求「展开即定位当前所在的源」）：当前源那一行的 DOM（定位用，见上面 effect） */
-  const activeRef = useRef<HTMLDivElement | null>(null);
+  const activeRef = useRef<HTMLButtonElement | null>(null);
   /** ★ 2026-09-30：鼠标移出的宽限计时器（移回区域内即取消，见 cancelLeave/scheduleLeave） */
   const leaveTimerRef = useRef<number | null>(null);
   /** ★ 2026-10-16：弹层正在播「回缩」出场动画（播完才 setOpen(false)） */
@@ -140,6 +142,10 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  useEffect(() => {
+    if (open) inputRef.current?.focus();
+  }, [open]);
+
   // ★ 2026-09-30：换订阅 / 改检索词后右栏回到顶部 —— 否则沿用上一份订阅的滚动位置，
   //   看上去像"列表里混着别的源"。
   // ★ 2026-10-16（用户要求）：**展开弹层时自动定位「当前所在的源」**，不再回到列表顶层 ——
@@ -165,6 +171,7 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent): void => {
+      if (isNativeModalOpen()) return;
       if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
@@ -318,30 +325,23 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
       onMouseEnter={cancelLeave}
       onMouseLeave={scheduleLeave}
     >
-      <div
-        className={`srcpick-name${disabled ? ' disabled' : ''}`}
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
+        className={`srcpick-name ui-action${disabled ? ' disabled' : ''}`}
+        disabled={disabled}
         aria-expanded={open}
-        aria-haspopup="listbox"
         title={`当前源：${label}\n点击切换源`}
         onClick={toggleOpen}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            toggleOpen();
-          }
-        }}
         onContextMenu={(e) => e.preventDefault()}
       >
         {isSidebar ? <span className="srcpick-label">当前源</span> : null}
         <span className="srcpick-text">{label}</span>
         <span className="srcpick-caret">▾</span>
-      </div>
+      </button>
       {open && (
-        <div
+        <section
           className={`srcpick-pop${pane && multi ? ' srcpick-pop-wide' : ''}${popRight ? ' srcpick-pop-right' : ''}${closing ? ' srcpick-closing' : ''}`}
-          role="listbox"
+          aria-label="订阅和来源"
         >
           <div className="srcpick-pop-tip">
             {views
@@ -349,10 +349,11 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
               : '正在加载订阅…'}
           </div>
           <input
+            ref={inputRef}
             className="srcpick-search"
+            aria-label="筛选订阅源"
             placeholder="输入源名检索…"
             value={q}
-            autoFocus
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && filtered.length) void pickSource(filtered[0].key);
@@ -363,23 +364,16 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
             {pane && multi && (
               <div className="srcpick-col-sub">
                 {views!.profiles.map((p) => (
-                  <div
+                  <button
+                    type="button"
                     key={p.id}
-                    role="option"
-                    aria-selected={p.id === pane.id}
-                    tabIndex={0}
-                    className={`srcpick-item srcpick-sub${p.id === pane.id ? ' active' : ''}${p.id === views!.activeId ? ' cur' : ''}`}
+                    aria-pressed={p.id === pane.id}
+                    className={`srcpick-item ui-action srcpick-sub${p.id === pane.id ? ' active' : ''}${p.id === views!.activeId ? ' cur' : ''}`}
                     title={`${p.name}（${p.sites.length} 个源）${p.id === views!.activeId ? ' · 当前订阅' : ''}`}
                     onClick={() => selectPane(p.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        selectPane(p.id);
-                      }
-                    }}
                   >
                     {p.name}
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -388,29 +382,21 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
                 <div className="srcpick-item muted">{paneSites.length === 0 ? '（未导入源）' : '（无匹配源）'}</div>
               )}
               {filtered.map((s) => (
-                <div
+                <button
+                  type="button"
                   key={s.key}
-                  role="option"
-                  aria-selected={paneIsActive && s.key === cur}
-                  tabIndex={0}
-                  className={`srcpick-item${paneIsActive && s.key === cur ? ' active' : ''}`}
-                  /* ★ 2026-10-16：当前源那一行挂 ref → 弹层展开时自动定位到它（见上面那个 effect） */
+                  aria-pressed={paneIsActive && s.key === cur}
+                  className={`srcpick-item ui-action${paneIsActive && s.key === cur ? ' active' : ''}`}
                   ref={paneIsActive && s.key === cur ? activeRef : undefined}
                   title={`${s.name || s.key}（${s.key}）`}
                   onClick={() => void pickSource(s.key)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      void pickSource(s.key);
-                    }
-                  }}
                 >
                   <span className="srcpick-sname">{s.name || s.key}</span>
-                </div>
+                </button>
               ))}
             </div>
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

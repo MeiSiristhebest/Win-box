@@ -217,7 +217,7 @@ async function fetchFullCookie(
     timeoutMs: 20000,
   };
   if (cfg.cloudApiMethod === 'post') {
-    req.headers = { ...(req.headers || {}), 'Content-Type': 'application/json' };
+    req.headers = { ...req.headers, 'Content-Type': 'application/json' };
     req.body = '{}';
   }
   const r2 = await http.request(req);

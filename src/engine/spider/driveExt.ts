@@ -124,7 +124,7 @@ export function mergeCloudDriveTokens(
   existing: Record<string, unknown> | undefined,
   tokens: Record<string, string> | undefined,
 ): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...(existing || {}) };
+  const out: Record<string, unknown> = { ...existing };
   const normalized = normalizeDriveTokens(tokens);
   delete out.quarkCookie;
   delete out.ucCookie;

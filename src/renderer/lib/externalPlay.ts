@@ -63,7 +63,7 @@ export async function playVodExternal(a: VodExternalPlayInput): Promise<VodExter
   let profileId = a.profileId;
   try {
     if (profileId === undefined) profileId = await client.cfgGet().then((c) => c.activeProfileId).catch(() => '');
-    r = await client.play({ key: a.key, flag: a.flag, id: rawUrl });
+    r = await client.play({ key: a.key, flag: a.flag, id: rawUrl, profileId });
   } catch {
     return { played: false }; // 解析失败：交给内置播放器窗口显示原因
   }

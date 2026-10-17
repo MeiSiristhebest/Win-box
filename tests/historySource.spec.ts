@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { findHistorySource } from '../src/renderer/lib/historySource';
+import { describe, expect, it, vi } from 'vitest';
+import { findHistorySource, resolveHistorySource } from '../src/renderer/lib/historySource';
 import type { ProfileSitesView } from '../src/shared/types';
 
 const view: ProfileSitesView = {
@@ -38,5 +38,15 @@ describe('findHistorySource — 历史跨订阅恢复', () => {
 
   it('找不到来源时返回 null，不把历史交给错误订阅解析', () => {
     expect(findHistorySource(view, { sourceKey: 'missing', sourceName: '不存在' })).toBeNull();
+  });
+
+  it('解析历史来源时读取所属档案，但不切换全局活动订阅', async () => {
+    const cfgGet = vi.fn(async () => ({ activeProfileId: 'sub-b', sources: view.profiles[1].sites }));
+    const cfgProfileSites = vi.fn(async () => structuredClone(view));
+    const source = await resolveHistorySource({ cfgGet, cfgProfileSites }, { profileId: 'sub-a', sourceKey: 'source-a' });
+
+    expect(source).toMatchObject({ profileId: 'sub-a', key: 'source-a', name: '源 A' });
+    expect(cfgGet).toHaveBeenCalledOnce();
+    expect(cfgProfileSites).toHaveBeenCalledOnce();
   });
 });

@@ -90,6 +90,21 @@ describe('tryDecryptConfig — 两级兜底', () => {
     expect(calls.length).toBe(0); // 关键：本地解开就不外发
   });
 
+  it('第三方解密请求接收并传播调用方取消信号', async () => {
+    const controller = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    const http: HttpClient = {
+      request: (req) => new Promise<HttpResponse>((_resolve, reject) => {
+        observedSignal = req.signal;
+        req.signal?.addEventListener('abort', () => reject(req.signal?.reason), { once: true });
+      }),
+    };
+    const pending = tryDecryptConfig(http, 'https://a.b/enc.json', 'not-json', undefined, controller.signal);
+    expect(observedSignal).toBe(controller.signal);
+    controller.abort(new Error('subscription import cancelled'));
+    await expect(pending).rejects.toThrow('subscription import cancelled');
+  });
+
   it('本地解不出 → 走第三方解密服务，并剥掉 `//` 横幅', async () => {
     const { http, calls } = fakeHttp({ content: '// 时间\n// 公众号\n' + json });
     const r = await tryDecryptConfig(http, 'https://a.b/enc.json', '<html>拦截页</html>');

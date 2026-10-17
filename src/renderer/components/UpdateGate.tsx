@@ -8,6 +8,7 @@ import { client } from '../api/client';
 import { formatBytes, type UpdateCheckResult, type UpdateProgress, DISK_UPDATE_URL } from '../../shared/update';
 import { isDetailWinHash } from '../../shared/detailWin';
 import { isSearchWindow } from '../lib/searchWin';
+import { AppModal } from './AppDialog';
 
 /** 独立播放器窗口（`#/player`）不参与启动提示：更新由主窗口统一触发 */
 function isPlayerWindow(): boolean {
@@ -110,8 +111,13 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
       <div className={visible ? 'upd-blur' : undefined} aria-hidden={visible || undefined} inert={visible || undefined}>
         {children}
       </div>
-      {visible && info && <div className="upd-overlay">
-        <div className="card upd-card" role="dialog" aria-modal="true" aria-labelledby="update-title">
+      {visible && info && <AppModal
+        open
+        className="app-dialog card modal-in upd-card"
+        titleId="update-title"
+        canClose={!busy}
+        onClose={() => setDismissed(true)}
+      >
           <h3 id="update-title" style={{ margin: '0 0 4px' }}>发现新版本</h3>
           <div className="muted upd-vers">
             <b>{info.localVersion}</b> → <b>{info.remoteVersion}</b>
@@ -157,7 +163,7 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
           <div className="row upd-actions">
             {!busy && !error && (
               <>
-                <button autoFocus style={{ flex: '0 0 auto' }} onClick={() => setDismissed(true)}>
+                <button style={{ flex: '0 0 auto' }} onClick={() => setDismissed(true)}>
                   暂不更新
                 </button>
                 {/* ★ 2026-10-16（用户要求）：网盘备用下载 —— 点击用**系统浏览器**打开网盘分享页，用户自行下载。
@@ -183,8 +189,7 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
               </>
             )}
           </div>
-        </div>
-      </div>}
+      </AppModal>}
     </>
   );
 }

@@ -105,7 +105,7 @@ export class SourceViewModel {
     if (type === 3) {
       const sp = this.factory.getCSP(bean, this.host);
       const json = await Promise.resolve(sp.detailContent(ids));
-      return this.normalizeSpiderDetail(json, key);
+      return this.normalizeSpiderDetail(json);
     }
     this.throwUnsupported(bean, 'detail');
   }
@@ -143,10 +143,15 @@ export class SourceViewModel {
    *  flag 在 site.flags 或全局 flags 中 → parse=1（需解析）；否则 parse=0 直连。
    *  site.playUrl 模板（含 {playUrl} 占位）会替换 id。 */
   async play(bean: SourceBean, flag: string, id: string, vipFlags: string[], timeoutMs = 20000): Promise<PlayResult> {
-    const { type, key, playUrl } = bean;
+    const { type, playUrl } = bean;
     if (type === 3) {
       const sp = this.factory.getCSP(bean, this.host);
-      const json = await Promise.resolve(sp.playerContent(flag, id, vipFlags));
+      const budget = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 20000;
+      const json = await this.withTimeout(
+        Promise.resolve(sp.playerContent(flag, id, vipFlags)),
+        budget,
+        `playerContent 超时（${budget}ms）`,
+      );
       const result = this.normalizeSpiderPlay(json, flag, playUrl);
       // JVM 超时/加载失败常返回空串；保留已有的原生解链兜底，但不能丢掉失败原因。
       const reason = !result.url && !result.message ? this.spiderReason(sp) : '';
@@ -460,7 +465,7 @@ export class SourceViewModel {
     });
   }
 
-  private normalizeSpiderDetail(json: string, key: string): VodDetail | null {
+  private normalizeSpiderDetail(json: string): VodDetail | null {
     if (!json) return null;
     try {
       const o = JSON.parse(json) as Record<string, unknown>;
@@ -561,8 +566,8 @@ export class SourceViewModel {
       // ★ 数组分支此前**丢掉了**对象里的显式 `header/headers`（虎牙/斗鱼的播放头 UA/Referer 全靠它，
       //   丢了会让 CDN 按来源拒绝）—— 与对象分支同口径合并：地址尾巴拆出的头 < 显式 header。
       const arrHdr = {
-        ...(picked.find((r) => r.header)?.header || {}),
-        ...(this.normalizePlayHeader(rec?.['header'] ?? rec?.['headers']) || {}),
+        ...picked.find((r) => r.header)?.header,
+        ...this.normalizePlayHeader(rec?.['header'] ?? rec?.['headers']),
       };
       return {
         parse: 0,
@@ -580,7 +585,7 @@ export class SourceViewModel {
         : Number(o['parse']) || 0;
     const resolved = this.resolvePlayUrl(String(o['url'] ?? ''), declared);
     // ★ 蜘蛛显式 header 优先，其次才是地址尾巴 `@Referer=…` 拆出来的头
-    const hdr = { ...(resolved.header || {}), ...(this.normalizePlayHeader(o['header'] ?? o['headers']) || {}) };
+    const hdr = { ...resolved.header, ...this.normalizePlayHeader(o['header'] ?? o['headers']) };
     return {
       parse: resolved.parse,
       url: resolved.url,

@@ -130,7 +130,7 @@ export function parseTmdbSearch(json: unknown, type: 'movie' | 'tv', imageBase: 
 export function metaCacheKey(name: string, year?: string): string {
   const n = (name || '')
     .trim()
-    .replace(/^[\s「『【(\[{]+/, '')
+    .replace(/^[\s「『【([{]+/, '')
     .replace(/[\s」』】)\]}.，,。]+$/, '')
     .toLowerCase();
   const y0 = (year || '').trim().replace(/\D/g, '');
@@ -222,11 +222,11 @@ export function metaQueryVariants(name: string): string[] {
   }
   push(s);
   // ③ 括号：整体被括号包住（「【狂飙】」）→ **拆括号保留内容**；尾部标签（「斗罗大陆（4K）」「…【全集】」）→ 逐层剥离
-  const unwrapped = /^[【(\[〔（]\s*(.+?)\s*[】)\]〕）]$/.exec(s)?.[1]?.trim() ?? s;
+  const unwrapped = /^[【([〔（]\s*(.+?)\s*[】)\]〕）]$/.exec(s)?.[1]?.trim() ?? s;
   push(unwrapped);
   let noTags = s;
   for (let i = 0; i < 4; i++) {
-    const next = noTags.replace(/[【(\[〔（][^】)\]〕）]*[】)\]〕）]\s*$/, '').trim();
+    const next = noTags.replace(/[【([〔（][^】)\]〕）]*[】)\]〕）]\s*$/, '').trim();
     if (next === noTags) break;
     noTags = next;
   }

@@ -8,7 +8,7 @@
 //   · `--input-ipc-server=\\.\pipe\<name>` + Node `net.connect` 可用（loadfile / set_property /
 //     observe_property 全通）；属性事件以 JSON 行推送。
 import type { MpvAudioTrack, MpvCommand, MpvKernelState } from '../../shared/player';
-import { mpvFontSize, mpvSubPos } from '../../shared/player';
+import { mpvFontSize } from '../../shared/player';
 import { playerCandidates } from '../torrent/externalPlayer';
 
 /** 初始状态（每次会话重置） */

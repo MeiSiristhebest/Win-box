@@ -116,9 +116,9 @@ export default function StoragePage() {
       <div className="layout-2 content" style={{ padding: 12 }}>
         <div className="left">
           {servers.map((s) => (
-            <div key={s.id} className={`nav-item ${s.id === serverId ? 'active' : ''}`} onClick={() => pickServer(s.id)}>
+            <button type="button" key={s.id} className={`nav-item ui-action ${s.id === serverId ? 'active' : ''}`} aria-pressed={s.id === serverId} onClick={() => pickServer(s.id)}>
               {s.name}
-            </div>
+            </button>
           ))}
           {!servers.length && (
             <div className="muted" style={{ padding: 12, fontSize: 12 }}>
@@ -133,11 +133,11 @@ export default function StoragePage() {
           ) : (
             <>
               <div className="dav-crumb">
-                <span className="dav-crumb-item" onClick={() => void browse(serverId, '/')}>{cur?.name || '根'}</span>
+                <button type="button" className="dav-crumb-item ui-action" aria-current={path === '/' ? 'page' : undefined} onClick={() => void browse(serverId, '/')}>{cur?.name || '根'}</button>
                 {crumbs.map((c) => (
                   <span key={c.path}>
                     <span className="muted"> / </span>
-                    <span className="dav-crumb-item" onClick={() => void browse(serverId, c.path)}>{c.name}</span>
+                    <button type="button" className="dav-crumb-item ui-action" aria-current={c.path === path ? 'page' : undefined} onClick={() => void browse(serverId, c.path)}>{c.name}</button>
                   </span>
                 ))}
               </div>
@@ -149,18 +149,18 @@ export default function StoragePage() {
               )}
               <div className="dav-list">
                 {path !== '/' && (
-                  <div className="dav-row" onClick={() => void browse(serverId, davParentPath(path))}>
-                    <span className="dav-ico">⬆</span>
+                  <button type="button" className="dav-row ui-action" aria-label="返回上级目录" onClick={() => void browse(serverId, davParentPath(path))}>
+                    <span className="dav-ico" aria-hidden="true">⬆</span>
                     <span className="dav-name">返回上级</span>
-                  </div>
+                  </button>
                 )}
                 {entries.map((e) => (
-                  <div key={e.path} className="dav-row" onClick={() => void open(e)} title={e.path}>
-                    <span className="dav-ico">{e.isDir ? '📁' : isDavInlinePlayable(e.name) ? '🎬' : '🎞'}</span>
+                  <button type="button" key={e.path} className="dav-row ui-action" aria-label={`${e.isDir ? '打开文件夹' : '打开文件'} ${e.name}`} onClick={() => void open(e)} title={e.path}>
+                    <span className="dav-ico" aria-hidden="true">{e.isDir ? '📁' : isDavInlinePlayable(e.name) ? '🎬' : '🎞'}</span>
                     <span className="dav-name">{e.name}</span>
                     <span className="dav-size muted">{e.isDir ? '' : fmtSize(e.size)}</span>
                     <span className="dav-time muted">{fmtTime(e.mtime)}</span>
-                  </div>
+                  </button>
                 ))}
                 {!entries.length && !busy && <div className="empty">空目录</div>}
               </div>

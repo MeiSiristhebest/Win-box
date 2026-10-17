@@ -4,11 +4,15 @@
 //   与 Electron 系统级返回（Alt+← / 浏览器返回）天然协同：popstate 触发路由切换，
 //   页面重挂载时从此处恢复状态。
 // 聚合搜索结果记忆（搜索 → 详情 → 返回时恢复搜索结果界面）
+import { playbackProgressKey, type PlaybackSourceRef } from './playbackProgress';
+
 export interface HomeSearchMem {
   wd: string;
+  profileId?: string;
   aggMode: boolean;
-  aggScope: 'current' | 'all';
+  aggScope: 'current' | 'all' | 'all-profiles';
   searchAllSources: boolean;
+  searchAllProfiles?: boolean;
   /** 搜索结果（SearchAllReport 可 JSON 序列化） */
   agg: { items: unknown[]; perSource: unknown[]; hitSources: number; failedSources: number; totalRaw: number } | null;
   /**
@@ -16,9 +20,10 @@ export interface HomeSearchMem {
    * 当前是否停留在某个**文件夹**（`vod_tag=folder`，如盘搜的「夸克 (92个)」）里 ——
    * 内容由 `categoryContent(tid)` 展开。存进搜索态，从详情页返回时文件夹视图能原样恢复。
    */
-  folder?: { key: string; tid: string; name: string } | null;
+  folder?: { key: string; tid: string; name: string; profileId: string; sourceName?: string } | null;
 }
 export interface HomeMem {
+  profileId?: string;
   key: string;
   tid: string;
   pg: number;
@@ -610,10 +615,14 @@ export function clearUiMemory() {
   }
 }
 
-/** 播放进度写入（VideoPlayer 高频调用）：更新并防抖落盘（历史页已单独持久化，此接口保持轻量） */
-export function setPlayTime(url: string, sec: number): void {
-  uiMem.playTime.set(url, sec);
+/** 播放进度按档案与源隔离；写入后防抖落盘。 */
+export function setPlayTime(url: string, sec: number, source?: PlaybackSourceRef): void {
+  uiMem.playTime.set(playbackProgressKey(url, source), sec);
   schedulePersist();
+}
+
+export function getPlayTime(url: string, source?: PlaybackSourceRef): number {
+  return uiMem.playTime.get(playbackProgressKey(url, source)) || 0;
 }
 
 /**

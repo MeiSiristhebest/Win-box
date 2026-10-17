@@ -12,7 +12,7 @@
 //  - ★ 空结果与失败必须区分：蜘蛛成功返回 '' 是合法结果（空搜索），不误判失败去回退一次性。
 //  - 空闲 60s 回收冗余进程（保留每 key 1 个热进程）。
 //  - 单测默认禁用（VITEST）或 TVBOX_DISABLE_SPIDER_POOL=1 关闭。
-import { spawn, type ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { freemem } from 'node:os';
 
 export interface ServeRequest {
@@ -437,7 +437,7 @@ export class SpiderProcPool {
 
   /** 应用退出：杀掉全部（进程清理由 dispose 调用） */
   dispose(): void {
-    for (const procs of this.groups.values()) for (const p of [...procs]) this.kill(p, 'dispose');
+    for (const procs of this.groups.values()) for (const p of procs) this.kill(p, 'dispose');
     this.groups.clear();
   }
 }

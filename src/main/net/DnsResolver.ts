@@ -35,7 +35,7 @@ async function dohResolve(host: string, servers: string[]): Promise<string[]> {
       const ips = (j.Answer || [])
         .filter((a) => a.type === 1 && a.data)
         .map((a) => a.data)
-        .filter((ip) => !/^127\./.test(ip)); // 回环应答视为「该域名已无可用节点」
+        .filter((ip) => !ip.startsWith('127.')); // 回环应答视为「该域名已无可用节点」
       if (ips.length) return ips;
     } catch (e) {
       lastErr = e;

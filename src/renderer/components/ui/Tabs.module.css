@@ -1,0 +1,38 @@
+.root {
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 1rem;
+}
+
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  margin-bottom: -1px;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.875rem;
+}
+
+.tab[aria-selected='true'] {
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--surface-raised));
+  border-color: color-mix(in srgb, var(--color-accent) 24%, var(--border-subtle));
+  border-bottom-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 650;
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  position: relative;
+  z-index: 1;
+}

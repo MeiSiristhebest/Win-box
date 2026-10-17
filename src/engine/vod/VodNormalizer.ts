@@ -40,7 +40,7 @@ export function toVodItem(v: Video, sourceKey: string): VodItem {
 }
 
 /** Video → VodDetail（含选集） */
-export function toVodDetail(v: Video, sourceKey: string): VodDetail {
+export function toVodDetail(v: Video): VodDetail {
   const episodes: Record<string, Episode[]> = {};
   const flags: string[] = [];
   for (const info of v.urlBean.infoList) {
@@ -72,9 +72,9 @@ export function movieToVodItems(movie: Movie | null | undefined, sourceKey: stri
 }
 
 /** 取详情：list 中第一个 video */
-export function movieToVodDetail(movie: Movie | null | undefined, sourceKey: string): VodDetail | null {
+export function movieToVodDetail(movie: Movie | null | undefined): VodDetail | null {
   if (!movie || !movie.videoList || movie.videoList.length === 0) return null;
-  return toVodDetail(movie.videoList[0], sourceKey);
+  return toVodDetail(movie.videoList[0]);
 }
 
 export function moviePageInfo(movie: Movie | null | undefined): { page: number; pagecount: number; total: number } {

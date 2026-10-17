@@ -57,7 +57,7 @@ const fm = {
    */
   req: async (url: string, opts?: Record<string, unknown>): Promise<FmReqResult> => {
     try {
-      return await invokeBridge<FmReqResult>(IPC.WEBHOME_FM_REQ, { url, ...(opts || {}) } as FmReqPayload);
+      return await invokeBridge<FmReqResult>(IPC.WEBHOME_FM_REQ, { url, ...opts } as FmReqPayload);
     } catch (e) {
       return { ok: false, status: 0, body: '', error: e instanceof Error ? e.message : String(e) };
     }

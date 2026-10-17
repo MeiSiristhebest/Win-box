@@ -4,10 +4,6 @@ import { classifyHealth } from '../src/engine/vod/sourceHealth';
 import { CmsSource } from '../src/engine/vod/CmsSource';
 import type { HttpClient, HttpRequest, HttpResponse } from '../src/shared/types';
 
-const baseOk = (text: string, isXml = true) => {
-  return isXml ? text : JSON.stringify({ class: [{ type_id: 1, type_name: '电影' }], list: [] });
-};
-
 // 自定义 stub：base 请求(无 ac 参数)返回"只有分类"；带 ac=videolist&t=1 返回列表
 function cmsStub(): HttpClient {
   const XML_CLASS_ONLY = `<rss><class><ty id="1">电影</ty><ty id="2">剧集</ty></class></rss>`;

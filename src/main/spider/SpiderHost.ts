@@ -2,7 +2,8 @@
 import { HttpClient } from '../net/HttpClient';
 import { request as undiciRequest } from 'undici';
 import { JsonStore } from '../store/JsonStore';
-import { UserConfigManager, subscriptionStamp, type ConfigChangeKind } from '../store/UserConfigManager';
+import { UserConfigManager, serializeImport, subscriptionStamp, type ConfigChangeKind } from '../store/UserConfigManager';
+import { reconcileSubscriptionProfileRefresh } from '../store/subscriptionProfileMerge';
 import { DriveStore } from '../store/DriveStore';
 import { UcTvStore } from '../store/UcTvStore';
 import { ucTvAuthorize, ucTvDeviceId, ucTvExchange, ucTvPollCode } from '../net/ucTvToken';
@@ -21,18 +22,26 @@ import { unsupportedNestedProvider } from '../net/driveDescriptor';
 import { fileLogger } from '../util/logger';
 import { parseSiteConfig, parseSiteConfigWithBase, looksLikeSubscribeJson, type ParseResult } from '../../engine/config/ApiConfigParser';
 import { parseMultiRepo, isFetchedRepoUrl, repoDisplayName, pickRepoLine, splitRepoLine, type MultiRepo } from '../../engine/config/multiRepo';
-import { buildMergedSubscription, mergeSubscriptions, type MergeInput } from '../../engine/config/mergeSubscriptions';
-import { buildImportReport } from '../../engine/config/ImportReport';
 import { SourceViewModel } from '../../engine/vod/SourceViewModel';
 import { parseToJsonArray, toLiveGroups } from '../../engine/live/TxtSubscribe';
 import { parseXmltv, buildEpgMap, pickCurrentNext, type ParsedXmltv } from '../../engine/live/epg';
 import { EpgStore } from '../live/EpgStore';
+import {
+  SubscriptionImportService,
+  type SubscriptionImportProgressPatch,
+  type SubscriptionImportRunnerCheckpoint,
+  type SubscriptionImportRunner,
+  type SubscriptionImportSelection,
+} from '../subscriptions/SubscriptionImportService';
+import { selectSubscriptionImportMemberIds } from '../subscriptions/subscriptionImportSelection';
+import { SubscriptionImportJobStore } from '../subscriptions/SubscriptionImportJobStore';
+import { SUBSCRIPTION_IMPORT_POLICY } from '../subscriptions/ImportPolicy';
+import { executeSubscriptionImportBatch } from '../subscriptions/SubscriptionImportExecutor';
+import { runSubscriptionImportGroup } from '../subscriptions/SubscriptionImportGroupService';
 import type { BackupSettingsState } from '../../shared/backup';
 import type {
   SourceBean,
   SiteConfig,
-  VodItem,
-  VodDetail,
   PlayResult,
   LiveGroup,
   LiveBean,
@@ -46,6 +55,8 @@ import type {
   EpgChannelRef,
   LiveEpgEntry,
   LiveEpgResult,
+  SubscriptionRefreshResolution,
+  SubscriptionImportProgressEvent,
 } from '../../shared/types';
 import type { EngineHost } from '../../engine/ports';
 import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../../shared/discover';
@@ -77,7 +88,7 @@ import {
   WEX_PREF_KEYS,
 } from './driveCookieFiles';
 import { sourceTimeoutMs } from '../../engine/spider/SpiderFactory';
-import { mergeSearchResults, isSearchableSource, type AggSearchInput } from '../../engine/vod/aggSearch';
+import { mergeSearchReports, mergeSearchResults, isSearchableSource, type AggSearchInput } from '../../engine/vod/aggSearch';
 import {
   newSourceStat,
   noteSourceOk,
@@ -88,6 +99,7 @@ import {
 } from '../../engine/vod/searchScheduler';
 import { SearchCache } from '../../engine/vod/searchCache';
 import { classifyHealth } from '../../engine/vod/sourceHealth';
+import { buildMergedSubscription, type MergeInput } from '../../engine/config/mergeSubscriptions';
 import type { AuditItem, SearchAllReport, SearchAllProgressEvent } from '../../shared/types';
 import {
   describeFailures,
@@ -311,6 +323,7 @@ export class SpiderHost {
   private autoRefreshStore: JsonStore;
   private config: SiteConfig | null = null;
   private report: ImportReport | null = null;
+  private subscriptionImportService: SubscriptionImportService;
   private sourceMap = new Map<string, SourceBean>();
   private lastSpiderJar = '';
   /** ★ 2026-09-29 EPG：XMLTV 拉取/磁盘缓存（懒创建；<userData>/winbox-cache/epg） */
@@ -351,6 +364,7 @@ export class SpiderHost {
    * 无回调（单测/CLI）时退化为「只在结束时返回完整报告」。
    */
   onSearchAllProgress?: (ev: SearchAllProgressEvent) => void;
+  onSubscriptionImportProgress?: (event: SubscriptionImportProgressEvent) => void;
   /**
    * ★ 2026-09-29：磁力播放引擎（main/index.ts 注入 `TorrentPlay`；未注入 = 磁力走 A 的「复制链接」兜底）。
    * 类型只取 `open`：宿主只关心「给我一个能播的地址 / 已交外部播放器 / 播不了的原因」。
@@ -441,6 +455,12 @@ export class SpiderHost {
     if (this.manager.load()) {
       this.onUserConfigChange(this.manager.snapshot());
     }
+    this.subscriptionImportService = new SubscriptionImportService(
+      (event) => this.onSubscriptionImportProgress?.(event),
+      new SubscriptionImportJobStore(new JsonStore(join(userDataDir(), 'subscription-import-jobs.json'))),
+      (url, name) => this.createSubscriptionImportRunner(url, name),
+      (error) => this.logger.w(`订阅导入任务进度保存失败：${error instanceof Error ? error.message : String(error)}`),
+    );
     // ★ 2026-09-27：「该源需要网盘绑定」的运行期学习结果（见 markDriveBindNeeded）
     this.driveBindStore = new JsonStore(join(userDataDir(), 'drive-bind-learned.json'));
     const learned = this.driveBindStore.getObject<unknown>('list', null);
@@ -603,6 +623,10 @@ export class SpiderHost {
   cfgProfileSites() {
     return this.manager.profileSitesView();
   }
+  cfgProfileSources(id: string): SourceBean[] {
+    const context = this.profileExecutionConfig(String(id || ''));
+    return context.config?.sites.map((source) => ({ ...source })) ?? [];
+  }
   /** ★ 2026-09-30（用户要求）：一步完成「切换档案 + 选中该档案下的源」（单次 apply） */
   cfgSwitchProfileSource(id: string, key: string): void {
     this.manager.activateProfile(id, key);
@@ -639,6 +663,16 @@ export class SpiderHost {
   }
   cfgUpdateProfileName(id: string, name: string): void {
     this.manager.updateProfileName(id, name);
+  }
+  cfgRemoveSubscriptionGroupMember(groupId: string, memberId: string): void {
+    this.manager.removeSubscriptionGroupMember(groupId, memberId);
+  }
+  cfgResolveSubscriptionRefresh(
+    groupId: string,
+    memberId: string,
+    resolution: SubscriptionRefreshResolution,
+  ): void {
+    this.manager.resolveSubscriptionGroupMemberRefresh(groupId, memberId, resolution);
   }
 
   /**
@@ -1526,7 +1560,7 @@ export class SpiderHost {
     const b = this.getSource(key);
     if (!b) throw new Error(`源不存在: ${key}`);
     const { sourceDebug } = await import('./SourceDebugger');
-    const runHome = async (k: string) => {
+    const runHome = async (_k: string) => {
       const t0 = Date.now();
       try {
         const r = await this.vm.home(b);
@@ -1548,11 +1582,124 @@ export class SpiderHost {
     );
   }
 
+  /** Start a background URL import so the renderer can observe progress and cancel it. */
+  startSubscriptionImport(url: string, name = ''): SubscriptionImportProgressEvent {
+    const sourceUrl = String(url || '').trim();
+    if (!/^https?:\/\//i.test(splitRepoLine(sourceUrl).url)) throw new Error('订阅地址必须使用 HTTP 或 HTTPS');
+    return this.subscriptionImportService.start(sourceUrl, name, this.createSubscriptionImportRunner(sourceUrl, name));
+  }
+
+  private createSubscriptionImportRunner(sourceUrl: string, name: string): SubscriptionImportRunner {
+    const initialConfigRevision = this.manager.revision;
+    let initialRun = true;
+    let rootLoaded = false;
+    let rootText = '';
+    let multiPlan: MultiRepo | null = null;
+    const runner = async (
+      signal: AbortSignal,
+      selection: SubscriptionImportSelection,
+      update: (patch: SubscriptionImportProgressPatch) => void,
+      checkpoint: SubscriptionImportRunnerCheckpoint,
+      saveCheckpoint: (checkpoint: SubscriptionImportRunnerCheckpoint) => void,
+    ): Promise<string> => {
+      const startRevision = initialRun ? initialConfigRevision : this.manager.revision;
+      initialRun = false;
+      const root = splitRepoLine(sourceUrl);
+      if (!rootLoaded) {
+        if (checkpoint.multiRepoItems) {
+          multiPlan = { items: checkpoint.multiRepoItems.map((item) => ({ ...item })) };
+          rootLoaded = true;
+        } else {
+          update({ state: 'resolving', message: '正在读取订阅清单…' });
+          try {
+            rootText = await this.fetchConfigText(root.url, false, signal);
+            multiPlan = parseMultiRepo(rootText);
+            rootLoaded = true;
+            if (multiPlan) {
+              saveCheckpoint({
+                multiRepoItems: multiPlan.items.map((item) => ({
+                  url: item.url,
+                  ...(item.name ? { name: item.name } : {}),
+                })),
+              });
+            }
+          } catch (error) {
+            update(signal.aborted
+              ? { total: 1, completed: 0, succeeded: 0, failed: 0, pending: 1 }
+              : { total: 1, completed: 0, succeeded: 0, failed: 1, pending: 0 });
+            throw error;
+          }
+        }
+      }
+      if (multiPlan) {
+        const snapshot = this.manager.snapshot();
+        const group = snapshot.subscriptionGroups.find((item) => item.url === sourceUrl);
+        const lineOnly = root.line >= 0;
+        const memberIds = selectSubscriptionImportMemberIds(group?.members ?? [], selection, lineOnly);
+        // Root-list failures have no per-repository status, so a retry must read the whole list again.
+        const result = await this.importMultiRepo(multiPlan, true, name, root.line, sourceUrl, signal, {
+          onlyMemberIds: memberIds,
+          onProgress: update,
+          expectedConfigRevision: startRevision,
+        });
+        return result.warnings?.at(-1) || '多仓导入完成';
+      }
+      try {
+        const result = parseSiteConfigWithBase(rootText, root.url);
+        if (!result.config.sites.length && !result.config.lives.length && !result.config.parses.length) {
+          throw new Error('该订阅里没有可用的源；已保留原配置');
+        }
+        if (this.manager.revision !== startRevision) {
+          throw new Error('配置已在导入期间更改；本次结果未覆盖现有配置，请重新导入');
+        }
+        if (signal.aborted) throw signal.reason ?? new Error('导入已取消');
+        this.report = result.report;
+        this.config = result.config;
+        this.applyConfig(result.config);
+        this.applyImportedConfig(result.config, sourceUrl, true, name);
+        update({ total: 1, completed: 1, succeeded: 1, failed: 0, pending: 0, currentName: name || sourceUrl });
+        return '订阅导入完成';
+      } catch (error) {
+        rootLoaded = false;
+        update(signal.aborted
+          ? { total: 1, completed: 0, succeeded: 0, failed: 0, pending: 1 }
+          : { total: 1, completed: 0, succeeded: 0, failed: 1, pending: 0 });
+        throw error;
+      }
+    };
+    return runner;
+  }
+
+  cancelSubscriptionImport(jobId: string): SubscriptionImportProgressEvent {
+    return this.subscriptionImportService.cancel(jobId);
+  }
+
+  retryFailedSubscriptionImport(jobId: string): SubscriptionImportProgressEvent {
+    return this.subscriptionImportService.retryFailed(jobId);
+  }
+
+  continueSubscriptionImport(jobId: string): SubscriptionImportProgressEvent {
+    return this.subscriptionImportService.continuePending(jobId);
+  }
+
+  getSubscriptionImport(jobId: string): SubscriptionImportProgressEvent | null {
+    return this.subscriptionImportService.get(jobId);
+  }
+
+  listSubscriptionImports(): SubscriptionImportProgressEvent[] {
+    return this.subscriptionImportService.list();
+  }
+
+  resumeSubscriptionImport(jobId: string): SubscriptionImportProgressEvent {
+    return this.subscriptionImportService.resumeInterrupted(jobId);
+  }
+
   /** 导入配置：apiUrl（http）或本地 JSON 文本 → 解析成功即全量替换持久化配置。
    *  opts.snapshot（默认 true）= 导入前先把旧订阅快照为新档案（新增订阅不丢旧订阅）；自动刷新传 false。
    *  source.name（★ 2026-09-27）= 用户在导入处自填的订阅名；空则由落库逻辑自动命名（「新订阅 xx」）。 */
-  async importConfig(source: { url?: string; json?: string; name?: string }, opts: { snapshot?: boolean } = {}): Promise<ParseResult> {
+  async importConfig(source: { url?: string; json?: string; name?: string }, opts: { snapshot?: boolean; signal?: AbortSignal } = {}): Promise<ParseResult> {
     const snapshot = opts.snapshot !== false;
+    const expectedConfigRevision = this.manager.revision;
     let text = source.json || '';
     this.lastConfigFetchHint = ''; // 粘贴导入不涉及拉取，无分档诊断
     // ★ 2026-09-29：订阅地址尾部可带 `#line=N`（多仓选第几条线，对位 CatClaw `SplitLine`）——
@@ -1561,14 +1708,17 @@ export class SpiderHost {
     const sub = splitRepoLine(source.url || '');
     const fetchUrl = sub.url;
     if (source.url) {
-      text = await this.fetchConfigText(fetchUrl);
+      text = await this.fetchConfigText(fetchUrl, false, opts.signal);
     }
+    if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('导入已取消；已保留原配置不变');
     /** ★ 2026-09-29：导入失败时把「为什么拉不到」一并上屏（HTML 拦截页 / 疑似加密 / 逐档特征） */
     const hint = (): string => (this.lastConfigFetchHint ? `｜诊断：${this.lastConfigFetchHint}` : '');
-    // ★ 多仓（{urls:[{url,name},...]}）导入：影视仓/多仓盒子订阅格式，逐个子仓取首个可用
+    // 多仓（{urls:[{url,name},...]}）地址默认汇总所有可用子仓；#line=N 仍只导入指定线路。
     const multi = parseMultiRepo(text);
     if (multi) {
-      return this.importMultiRepo(multi, snapshot, source.name, sub.line, source.url || '');
+      return this.importMultiRepo(multi, snapshot, source.name, sub.line, source.url || '', opts.signal, {
+        expectedConfigRevision,
+      });
     }
     // ★ 从 URL 导入时传基准地址：配置内 `./xxx.jar` 等相对路径需按订阅目录展开
     //   （对齐上游 ApiConfig.fixContentPath）。粘贴 JSON（无 url）保持原样。
@@ -1586,6 +1736,10 @@ export class SpiderHost {
      */
     if (!result.config.sites.length && !result.config.lives.length && !result.config.parses.length) {
       throw new Error('该订阅里没有任何可用的源（可能是未识别的「多仓」格式，或订阅本身已失效）；已保留原配置不变' + hint());
+    }
+    if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('导入已取消；已保留原配置不变');
+    if (this.manager.revision !== expectedConfigRevision) {
+      throw new Error('配置已在导入期间更改；本次结果未覆盖现有配置，请重新导入');
     }
     this.report = result.report;
     this.config = result.config;
@@ -1637,7 +1791,8 @@ export class SpiderHost {
    * 解密兜底（用户口径「用解密来兜底」）：本地 base64/hex → 第三方解密服务（详见 configDecrypt.ts 的隐私口径）。
    * 失败时把**分档诊断**记进 `lastConfigFetchHint`，由 importConfig 上屏「为什么导入不了」。
    */
-  private async fetchConfigText(url: string, quick = false): Promise<string> {
+  private async fetchConfigText(url: string, quick = false, signal?: AbortSignal): Promise<string> {
+    if (signal?.aborted) throw signal.reason ?? new Error('导入已取消');
     // ★ 2026-09-29（用户要求）本地包：`pkg://<i>/<rel>` —— 不联网，直接读包内订阅文本。
     //   文本已由 LocalPkgStore.readSubscription 用 rewritePkgPaths 展开相对路径（"/pkg" 或 file://），
     //   因此后续 parseSiteConfigWithBase 不需要（也不应）再做 http 相对展开。
@@ -1655,13 +1810,17 @@ export class SpiderHost {
       this.logger.i(`本地包订阅读取：${url} → ${got.text.length}B`);
       return got.text;
     }
-    const timeoutMs = quick ? 12_000 : 30_000;
+    const timeoutMs = quick
+      ? SUBSCRIPTION_IMPORT_POLICY.requestTimeoutMs.quick
+      : SUBSCRIPTION_IMPORT_POLICY.requestTimeoutMs.standard;
+    const attempts = disguiseLadder({ quick, referer: siteRootOf(url) });
     this.lastConfigFetchHint = '';
     const isSubJson = (b: Buffer): boolean => looksLikeSubscribeJson(b.toString('utf-8'));
     const res = await fetchWithDisguise(this.http, url, {
       accept: isSubJson,
-      attempts: disguiseLadder({ quick, referer: siteRootOf(url) }),
+      attempts: quick ? attempts.slice(0, SUBSCRIPTION_IMPORT_POLICY.maxQuickAttempts) : attempts,
       timeoutMs,
+      signal,
       onTry: (t) => {
         const feat = [t.status ? `HTTP ${t.status}` : '', t.sniff ? `${t.sniff.kind} ${t.sniff.size}B` : '', t.reason || '']
           .filter(Boolean)
@@ -1694,7 +1853,7 @@ export class SpiderHost {
       return disguise.text;
     }
     // ★ 解密兜底：本地编码优先，其次第三方解密服务（仅此处、且仅在所有伪装手段失败后）
-    const dec = await tryDecryptConfig(this.http, url, raw, this.logger);
+    const dec = await tryDecryptConfig(this.http, url, raw, this.logger, signal);
     if (dec) return dec.text;
     const encrypted = res.last ? looksEncrypted(res.last) : false;
     const image = res.last ? looksLikeImage(res.last) : false;
@@ -1711,25 +1870,32 @@ export class SpiderHost {
   }
 
   /**
-   * 多仓导入：按序拉取可访问的子仓，合并到一个配置档案；
-   *   clan:// 等本地协议仓、失败仓和重复源在提示中说明。
-   *
-   * ★ 2026-09-26（用户报「R18 那份配置导进去什么都没有 / 一直转圈」）：
-   *   线上多仓动辄**上千个子仓**（实测 `18CR.json` = **1336 项**，全指向 `mirror.ghproxy.com`
-   *   这类镜像），逐个「默认 UA → okhttp UA → +DoH」三连尝试（每项最长 90s）会**永远跑不完**
-   *   —— 用户看到的就是「导入没反应 / 导进去 0 个源」。这里加两道闸：
-   *     ① 单项走快取模式（2 次尝试、每次 12s，不做 DoH 兜底）；
-   *     ② 整轮有总预算 60s 且最多试 12 项，未尝试项会写进导入提示。
-   *
-   * ★ 2026-09-29：`preferLine ≥ 0`（订阅地址带 `#line=N`）→ **只取第 N 条**，不走上面的逐条试；
-   *   越界按上游 `Math.Clamp` 口径收敛到末条，失败时把「第几条 + 名称 + 原因」一次说清。
+   * Imports supported child repositories concurrently and stores each valid child as its own profile.
+   * The parent subscription group records child status. Unsupported and failed children appear in the result.
+   * Import limits and quick-request retry settings are defined in ImportPolicy.
+   * A #line=N fragment imports only that child; an out-of-range index selects the last child.
    */
-  private async importMultiRepo(multi: MultiRepo, snapshot: boolean, name = '', preferLine = -1, parentUrl = ''): Promise<ParseResult> {
-    const skipped: string[] = [];
-    let skippedCount = 0;
+  private async importMultiRepo(
+    multi: MultiRepo,
+    snapshot: boolean,
+    name = '',
+    preferLine = -1,
+    subscriptionUrl = '',
+    signal?: AbortSignal,
+    options?: {
+      onlyMemberIds?: ReadonlySet<string>;
+      onProgress?: (patch: SubscriptionImportProgressPatch) => void;
+      expectedConfigRevision?: number;
+    },
+  ): Promise<ParseResult> {
     const total = multi.items.length;
-    // ★ 2026-09-29：`#line=N` 指定线路 → **只取那一条**（不做逐条试到可用；越界按上游口径收敛到末条）
+    if (signal?.aborted) throw signal.reason ?? new Error('导入已取消');
+    if (options?.expectedConfigRevision !== undefined && this.manager.revision !== options.expectedConfigRevision) {
+      throw new Error('配置已在导入期间更改；多仓下载尚未开始，请重新导入');
+    }
+    // A #line=N fragment selects one child. Clamp an out-of-range index to the last child.
     if (preferLine >= 0) {
+      options?.onProgress?.({ state: 'running', total: 1, completed: 0, succeeded: 0, failed: 0, pending: 1 });
       const picked = pickRepoLine(multi.items, preferLine)!;
       const label = repoDisplayName(picked.item.url, picked.item.name);
       const lineNo = picked.index + 1;
@@ -1739,146 +1905,83 @@ export class SpiderHost {
         throw new Error(`多仓第 ${lineNo} 条线路「${label}」不可用：${why}${clampedNote}`);
       }
       try {
-        const text = await this.fetchConfigText(picked.item.url);
+        const text = await this.fetchConfigText(picked.item.url, false, signal);
+        if (signal?.aborted) throw signal.reason ?? new Error('导入已取消');
         const result = parseSiteConfigWithBase(text, picked.item.url);
         if (!result.config.sites.length && !result.config.lives.length) throw new Error('内容为空/非订阅配置');
+        if (options?.expectedConfigRevision !== undefined && this.manager.revision !== options.expectedConfigRevision) {
+          throw new Error('配置已在导入期间更改；本次结果未覆盖现有配置，请重新导入');
+        }
         this.report = result.report;
         this.config = result.config;
         this.applyConfig(result.config);
-        if (snapshot) this.manager.clearDeletedSourceKeys(result.config.sites.map((site) => site.key));
         this.applyImportedConfig(result.config, picked.item.url, snapshot, name);
         const note = `已按地址指定的 #line=${preferLine} 导入多仓第 ${lineNo}/${total} 条线路「${label}」${clampedNote}${this.lastConfigFetchHint ? `｜诊断：${this.lastConfigFetchHint}` : ''}`;
+        options?.onProgress?.({ total: 1, completed: 1, succeeded: 1, failed: 0, pending: 0, currentName: label, message: note });
         this.logger.i('multi-repo(line): ' + note);
         return { ...result, warnings: [...(result.warnings || []), note] };
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
+        options?.onProgress?.(signal?.aborted
+          ? { total: 1, completed: 0, succeeded: 0, failed: 0, pending: 1, currentName: label }
+          : { total: 1, completed: 0, succeeded: 0, failed: 1, pending: 0, currentName: label });
         throw new Error(`多仓第 ${lineNo} 条线路（#line=${preferLine}）「${label}」导入失败：${msg}`);
       }
     }
-    const started = Date.now();
-    let tried = 0;
-    const imported: Array<{ label: string; result: ParseResult }> = [];
-    for (let index = 0; index < multi.items.length; index++) {
-      // 至少尝试第一项；超过轮次上限或总预算后报告剩余项数。
-      if (tried >= SpiderHost.MULTI_REPO_MAX_TRY || (tried > 0 && Date.now() - started > SpiderHost.MULTI_REPO_BUDGET_MS)) {
-        const remaining = total - index;
-        if (remaining > 0) {
-          skippedCount += remaining;
-          skipped.push(`其余 ${remaining} 项未尝试（达到多仓导入上限）`);
-        }
-        break;
-      }
-      const item = multi.items[index];
-      const label = repoDisplayName(item.url, item.name);
-      if (!isFetchedRepoUrl(item.url)) {
-        const why = /^clan:/i.test(item.url) ? '本地目录仓（clan://）桌面版不可用' : '不支持的协议';
-        skipped.push(`「${label}」${why}`);
-        skippedCount++;
-        continue;
-      }
-      tried += 1;
-      try {
-        const text = await this.fetchConfigText(item.url, true);
-        const result = parseSiteConfigWithBase(text, item.url);
-        if (result.urls?.length) {
-          skipped.push(`「${label}」包含嵌套多仓，当前未展开`);
-          skippedCount++;
-          continue;
-        }
-        if (!result.config.sites.length && !result.config.lives.length) {
-          skipped.push(`「${label}」内容为空/非订阅配置`);
-          skippedCount++;
-          continue;
-        }
-        imported.push({ label, result });
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        skipped.push(`「${label}」${msg}`);
-        skippedCount++;
-      }
-    }
+    // 子仓分别保存为档案，父组只保存稳定成员身份与刷新状态，不把多个来源拼成一份配置。
+    const groupDependencies = {
+      labelFor: (item: MultiRepo['items'][number]) => repoDisplayName(item.url, item.name),
+      splitRepoLine,
+      serializeImport,
+      reconcileProfileRefresh: reconcileSubscriptionProfileRefresh,
+    };
+    const assembled = await runSubscriptionImportGroup({
+      manager: this.manager,
+      executeBatch: executeSubscriptionImportBatch,
+      restoreDeletedSources: snapshot,
+      items: multi.items,
+      name,
+      subscriptionUrl,
+      onlyMemberIds: options?.onlyMemberIds,
+      expectedRevision: options?.expectedConfigRevision,
+      signal,
+      policy: SUBSCRIPTION_IMPORT_POLICY,
+      dependencies: groupDependencies,
+      unavailableReason: (item) => !isFetchedRepoUrl(item.url)
+        ? /^clan:/i.test(item.url) ? '本地目录仓（clan://）桌面版不可用' : '不支持的协议'
+        : null,
+      load: async (item, itemSignal) => {
+        const childRef = splitRepoLine(item.url);
+        const childText = await this.fetchConfigText(childRef.url, true, itemSignal);
+        const result = parseSiteConfigWithBase(childText, childRef.url);
+        if (!result.config.sites.length && !result.config.lives.length) throw new Error('内容为空/非订阅配置');
+        return result;
+      },
+      onProgress: (progress) => options?.onProgress?.({ state: 'running', ...progress }),
+      onRevisionConflict: (message) => options?.onProgress?.({ total: 0, completed: 0, succeeded: 0, failed: 0, pending: 0, message }),
+    });
+    const { group, imported, skipped, truncated, unselected, successCount, failedCount, pendingCount } = assembled;
     if (!imported.length) {
-      throw new Error(`多仓订阅 ${total} 个子仓里没有可用的（已尝试 ${tried} 项）：${skipped.join('；') || '无有效子仓'}`);
-    }
-
-    const mergeInputs = imported.map(({ label, result }) => ({ name: label, sites: result.config.sites, lives: result.config.lives }));
-    const mergedSources = mergeSubscriptions(mergeInputs);
-    const mergedSubscription = buildMergedSubscription(imported.map(({ label, result }) => ({
-      name: label,
-      json: JSON.stringify(result.config),
-    })));
-    const mergedParsed = parseSiteConfig(mergedSubscription.content);
-
-    // 保留合并订阅格式之外的顶层设置。相同列表项只保留第一次出现的值。
-    const mergeUnique = <T>(groups: T[][]): T[] => {
-      const values: T[] = [];
-      const seen = new Set<string>();
-      for (const group of groups) {
-        for (const value of group) {
-          const key = JSON.stringify(value) ?? String(value);
-          if (seen.has(key)) continue;
-          seen.add(key);
-          values.push(value);
-        }
+      const details = skipped.slice(0, 8).join('；') || '没有可用的 HTTP(S) 子仓';
+      const more = skipped.length > 8 ? `；另有 ${skipped.length - 8} 项未列出` : '';
+      const message = `本次没有新增可用配置：${details}${more}${truncated || unselected ? `；另有 ${truncated + unselected} 项尚未尝试，可继续处理` : ''}`;
+      if (options?.onProgress) {
+        options.onProgress({ message });
+        const fallback = parseSiteConfig('{}');
+        return { ...fallback, config: this.config || fallback.config, warnings: [message] };
       }
-      return values;
-    };
-    const hosts: SiteConfig['hosts'] = {};
-    for (const { result } of imported) {
-      for (const [host, value] of Object.entries(result.config.hosts)) {
-        if (!Object.prototype.hasOwnProperty.call(hosts, host)) hosts[host] = value;
-      }
+      throw new Error(message);
     }
-    const config: SiteConfig = {
-      ...mergedParsed.config,
-      jarCache: imported.find(({ result }) => result.config.jarCache)?.result.config.jarCache || 'true',
-      danmaku: imported.find(({ result }) => result.config.danmaku)?.result.config.danmaku || '',
-      wallpaper: imported.find(({ result }) => result.config.wallpaper)?.result.config.wallpaper || '',
-      hosts,
-      rules: mergeUnique(imported.map(({ result }) => result.config.rules)),
-      doh: mergeUnique(imported.map(({ result }) => result.config.doh)),
-      ads: mergeUnique(imported.map(({ result }) => result.config.ads)),
-      proxy: mergeUnique(imported.map(({ result }) => result.config.proxy)),
-    };
 
-    const droppedKeys = new Map<string, number>();
-    for (const item of mergedSources.dropped) {
-      const key = JSON.stringify([item.key.trim().toLowerCase(), item.name]);
-      droppedKeys.set(key, (droppedKeys.get(key) || 0) + 1);
-    }
-    const reportItems = imported.flatMap(({ result }) => result.report.items).map((item, index) => ({ ...item, index }));
-    for (let index = reportItems.length - 1; index >= 0; index--) {
-      const item = reportItems[index];
-      if (item.status === 'SKIP') continue;
-      const key = JSON.stringify([item.key.trim().toLowerCase(), item.name]);
-      const remaining = droppedKeys.get(key) || 0;
-      if (!remaining) continue;
-      reportItems[index] = { ...item, status: 'SKIP', message: '重复源，已保留先导入的版本' };
-      droppedKeys.set(key, remaining - 1);
-    }
-    const report = buildImportReport(reportItems);
-    const sourceLiveCount = imported.reduce((count, entry) => count + entry.result.config.lives.length, 0);
-    const duplicateLives = sourceLiveCount - config.lives.length;
-    const warnings = imported.flatMap(({ label, result }) => (result.warnings || []).map((warning) => `「${label}」${warning}`));
-    const details = skipped.length ? `；未导入 ${skippedCount} 项：${skipped.slice(0, 6).join('；')}${skipped.length > 6 ? '；…' : ''}` : '';
-    const dedup = mergedSources.dropped.length || duplicateLives
-      ? `；去重 ${mergedSources.dropped.length} 个源、${duplicateLives} 条直播线路`
-      : '';
-    const note = `多仓共 ${total} 项，已导入 ${imported.length} 个子仓，合并为 ${config.sites.length} 个源和 ${config.lives.length} 条直播线路${dedup}${details}`;
-    warnings.push(note);
-
-    this.report = report;
-    this.config = config;
-    this.applyConfig(config);
-    if (snapshot) this.manager.clearDeletedSourceKeys(config.sites.map((s) => s.key));
-    this.applyImportedConfig(config, parentUrl, snapshot, name);
+    const primary = imported[0].result;
+    const lineHint = subscriptionUrl ? '需要单独指定线路时，可在订阅地址尾加 #line=N（N 从 0 起）' : '';
+    const note = `多仓组「${group.name}」共 ${total} 个子仓：成功 ${successCount}、失败 ${failedCount}、待处理 ${pendingCount}。每个成功子仓已保存为独立档案${skipped.length ? `；问题：${skipped.slice(0, 6).join('；')}${skipped.length > 6 ? `；另有 ${skipped.length - 6} 项未列出` : ''}` : ''}${lineHint ? `。${lineHint}` : ''}`;
+    options?.onProgress?.({ message: note });
+    this.report = primary.report;
+    const warnings = [...new Set(imported.flatMap((item) => item.result.warnings || []))];
     this.logger.i('multi-repo: ' + note);
-    return { ...mergedParsed, config, report, warnings };
+    return { ...primary, config: this.config || primary.config, warnings: [...warnings, note] };
   }
-
-  /** 多仓单轮预算与最多尝试项数（见 importMultiRepo 注释） */
-  private static readonly MULTI_REPO_BUDGET_MS = 60_000;
-  private static readonly MULTI_REPO_MAX_TRY = 12;
 
   /** ★ 启动时自动订阅刷新：当前订阅来自 URL 且距上次成功刷新 ≥7 天 → 重新拉取（不建档案、不打扰用户）。 */
   async maybeAutoRefreshSubscriptions(): Promise<boolean> {
@@ -1909,12 +2012,74 @@ export class SpiderHost {
   get sites(): SourceBean[] {
     return this.config?.sites ?? [];
   }
+
+  /** Snapshot an execution context without changing the process-wide active profile. */
+  private profileExecutionConfig(profileId?: string): { profileId: string; config: SiteConfig | null } {
+    const activeId = this.manager.activeProfileId();
+    const requestedId = profileId === undefined ? activeId : profileId;
+    if (!requestedId) {
+      if (profileId !== undefined && activeId) throw new Error('该来源档案已不可用，请从当前订阅重新打开');
+      return { profileId: '', config: this.config };
+    }
+
+    if (requestedId === activeId) {
+      return { profileId: requestedId, config: this.copyExecutionConfig(this.config) };
+    }
+
+    const profile = this.manager.rawProfiles().find((item) => item.id === requestedId);
+    if (!profile) throw new Error(`订阅档案不存在：${requestedId}`);
+    const parsed = this.manager.profileConfig(requestedId);
+    if (!parsed) throw new Error(`订阅档案不存在：${requestedId}`);
+    const base = profile.apiUrl || '';
+    const config: SiteConfig = {
+      ...parsed,
+      sites: base ? parsed.sites.map((source) => normalizeBeanPaths(source, base)) : parsed.sites,
+      spider: base ? resolvePathValue(parsed.spider, base) : parsed.spider,
+    };
+    return { profileId: requestedId, config: this.copyExecutionConfig(config) };
+  }
+
+  private copyExecutionConfig(config: SiteConfig | null): SiteConfig | null {
+    if (!config) return null;
+    return {
+      ...config,
+      sites: config.sites.map((source) => ({
+        ...source,
+        categories: source.categories ? [...source.categories] : source.categories,
+      })),
+      parses: config.parses.map((parse) => ({ ...parse })),
+      lives: config.lives.map((live) => ({ ...live, header: live.header ? { ...live.header } : undefined })),
+      flags: [...config.flags],
+    };
+  }
+
+  private sourceForRequest(key: string, profileId?: string): SourceBean | null {
+    const activeId = this.manager.activeProfileId();
+    const requestedId = profileId === undefined ? activeId : profileId;
+    if (requestedId === activeId) {
+      const source = this.sourceMap.get(key);
+      return source ? { ...source, runtimeScope: JSON.stringify([requestedId, key]) } : null;
+    }
+    const context = this.profileExecutionConfig(profileId);
+    return this.sourceForExecutionConfig(context, key);
+  }
+
+  private sourceForExecutionConfig(context: { profileId: string; config: SiteConfig | null }, key: string): SourceBean | null {
+    const source = context.config?.sites.find((item) => item.key === key);
+    return source ? { ...source, runtimeScope: JSON.stringify([context.profileId, key]) } : null;
+  }
+
+  private withSourceRef<T extends { sourceKey: string }>(item: T, profileId: string): T & { sourceRef: { profileId: string; key: string } } {
+    return { ...item, sourceRef: { profileId, key: item.sourceKey } };
+  }
+
   getSource(key: string): SourceBean | null {
-    return this.sourceMap.get(key) ?? null;
+    return this.sourceForRequest(key) ?? null;
   }
 
   /** 应用退出时清理：终止所有 JVM 蜘蛛子进程，避免残留 */
   dispose(): void {
+    this.subscriptionImportService.dispose();
     try {
       this.bridge.dispose();
     } catch {
@@ -1923,13 +2088,17 @@ export class SpiderHost {
   }
 
   // --- 点播主链路 ---
-  home(key: string) {
-    const b = this.getSource(key);
+  home(key: string, profileId?: string) {
+    const context = this.profileExecutionConfig(profileId);
+    const b = this.sourceForExecutionConfig(context, key);
     if (!b) throw new Error(`源不存在: ${key}`);
-    return this.vm.home(b);
+    return this.vm.home(b).then((result) => ({
+      ...result,
+      items: result.items.map((item) => this.withSourceRef(item, context.profileId)),
+    }));
   }
-  async pythonProxy(key: string, params: Record<string, string>): Promise<unknown[]> {
-    const source = this.getSource(key);
+  async pythonProxy(key: string, params: Record<string, string>, profileId?: string): Promise<unknown[]> {
+    const source = this.sourceForRequest(key, profileId);
     if (!source || !/\.py(?:[?#]|$)/i.test(source.api || '')) throw new Error('Python 代理源不存在');
     const spider = this.vm.spiderFactory.getCSP(source, this.host);
     const raw = await spider.proxy(params);
@@ -1937,13 +2106,18 @@ export class SpiderHost {
     if (!Array.isArray(result)) throw new Error('Python 源未返回有效代理响应');
     return result;
   }
-  category(key: string, tid: string, pg: string, extend: Record<string, string>) {
-    const b = this.getSource(key);
+  category(key: string, tid: string, pg: string, extend: Record<string, string>, profileId?: string) {
+    const context = this.profileExecutionConfig(profileId);
+    const b = this.sourceForExecutionConfig(context, key);
     if (!b) throw new Error(`源不存在: ${key}`);
-    return this.vm.category(b, tid, pg, extend);
+    return this.vm.category(b, tid, pg, extend).then((result) => ({
+      ...result,
+      items: result.items.map((item) => this.withSourceRef(item, context.profileId)),
+    }));
   }
-  detail(key: string, ids: string[]) {
-    const b = this.getSource(key);
+  detail(key: string, ids: string[], profileId?: string) {
+    const context = this.profileExecutionConfig(profileId);
+    const b = this.sourceForExecutionConfig(context, key);
     if (!b) throw new Error(`源不存在: ${key}`);
     // ★ 2026-09-29（用户报「sun.json 有分类/封面，点进去无详情」）：
     //   隔离探针（.tmp/probe-detail.cjs，sun.json 全局 jar）实测：盘搜/网盘搜索族
@@ -1955,7 +2129,8 @@ export class SpiderHost {
       //   ⇒ 该源播放必然要网盘 Cookie ⇒ 立刻学会它（进源即显示绑定入口）。
       //   为什么要这一条：原先只在「播放**成功**产出网盘直链」时才学 —— 没绑定 Cookie 时播放必失败，
       //   于是「学不到 → 不显示绑定入口 → 永远绑不上」死循环。详情数据在播放之前就能判定。
-      const hit = driveBindHintFromPlaySources(d?.flags, d ? Object.values(d.episodes || {}).flat().map((e) => e.url) : null);
+      const detail = d ? { ...d, sourceRef: { profileId: context.profileId, key } } : null;
+      const hit = driveBindHintFromPlaySources(detail?.flags, detail ? Object.values(detail.episodes || {}).flat().map((e) => e.url) : null);
       if (hit) {
         this.logger.i(`detect 详情播放源含网盘（${hit}）→ 记入绑定清单: ${key}`);
         // ★ 2026-10-14：同时记住该源用的 provider（供泛化授权文案补位，见 driveBindProviderForGenericAuth）
@@ -1963,13 +2138,14 @@ export class SpiderHost {
         if (prov) this.driveBindProviderByKey.set(key, prov);
         this.markDriveBindNeeded(key);
       }
-      return d;
+      return detail;
     });
   }
-  search(key: string, wd: string) {
-    const b = this.getSource(key);
+  search(key: string, wd: string, profileId?: string) {
+    const context = this.profileExecutionConfig(profileId);
+    const b = this.sourceForExecutionConfig(context, key);
     if (!b) throw new Error(`源不存在: ${key}`);
-    return this.vm.search(b, wd);
+    return this.vm.search(b, wd).then((items) => items.map((item) => this.withSourceRef(item, context.profileId)));
   }
 
   /**
@@ -1992,28 +2168,116 @@ export class SpiderHost {
    *
    * @param opts.refresh 忽略缓存强制重搜（UI「重新搜索」按钮）
    */
-  async searchAll(wd: string, opts?: { refresh?: boolean }): Promise<SearchAllReport> {
+  async searchAll(
+    wd: string,
+    opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] },
+    onProgress?: (event: SearchAllProgressEvent) => void,
+  ): Promise<SearchAllReport> {
     const term = (wd || '').trim();
     if (!term) throw new Error('请输入搜索关键词');
+    const progress = onProgress ?? this.onSearchAllProgress;
+    if (!opts?.profileIds) return this.searchAllSingle(term, opts, progress);
+
+    const profileIds = [...new Set(opts.profileIds.map((id) => String(id || '').trim()).filter(Boolean))];
+    if (profileIds.length === 0) throw new Error('请选择至少一个订阅档案');
+    const knownProfiles = new Map(this.manager.rawProfiles().map((profile) => [profile.id, profile]));
+    const contexts = profileIds.map((profileId) => {
+      const profile = knownProfiles.get(profileId);
+      if (!profile) throw new Error(`订阅档案不存在：${profileId}`);
+      const context = this.profileExecutionConfig(profileId);
+      return {
+        profileId,
+        profileName: profile.name || profileId,
+        context,
+        total: this.searchableSites(profileId, context.config).length,
+      };
+    });
+    const total = contexts.reduce((count, entry) => count + entry.total, 0);
+    const doneByProfile = new Map(contexts.map((entry) => [entry.profileId, 0]));
+    const mergedReports: Array<{ profileId: string; profileName: string; report: SearchAllReport }> = [];
+    const overallDone = (): number => [...doneByProfile.values()].reduce((sum, done) => sum + done, 0);
+    const forwardProgress = (entry: (typeof contexts)[number], event?: SearchAllProgressEvent): void => {
+      if (!progress) return;
+      const sourceTotal = entry.total;
+      if (event) {
+        const localDone = Math.min(sourceTotal, Math.max(0, event.done));
+        doneByProfile.set(entry.profileId, Math.max(doneByProfile.get(entry.profileId) ?? 0, localDone));
+      }
+      const done = overallDone();
+      const source = event?.source
+        ? {
+            ...event.source,
+            profileId: entry.profileId,
+            profileName: entry.profileName,
+            items: event.source.items?.map((item) => ({
+              ...item,
+              sourceRef: { profileId: entry.profileId, key: event.source!.key },
+            })),
+          }
+        : undefined;
+      try {
+        progress({
+          ...(event ?? { wd: term }),
+          wd: term,
+          profileId: entry.profileId,
+          profileName: entry.profileName,
+          ...(source ? { source } : {}),
+          done,
+          total,
+          pending: Math.max(0, total - done),
+        });
+      } catch { /* Progress failure must not fail search. */ }
+    };
+
+    // Keep one bounded per-profile worker pool active at a time. Each run uses a captured
+    // profile config and its profile-scoped runtime/cache keys; activeProfileId is never changed.
+    for (const entry of contexts) {
+      const report = await this.searchAllSingle(
+        term,
+        { refresh: opts.refresh, profileId: entry.profileId },
+        (event) => forwardProgress(entry, event),
+        entry.context,
+        entry.profileName,
+      );
+      mergedReports.push({ profileId: entry.profileId, profileName: entry.profileName, report });
+      doneByProfile.set(entry.profileId, entry.total);
+      forwardProgress(entry);
+    }
+    return mergeSearchReports(mergedReports);
+  }
+
+  private async searchAllSingle(
+    wd: string,
+    opts?: { refresh?: boolean; profileId?: string },
+    progress: ((event: SearchAllProgressEvent) => void) | undefined = this.onSearchAllProgress,
+    capturedContext?: { profileId: string; config: SiteConfig | null },
+    profileNameOverride?: string,
+  ): Promise<SearchAllReport> {
+    const term = (wd || '').trim();
+    if (!term) throw new Error('请输入搜索关键词');
+    const context = capturedContext ?? this.profileExecutionConfig(opts?.profileId);
+    const profileId = context.profileId;
+    const profileName = profileNameOverride ?? this.manager.rawProfiles().find((profile) => profile.id === profileId)?.name;
+    const cacheKey = JSON.stringify([profileId, term]);
     // ★ 秒回：同一关键词 TTL 内再搜 → 直接给上次报告（带 cachedAt，UI 提示「本地缓存 · 点「重新搜索」刷新」）
     if (!opts?.refresh) {
-      const hit = this.searchCache.getEntry(term);
+      const hit = this.searchCache.getEntry(cacheKey);
       if (hit) {
         this.logger.i(`全源搜索命中本地缓存「${term}」（${Math.round((Date.now() - hit.at) / 1000)}s 前）→ 秒回`);
         return { ...hit.value, cachedAt: hit.at };
       }
     } else {
-      this.searchCache.delete(term);
+      this.searchCache.delete(cacheKey);
     }
-    const pool = this.searchableSites();
-    const results = new Array<AggSearchInput | null>(pool.length).fill(null);
+    const pool = this.searchableSites(profileId, context.config);
+    const results: Array<AggSearchInput | null> = Array.from({ length: pool.length }, () => null);
     /**
      * ★ 会话级「桌面端不支持」跳过集（2026-09-23 三轮续）：drpy 类 JS 源、需安卓原生库的壳源等
      * 会**卡满预算才报错**且永远出不了结果（实测 2 个 drpy 源各占 10s）。首次失败即记入跳过集，
      * 后续全源搜索直接跳过（并在报告里给出明确原因），把尾巴和噪音一起去掉。
      */
     const active: number[] = [];
-    const skipped = new Array<AggSearchInput | null>(pool.length).fill(null);
+    const skipped: Array<AggSearchInput | null> = Array.from({ length: pool.length }, () => null);
     const searchT0 = Date.now();
     let firstHitAt = 0;
     let pushed = 0;
@@ -2029,7 +2293,7 @@ export class SpiderHost {
     const notReadyYet = new Set<number>();
     for (let i = 0; i < pool.length; i++) {
       const b = pool[i];
-      if (this.unsupportedSources.has(b.key)) continue;
+      if (this.unsupportedSources.has(b.runtimeScope || b.key)) continue;
       // CMS/type4 走 SourceViewModel 内联请求，不是 JVM 蜘蛛，不能判成 jar 未就绪。
       if (b.type !== 3) continue;
       try {
@@ -2056,7 +2320,7 @@ export class SpiderHost {
     if (notReadyYet.size > 0) {
       this.logger.i(`全源搜索：${notReadyYet.size} 个源的运行时正在准备（首次下载/转换 jar）→ 最多等 ${Math.round(SEARCH_ALL_PREPARE_MS / 1000)}s`);
       try {
-        this.onSearchAllProgress?.({ wd: term, done: 0, total: pool.length, pending: pool.length });
+        progress?.({ wd: term, profileId, profileName, done: 0, total: pool.length, pending: pool.length });
       } catch { /* 忽略 */ }
       if (prepWaiters.length > 0) {
         let timer: ReturnType<typeof setTimeout> | undefined;
@@ -2072,7 +2336,7 @@ export class SpiderHost {
     }
     for (let i = 0; i < pool.length; i++) {
       const b = pool[i];
-      if (this.unsupportedSources.has(b.key)) {
+      if (this.unsupportedSources.has(b.runtimeScope || b.key)) {
         skipped[i] = {
           key: b.key,
           name: b.name || b.key,
@@ -2116,8 +2380,12 @@ export class SpiderHost {
      * ★ 三轮：**当前选中源置顶** —— 用户刚在浏览的那个源最先出结果，
      *   观感就是「一点全源搜索，熟悉的那个源立刻回来了」（单源搜索本来就快）。
      */
-    const order = scheduleOrder(pool.length, (i) => pool[i].key, this.sourceHealth).filter((i) => !skipped[i]);
-    const activeKey = this.manager.activeSourceKey();
+    const order = scheduleOrder(pool.length, (i) => pool[i].runtimeScope || pool[i].key, this.sourceHealth).filter((i) => !skipped[i]);
+    // The active source key belongs only to the active profile. Reusing it while
+    // searching another profile can prioritize a different source with the same key.
+    const activeKey = profileId === this.manager.activeProfileId()
+      ? this.manager.activeSourceKey()
+      : '';
     if (activeKey) {
       const ai = order.findIndex((i) => pool[i].key === activeKey);
       if (ai > 0) order.unshift(...order.splice(ai, 1));
@@ -2125,15 +2393,23 @@ export class SpiderHost {
     let cursor = 0;
     /** 单源完成 → 记结果 + 推流式进度（渲染层边搜边出） */
     const finish = (i: number, input: AggSearchInput): void => {
-      results[i] = input;
+      const scopedInput: AggSearchInput = {
+        ...input,
+        profileId,
+        ...(profileName ? { profileName } : {}),
+        ...(input.items ? {
+          items: input.items.map((item) => ({ ...item, sourceRef: { profileId, key: input.key } })),
+        } : {}),
+      };
+      results[i] = scopedInput;
       done++;
-      if (input.status === 'ok' && !firstHitAt) firstHitAt = Date.now() - searchT0;
+      if (scopedInput.status === 'ok' && !firstHitAt) firstHitAt = Date.now() - searchT0;
       // ★ 2026-09-24：`pushed` 只在**回调真实存在且推送成功**时自增 —— 此前 `?.()` 之后
       //   无条件 `pushed++`，日志会打出「推送进度 32 条」而 IPC 实际上一条都没发（排障被误导）。
-      const cb = this.onSearchAllProgress;
+      const cb = progress;
       if (cb) {
         try {
-          cb({ wd: term, source: input, done, total, pending: Math.max(0, total - done) });
+          cb({ wd: term, profileId, profileName, source: scopedInput, done, total, pending: Math.max(0, total - done) });
           pushed++;
         } catch { /* 进度推送失败不影响搜索本身 */ }
       }
@@ -2141,7 +2417,7 @@ export class SpiderHost {
     // ★ 快速窗口：3s 后推一条「不带 source」的进度 → UI 明确显示「已出 X 个 · 其余 N 个仍在补搜」
     const quickTimer = setTimeout(() => {
       try {
-        this.onSearchAllProgress?.({ wd: term, done, total, pending: Math.max(0, total - done) });
+        progress?.({ wd: term, profileId, profileName, done, total, pending: Math.max(0, total - done) });
       } catch { /* 忽略 */ }
     }, SEARCH_ALL_QUICK_MS);
     const run = async (): Promise<void> => {
@@ -2162,11 +2438,12 @@ export class SpiderHost {
           continue; // 未真正执行 → 不写健康表（不是这个源的错）
         }
         const maxMs = /\.js(\?|$)/i.test(b.api || '') ? SEARCH_ALL_JS_MAX_MS : SEARCH_ALL_SOURCE_MAX_MS;
-        const toMs = Math.min(sourceBudgetMs(this.sourceHealth.get(b.key), sourceTimeoutMs(b), maxMs), budget);
+        const sourceScope = b.runtimeScope || b.key;
+        const toMs = Math.min(sourceBudgetMs(this.sourceHealth.get(sourceScope), sourceTimeoutMs(b), maxMs), budget);
         try {
           const items = await raceTimeout(this.vm.search(b, term, false, toMs), toMs + 500, `单源搜索超时（>${Math.round(toMs / 1000)}s）`);
           const ms = Date.now() - t0;
-          noteSourceOk(this.statOf(b.key), ms, { empty: items.length === 0 }); // 空结果也记（连续空 → 下轮压预算）
+          noteSourceOk(this.statOf(sourceScope), ms, { empty: items.length === 0 }); // 空结果也记（连续空 → 下轮压预算）
           finish(i, {
             key: b.key,
             name: b.name || b.key,
@@ -2179,12 +2456,13 @@ export class SpiderHost {
           const msg = (e as Error).message || String(e);
           // ★「桌面端不支持」类错误 → 记入跳过集（下次全源搜索不再为它花时间）
           if (UNSUPPORTED_ERR.test(msg)) {
-            if (!this.unsupportedSources.has(b.key)) {
-              this.unsupportedSources.add(b.key);
+            const sourceScope = b.runtimeScope || b.key;
+            if (!this.unsupportedSources.has(sourceScope)) {
+              this.unsupportedSources.add(sourceScope);
               this.logger.w(`全源搜索：源「${b.name || b.key}」在桌面端不支持（${msg.slice(0, 60)}）→ 后续全源搜索将跳过`);
             }
           }
-          noteSourceFail(this.statOf(b.key)); // 失败 → 后续搜索降权到队尾 + 短预算
+          noteSourceFail(this.statOf(b.runtimeScope || b.key)); // 失败 → 后续搜索降权到队尾 + 短预算
           finish(i, { key: b.key, name: b.name || b.key, status: 'error', error: msg, ms });
         }
       }
@@ -2196,7 +2474,7 @@ export class SpiderHost {
     // ★ 仍有源在「准备运行时」→ 报告里带计数，UI 据此显示横幅并自动重搜（不让用户面对空屏）
     const pendingSources = all.filter((r) => r.status === 'error' && (r.error || '').startsWith('运行时就绪中')).length;
     if (pendingSources > 0) report.pendingSources = pendingSources;
-    this.searchCache.set(term, report); // ★ 下次同关键词直接秒回
+    this.searchCache.set(cacheKey, report); // 同一 profile 内相同关键词命中缓存
     // ★ 诊断摘要（2026-09-24）：一行看清「引擎侧到底卡在哪」——首结果耗时/总耗时/推送条数/跳过数。
     //   下次用户再报「慢」，看这一行即可区分是引擎慢还是界面慢（跳过数 > 0 说明有源还在后台准备运行时）。
     this.logger.i(
@@ -2216,7 +2494,7 @@ export class SpiderHost {
    */
   prewarmPythonSources(maxSources = 5): void {
     let n = 0;
-    for (const b of this.config?.sites ?? []) {
+    for (const b of this.searchableSites()) {
       if (n >= maxSources) break;
       if (!(b.api || '').toLowerCase().includes('.py')) continue;
       try {
@@ -2265,8 +2543,13 @@ export class SpiderHost {
    *  ★ 2026-09-25：口径由「searchable === 1」改为「非 0 即参与」（见 aggSearch.isSearchableSource）——
    *   生态里 `searchable: 2` 的源（drpy 模板、R18/19.json 等大配置）此前被整体排除，
    *   表现为「整份配置搜不出东西」。 */
-  private searchableSites(): SourceBean[] {
-    return (this.config?.sites ?? []).filter((b) => isSearchableSource(b));
+  private searchableSites(profileId?: string, executionConfig?: SiteConfig | null): SourceBean[] {
+    const context = executionConfig === undefined
+      ? this.profileExecutionConfig(profileId)
+      : { profileId: profileId || '', config: executionConfig };
+    return (context.config?.sites ?? [])
+      .filter((bean) => isSearchableSource(bean))
+      .map((bean) => ({ ...bean, runtimeScope: JSON.stringify([context.profileId, bean.key]) }));
   }
 
   /**
@@ -2282,7 +2565,7 @@ export class SpiderHost {
     if (Date.now() - this.lastPrewarmAt < 30_000) return 0; // 节流：配置反复应用不重复拉进程
     const pool = this.searchableSites();
     if (pool.length === 0) return 0;
-    const order = scheduleOrder(pool.length, (i) => pool[i].key, this.sourceHealth);
+    const order = scheduleOrder(pool.length, (i) => pool[i].runtimeScope || pool[i].key, this.sourceHealth);
     let started = 0;
     for (const i of order) {
       if (started >= maxKeys) break;
@@ -2336,10 +2619,13 @@ export class SpiderHost {
    * 结果与耗时按行落盘（`<userData>/logs/play-diag-*.jsonl`），才能分清是「源解析慢/失败」
    * 还是「网盘落盘/中继失败」，再决定改哪里。
    */
-  async play(key: string, flag: string, id: string): Promise<PlayResult> {
+  async play(key: string, flag: string, id: string, profileId?: string): Promise<PlayResult> {
     const t = diagTimer();
     try {
-      let r = await this.playInner(key, flag, id);
+      const context = this.profileExecutionConfig(profileId);
+      const source = this.sourceForExecutionConfig(context, key);
+      if (!source) throw new Error(`源不存在: ${key}`);
+      let r = await this.playInner(key, flag, id, false, context.profileId, context.config, source);
       if (r.parse === 0) {
         const error = directPlayUrlError(r.url);
         if (error) r = { ...r, parse: 1, url: '', playUrl: '', message: r.message || error };
@@ -2405,8 +2691,17 @@ export class SpiderHost {
     }
   }
 
-  private async playInner(key: string, flag: string, id: string, retried = false): Promise<PlayResult> {
-    const b = this.getSource(key);
+  private async playInner(
+    key: string,
+    flag: string,
+    id: string,
+    retried = false,
+    profileId?: string,
+    executionConfig?: SiteConfig | null,
+    executionSource?: SourceBean | null,
+  ): Promise<PlayResult> {
+    const context = executionConfig === undefined ? this.profileExecutionConfig(profileId) : { profileId: profileId || '', config: executionConfig };
+    const b = executionSource === undefined ? this.sourceForExecutionConfig(context, key) : executionSource;
     if (!b) throw new Error(`源不存在: ${key}`);
     // ★ 2026-10-14（用户报 wex 立播「夸克原画」）：嵌套信封里若是桌面端**暂不支持**的网盘商
     //   （thunder / 115 / ali…），原样丢给蜘蛛只会得到「加固壳内部蜘蛛未就绪」这类无关提示。
@@ -2590,7 +2885,7 @@ export class SpiderHost {
         }
       }
     }
-    return this.vm.play(b, flag, id, this.vipFlags).then(async (r) => {
+    return this.vm.play(b, flag, id, context.config?.flags || this.vipFlags).then(async (r) => {
       // ★★ 2026-09-30（真机实测）：jar 侧「App 网盘代理」地址在桌面端**没有对应路由** ——
       //   形如 `http://127.0.0.1:-1/proxy?do=pan&type=2&site=baidu&…`（安卓由 App 的 Pan 子系统承担），
       //   交给 /play 中继只会 `new URL('http://127.0.0.1:-1/…')` 抛 Invalid URL → 用户看到黑屏、
@@ -2742,7 +3037,7 @@ export class SpiderHost {
             //   沙箱/%TEMP% 被清缓存清掉、或旧版本从未写过时，这一步自愈），再重置池让新 JVM 读到。
             this.syncDriveFiles();
             this.resetSpidersAfterDriveChange();
-            return this.playInner(key, flag, id, true);
+            return this.playInner(key, flag, id, true, context.profileId, context.config, b);
           }
           if (bound) {
             if (prov === 'uc' && /\[uc\]\(auth\)/i.test(String(r.message))) {
@@ -2876,7 +3171,7 @@ export class SpiderHost {
         r.url = wrapPlayUrl(r.url, prov);
       }
       return r;
-    }).then((r) => this.resolveNeededParse(r)).catch((e) => {
+      }).then((r) => this.resolveNeededParse(r, context.config?.parses)).catch((e) => {
       // ★ 2026-09-27（缺口 B，别删）：**未绑定网盘 Cookie 时的失败要翻译成「去绑定」**。
       //   实测 wex 玩偶（夸克盘）：蜘蛛抛 `org.json.JSONException: JSONObject["data"] not found.`
       //   —— 上游网盘接口无 Cookie 时回的是错误 JSON（没有 data 字段），蜘蛛没做兜底。
@@ -2898,7 +3193,7 @@ export class SpiderHost {
           this.logger.w(`play: 蜘蛛抛网盘授权错但本地已绑定 → 重置蜘蛛池并重试一次: ${key} — ${msg.slice(0, 160)}`);
           this.syncDriveFiles();
           this.resetSpidersAfterDriveChange();
-          return this.playInner(key, flag, id, true);
+          return this.playInner(key, flag, id, true, context.profileId, context.config, b);
         }
         this.logger.w(`play 判定需要网盘 Cookie（已记入绑定清单${bound ? '；该网盘已绑定' : ''}）: ${key} — ${msg}`);
         return {
@@ -2966,11 +3261,11 @@ export class SpiderHost {
    *   失败：保留 parse=1 并附 `message`，渲染层据它提示（替代原「桌面版暂不支持」的笼统说法）。
    *   多段地址（# 分隔）只取第一段试解析（与 TVBox 播放器取首段一致）。
    */
-  private async resolveNeededParse(r: PlayResult): Promise<PlayResult> {
+  private async resolveNeededParse(r: PlayResult, parses = this.config?.parses || []): Promise<PlayResult> {
     if (r.parse !== 1 || !r.url) return r;
     const target = r.url.split('#').filter(Boolean)[0] || r.url;
     try {
-      const hit = await this.parseService.resolve(this.config?.parses || [], target);
+      const hit = await this.parseService.resolve(parses, target);
       if (hit?.url) {
         this.logger.i(`parse: 「${r.flag}」解析成功（${hit.via}）${hit.url.slice(0, 100)}`);
         return {

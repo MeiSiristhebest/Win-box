@@ -11,25 +11,23 @@
 //   因而无论窗口多宽多高都不会裁掉人物；`cover`（默认，详情页）维持原行为。
 import { Fragment, useEffect, useState } from 'react';
 
-export default function HeroBackdrop({
-  urls,
-  intervalMs = 6000,
-  fit = 'cover',
-}: {
+type HeroBackdropProps = {
   urls: string[];
   intervalMs?: number;
   fit?: 'cover' | 'contain';
-}) {
+};
+
+export default function HeroBackdrop(props: HeroBackdropProps) {
+  return <HeroBackdropContent key={props.urls.join('\u0000')} {...props} />;
+}
+
+function HeroBackdropContent({ urls, intervalMs = 6000, fit = 'cover' }: HeroBackdropProps) {
   const [idx, setIdx] = useState(0);
-  const key = urls.join('|');
-  useEffect(() => {
-    setIdx(0); // 换片 / 换图集 → 从第一张重新开始
-  }, [key]);
   useEffect(() => {
     if (urls.length <= 1) return;
     const t = setInterval(() => setIdx((i) => (i + 1) % urls.length), intervalMs);
     return () => clearInterval(t);
-  }, [key, urls.length, intervalMs]);
+  }, [urls.length, intervalMs]);
   const shown = Math.min(urls.length, idx + 2);
   const contain = fit === 'contain';
   return (

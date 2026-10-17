@@ -13,10 +13,10 @@ import { pathToFileURL } from 'node:url';
 import vm from 'node:vm';
 import type { EngineHost } from '../ports';
 import { UnsupportedSourceError } from '../util/errors';
-import { transformToCjs } from './esmTransform';
+import { compileModule, type CompiledModule } from './esmTransform';
 import { buildSandboxGlobals } from './globals';
 import { createLocalUpstream } from './globals/SandboxLocal';
-import { headImportBindings, parseHeadImports, stripHeadImports } from './esmHeadImports';
+import { withTimeout } from '../util/withTimeout';
 
 /**
  * `assets://js/lib/X.js` → dr_py 仓库的 libs/X.js（drpy2 引擎脚本头部就是这种写法）。
@@ -111,6 +111,7 @@ export class JsSandbox implements JsSandboxLike {
   private inProgress = new Set<string>();
   private templateCache: unknown;
   private warned = new Set<string>();
+  private invocationId = 0;
 
   constructor(options: JsSandboxOptions) {
     this.siteKey = options.siteKey;
@@ -257,17 +258,10 @@ export class JsSandbox implements JsSandboxLike {
       this.warnOnce(`方法 ${names.join('/')} 不存在`);
       return undefined;
     }
-    // 竞速超时；输家的 promise 单独挂 catch，避免 unhandled rejection
-    const task = Promise.resolve(fn.apply(this.spider, args));
-    task.catch(() => { /* 已在下方 race catch 记录或忽略 */ });
+    const method = fn;
+    const task = Promise.resolve().then(() => method.apply(this.spider, args));
     try {
-      return await Promise.race([
-        task,
-        new Promise<never>((_, reject) => {
-          const t = setTimeout(() => reject(new Error(`调用超时(${timeoutMs}ms)`)), timeoutMs);
-          (t as { unref?: () => void }).unref?.();
-        }),
-      ]);
+      return await withTimeout(task, timeoutMs, `调用超时(${timeoutMs}ms)`);
     } catch (e) {
       this.host.logger.e(`js:${this.siteKey} ${usedName} 调用失败`, e);
       return undefined;
@@ -290,72 +284,50 @@ export class JsSandbox implements JsSandboxLike {
   // ------------------------------------------------------------------
   /** 执行一个模块源码（转换 + 预取依赖 + 沙箱内运行），返回 module.exports */
   private async runModule(url: string, source: string): Promise<Record<string, unknown>> {
-    // ★ 2026-09-29：**头部 import 块**走「注册表装配」，不经 esmTransform 生成 `require(...)` 调用 ——
-    //   drpy2 引擎自带 `function require(url){eval(request(url))}`，会遮蔽包装函数的 require 形参，
-    //   在模块头就触发 `MOBILE_UA` TDZ 崩溃（详见 esmHeadImports.ts 文件头）。
-    const heads = parseHeadImports(source);
-    if (heads.length) {
-      const reg = ((this.globals as Record<string, unknown>).__M = ((this.globals as Record<string, unknown>).__M as
-        | Record<string, unknown>
-        | undefined) ?? {});
-      for (const it of heads) {
-        if (reg[it.spec] === undefined) reg[it.spec] = await this.loadImportBinding(it.spec);
-      }
-      source = stripHeadImports(source, heads);
-    }
-    let cjs: string;
-    try {
-      cjs = transformToCjs(source, url);
-    } catch (e) {
-      if (e instanceof UnsupportedSourceError) throw e;
-      throw new UnsupportedSourceError('TRANSFORM_FAILED', `转换失败: ${url}`);
-    }
-    if (heads.length) cjs = `${headImportBindings(heads)}\n${cjs}`;
-    // CJS require 是同步的，import 依赖必须先预取进缓存
-    const specs = new Set<string>();
-    for (const m of cjs.matchAll(/require\(\s*['"]([^'"]+)['"]\s*\)/g)) specs.add(m[1]);
-    for (const spec of specs) {
-      // 只预取相对/绝对路径模块；裸名库（cheerio/crypto-js/net.js 等）走 require 的同步分支
-      if (spec === 'cheerio' || spec === 'crypto-js' || spec.includes('net.js') || spec.includes('utils.js') || spec.includes('模板.js')) continue;
-      // ★ assets://js/lib/X.js（drpy2 引擎头部写法）：本机 js-lib 有就直接用（require 同步命中），
-      //   没有则按 dr_py 仓库同名 lib 预取 —— 失败落空模块（对齐安卓 EMPTY_MODULE_CODE 语义）
-      const assetUrl = assetLibUrl(spec);
-      if (assetUrl) {
-        if (!this.moduleCache.has(assetUrl)) {
-          try {
-            await this.loadModuleAsync(assetUrl);
-          } catch {
-            this.moduleCache.set(assetUrl, {});
-          }
-        }
-        continue;
-      }
-      if (!/^\.{0,2}\//.test(spec)) continue;
-      let resolved = '';
-      try {
-        resolved = new URL(spec, url).toString();
-      } catch {
-        continue;
-      }
-      if (resolved === url || this.moduleCache.has(resolved)) continue;
-      try {
-        await this.loadModuleAsync(resolved);
-      } catch {
-        // 依赖加载失败 → 空模块（对齐安卓 EMPTY_MODULE_CODE 语义，JsSpider.java:44-59）
-        this.moduleCache.set(resolved, {});
-      }
-    }
+    const compiled = compileModule(source, url);
     const moduleObj = { exports: {} as Record<string, unknown> };
-    const wrapper = `(function(module, exports, require, __filename){\n${cjs}\n})`;
-    const fn = vm.runInContext(wrapper, this.ctx as vm.Context, { filename: url, timeout: 15000 });
-    (fn as (m: unknown, e: unknown, r: (p: string) => unknown, f: string) => void)(
-      moduleObj,
-      moduleObj.exports,
-      this.makeRequire(url),
-      url,
-    );
     this.moduleCache.set(url, moduleObj.exports);
-    return moduleObj.exports;
+    try {
+      for (const spec of compiled.dependencies) await this.loadImportBinding(spec, url);
+      const result = this.evaluateModule(url, compiled, moduleObj, true);
+      await withTimeout(Promise.resolve(result), 15000, '模块执行超时（' + url + '）');
+      this.moduleCache.set(url, moduleObj.exports);
+      return moduleObj.exports;
+    } catch (error) {
+      this.moduleCache.delete(url);
+      throw error;
+    }
+  }
+
+  private evaluateModule(
+    url: string,
+    compiled: CompiledModule,
+    moduleObj: { exports: Record<string, unknown> },
+    asynchronous: boolean,
+  ): unknown {
+    const globals = this.globals as Record<string, unknown>;
+    const slot = '__winboxInvocation' + ++this.invocationId;
+    globals[slot] = {
+      module: moduleObj,
+      require: this.makeRequire(url),
+      import: async (spec: string) => {
+        const value = await this.loadImportBinding(String(spec), url);
+        if (value && typeof value === 'object' && (value as Record<string, unknown>).__esModule) return value;
+        return Object.assign(Object.create(null), value, { default: value });
+      },
+      meta: Object.freeze({ url, resolve: (spec: string) => new URL(spec, url).href }),
+    };
+    const access = 'globalThis[' + JSON.stringify(slot) + ']';
+    const wrapper = '(' + (asynchronous ? 'async ' : '') +
+      'function(module, exports, require, __filename, ' + compiled.importName + ', ' + compiled.metaName +
+      '){\n' + compiled.code + '\n})(' + access + '.module, ' + access + '.module.exports, ' +
+      access + '.require, ' + JSON.stringify(url) + ', ' + access + '.import, ' + access + '.meta)';
+    try {
+      return new vm.Script(wrapper, { filename: url }).runInContext(this.ctx as vm.Context, { timeout: 15000 });
+    } finally {
+      // Arguments have been captured by the function, including when its body awaits.
+      delete globals[slot];
+    }
   }
 
   /** 异步加载远程模块（预取路径） */
@@ -383,7 +355,7 @@ export class JsSandbox implements JsSandboxLike {
    * 与 makeRequire 同一套判据，但允许网络取数（本机 js-lib 优先 → assets:// 映射 → 相对/绝对 URL）。
    * 取不到一律空模块（不抛：头部 import 抛错会毁掉整个源，对齐安卓 EMPTY_MODULE_CODE 语义）。
    */
-  private async loadImportBinding(spec: string): Promise<unknown> {
+  private async loadImportBinding(spec: string, baseUrl: string): Promise<unknown> {
     const g = this.globals as Record<string, unknown>;
     // ★ 库类**本机 js-lib 构建优先**：TVBox 的 cheerio 构建带 `jinja2` 补丁（drpy2 的 init 直接
     //   调 `cheerio.jinja2(rule.homeUrl,…)`）——必须给源里点名的那份构建，缺失才回落注入的 npm 版
@@ -399,7 +371,7 @@ export class JsSandbox implements JsSandboxLike {
       const local = this.evalLocalLib(spec);
       if (local !== undefined) return local;
     }
-    const target = assetLibUrl(spec) || this.resolveImportSpec(spec);
+    const target = assetLibUrl(spec) || this.resolveImportSpec(spec, baseUrl);
     if (!target) return {};
     try {
       return await this.loadModuleAsync(target);
@@ -409,10 +381,10 @@ export class JsSandbox implements JsSandboxLike {
   }
 
   /** 说明符 → 绝对 URL（http(s) 原样；其余相对蜘蛛 api 解析）；解析不了返回空串 */
-  private resolveImportSpec(spec: string): string {
+  private resolveImportSpec(spec: string, baseUrl: string): string {
     if (/^https?:\/\//i.test(spec)) return spec;
     try {
-      return new URL(spec, this.api).toString();
+      return new URL(spec, baseUrl).toString();
     } catch {
       return '';
     }
@@ -503,22 +475,9 @@ export class JsSandbox implements JsSandboxLike {
 
   /** 同步执行本地库源码（转换 + vm 运行；本地库自包含，无远程 import） */
   private runLocalSource(url: string, source: string): Record<string, unknown> {
-    let cjs: string;
-    try {
-      cjs = transformToCjs(source, url);
-    } catch (e) {
-      if (e instanceof UnsupportedSourceError) throw e;
-      throw new UnsupportedSourceError('TRANSFORM_FAILED', `本地库转换失败: ${url}`);
-    }
+    const compiled = compileModule(source, url);
     const moduleObj = { exports: {} as Record<string, unknown> };
-    const wrapper = `(function(module, exports, require, __filename){\n${cjs}\n})`;
-    const fn = vm.runInContext(wrapper, this.ctx as vm.Context, { filename: url, timeout: 15000 });
-    (fn as (m: unknown, e: unknown, r: (p: string) => unknown, f: string) => void)(
-      moduleObj,
-      moduleObj.exports,
-      this.makeRequire(url),
-      url,
-    );
+    this.evaluateModule(url, compiled, moduleObj, false);
     return moduleObj.exports;
   }
 

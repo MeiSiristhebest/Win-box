@@ -3,13 +3,16 @@
 // 覆盖：add/delete/move/update/setActive/persist-reload 往返、非法 patch、损坏 JSON 重建、
 //      重复 key 拒绝、move 边界、replaceFromImport 全量替换。
 import { describe, it, expect, afterEach } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JsonStore } from '../src/main/store/JsonStore';
-import { UserConfigManager, USER_CONFIG_KEY } from '../src/main/store/UserConfigManager';
+import { UserConfigManager, USER_CONFIG_KEY, serializeImport } from '../src/main/store/UserConfigManager';
+import { parseSubscriptionSourceOverrides } from '../src/main/store/subscriptionProfileMerge';
+import { parseSiteConfig } from '../src/engine/config/ApiConfigParser';
 import { NullLogger } from '../src/engine/util/logger';
 import type { SiteConfig, SourceBean, SourceUpdatePatch, LiveBean } from '../src/shared/types';
+import type { SubscriptionGroup, UserProfile } from '../src/shared/types';
 
 const dirs: string[] = [];
 function tmpDir(): string {
@@ -123,6 +126,239 @@ describe('UserConfigManager — 变更类别（★ 2026-09-27 切源不再触发
     expect(after.sources).toEqual(before.sources);
     expect(after.parses).toEqual(before.parses);
     expect(after.global).toEqual(before.global);
+  });
+});
+
+describe('UserConfigManager — 多仓快照提交', () => {
+  it('持久化失败时恢复提交前的订阅组和配置版本', () => {
+    const dir = tmpDir();
+    const store = new JsonStore(join(dir, 'user-config.json'));
+    const manager = new UserConfigManager(store, NullLogger);
+    manager.replaceFromImport(fullConfig([bean('active')]), 'https://example.test/active.json');
+    const previous = manager.snapshot();
+    const previousRevision = manager.revision;
+    const flushStrict = store.flushStrict.bind(store);
+    let failOnce = true;
+    store.flushStrict = () => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error('disk write failed');
+      }
+      flushStrict();
+    };
+    const now = new Date().toISOString();
+    const group: SubscriptionGroup = {
+      id: 'failed-commit',
+      name: '提交失败',
+      url: 'https://example.test/group.json',
+      status: 'complete',
+      createdAt: now,
+      updatedAt: now,
+      members: [],
+    };
+
+    expect(() => manager.commitSubscriptionGroup(group, [])).toThrow('disk write failed');
+    expect(manager.snapshot()).toEqual(previous);
+    expect(manager.revision).toBe(previousRevision);
+    expect(store.getObject(USER_CONFIG_KEY, null)).toEqual(previous);
+    const reloaded = newManager(dir);
+    expect(reloaded.load()).toBe(true);
+    // Loading normalizes legacy or partial SourceBean records with defaults.
+    // The strict raw store equality above checks rollback; after reload, check
+    // that every saved pre-commit field is still present.
+    expect(reloaded.snapshot()).toMatchObject(previous);
+  });
+
+  it('配置版本变化后拒绝提交过期多仓结果', () => {
+    const manager = newManager(tmpDir());
+    manager.replaceFromImport(fullConfig([bean('before')]), 'https://example.test/active.json');
+    const expectedRevision = manager.revision;
+    const now = new Date().toISOString();
+    const group: SubscriptionGroup = {
+      id: 'stale-group',
+      name: '过期组',
+      url: 'https://example.test/group.json',
+      status: 'complete',
+      createdAt: now,
+      updatedAt: now,
+      members: [],
+    };
+
+    manager.addSource(bean('user-change'));
+    const beforeCommit = manager.snapshot();
+    expect(() => manager.commitSubscriptionGroup(group, [], undefined, expectedRevision)).toThrow('配置已在导入期间更改');
+    expect(manager.snapshot()).toEqual(beforeCommit);
+    expect(manager.snapshot().subscriptionGroups).toEqual([]);
+  });
+
+  it('失败与已移除成员保留旧快照；确认移除只解除分组关联', () => {
+    const manager = newManager(tmpDir());
+    manager.replaceFromImport(fullConfig([bean('active')]), 'https://example.test/active.json');
+    const before = manager.snapshot();
+    const previous = manager.rawProfiles().find((profile) => profile.id === before.activeProfileId)!;
+    const now = new Date().toISOString();
+    const group: SubscriptionGroup = {
+      id: 'group',
+      name: '测试组',
+      url: 'https://example.test/group.json',
+      status: 'partial',
+      createdAt: now,
+      updatedAt: now,
+      members: [{
+        id: 'member',
+        profileId: previous.id,
+        name: previous.name,
+        url: previous.apiUrl,
+        status: 'pending-removal',
+        error: '该成员已从父清单移除',
+      }],
+    };
+
+    manager.commitSubscriptionGroup(group, []);
+    const after = manager.snapshot();
+    expect(after.activeProfileId).toBe(before.activeProfileId);
+    expect(after.sources.map((source) => source.key)).toEqual(['active']);
+    expect(after.profiles.find((profile) => profile.id === previous.id)).toEqual(previous);
+    expect(after.subscriptionGroups[0].members[0]).toMatchObject({ profileId: previous.id, status: 'pending-removal' });
+
+    manager.removeSubscriptionGroupMember('group', 'member');
+    const detached = manager.rawProfiles().find((profile) => profile.id === previous.id)!;
+    expect(detached.json).toBe(previous.json);
+    expect(detached.groupId).toBeUndefined();
+    expect(manager.snapshot().subscriptionGroups[0].members).toEqual([]);
+    expect(manager.snapshot().activeProfileId).toBe(before.activeProfileId);
+  });
+
+  it('同名 key 的两个子仓仍保存为独立快照', () => {
+    const manager = newManager(tmpDir());
+    const now = new Date().toISOString();
+    const profiles: UserProfile[] = [
+      { id: 'child-a', name: '仓 A', apiUrl: 'https://a.test/config.json', json: JSON.stringify({ sites: [{ key: 'same', name: 'A', type: 0, api: 'https://a.test/api' }] }), sourceCount: 1, importedAt: now, groupId: 'group', memberId: 'a' },
+      { id: 'child-b', name: '仓 B', apiUrl: 'https://b.test/config.json', json: JSON.stringify({ sites: [{ key: 'same', name: 'B', type: 0, api: 'https://b.test/api' }] }), sourceCount: 1, importedAt: now, groupId: 'group', memberId: 'b' },
+    ];
+    const group: SubscriptionGroup = {
+      id: 'group', name: '测试组', url: 'https://example.test/group.json', status: 'complete', createdAt: now, updatedAt: now,
+      members: profiles.map((profile) => ({ id: profile.memberId!, profileId: profile.id, name: profile.name, url: profile.apiUrl, status: 'ready' })),
+    };
+
+    manager.commitSubscriptionGroup(group, profiles);
+    const saved = manager.rawProfiles().filter((profile) => profile.groupId === 'group');
+    expect(saved.map((profile) => profile.id).sort()).toEqual(['child-a', 'child-b']);
+    expect(saved.map((profile) => profile.json)).toEqual(profiles.map((profile) => profile.json));
+  });
+
+  it('活动子仓的手动修改单独记录，刷新基线保持不变', () => {
+    const dir = tmpDir();
+    const manager = newManager(dir);
+    const now = new Date().toISOString();
+    const upstream = fullConfig([bean('a'), bean('b')]);
+    const upstreamJson = serializeImport(upstream);
+    const profile: UserProfile = {
+      id: 'child', name: '子仓', apiUrl: 'https://example.test/child.json',
+      json: upstreamJson, upstreamJson, sourceCount: 2, importedAt: now,
+      groupId: 'group', memberId: 'member',
+    };
+    const group: SubscriptionGroup = {
+      id: 'group', name: '父仓', url: 'https://example.test/group.json', status: 'complete',
+      createdAt: now, updatedAt: now,
+      members: [{ id: 'member', profileId: profile.id, name: profile.name, url: profile.apiUrl, status: 'ready' }],
+    };
+
+    manager.commitSubscriptionGroup(group, [profile], profile.id);
+    manager.updateSource('a', { name: '固定名称' });
+    manager.deleteSource('b');
+    manager.addSource(bean('local'));
+    manager.moveSource('local', 'top');
+
+    const stored = manager.rawProfiles().find((item) => item.id === profile.id)!;
+    const overrides = parseSubscriptionSourceOverrides(stored.sourceOverridesJson);
+    expect(stored.upstreamJson).toBe(upstreamJson);
+    expect(parseSiteConfig(stored.json).config.sites.map((item) => item.key)).toEqual(['local', 'a']);
+    expect(overrides?.order).toEqual(['local', 'a']);
+    expect(overrides?.deletedKeys).toEqual(['b']);
+    expect(overrides?.additions.map((item) => item.key)).toEqual(['local']);
+    expect(overrides?.patches).toEqual([{ key: 'a', values: { name: '固定名称' }, removedFields: [] }]);
+
+    const reloaded = newManager(dir);
+    expect(reloaded.load()).toBe(true);
+    const restored = reloaded.rawProfiles().find((item) => item.id === profile.id)!;
+    expect(restored.upstreamJson).toBe(upstreamJson);
+    expect(parseSubscriptionSourceOverrides(restored.sourceOverridesJson)?.deletedKeys).toEqual(['b']);
+  });
+
+  it('旧子仓首次刷新先保留当前配置，用户确认后才建立基线', () => {
+    const dir = tmpDir();
+    const manager = newManager(dir);
+    const now = new Date().toISOString();
+    const current = fullConfig([bean('a'), bean('legacy-only')]);
+    current.sites[0].name = '本地改名';
+    const upstream = fullConfig([bean('a'), bean('fresh')]);
+    upstream.sites[0].name = '上游名称';
+    const pendingUpstreamJson = serializeImport(upstream);
+    const profile: UserProfile = {
+      id: 'legacy-child', name: '旧子仓', apiUrl: 'https://example.test/child.json',
+      json: serializeImport(current), pendingUpstreamJson, sourceCount: 2, importedAt: now,
+      groupId: 'legacy-group', memberId: 'legacy-member',
+    };
+    const group: SubscriptionGroup = {
+      id: 'legacy-group', name: '旧父仓', url: 'https://example.test/group.json', status: 'partial',
+      createdAt: now, updatedAt: now,
+      members: [{
+        id: 'legacy-member', profileId: profile.id, name: profile.name, url: profile.apiUrl, status: 'needs-review',
+        refreshDiff: { addedKeys: ['fresh'], removedKeys: ['legacy-only'], changed: [{ key: 'a', fields: ['name'] }] },
+      }],
+    };
+
+    manager.commitSubscriptionGroup(group, [profile], profile.id);
+    const afterRestart = newManager(dir);
+    expect(afterRestart.load()).toBe(true);
+    expect(afterRestart.snapshot().sources.map((source) => source.key)).toEqual(['a', 'legacy-only']);
+    expect(afterRestart.snapshot().subscriptionGroups[0].members[0].refreshDiff?.addedKeys).toEqual(['fresh']);
+    afterRestart.resolveSubscriptionGroupMemberRefresh(group.id, 'legacy-member', 'keep-current');
+
+    const saved = afterRestart.rawProfiles().find((item) => item.id === profile.id)!;
+    const resolved = parseSiteConfig(saved.json).config;
+    const member = afterRestart.snapshot().subscriptionGroups[0].members[0];
+    expect(resolved.sites.map((source) => source.key)).toEqual(['a', 'legacy-only']);
+    expect(resolved.sites[0].name).toBe('本地改名');
+    expect(saved.upstreamJson).toBe(pendingUpstreamJson);
+    expect(saved.pendingUpstreamJson).toBeUndefined();
+    expect(member.refreshDiff).toBeUndefined();
+    expect(parseSubscriptionSourceOverrides(saved.sourceOverridesJson)).toMatchObject({
+      deletedKeys: ['fresh'],
+      additions: [{ key: 'legacy-only' }],
+      patches: [{ key: 'a', values: { name: '本地改名' } }],
+    });
+  });
+
+  it('首次刷新选择上游配置会替换旧源并清除本地覆盖', () => {
+    const manager = newManager(tmpDir());
+    const now = new Date().toISOString();
+    const current = serializeImport(fullConfig([bean('old')]));
+    const upstream = serializeImport(fullConfig([bean('new')]));
+    const profile: UserProfile = {
+      id: 'child', name: '子仓', apiUrl: 'https://example.test/child.json',
+      json: current, pendingUpstreamJson: upstream, sourceCount: 1, importedAt: now,
+      groupId: 'group', memberId: 'member',
+    };
+    const group: SubscriptionGroup = {
+      id: 'group', name: '父仓', url: 'https://example.test/group.json', status: 'partial',
+      createdAt: now, updatedAt: now,
+      members: [{ id: 'member', profileId: profile.id, name: profile.name, url: profile.apiUrl, status: 'needs-review', refreshDiff: { addedKeys: ['new'], removedKeys: ['old'], changed: [] } }],
+    };
+    manager.commitSubscriptionGroup(group, [profile], profile.id);
+
+    manager.resolveSubscriptionGroupMemberRefresh(group.id, 'member', 'use-upstream');
+
+    expect(manager.snapshot().sources.map((source) => source.key)).toEqual(['new']);
+    const saved = manager.rawProfiles().find((item) => item.id === profile.id)!;
+    expect(saved.upstreamJson).toBe(upstream);
+    expect(saved.pendingUpstreamJson).toBeUndefined();
+    expect(parseSubscriptionSourceOverrides(saved.sourceOverridesJson)).toMatchObject({
+      deletedKeys: [],
+      additions: [],
+      patches: [],
+    });
   });
 });
 

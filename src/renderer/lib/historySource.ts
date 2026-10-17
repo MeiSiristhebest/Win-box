@@ -51,10 +51,10 @@ export interface HistorySourceClient {
   cfgSwitchProfileSource(profileId: string, key: string): Promise<void>;
 }
 
-/** 等待订阅真正应用完成后才能进入 detail/play；后台更新检测不得调用此函数切订阅。 */
-export async function restoreHistorySource(api: HistorySourceClient, ref: HistorySourceRef): Promise<HistorySourceMatch> {
-  const cfg = await api.cfgGet();
-  const view = await api.cfgProfileSites();
+export type HistorySourceLookupClient = Pick<HistorySourceClient, 'cfgGet' | 'cfgProfileSites'>;
+
+async function loadHistorySourceMatch(api: HistorySourceLookupClient, ref: HistorySourceRef): Promise<{ activeProfileId: string; match: HistorySourceMatch }> {
+  const [cfg, view] = await Promise.all([api.cfgGet(), api.cfgProfileSites()]);
   // 未启用档案管理的手动源列表也参与匹配。
   if (!view.profiles.some((p) => p.id === cfg.activeProfileId)) {
     view.profiles.push({ id: cfg.activeProfileId, name: '当前配置', sites: cfg.sources });
@@ -62,8 +62,19 @@ export async function restoreHistorySource(api: HistorySourceClient, ref: Histor
   view.activeId = cfg.activeProfileId;
   const hit = findHistorySource(view, ref);
   if (!hit) throw new Error(`所有已保存订阅中均未找到历史来源「${ref.sourceName || ref.sourceKey || '未知源'}」`);
-  if (hit.profileId !== cfg.activeProfileId) {
-    await api.cfgSwitchProfileSource(hit.profileId, hit.key);
+  return { activeProfileId: cfg.activeProfileId, match: hit };
+}
+
+/** 只查找历史来源，不切换全局活动订阅；详情与播放请求可携带返回的 profileId。 */
+export async function resolveHistorySource(api: HistorySourceLookupClient, ref: HistorySourceRef): Promise<HistorySourceMatch> {
+  return (await loadHistorySourceMatch(api, ref)).match;
+}
+
+/** 用户明确要求恢复活动订阅时使用；一般详情与播放流程应直接使用 profileId 隔离。 */
+export async function restoreHistorySource(api: HistorySourceClient, ref: HistorySourceRef): Promise<HistorySourceMatch> {
+  const { activeProfileId, match } = await loadHistorySourceMatch(api, ref);
+  if (match.profileId !== activeProfileId) {
+    await api.cfgSwitchProfileSource(match.profileId, match.key);
   }
-  return hit;
+  return match;
 }

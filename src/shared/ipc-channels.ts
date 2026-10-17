@@ -4,7 +4,10 @@ export const IPC = {
   SYSTEM_PING: 'system:ping',
   APP_ICON: 'app:icon',
   APP_QUIT: 'app:quit',
-  THEME_SET: 'theme:set',
+  UI_PREFERENCES_GET: 'uiPreferences:get',
+  UI_PREFERENCES_INITIALIZE: 'uiPreferences:initialize',
+  UI_PREFERENCES_UPDATE: 'uiPreferences:update',
+  UI_PREFERENCES_CHANGED: 'uiPreferences:changed',
   /**
    * ★ 2026-09-30（用户要求）：数据目录信息（安装目录/data；含老用户迁移结果/回退原因）。
    * 用于配置页展示与排障（「为什么还在 C 盘」这类问题看这条）。
@@ -67,6 +70,17 @@ export const IPC = {
   CFG_SET_ACTIVE_SOURCE: 'cfg:setActiveSource',
   CFG_SET_ACTIVE_LIVE: 'cfg:setActiveLive',
   CFG_IMPORT_URL: 'cfg:importUrl',
+  CFG_IMPORT_JOB_START: 'cfg:importJobStart',
+  CFG_IMPORT_JOB_CANCEL: 'cfg:importJobCancel',
+  CFG_IMPORT_JOB_RETRY: 'cfg:importJobRetry',
+  CFG_IMPORT_JOB_CONTINUE: 'cfg:importJobContinue',
+  CFG_IMPORT_JOB_GET: 'cfg:importJobGet',
+  CFG_IMPORT_JOB_LIST: 'cfg:importJobList',
+  CFG_IMPORT_JOB_RESUME: 'cfg:importJobResume',
+  /** 主进程 → 渲染层：订阅导入进度。 */
+  CFG_IMPORT_JOB_PROGRESS: 'cfg:importJobProgress',
+  CFG_SUBSCRIPTION_GROUP_REMOVE_MEMBER: 'cfg:subscriptionGroupRemoveMember',
+  CFG_SUBSCRIPTION_GROUP_RESOLVE_REFRESH: 'cfg:subscriptionGroupResolveRefresh',
   // ★ 2026-09-27（用户要求）：本地 .json 订阅文件导入（文件选择器；档案名默认取原始文件名）
   CFG_IMPORT_JSON_LOCAL: 'cfg:importJsonLocal',
   CFG_IMPORT_PY_LOCAL: 'cfg:importPyLocal',
@@ -92,6 +106,8 @@ export const IPC = {
    * ★ 2026-09-30（用户要求）：换源弹层的「左订阅 / 右源」视图 —— 每份档案的源 key/name 清单。
    */
   CFG_PROFILE_SITES: 'cfg:profileSites',
+  /** 完整、归一化的源配置；用于在非活动档案中执行搜索和详情，不切换全局订阅。 */
+  CFG_PROFILE_SOURCES: 'cfg:profileSources',
   /**
    * ★ 2026-09-30（用户要求）：一步完成「切换档案 + 选中该档案下的某个源」（换源弹层跨订阅选择）。
    * 单次 apply（避免两次内容变更触发两轮宿主重活）。

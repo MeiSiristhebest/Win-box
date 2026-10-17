@@ -31,7 +31,7 @@ async function getBytes(url: string, opts: GetOptions & { html?: boolean }): Pro
         Accept: opts.html ? 'text/html,application/xhtml+xml,*/*;q=0.8' : '*/*',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
         ...(opts.referer ? { Referer: opts.referer } : {}),
-        ...(opts.headers || {}),
+        ...opts.headers,
       },
       headersTimeout: 25000,
       bodyTimeout: 25000,

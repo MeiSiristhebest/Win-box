@@ -295,7 +295,7 @@ export class TorrentPlay {
   }
 
   dispose(): void {
-    for (const s of [...this.sessions.values()]) this.drop(s.infoHash);
+    for (const s of this.sessions.values()) this.drop(s.infoHash);
     this.sidecar.dispose();
   }
 }

@@ -14,7 +14,7 @@ const epRepeats = [
   /\b[SS](\d{1,3})[EE](\d{1,3})\b/gi,
   /\b[EE](\d{1,3})\b/gi,
   /第\s*(\d{1,3})\s*[集话季](?:\s*[-~]\s*第?\s*(\d{1,3})\s*[集话季])?/g,
-  /[（(\[]\s*第?\s*(\d{1,3})\s*[集话][）)\] ]/g,
+  /[（([]\s*第?\s*(\d{1,3})\s*[集话][）)\] ]/g,
 ];
 
 /** 提取集号（优先中文"第N集"；其次 E/如；再退化为末尾数字） */
@@ -56,7 +56,7 @@ export function normalizeTitle(name: string): string {
   if (pure && pure[1].length >= 2) title = pure[1];
   // 去嘈杂后缀（年份 / 清晰度 / 编码 / 发布组 / 标签）
   title = title.replace(noise, ' ').replace(/\s{2,}/g, ' ').replace(/\./g, ' ').trim();
-  title = title.replace(/\b(19|20)\d{2}\b/g, ' ').replace(/[\[【].*?[\]】]/g, ' ').trim();
+  title = title.replace(/\b(19|20)\d{2}\b/g, ' ').replace(/[[【].*?[\]】]/g, ' ').trim();
   return title;
 }
 

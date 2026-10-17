@@ -126,7 +126,7 @@ describe('VodNormalizer — Movie → DTO', () => {
   it('toVodDetail：flags + episodes[flag]', () => {
     const abs = parseAbsJson(JSON_SAMPLE, 'src1')!;
     const v = abs.movie!.videoList[0] as Video;
-    const d = toVodDetail(v, 'src1');
+    const d = toVodDetail(v);
     expect(d.flags).toEqual(['dbyun', 'dbm3u8']);
     expect(d.episodes['dbyun']).toEqual([
       { name: '第01集', url: 'https://a/1.m3u8' },

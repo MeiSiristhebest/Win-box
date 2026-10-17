@@ -37,8 +37,9 @@ function decodeCharset(buffer: Buffer, charset?: string): string {
 
 export class HttpClient implements IHttpClient {
   async request(req: HttpRequest): Promise<HttpResponse> {
+    if (req.signal?.aborted) throw req.signal.reason ?? new Error('请求已取消');
     const method = (req.method || 'get').toUpperCase();
-    const headers: Record<string, string> = { ...(req.headers || {}) };
+    const headers: Record<string, string> = { ...req.headers };
     if (!headers['User-Agent'] && !headers['user-agent']) {
       headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) TVBoxWin/0.1';
     }
@@ -72,6 +73,7 @@ export class HttpClient implements IHttpClient {
       const phaseTimeout = req.timeoutMs || 30000;
       const requestTimeout = deadline ? Math.min(phaseTimeout, remaining) : phaseTimeout;
       const controller = new AbortController();
+      const signal = req.signal ? AbortSignal.any([controller.signal, req.signal]) : controller.signal;
       let deadlineExpired = false;
       const timer = deadline ? setTimeout(() => {
         deadlineExpired = true;
@@ -85,7 +87,7 @@ export class HttpClient implements IHttpClient {
           headersTimeout: requestTimeout,
           bodyTimeout: requestTimeout,
           dispatcher,
-          signal: controller.signal,
+          signal,
         });
         const loc = r.headers['location'];
         if (r.statusCode >= 300 && r.statusCode < 400 && loc && i < maxRedir && method !== 'HEAD') {
@@ -113,6 +115,7 @@ export class HttpClient implements IHttpClient {
         }
         return { status: r.statusCode, headers: respHeaders, content, finalUrl };
       } catch (e) {
+        if (req.signal?.aborted) throw req.signal.reason ?? e;
         if (deadlineExpired) throw new Error(`请求总超时（${req.totalTimeoutMs}ms）`);
         throw e;
       } finally {

@@ -80,6 +80,101 @@ describe('SpiderHost — 全源搜索不把已失败 jar 当成准备中', () =>
   });
 });
 
+describe('SpiderHost — 多仓父清单失败后重试', () => {
+  it('重新读取父清单并导入完整子仓清单', async () => {
+    const host = new SpiderHost();
+    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
+    const rootUrl = 'https://example.test/repos.json';
+    const childUrls = ['https://one.example/config.json', 'https://two.example/config.json'];
+    const manifest = JSON.stringify({
+      urls: childUrls.map((url, index) => ({ url, name: `repo-${index + 1}` })),
+    });
+    const fetchedUrls: string[] = [];
+    let rootFetchCount = 0;
+    const fetchConfigText = vi.spyOn(host as any, 'fetchConfigText').mockImplementation(async (...args: unknown[]) => {
+      const url = String(args[0] ?? '');
+      fetchedUrls.push(url);
+      if (url === rootUrl) {
+        rootFetchCount += 1;
+        if (rootFetchCount === 1) throw new Error('parent manifest unavailable');
+        return manifest;
+      }
+      const key = url === childUrls[0] ? 'repo-1' : url === childUrls[1] ? 'repo-2' : '';
+      if (!key) throw new Error(`unexpected fetch: ${url}`);
+      return JSON.stringify({ sites: [{ key, name: key, type: 0, api: 'https://x/api.php/provide/vod' }] });
+    });
+
+    try {
+      const first = host.startSubscriptionImport(rootUrl, 'fixture');
+      await vi.waitFor(() => expect(host.getSubscriptionImport(first.jobId)?.state).toBe('failed'));
+      expect(host.getSubscriptionImport(first.jobId)).toMatchObject({ total: 1, completed: 0, failed: 1, pending: 0 });
+
+      const retry = host.retryFailedSubscriptionImport(first.jobId);
+      await vi.waitFor(() => expect(host.getSubscriptionImport(retry.jobId)?.state).toBe('completed'));
+
+      expect(rootFetchCount).toBe(2);
+      expect(fetchConfigText).toHaveBeenCalledTimes(4);
+      expect(fetchedUrls.slice(0, 2)).toEqual([rootUrl, rootUrl]);
+      expect(new Set(fetchedUrls.slice(2))).toEqual(new Set(childUrls));
+      expect(host.cfgSnapshot().subscriptionGroups.find((group) => group.url === rootUrl)?.members)
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({ url: childUrls[0], status: 'ready' }),
+          expect.objectContaining({ url: childUrls[1], status: 'ready' }),
+        ]));
+    } finally {
+      vi.restoreAllMocks();
+      try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  });
+
+  it('用户取消多仓导入时不提交已下载的子仓结果', async () => {
+    const host = new SpiderHost();
+    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
+    const rootUrl = 'https://example.test/cancellable-repos.json';
+    const childUrls = ['https://one.example/config.json', 'https://two.example/config.json'];
+    const manifest = JSON.stringify({
+      urls: childUrls.map((url, index) => ({ url, name: `repo-${index + 1}` })),
+    });
+    const before = host.cfgSnapshot();
+    let blockedSignal: AbortSignal | undefined;
+    let childFetchCount = 0;
+    vi.spyOn(host as any, 'fetchConfigText').mockImplementation(async (...args: unknown[]) => {
+      const url = String(args[0] ?? '');
+      if (url === rootUrl) return manifest;
+      childFetchCount += 1;
+      if (url === childUrls[0]) {
+        return JSON.stringify({ sites: [{ key: 'repo-1', name: 'repo-1', type: 0, api: 'https://x/api.php/provide/vod' }] });
+      }
+      if (url === childUrls[1]) {
+        blockedSignal = args[2] as AbortSignal;
+        return await new Promise<string>((_resolve, reject) => {
+          const abort = () => reject(blockedSignal?.reason ?? new Error('request aborted'));
+          if (blockedSignal?.aborted) abort();
+          else blockedSignal?.addEventListener('abort', abort, { once: true });
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    try {
+      const job = host.startSubscriptionImport(rootUrl, 'fixture');
+      await vi.waitFor(() => expect(host.getSubscriptionImport(job.jobId)?.succeeded).toBe(1));
+      expect(blockedSignal).toBeDefined();
+
+      host.cancelSubscriptionImport(job.jobId);
+      await vi.waitFor(() => expect(host.getSubscriptionImport(job.jobId)?.state).toBe('cancelled'));
+
+      expect(host.getSubscriptionImport(job.jobId)?.message).toBe('导入已取消；本轮结果未提交');
+      expect(blockedSignal?.aborted).toBe(true);
+      expect(childFetchCount).toBe(2);
+      expect(host.cfgSnapshot()).toEqual(before);
+    } finally {
+      vi.restoreAllMocks();
+      try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  });
+});
+
 function bean(key: string): SourceBean {
   return { key, name: key, type: 0, api: 'https://x/api.php/provide/vod' } as SourceBean;
 }
@@ -133,6 +228,63 @@ describe('SpiderHost — 切源（ui-only 变更）不得触发重活', () => {
       expect(clearSpider).toHaveBeenCalled();
       expect(clearSearch).toHaveBeenCalled();
     } finally {
+      try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  });
+
+  it('does not apply the active source priority when searching a different profile', async () => {
+    const host = new SpiderHost();
+    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
+    try {
+      host.cfgAddSource(bean('first'));
+      host.cfgAddSource(bean('same'));
+      const activeProfile = host.cfgSaveAsProfile('active-profile');
+      host.cfgSetActiveSource('same');
+      const otherProfile = host.cfgSaveAsProfile('other-profile');
+      host.cfgActivateProfile(activeProfile.id);
+
+      const vm = (host as unknown as { vm: { search: (source: SourceBean, term: string) => Promise<unknown[]> } }).vm;
+      const search = vi.spyOn(vm, 'search').mockResolvedValue([]);
+      await host.searchAll('profile-priority', { refresh: true, profileId: otherProfile.id });
+
+      expect(search.mock.calls.map(([source]) => source.key)).toEqual(['first', 'same']);
+    } finally {
+      vi.restoreAllMocks();
+      try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  });
+
+  it('searches selected profiles independently when source keys repeat', async () => {
+    const host = new SpiderHost();
+    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
+    try {
+      host.cfgAddSource(bean('same-key'));
+      const profileA = host.cfgSaveAsProfile('profile-a');
+      const profileB = host.cfgSaveAsProfile('profile-b');
+      host.cfgActivateProfile(profileA.id);
+
+      const vm = (host as unknown as { vm: { search: (source: SourceBean, term: string) => Promise<unknown[]> } }).vm;
+      const search = vi.spyOn(vm, 'search').mockImplementation(async (source: SourceBean) => {
+        const [profileId] = JSON.parse(source.runtimeScope || '[]') as [string, string];
+        return [{ id: profileId, name: `result ${profileId}`, pic: '', remarks: '', year: '', area: '', type: '', sourceKey: source.key }];
+      });
+      const progress: Array<{ profileId?: string; done: number; total: number; pending?: number; source?: unknown }> = [];
+      const report = await host.searchAll('cross-profile', { refresh: true, profileIds: [profileA.id, profileB.id] }, (event) => progress.push(event));
+
+      expect(search).toHaveBeenCalledTimes(2);
+      expect(report.perSource.map((source) => [source.profileId, source.key])).toEqual([
+        [profileA.id, 'same-key'],
+        [profileB.id, 'same-key'],
+      ]);
+      expect(report.items.map((item) => item.sourceRef)).toEqual([
+        { profileId: profileA.id, key: 'same-key' },
+        { profileId: profileB.id, key: 'same-key' },
+      ]);
+      expect(host.cfgActiveProfileId()).toBe(profileA.id);
+      expect(progress.filter((event) => event.source).map((event) => event.profileId).sort()).toEqual([profileA.id, profileB.id].sort());
+      expect(progress.at(-1)).toMatchObject({ done: 2, total: 2, pending: 0 });
+    } finally {
+      vi.restoreAllMocks();
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   });

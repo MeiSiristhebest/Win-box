@@ -120,7 +120,7 @@ export function buildZip(entries: ZipEntryData[], opts?: { deflate?: boolean }):
     nameBuf.copy(local, 30);
     locals.push(local, data);
 
-    const isDir = /\/$/.test(e.name);
+    const isDir = e.name.endsWith('/');
     const cen = Buffer.alloc(46 + nameBuf.length);
     cen.writeUInt32LE(CEN_SIG, 0);
     cen.writeUInt16LE(20, 4); // version made by
@@ -196,7 +196,7 @@ function findEocd(buf: Buffer): number {
 }
 
 function readEntryBytes(buf: Buffer, e: CentralEntry): Buffer | null {
-  if (/\/$/.test(e.name) && e.uncompressedSize === 0) return Buffer.alloc(0);
+  if (e.name.endsWith('/') && e.uncompressedSize === 0) return Buffer.alloc(0);
   const p = e.localHeaderOffset;
   if (p + 30 > buf.length || buf.readUInt32LE(p) !== LOC_SIG) return null;
   const nameLen = buf.readUInt16LE(p + 26);

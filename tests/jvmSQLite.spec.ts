@@ -8,7 +8,7 @@ const bin = process.env.JAVA_HOME ? join(process.env.JAVA_HOME, 'bin') : '';
 const exe = process.platform === 'win32' ? '.exe' : '';
 const javac = join(bin, 'javac' + exe), java = resolve('resources/jvm/jre/bin/java' + exe);
 const jvm = resolve('resources/jvm');
-const ready = bin && [javac, java, join(jvm, 'libs/sqlite-jdbc-3.46.1.0.jar')].every(existsSync);
+const ready = bin && [javac, java, join(jvm, 'libs/sqlite-jdbc-3.53.4.0.jar')].every(existsSync);
 describe.skipIf(!ready)('真实 JVM SQLite cache', () => {
   it('建表、replace、参数查询、过期删除、事务回滚/提交、重开及升级', () => {
     const dir = mkdtempSync(join(tmpdir(), 'winbox-sqlite-'));

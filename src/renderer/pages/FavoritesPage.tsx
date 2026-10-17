@@ -4,7 +4,7 @@
 //   · 改：卡片内行内编辑「显示名 + 备注」（留空 = 回落源片名）；
 //   · 删：卡片右上角常驻 ✕ / 悬停「移除」，移除后可**撤销**（无损还原）；顶栏可清空全部。
 // 卡片与样式复用观看历史那一套（`.card-media`/`.hist-media`/`.hist-corner`/`.hist-ops`/`.hist-undo`）。
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '../api/client';
 import { useCovers } from '../lib/useCovers';
@@ -35,9 +35,25 @@ function fmtDate(ts: number): string {
   return `${d.getMonth() + 1}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+function subscribeFavorites(notify: () => void): () => void {
+  const refresh = () => { loadFavorites(); notify(); };
+  window.addEventListener(FAVORITES_EVENT, refresh);
+  window.addEventListener('storage', refresh);
+  window.addEventListener('focus', refresh);
+  refresh();
+  return () => {
+    window.removeEventListener(FAVORITES_EVENT, refresh);
+    window.removeEventListener('storage', refresh);
+    window.removeEventListener('focus', refresh);
+  };
+}
+function favoritesSnapshot(): string { return JSON.stringify(listFavoritesWithKeys()); }
+
 export default function FavoritesPage() {
   const nav = useNavigate();
-  const [rows, setRows] = useState<Row[]>([]);
+  const snapshot = useSyncExternalStore(subscribeFavorites, favoritesSnapshot);
+  const rows = useMemo<Row[]>(() => (JSON.parse(snapshot) as ReturnType<typeof listFavoritesWithKeys>).map(({ key, item }) => ({ ...item, key })), [snapshot]);
+  const editTitleRef = useRef<HTMLInputElement>(null);
   const [profileView, setProfileView] = useState<ProfileSitesView>({ activeId: '', profiles: [] });
   /** 查：关键词 + 排序 + 分组筛选 */
   const [q, setQ] = useState('');
@@ -49,13 +65,10 @@ export default function FavoritesPage() {
   const [lastDeleted, setLastDeleted] = useState<Row | null>(null);
   const [notice, setNotice] = useState('');
 
-  const refresh = (): void => setRows(listFavoritesWithKeys().map(({ key, item }) => ({ ...item, key })));
+  const editingKey = editing?.key;
+  useEffect(() => { if (editingKey) editTitleRef.current?.focus(); }, [editingKey]);
 
   useEffect(() => {
-    loadFavorites();
-    refresh();
-    const onChanged = (): void => refresh();
-    window.addEventListener(FAVORITES_EVENT, onChanged);
     // 源名映射（分组标签用）：订阅/源列表被配置页改动时跟随刷新
     const loadView = (): void => {
       void Promise.all([client.cfgGet(), client.cfgProfileSites()])
@@ -70,7 +83,6 @@ export default function FavoritesPage() {
     loadView();
     window.addEventListener('winbox:sources-changed', loadView);
     return () => {
-      window.removeEventListener(FAVORITES_EVENT, onChanged);
       window.removeEventListener('winbox:sources-changed', loadView);
     };
   }, []);
@@ -107,22 +119,19 @@ export default function FavoritesPage() {
 
   const del = (it: Row): void => {
     if (removeFavorite(it.key)) setLastDeleted(it);
-    refresh();
   };
 
   const undo = (): void => {
     if (!lastDeleted) return;
     if (restoreFavorite(lastDeleted)) {
       setLastDeleted(null);
-      refresh();
-    }
+      }
   };
 
   const clearAll = (): void => {
     clearFavorites();
     setLastDeleted(null);
     setEditing(null);
-    refresh();
   };
 
   const startEdit = (it: Row): void => {
@@ -133,7 +142,6 @@ export default function FavoritesPage() {
     if (!editing) return;
     updateFavorite(editing.key, { title: editing.title.trim(), note: editing.note.trim() });
     setEditing(null);
-    refresh();
   };
 
   return (
@@ -152,19 +160,19 @@ export default function FavoritesPage() {
 
       {/* 撤销条：单条移除后出现，可无损还原（含原收藏时间与备注） */}
       {lastDeleted && (
-        <div className="hist-undo" role="status">
+        <output className="hist-undo">
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             已移除「{favoriteTitle(lastDeleted)}」
           </span>
           <button className="linkbtn" onClick={undo}>撤销</button>
           <button className="linkbtn muted-btn" onClick={() => setLastDeleted(null)}>关闭</button>
-        </div>
+        </output>
       )}
       {notice && (
-        <div className="hist-undo" role="status">
+        <output className="hist-undo">
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{notice}</span>
           <button className="linkbtn muted-btn" onClick={() => setNotice('')}>关闭</button>
-        </div>
+        </output>
       )}
 
       <div className="content hist-content">
@@ -187,7 +195,7 @@ export default function FavoritesPage() {
                 按名称
               </button>
             </div>
-            <div className="quick-picks hist-filters" role="group" aria-label="收藏来源分类">
+            <fieldset className="quick-picks hist-filters" aria-label="收藏来源分类" style={{ border: 0, padding: 0, minWidth: 0 }}>
               <span className="muted">按来源筛选：</span>
               <button className={`tag ${activeCategory === '' ? 'active' : ''}`} aria-pressed={activeCategory === ''} onClick={() => setCategory('')}>
                 全部 {filtered.length}
@@ -202,7 +210,7 @@ export default function FavoritesPage() {
                   {group.label} {group.items.length}
                 </button>
               ))}
-            </div>
+            </fieldset>
             {filtered.length === 0 ? (
               <div className="empty" style={{ marginTop: 30 }}>没有匹配「{q.trim()}」的收藏</div>
             ) : (
@@ -214,11 +222,12 @@ export default function FavoritesPage() {
                       const cover = picOf(it);
                       const editingThis = editing?.key === it.key;
                       return (
-                        <div className="card-media hist-media" key={it.key} onClick={() => openDetail(it)}>
+                        <div className="card-media hist-media" key={it.key}>
                           <div className="card">
                             <div style={{ position: 'relative' }}>
+                              <button type="button" onClick={() => openDetail(it)} aria-label={`打开 ${favoriteTitle(it)} 详情`} style={{ display: 'block', width: '100%', padding: 0, border: 0, background: 'transparent' }}>
                               {cover ? (
-                                <img src={cover} onError={picErr(it)} loading="lazy" decoding="async" />
+                                <img src={cover} alt={favoriteTitle(it)} onError={picErr(it)} loading="lazy" decoding="async" />
                               ) : (
                                 <div
                                   style={{
@@ -229,6 +238,7 @@ export default function FavoritesPage() {
                                   暂无封面
                                 </div>
                               )}
+                              </button>
                               <div className="hist-corner">
                                 <button
                                   className="hist-del"
@@ -255,7 +265,7 @@ export default function FavoritesPage() {
                               )}
                             </div>
                             <div className="meta">
-                              <div className="name" title={favoriteTitle(it)}>{favoriteTitle(it)}</div>
+                              <button type="button" className="name" onClick={() => openDetail(it)} title={favoriteTitle(it)} style={{ display: 'block', width: '100%', padding: 0, border: 0, textAlign: 'left', background: 'transparent' }}>{favoriteTitle(it)}</button>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                                 {it.remarks && (
                                   <span className="muted" style={{ fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.remarks}</span>
@@ -265,16 +275,16 @@ export default function FavoritesPage() {
                                 )}
                               </div>
                               {it.note && !editingThis && (
-                                <div className="fav-note" title="点击编辑备注" onClick={(e) => { e.stopPropagation(); startEdit(it); }}>
+                                <button type="button" className="fav-note" title="编辑备注" onClick={() => startEdit(it)}>
                                   {it.note}
-                                </div>
+                                </button>
                               )}
                             </div>
                             {/* 改：行内编辑显示名 + 备注（留空 = 回落源片名） */}
                             {editingThis && editing && (
-                              <div className="fav-edit" onClick={(e) => e.stopPropagation()}>
+                              <div className="fav-edit">
                                 <input
-                                  autoFocus
+                                  ref={editTitleRef}
                                   value={editing.title}
                                   placeholder="显示名（留空用源片名）"
                                   onChange={(e) => setEditing({ ...editing, title: e.target.value })}

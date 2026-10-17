@@ -3,7 +3,7 @@
 // 不走 Spider；此处抽成 CmsSource 保持等价控制流。URL 约定对齐 SourceViewModel.java:485/535/629。
 import type { EngineHost } from '../ports';
 import type { AbsXml, SortClass } from '../parse/Movie';
-import { parseAbsJson, parseSortJson, vodToVideo } from '../parse/Movie';
+import { parseAbsJson, parseSortJson } from '../parse/Movie';
 import { parseAbsXml, parseSortXml } from '../parse/AbsXml';
 import { movieToVodItems, movieToVodDetail } from './VodNormalizer';
 import type { VodItem, VodDetail } from '../../shared/types';
@@ -156,7 +156,7 @@ export class CmsSource {
     const url = withQuery(api, { ac: this.ac(type), ids: ids.join(',') });
     const text = await this.fetchText(url, timeoutMs);
     const abs = this.parseBody(text, type, sourceKey);
-    return movieToVodDetail(abs?.movie ?? null, sourceKey);
+    return movieToVodDetail(abs?.movie ?? null);
   }
 
   /** 搜索：GET api?ac=...&wd=KW */

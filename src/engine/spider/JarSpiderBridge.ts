@@ -4,6 +4,7 @@
 // 运行时资产（resources/jvm/）：jre/（jlink 裁剪）、d2j/（dex2jar 20M）、stubs/（安卓 stub + Spider 基类 + SpiderRunner）、libs/（okhttp/gson/jsoup）。
 // 引擎层契约：所有宿主能力经 EngineHost 注入；本文件只做进程编排，不 import electron。
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
   mkdirSync, existsSync, readFileSync, writeFileSync, statSync,
   renameSync, openSync, closeSync, readSync, rmSync, copyFileSync,
@@ -20,7 +21,6 @@ import {
   UA_OKHTTP,
   type DisguiseAttempt,
 } from '../util/fetchWithDisguise';
-import { NullLogger } from '../util/logger';
 import { buildZip, listZipEntries, looksLikeZip, readZipEntries, zipEntrySizes, type ZipEntryData } from '../util/syncZip';
 import { SpiderProcPool, poolEnabled, servePoolKey, WARM_METHOD, type PoolResult } from './SpiderProcPool';
 import { fixSelfSuperCallsInJarFile } from './classFix';
@@ -48,6 +48,10 @@ import { LOCAL_PROXY_BASE } from '../../shared/constants';
  */
 export const CONVERTED_CACHE_VERSION = 5;
 
+/** The Python archive is checked against the digest published by Python.org. */
+export const PYTHON_RUNTIME_VERSION = '3.15.0';
+export const PYTHON_RUNTIME_EMBED_SHA256 = 'a6999bcbcbe56f937159ef79c2630260eca99f65f7860bc5cd20430324079a44';
+
 export interface JarBridgeOptions {
   /** resources/jvm 目录（含 jre/d2j/stubs/libs） */
   jvmDir: string;
@@ -65,10 +69,12 @@ export interface JarBridgeOptions {
   shellShimClasses?: string;
   /**
    * ★ 嵌入式 CPython（.py 蜘蛛运行时）按需下载落盘目录（需可写；安装版建议 userData）。
-   * 首次遇到 .py 源时从内置镜像下载 python-3.11.6-embed 并解压第三方库到此处，
+    * 首次遇到 .py 源时下载并校验嵌入式 Python，再解压第三方库到此处，
    * 联网即可用、离线降级为 PY_UNSUPPORTED。缺省未配置则 .py 源降级。
    */
   pyRuntimeDir?: string;
+  /** Synthetic archives in tests use their own digest. Production callers must omit this. */
+  pythonEmbedArchiveSha256?: string;
   /**
    * ★ 2026-09-26：**ARM 原生桥**（unidbg）运行时按需下载落盘目录（需可写；安装版建议 userData）。
    *   蜘蛛 jar 内含 ARM/AArch64 `.so`（摸鱼/fty 等加固壳）时，首次调用会下载 unidbg 运行期
@@ -250,6 +256,7 @@ export class JarSpiderBridge {
   private readonly callTimeoutMs: number;
   private readonly shellShimClasses?: string;
   private readonly pyRuntimeDir?: string;
+  private readonly pythonEmbedArchiveSha256: string;
   /** ★ ARM 原生桥运行时目录（见 JarBridgeOptions.nativeRuntimeDir） */
   private readonly nativeRuntimeDir?: string;
   /** ★ 网络代理注入点（宿主提供；空 = 不走代理） */
@@ -329,6 +336,7 @@ export class JarSpiderBridge {
     this.callTimeoutMs = opts.callTimeoutMs ?? 20000;
     this.shellShimClasses = opts.shellShimClasses;
     this.pyRuntimeDir = opts.pyRuntimeDir;
+    this.pythonEmbedArchiveSha256 = opts.pythonEmbedArchiveSha256 ?? PYTHON_RUNTIME_EMBED_SHA256;
     this.nativeRuntimeDir = opts.nativeRuntimeDir;
     this.proxyProvider = opts.proxyProvider;
     this.totalMemBytes = opts.totalMemBytes ?? totalmem();
@@ -1247,7 +1255,7 @@ export class JarSpiderBridge {
     if (!this.pyRuntimeReady()) return 0;
     this.placeRunnerFiles(dir);
     const serveArgv = [runner, '-serve', pyPath, clsName];
-    const env = { PYTHONIOENCODING: 'utf-8', ...(this.proxyProvider?.().env ?? {}),
+    const env = { PYTHONIOENCODING: 'utf-8', ...this.proxyProvider?.().env,
       ...(siteKey ? { WINBOX_PY_PROXY: `${LOCAL_PROXY_BASE}/proxy?do=py&key=${encodeURIComponent(siteKey)}` } : {}) };
     const key = servePoolKey(pyExe, serveArgv, env);
     return this.pool.warm(key, { exe: pyExe, serveArgv, env, key }, count, { className: clsName, method: WARM_METHOD, args: [ext] });
@@ -1574,7 +1582,7 @@ export class JarSpiderBridge {
     const pyExe = join(dir, 'python.exe');
     const runner = join(dir, 'runner.py');
     const argv = [runner, pyPath, clsName, method, ...args];
-    const pyEnv = { PYTHONIOENCODING: 'utf-8', ...(this.proxyProvider?.().env ?? {}),
+    const pyEnv = { PYTHONIOENCODING: 'utf-8', ...this.proxyProvider?.().env,
       ...(siteKey ? { WINBOX_PY_PROXY: `${LOCAL_PROXY_BASE}/proxy?do=py&key=${encodeURIComponent(siteKey)}` } : {}) };
     // ★ 进程池：常驻 Python（-serve）跨请求复用（服务端循环；env 带 PYTHONIOENCODING）
     //   语义同 JVM：仅传输层失败回退一次性，空结果是合法结果。
@@ -1613,8 +1621,8 @@ export class JarSpiderBridge {
     });
   }
 
-  /** python 运行时版本目录（main 用 3.11；win7-legacy 同步时换 3.8.x —— 3.11.2+ 弃 Win7） */
-  private static readonly PY_VER = '3.11.6';
+  /** Python runtime directory used by the bundled bridge. */
+  private static readonly PY_VER = PYTHON_RUNTIME_VERSION;
   /**
    * ★ 2026-09-26 原生桥运行期：unidbg（Windows x64 上模拟 AArch64/ARM32）+ ASM（改写字节码）。
    *
@@ -1644,11 +1652,11 @@ export class JarSpiderBridge {
     { file: 'commons-io-2.21.0.jar', path: 'commons-io/commons-io/2.21.0/commons-io-2.21.0.jar' },
     { file: 'fastjson-1.2.83.jar', path: 'com/alibaba/fastjson/1.2.83/fastjson-1.2.83.jar' },
     { file: 'apk-parser-2.6.10.jar', path: 'net/dongliu/apk-parser/2.6.10/apk-parser-2.6.10.jar' },
-    { file: 'jna-5.10.0.jar', path: 'net/java/dev/jna/jna/5.10.0/jna-5.10.0.jar' },
-    { file: 'native-lib-loader-2.3.5.jar', path: 'org/scijava/native-lib-loader/2.3.5/native-lib-loader-2.3.5.jar' },
-    { file: 'slf4j-api-2.0.16.jar', path: 'org/slf4j/slf4j-api/2.0.16/slf4j-api-2.0.16.jar' },
-    { file: 'slf4j-simple-2.0.16.jar', path: 'org/slf4j/slf4j-simple/2.0.16/slf4j-simple-2.0.16.jar' },
-    { file: 'asm-9.7.jar', path: 'org/ow2/asm/asm/9.7/asm-9.7.jar' },
+    { file: 'jna-5.19.1.jar', path: 'net/java/dev/jna/jna/5.19.1/jna-5.19.1.jar' },
+    { file: 'native-lib-loader-2.5.0.jar', path: 'org/scijava/native-lib-loader/2.5.0/native-lib-loader-2.5.0.jar' },
+    { file: 'slf4j-api-2.0.20.jar', path: 'org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar' },
+    { file: 'slf4j-simple-2.0.20.jar', path: 'org/slf4j/slf4j-simple/2.0.20/slf4j-simple-2.0.20.jar' },
+    { file: 'asm-9.11.jar', path: 'org/ow2/asm/asm/9.11/asm-9.11.jar' },
   ];
   /** Maven 镜像（按序回退；国内优先，最后官方源） */
   private static readonly MAVEN_MIRRORS = [
@@ -1664,7 +1672,7 @@ export class JarSpiderBridge {
     `https://www.python.org/ftp/python/${JarSpiderBridge.PY_VER}/python-${JarSpiderBridge.PY_VER}-embed-amd64.zip`,
   ];
   /**
-   * 第三方库 wheel（win_amd64，cp311）。lxml 为 C 扩展 wheel（已静态捆绑 libxml2 .pyd）；requests 族纯 py。
+   * Third-party wheels pinned for CPython 3.15 on Windows x64.
    *
    * ★ 2026-09-30（用户报「部分 py 蜘蛛报 ImportError 第三方库缺失」）：按**实测**补齐 —— 扫描用户
    *   本地包 211 个 py 蜘蛛的 import，缺失最多的是 Crypto(51)/bs4(47)/pyquery(26)，其后
@@ -1677,27 +1685,27 @@ export class JarSpiderBridge {
    *   新增项一律 required:false：单库失败不影响纯 py 源，只在日志留痕。
    */
   private static readonly PY_WHEELS: Array<{ name: string; pkg?: string; file: string; platform?: string; required: boolean }> = [
-    { name: 'requests', file: 'requests-2.31.0-py3-none-any.whl', platform: 'py3-none-any', required: true },
-    { name: 'urllib3', file: 'urllib3-1.26.18-py2.py3-none-any.whl', platform: 'py2.py3-none-any', required: true },
+    { name: 'requests', file: 'requests-2.34.2-py3-none-any.whl', platform: 'py3-none-any', required: true },
+    { name: 'urllib3', file: 'urllib3-2.8.0-py3-none-any.whl', platform: 'py3-none-any', required: true },
     { name: 'certifi', file: 'certifi-2026.7.22-py3-none-any.whl', platform: 'py3-none-any', required: true },
-    { name: 'charset_normalizer', file: 'charset_normalizer-3.2.0-py3-none-any.whl', platform: 'py3-none-any', required: true },
-    { name: 'idna', file: 'idna-3.4-py3-none-any.whl', platform: 'py3-none-any', required: true },
-    { name: 'lxml', file: 'lxml-4.9.2-cp311-cp311-win_amd64.whl', platform: 'cp311-cp311-win_amd64', required: false },
+    { name: 'charset_normalizer', file: 'charset_normalizer-3.5.2-py3-none-any.whl', platform: 'py3-none-any', required: true },
+    { name: 'idna', file: 'idna-3.20-py3-none-any.whl', platform: 'py3-none-any', required: true },
+    { name: 'lxml', file: 'lxml-6.1.3-cp315-cp315-win_amd64.whl', platform: 'cp315-cp315-win_amd64', required: false },
     // ---- ★ 2026-09-30 新增（实测缺得最多的几族）----
-    { name: 'Crypto', pkg: 'pycryptodome', file: 'pycryptodome-3.19.1-cp35-abi3-win_amd64.whl', platform: 'cp35-abi3-win_amd64', required: false },
-    { name: 'bs4', pkg: 'beautifulsoup4', file: 'beautifulsoup4-4.12.3-py3-none-any.whl', platform: 'py3-none-any', required: false },
-    { name: 'soupsieve', file: 'soupsieve-2.5-py3-none-any.whl', platform: 'py3-none-any', required: false },
-    { name: 'pyquery', file: 'pyquery-2.0.0-py3-none-any.whl', platform: 'py3-none-any', required: false },
-    { name: 'cssselect', file: 'cssselect-1.2.0-py2.py3-none-any.whl', platform: 'py2.py3-none-any', required: false },
-    { name: 'PIL', pkg: 'Pillow', file: 'pillow-10.2.0-cp311-cp311-win_amd64.whl', platform: 'cp311-cp311-win_amd64', required: false },
-    { name: 'cryptography', file: 'cryptography-41.0.7-cp37-abi3-win_amd64.whl', platform: 'cp37-abi3-win_amd64', required: false },
-    { name: 'chardet', file: 'chardet-5.2.0-py3-none-any.whl', platform: 'py3-none-any', required: false },
+    { name: 'Crypto', pkg: 'pycryptodome', file: 'pycryptodome-4.0.0-cp39-abi3-win_amd64.whl', platform: 'cp39-abi3-win_amd64', required: false },
+    { name: 'bs4', pkg: 'beautifulsoup4', file: 'beautifulsoup4-4.15.0-py3-none-any.whl', platform: 'py3-none-any', required: false },
+    { name: 'soupsieve', file: 'soupsieve-3.0.3-py3-none-any.whl', platform: 'py3-none-any', required: false },
+    { name: 'pyquery', file: 'pyquery-2.1.0-py3-none-any.whl', platform: 'py3-none-any', required: false },
+    { name: 'cssselect', file: 'cssselect-1.6.0-py3-none-any.whl', platform: 'py3-none-any', required: false },
+    { name: 'PIL', pkg: 'Pillow', file: 'pillow-12.3.0-cp315-cp315-win_amd64.whl', platform: 'cp315-cp315-win_amd64', required: false },
+    { name: 'cryptography', file: 'cryptography-50.0.2-cp39-abi3-win_amd64.whl', platform: 'cp39-abi3-win_amd64', required: false },
+    { name: 'chardet', file: 'chardet-7.6.0-py3-none-any.whl', platform: 'py3-none-any', required: false },
     { name: 'cloudscraper', file: 'cloudscraper-1.2.71-py2.py3-none-any.whl', platform: 'py2.py3-none-any', required: false },
     { name: 'requests_toolbelt', pkg: 'requests-toolbelt', file: 'requests_toolbelt-1.0.0-py2.py3-none-any.whl', platform: 'py2.py3-none-any', required: false },
-    { name: 'pyparsing', file: 'pyparsing-3.1.1-py3-none-any.whl', platform: 'py3-none-any', required: false },
-    { name: 'curl_cffi', file: 'curl_cffi-0.7.4-cp38-abi3-win_amd64.whl', platform: 'cp38-abi3-win_amd64', required: false },
-    { name: 'cffi', file: 'cffi-1.16.0-cp311-cp311-win_amd64.whl', platform: 'cp311-cp311-win_amd64', required: false },
-    { name: 'pycparser', file: 'pycparser-2.21-py2.py3-none-any.whl', platform: 'py2.py3-none-any', required: false },
+    { name: 'pyparsing', file: 'pyparsing-3.3.3-py3-none-any.whl', platform: 'py3-none-any', required: false },
+    { name: 'curl_cffi', file: 'curl_cffi-0.16.3-cp310-abi3-win_amd64.whl', platform: 'cp310-abi3-win_amd64', required: false },
+    { name: 'cffi', file: 'cffi-2.1.1-cp315-cp315-win_amd64.whl', platform: 'cp315-cp315-win_amd64', required: false },
+    { name: 'pycparser', file: 'pycparser-3.11-py3-none-any.whl', platform: 'py3-none-any', required: false },
   ];
   /** PyPI simple 镜像根（回退到带 `simple/` 的路径，由其索引解析 wheel 真实地址） */
   private static readonly PY_WHEEL_SIMPLE = [
@@ -1707,7 +1715,7 @@ export class JarSpiderBridge {
 
   /**
    * ★ 2026-09-24 后台预热嵌入式 Python 运行时（不阻塞、幂等）：
-   * 由 SpiderHost 在配置就绪/清缓存后调用 —— 把「11MB embed 下载 + 解压 + wheel 安装」提前到
+    * 由 SpiderHost 在配置就绪/清缓存后调用 —— 把「13MB embed 下载 + 解压 + wheel 安装」提前到
    * 用户第一次进 .py 源之前完成，首次加载只剩「spawn 进程 + 蜘蛛 init」。
    * 失败静默（首次正常调用时会重试并上屏真实原因）。
    */
@@ -1742,10 +1750,15 @@ export class JarSpiderBridge {
     let lastErr = '';
     for (const url of JarSpiderBridge.PYTHON_EMBED_URLS) {
       try {
-        logger?.i?.(`python: 正在准备嵌入式 Python 运行时（${JarSpiderBridge.PY_VER} embed 约 11MB + 依赖安装；配置就绪后会后台预热）…`);
+        logger?.i?.(`python: 正在准备嵌入式 Python 运行时（${JarSpiderBridge.PY_VER} embed 约 13MB + 依赖安装；配置就绪后会后台预热）…`);
         const res = await this.host!.http.request({ url, method: 'get', timeoutMs: 180000, buffer: 2 });
         const buf = Buffer.from(Array.isArray(res.content) ? res.content as unknown as number[] : Buffer.from(String(res.content), 'base64'));
         if (buf.length < 1024 * 1024) { lastErr = `下载内容过小(${buf.length}B)`; continue; }
+        const digest = createHash('sha256').update(buf).digest('hex');
+        if (digest !== this.pythonEmbedArchiveSha256.toLowerCase()) {
+          lastErr = `Python embed SHA-256 校验失败（${digest}）`;
+          continue;
+        }
         mkdirSync(dir, { recursive: true });
         this.unpackZipTo(buf, dir); // embed zip 标准 deflate，readZipEntries 解压（跳过目录条目）
         if (!existsSync(pyExe)) { lastErr = '下载内容缺少 python.exe（镜像可能返回错误页）'; continue; }
@@ -2122,7 +2135,7 @@ export class JarSpiderBridge {
       const child = spawn(exe, argv, {
         windowsHide: true,
         timeout: timeoutMs ?? this.callTimeoutMs,
-        env: { ...process.env, ...proxyEnv, ...(env || {}) },
+        env: { ...process.env, ...proxyEnv, ...env },
       });
       let out = '';
       let err = '';
@@ -2165,7 +2178,7 @@ export class JarSpiderBridge {
           //   标签承接 PythonRunner 的 .py 错误 —— SyntaxError / ImportError 等。）
           const raw = runnerErr.replace('[SpiderRunner.ERROR]', '').trim();
           const abiMismatch = /Can't load this \.dll|machine code=0x[0-9a-f]+|wrong ELF class|not a valid Win32 application/i.test(err);
-          const androidShell = /DexNative|UnsatisfiedLinkError|dalvik[\/.]system[\/.]/.test(err);
+          const androidShell = /DexNative|UnsatisfiedLinkError|dalvik[/.]system[/.]/.test(err);
           this.lastSpiderReason = abiMismatch
             ? '该源依赖 ARM 原生库（.so），与桌面 x64 架构不兼容，JVM 无法加载 —— 请更换其他配置源'
             : androidShell
@@ -2421,7 +2434,7 @@ export function translateSpiderLog(log: string): string {
     //   旧文案一律「请反馈」，且调用处只落人话、原始异常被吞（用户日志里拿不到符号名，无法定位该补哪个桩）。
     //   这里把符号名抠出来上屏；调用处已同步补「原始: …」落日志（见 call() 两处）。
     //   注意保留「桌面版缺失」「请反馈」措辞 —— 既有测试与用户认知都按这句对齐。
-    [/NoSuchMethodError: ?'?([\w.$<>\[\]]+)/,
+    [/NoSuchMethodError: ?'?([\w.$<>[\]]+)/,
       (m) => `桌面版缺失方法「${m[1]}」（属兼容性问题，请反馈）`],
     [/NoSuchFieldError: ?'?([\w.$]+)/,
       (m) => `桌面版缺失字段「${m[1]}」（属兼容性问题，请反馈）`],
@@ -2557,8 +2570,8 @@ export function stripJvmNoise(stderr: string): string {
       const t = l.trim();
       if (!t) return false;
       if (/were deprecated in JDK 13 and will likely be removed/.test(t)) return false;
-      if (/^java\.lang\.NoSuchMethodException:/.test(t)) return false;
-      if (/^java\.lang\.NoSuchFieldException:/.test(t)) return false;
+      if (t.startsWith('java.lang.NoSuchMethodException:')) return false;
+      if (t.startsWith('java.lang.NoSuchFieldException:')) return false;
       if (/^Picked up .*OPTIONS/.test(t)) return false;
       if (/^at (java\.base\/)?java\.lang\.Class\.(getMethod|getDeclaredMethod|getField|getDeclaredField)\b/.test(t)) return false;
       if (/^at (java\.base\/)?jdk\.internal\.reflect\./.test(t)) return false;

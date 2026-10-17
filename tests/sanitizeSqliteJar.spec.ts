@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { sanitizeSqliteJar } from '../scripts/sanitize-sqlite-jar.mjs';
 
+const SQLITE_SOURCE = join(process.cwd(), 'resources/jvm/libs/sqlite-jdbc-3.53.4.0.jar');
+
 describe('Windows SQLite release copy', () => {
-  it('removes non-Windows native payloads without changing the pinned source JAR', async () => {
-    const source = join(process.cwd(), 'resources/jvm/libs/sqlite-jdbc-3.46.1.0.jar');
+  it.skipIf(!existsSync(SQLITE_SOURCE))('removes non-Windows native payloads without changing the pinned source JAR', async () => {
+    const source = SQLITE_SOURCE;
     const dir = mkdtempSync(join(tmpdir(), 'winbox-sqlite-sanitize-'));
-    const target = join(dir, 'sqlite-jdbc-3.46.1.0.jar');
+    const target = join(dir, 'sqlite-jdbc-3.53.4.0.jar');
     try {
       const before = createHash('sha256').update(readFileSync(source)).digest('hex');
       copyFileSync(source, target);

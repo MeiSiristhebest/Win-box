@@ -2,7 +2,7 @@
 //   ① validatePluginManifest 的逐条约束（id / apiVersion / kind↔permissions / main /
 //      contributes 白名单与 kind 匹配 / 运行库许可清单 / 路径安全 / updateCheckUrl）；
 //   ② 分级与档位取值；
-//   ③ 交叉校验：skill 里的超分示例清单**必须**通过校验（保证 skill 与宿主契约一致）。
+//   ③ 交叉校验：仓库内的超分示例清单必须通过宿主契约校验。
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -120,10 +120,10 @@ describe('plugin 契约 — 分级与档位', () => {
   });
 });
 
-describe('plugin 契约 — 与 skill 示例交叉校验', () => {
-  it('skill 里的超分示例清单必须通过校验（skill ↔ 宿主契约一致）', () => {
+describe('plugin 契约 — 示例清单校验', () => {
+  it('仓库内的超分示例清单必须通过宿主契约校验', () => {
     const p = fileURLToPath(
-      new URL('../../.trae/skills/winbox-plugin/assets/example-super-resolution.plugin.json', import.meta.url),
+      new URL('./fixtures/example-super-resolution.plugin.json', import.meta.url),
     );
     const m = JSON.parse(readFileSync(p, 'utf-8')) as unknown;
     const r = validatePluginManifest(m);

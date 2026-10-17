@@ -50,13 +50,15 @@ export default function CascadeBar({
               <span className="muted" style={{ fontSize: 11 }}>{lv.pendingLabel || '加载中…'}</span>
             ) : (
               opts.map((o) => (
-                <span
+                <button
+                  type="button"
                   key={`${lv.key}:${o.id === '' ? '_all' : o.id}`}
                   className={`tag${chosen && lv.value === o.id ? ' active' : ''}`}
+                  aria-pressed={chosen && lv.value === o.id}
                   onClick={() => onPick(lv.key, o.id)}
                 >
                   {o.label}
-                </span>
+                </button>
               ))
             )}
           </div>

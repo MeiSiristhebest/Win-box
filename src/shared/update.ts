@@ -10,7 +10,7 @@
 //   ③ 加速前缀按顺序尝试，最后回退 **直连** github.com（加速站失效不致命）。
 
 /** 发布仓库（唯一来源） */
-export const UPDATE_REPO = 'yagami-hue/Win-box';
+export const UPDATE_REPO = 'MeiSiristhebest/Win-box';
 
 /** 最新 Release 接口（GitHub REST API 的 latest 端点） */
 export const UPDATE_RELEASES_API = `https://api.github.com/repos/${UPDATE_REPO}/releases/latest`;

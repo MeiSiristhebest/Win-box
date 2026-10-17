@@ -218,6 +218,8 @@ export async function fetchWithDisguise(
     tryAltProtocol?: boolean;
     /** 下载站点首次 403 种 Cookie：保持同一 UA，同址最多重试一次；默认关闭。 */
     retryWithCookie?: boolean;
+    /** 取消正在执行的当前尝试，并阻止后续重试或协议回退。 */
+    signal?: AbortSignal;
     onTry?: (t: TryInfo) => void;
   },
 ): Promise<DisguiseResult> {
@@ -233,6 +235,7 @@ export async function fetchWithDisguise(
   let stoppedByDeadline = false;
 
   const once = async (u: string, a: DisguiseAttempt, cookieRetry = false): Promise<{ buf: Buffer | null; retryCookie?: string; deadlineExceeded?: boolean }> => {
+    if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
     const headers: Record<string, string> = {};
     if (a.ua) headers['User-Agent'] = a.ua;
     if (a.referer) headers['Referer'] = a.referer;
@@ -247,6 +250,8 @@ export async function fetchWithDisguise(
       return { buf: null, deadlineExceeded: true };
     }
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const attemptController = new AbortController();
+    const signal = opts.signal ? AbortSignal.any([opts.signal, attemptController.signal]) : attemptController.signal;
     try {
       const request = http.request({
         url: u,
@@ -258,6 +263,7 @@ export async function fetchWithDisguise(
         redirect: cookieRetry ? 0 : 1,
         headers: Object.keys(headers).length ? headers : undefined,
         ...(a.doh ? { doh: a.doh } : {}),
+        signal,
       });
       const res = deadline
         ? await Promise.race([
@@ -266,6 +272,7 @@ export async function fetchWithDisguise(
             timer = setTimeout(() => {
               const error = new Error(`请求总超时（${opts.totalTimeoutMs}ms）`) as Error & { deadlineExceeded?: boolean };
               error.deadlineExceeded = true;
+              attemptController.abort(error);
               reject(error);
             }, remaining);
           }),
@@ -292,6 +299,7 @@ export async function fetchWithDisguise(
       const fresh = opts.retryWithCookie ? retryCookieFromHeaders(res.headers, u, res.finalUrl) : '';
       return { buf: null, ...(fresh ? { retryCookie: mergeRetryCookie(ck, fresh) } : {}) };
     } catch (e) {
+      if (opts.signal?.aborted) throw opts.signal.reason ?? e;
       const deadlineError = e as Error & { deadlineExceeded?: boolean };
       const exceeded = !!deadline && (Date.now() >= deadline || deadlineError.deadlineExceeded === true || /请求总超时/.test(deadlineError.message || ''));
       const info: TryInfo = {
@@ -310,6 +318,7 @@ export async function fetchWithDisguise(
 
   const refererAlt = siteRootOf(url);
   for (const a of attempts) {
+    if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
     // cookie 档但本次会话没捕获到 Cookie → 跳过（不要发一次没意义的空档）
     if (a.cookie === true && !capturedCookie) {
       tries.push({ label: a.label, url, ok: false, reason: '本会话未捕获到 Cookie，跳过该档' });
@@ -334,6 +343,7 @@ export async function fetchWithDisguise(
 
   // 全失败 → 换另一种协议同路径再试一次（仅 okhttp UA，控制时长）
   if (!stoppedByDeadline && opts.tryAltProtocol !== false) {
+    if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
     const alt = protocolAltUrl(url);
     if (alt) {
       const a: DisguiseAttempt = { label: 'okhttp UA（换 ' + (alt.startsWith('https') ? 'https' : 'http') + '）', ua: UA_OKHTTP, referer: refererAlt };

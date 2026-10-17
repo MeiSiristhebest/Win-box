@@ -1309,7 +1309,7 @@ function safeResponseHeader(name: string, raw: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   // 该展示头不是播放必要条件。只保留 ASCII（含 RFC5987 编码文件名），
   // 同时规避 Node 对 Content-Disposition 的特殊 Buffer 转换行为。
-  if (name === 'content-disposition' && /[^\x00-\x7f]/.test(value)) return undefined;
+  if (name === 'content-disposition' && [...value].some((character) => character.charCodeAt(0) > 0x7f)) return undefined;
   try {
     validateHeaderValue(name, value);
     return value;

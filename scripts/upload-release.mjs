@@ -28,7 +28,7 @@ if (args.some(a => a !== '--dry-run')) {
 }
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const tag = `release${pkg.version}`;
-const repo = 'yagami-hue/Win-box';
+const repo = 'MeiSiristhebest/Win-box';
 const output = resolve(root, pkg.build.directories.output);
 // electron-builder normalizes numeric version components when it creates the
 // artifact name (for example, package version 1.21.01 becomes 1.21.1).

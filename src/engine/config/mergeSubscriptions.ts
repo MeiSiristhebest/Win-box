@@ -49,7 +49,7 @@ export function mergeSubscriptions(inputs: MergeInput[]): MergeOutcome {
   const dropped: MergeOutcome['dropped'] = [];
   let sourceTotal = 0;
 
-  const addSite = (s: SourceBean, from: string): void => {
+  const addSite = (s: SourceBean, _from: string): void => {
     sourceTotal++;
     const k = normKey(s);
     if (sitesByKey.has(k)) {

@@ -1,6 +1,6 @@
 // src/main/store/JsonStore.ts — 原子写 JSON 存储（防异常断电损坏）
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs';
+import { dirname } from 'node:path';
 import type { KVStore } from '../../shared/types';
 
 export class JsonStore implements KVStore {
@@ -52,12 +52,24 @@ export class JsonStore implements KVStore {
 
   flush(): void {
     try {
-      const tmp = this.file + '.tmp';
+      this.flushStrict();
+    } catch {
+      // Existing best-effort stores must not make unrelated settings writes throw.
+    }
+  }
+
+  /** Flush synchronously and report write failures to transactional callers. */
+  flushStrict(): void {
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    const tmp = this.file + '.tmp';
+    try {
       mkdirSync(dirname(this.file), { recursive: true });
       writeFileSync(tmp, JSON.stringify(this.data, null, 2));
       renameSync(tmp, this.file); // 原子替换
-    } catch {
-      // ignore
+    } catch (error) {
+      try { rmSync(tmp, { force: true }); } catch { /* preserve the original write error */ }
+      throw error;
     }
   }
 

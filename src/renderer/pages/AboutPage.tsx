@@ -3,7 +3,7 @@
 import { MODIFIED_BUILD_DISCLAIMER } from '../lib/disclaimerText';
 
 /** 项目主页（源码 / 更新发布） */
-const GITHUB_URL = 'https://github.com/yagami-hue/Win-box';
+const GITHUB_URL = 'https://github.com/MeiSiristhebest/Win-box';
 
 function openExternal(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
@@ -71,9 +71,9 @@ export default function AboutPage() {
         </section>
 
         <section className="about-sec">
-          <h3>七、开源主页</h3>
+          <h3>七、源码与问题反馈</h3>
           <p>
-            源码、更新与问题反馈见 GitHub 主页。
+            源码、版本更新和问题反馈见 GitHub 主页。
           </p>
           <div className="about-links">
             <button className="about-link" onClick={() => openExternal(GITHUB_URL)} title={GITHUB_URL}>

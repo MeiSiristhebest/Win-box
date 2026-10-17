@@ -21,12 +21,19 @@ export function isSearchableSource(s: Pick<SourceBean, 'type' | 'searchable'>): 
 }
 
 export interface AggSearchInput {
+  profileId?: string;
+  profileName?: string;
   key: string;
   name: string;
   status: 'ok' | 'empty' | 'error';
   items?: VodItem[]; // status=ok 时的原始命中
   error?: string;
   ms?: number;
+}
+
+/** Stable identity for a source when result keys may repeat between profiles. */
+export function sourceIdentityKey(profileId: string | undefined, key: string): string {
+  return JSON.stringify([profileId ?? '', key]);
 }
 
 /**
@@ -45,10 +52,19 @@ export function mergeSearchResults(inputs: AggSearchInput[]): SearchAllReport {
   let totalRaw = 0;
 
   const dedup = new Map<string, AggSearchInput>();
-  for (const inp of inputs) dedup.set(inp.key, inp);
+  for (const inp of inputs) dedup.set(sourceIdentityKey(inp.profileId, inp.key), inp);
 
   for (const inp of dedup.values()) {
-    const ps: SearchPerSource = { key: inp.key, name: inp.name, status: inp.status, error: inp.error, count: inp.items?.length ?? 0, ms: inp.ms };
+    const ps: SearchPerSource = {
+      ...(inp.profileId ? { profileId: inp.profileId } : {}),
+      ...(inp.profileName ? { profileName: inp.profileName } : {}),
+      key: inp.key,
+      name: inp.name,
+      status: inp.status,
+      error: inp.error,
+      count: inp.items?.length ?? 0,
+      ms: inp.ms,
+    };
     perSource.push(ps);
     if (inp.status === 'error') {
       failedSources++;
@@ -60,9 +76,55 @@ export function mergeSearchResults(inputs: AggSearchInput[]): SearchAllReport {
 
     for (const it of srcItems) {
       if (!(it.name || '').trim()) continue; // 仅过滤空名条目，不去重
-      items.push({ ...it, sourceKey: inp.key, sourceName: inp.name, sameFromOtherSources: 0 });
+      items.push({
+        ...it,
+        sourceKey: inp.key,
+        sourceName: inp.name,
+        ...(inp.profileId ? { sourceRef: { profileId: inp.profileId, key: inp.key } } : {}),
+        ...(inp.profileName ? { sourceProfileName: inp.profileName } : {}),
+        sameFromOtherSources: 0,
+      });
     }
   }
 
   return { items, perSource, hitSources, failedSources, totalRaw };
+}
+
+/** Merge independently cached profile reports without collapsing identical source keys. */
+export function mergeSearchReports(
+  reports: Array<{ profileId: string; profileName: string; report: SearchAllReport }>,
+): SearchAllReport {
+  const inputs: AggSearchInput[] = [];
+  let pendingSources = 0;
+  for (const { profileId, profileName, report } of reports) {
+    pendingSources += report.pendingSources ?? 0;
+    const itemsBySource = new Map<string, VodItem[]>();
+    for (const item of report.items) {
+      const sourceRef = item.sourceRef ?? { profileId, key: item.sourceKey };
+      const identity = sourceIdentityKey(sourceRef.profileId, sourceRef.key);
+      const bucket = itemsBySource.get(identity) ?? [];
+      bucket.push(item);
+      itemsBySource.set(identity, bucket);
+    }
+    for (const source of report.perSource) {
+      const sourceProfileId = source.profileId ?? profileId;
+      inputs.push({
+        profileId: sourceProfileId,
+        profileName,
+        key: source.key,
+        name: source.name,
+        status: source.status,
+        items: itemsBySource.get(sourceIdentityKey(sourceProfileId, source.key)) ?? [],
+        error: source.error,
+        ms: source.ms,
+      });
+    }
+  }
+  const merged = mergeSearchResults(inputs);
+  if (pendingSources > 0) merged.pendingSources = pendingSources;
+  const cachedAt = reports.map(({ report }) => report.cachedAt);
+  if (cachedAt.length > 0 && cachedAt.every((at): at is number => typeof at === 'number')) {
+    merged.cachedAt = Math.min(...cachedAt);
+  }
+  return merged;
 }

@@ -56,8 +56,8 @@ function seedNativeRuntime(root: string): void {
     'unicorn-1.0.15.jar',
     'capstone-3.1.8.jar', 'keystone-0.9.7.jar', 'demumble-1.0.4.jar', 'commons-codec-1.21.0.jar',
     'commons-collections4-4.5.0.jar', 'commons-io-2.21.0.jar', 'fastjson-1.2.83.jar', 'apk-parser-2.6.10.jar',
-    'jna-5.10.0.jar', 'native-lib-loader-2.3.5.jar', 'slf4j-api-2.0.16.jar', 'slf4j-simple-2.0.16.jar',
-    'asm-9.7.jar',
+    'jna-5.19.1.jar', 'native-lib-loader-2.5.0.jar', 'slf4j-api-2.0.20.jar', 'slf4j-simple-2.0.20.jar',
+    'asm-9.11.jar',
   ];
   for (const n of names) writeFileSync(join(ver, n), Buffer.alloc(5000));
 }
@@ -120,7 +120,7 @@ describe('JarSpiderBridge.call — ARM 原生桥接入', () => {
     expect(cp).toContain(join(rt, 'unidbg-0.9.9', 'unidbg-android-0.9.9.jar'));
     // 2026-09-28 FishGuard 壳性能专项：dynarmic 是桥的默认后端，运行时必须带上它（否则回退 Unicorn2 → 慢 15~20 倍）
     expect(cp).toContain(join(rt, 'unidbg-0.9.9', 'unidbg-dynarmic-0.9.9.jar'));
-    expect(cp).toContain(join(rt, 'unidbg-0.9.9', 'asm-9.7.jar'));
+    expect(cp).toContain(join(rt, 'unidbg-0.9.9', 'asm-9.11.jar'));
   });
 
   it('目录已配置但 jar 无 .so → 不注入（保持普通源行为）', async () => {

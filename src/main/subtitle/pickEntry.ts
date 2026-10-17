@@ -52,10 +52,10 @@ export function epOf(name: string): string {
 function isNoise(name: string, size: number): boolean {
   const p = (name || '').replace(/\\/g, '/');
   if (!p.trim()) return true;
-  if (/\/$/.test(p)) return true; // 目录项
+  if (p.endsWith('/')) return true; // 目录项
   if (/(^|\/)__MACOSX\//i.test(p)) return true;
   if (/(^|\/)\./.test(p)) return true; // 隐藏文件/目录
-  if (/\/$/.test(p)) return true;
+  if (p.endsWith('/')) return true;
   if (NOISE_RE.test(p)) return true;
   if (extOf(p) === 'txt' && size > 0 && size > 200 * 1024) return true; // 大 txt 基本是站点说明
   return false;

@@ -199,7 +199,7 @@ describe('百度签名分享免转存（不触网）', () => {
   const cookie = 'BDUSS=test-user; BDCLND=old';
   const dlink = 'https://cdn.test/shared.mp4';
   function directNetwork(opts: { errno?: number; fid?: string; status?: number; range?: string; type?: string; uid?: string; throwAt?: string } = {}) {
-    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const fetch = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
       const u = new URL(String(input));
       if (u.pathname === opts.throwAt) throw Error('secret URL must not be logged');
       if (u.pathname === '/userx/v1/info/get') return new Response(JSON.stringify({ errno: 0, data: { fields: { uid: opts.uid ?? '123456' } } }));
@@ -228,12 +228,15 @@ describe('百度签名分享免转存（不触网）', () => {
     expect(r.path).toBeUndefined();
     expect(fetch).toHaveBeenCalledTimes(3);
     const [shareUrl, shareInit] = fetch.mock.calls[1];
+    if (!shareInit) throw new Error('Share request options were not recorded');
     const params = new URL(String(shareUrl)).searchParams;
     expect(params.get('fid')).toBe(file.fsid);
     expect(params.get('sekey')).toBe('key+with/slash=');
     expect(params.get('rand')).toBe(baiduShareRand('test-user', '123456', params.get('time')!));
-    expect((shareInit?.headers as Record<string, string>).Cookie).toContain('BDCLND=key%2Bwith%2Fslash%3D');
-    expect((fetch.mock.calls[2][1]?.headers as Record<string, string>).Range).toBe('bytes=0-0');
+    expect((shareInit.headers as Record<string, string>).Cookie).toContain('BDCLND=key%2Bwith%2Fslash%3D');
+    const rangeCall = fetch.mock.calls[2];
+    if (!rangeCall?.[1]) throw new Error('Range validation request options were not recorded');
+    expect((rangeCall[1].headers as Record<string, string>).Range).toBe('bytes=0-0');
     expect(fetch.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
   });
 

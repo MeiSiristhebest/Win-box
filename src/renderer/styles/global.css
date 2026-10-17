@@ -1,3 +1,6 @@
+@layer reset, legacy, tokens, base, components, layouts, utilities;
+
+@layer legacy {
 /* Win-Box — Mica 风格设计令牌。
    这里只有**深色基底**（三套皮肤各自在自己的文件里覆盖令牌）：
    网飝 netflix.css / 哔哔 bilibili.css / 大果 apple.css —— ★ 2026-09-30 起经典深/浅主题已删除。
@@ -63,6 +66,35 @@ button:active { transform: translateY(1px); }
 button.primary { background: linear-gradient(135deg, #4f86ff, #6a5cff); border-color: transparent; color: #fff; }
 button.primary:hover { box-shadow: 0 4px 16px rgba(90, 110, 255, .35); }
 button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.app-dialog {
+  width: min(460px, 100%); max-height: min(80vh, 640px); overflow: auto; padding: 20px;
+  color: var(--text-primary); background: var(--surface-elevated); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-container); box-shadow: 0 18px 60px rgba(0, 0, 0, .48);
+}
+.app-dialog-heading { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.app-dialog-heading h2 { margin: 0; font-size: 16px; font-weight: 650; }
+.app-dialog-mark {
+  display: inline-flex; width: 28px; height: 28px; flex: none; align-items: center; justify-content: center;
+  color: var(--color-accent); background: var(--accent-soft); border-radius: 50%; font-size: 14px; font-weight: 700;
+}
+.app-dialog-message { color: var(--text-secondary); line-height: 1.7; white-space: pre-line; overflow-wrap: anywhere; }
+.app-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.app-dialog-form { width: min(460px, calc(100vw - 40px)); padding: 20px; }
+.app-dialog-input { width: 100%; box-sizing: border-box; margin-bottom: 14px; }
+.app-dialog-error { margin-bottom: 12px; }
+.app-dialog-accept.primary { color: var(--on-accent); }
+.app-dialog-accept.danger { color: var(--on-danger); background: var(--color-danger); border-color: transparent; }
+.app-dialog-accept.danger:hover { box-shadow: 0 4px 16px color-mix(in srgb, var(--danger) 35%, transparent); }
+.cfg-tab-header {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.cfg-tab-control { border: 0; flex: 1 1 600px; margin: 0; min-width: 0; }
+.cfg-panel:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .linkbtn { background: none; border: none; color: var(--accent); padding: 1px 5px; font-size: 11px; border-radius: 4px; }
 .linkbtn:hover { background: var(--accent-soft); color: var(--accent); box-shadow: none; }
 .linkbtn.danger { color: var(--danger); }
@@ -92,6 +124,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .quick-picks { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .quick-picks .tag { cursor: pointer; flex: 0 0 auto; }
 .quick-picks .tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ui-action { appearance: none; border: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
 .hist-group { margin-bottom: 24px; }
 .hist-group h3 { margin: 0 0 12px; font-size: 15px; }
 .hist-group h3 .muted { font-size: 12px; font-weight: 400; }
@@ -138,9 +171,11 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   color: var(--text-dim); transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard); }
 .nav-item:hover { background: var(--bg-elev); color: var(--text); }
 .nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.nav-item.ui-action { width: 100%; }
 .nav-ico { width: 20px; text-align: center; font-size: 15px; }
 .side-foot { margin-top: auto; padding: 12px; font-size: 11px; color: #4c5563; line-height: 1.5; }
 .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.shell-body { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
 /* ★ 2026-09-29 缺陷修复（用户报「点播页换源列表被封面遮挡」）：
    真因 = 层序。`.topbar` 被 backdrop-filter 提升为**堆叠上下文**，但它 position:static、z-index:auto
    ⇒ 与 `.card-media`（`position: relative`、z-index:auto）**同属「定位元素/堆叠上下文（z-index:auto）」绘制层**，
@@ -179,7 +214,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 /* ---- ★ 2026-09-24：换源（手机 TVBox 式：源名纯文字，长按/右键弹列表）与顶栏搜索面板 ---- */
 .srcpick { position: relative; flex: 0 0 auto; }
 .srcpick-name {
-  display: inline-flex; align-items: center; gap: 6px; cursor: default; user-select: none;
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;
   padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-elev);
   color: var(--text); font-size: 12px; white-space: nowrap; max-width: 220px;
 }
@@ -212,7 +247,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   border-right: 1px solid var(--border-soft);
 }
 .srcpick-col-src { flex: 1 1 auto; min-width: 0; overflow-y: auto; }
-.srcpick-item { padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: default; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srcpick-item { width: 100%; padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .srcpick-item:hover { background: var(--accent-soft, rgba(120,170,255,.12)); }
 .srcpick-item.active { color: var(--accent); font-weight: 650; }
 /* ★ 2026-10-09（用户要求「删除换源下拉里调源位置的功能，不美观」）：源行回到「纯源名」——
@@ -223,7 +258,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
 .srcpick-sub.cur::before { content: '● '; color: var(--accent-2); font-size: 8px; vertical-align: 2px; }
 .srcpick-sub.active { background: var(--accent-soft, rgba(120,170,255,.12)); font-weight: 600; }
 /* 顶栏搜索按钮与面板 */
-.sp-btn { cursor: default; }
+.sp-btn { cursor: pointer; }
 .sp-panel {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 70; width: 520px; padding: 12px;
   background: var(--bg-glass, rgba(18,20,26,.94)); border: 1px solid var(--border); border-radius: 10px;
@@ -255,7 +290,7 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: var(--a
   border: 1px dashed var(--border); border-radius: 6px;
 }
 .sp-clear:hover { color: var(--danger, #ff6b6b); border-color: var(--danger, #ff6b6b); }
-.sp-rank-item { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: 12.5px; cursor: default; }
+.sp-rank-item { display: flex; width: 100%; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: 12.5px; cursor: pointer; text-align: left; }
 .sp-rank-item:hover { background: var(--accent-soft, rgba(120,170,255,.12)); }
 .sp-rank-no {
   flex: 0 0 18px; text-align: center; font-size: 11px; color: var(--text-dim); line-height: 16px;
@@ -268,6 +303,30 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
 /* ---- 通用组件 ---- */
 .card { background: linear-gradient(180deg, var(--bg-elev), var(--bg1)); border: 1px solid var(--border-soft);
   border-radius: var(--radius); box-shadow: var(--shadow); }
+.app-dialog {
+  position: fixed; inset: 0; margin: auto; width: min(460px, calc(100vw - 32px)); max-width: none;
+  max-height: min(82vh, 640px); overflow: auto; padding: 22px; color: var(--text-primary);
+  background: linear-gradient(180deg, var(--surface-elevated), var(--surface-raised)); border: 1px solid var(--border-subtle);
+}
+.disclaimer-dialog { width: min(520px, calc(100vw - 32px)); max-height: min(80vh, 640px); }
+.drive-bind-dialog { width: min(520px, calc(100vw - 32px)); max-height: 90vh; padding: 18px; background: var(--bg); box-shadow: 0 18px 60px rgba(0, 0, 0, .5); }
+.disclaimer-dialog h2 { margin: 0 0 6px; font-size: var(--fs-xl); }
+.disclaimer-lead { margin-bottom: 12px; font-size: var(--fs-sm); }
+.disclaimer-copy { font-size: var(--fs-md); line-height: 1.8; }
+.disclaimer-copy p { margin: 0 0 8px; }
+.disclaimer-copy p:last-child { margin-bottom: 0; }
+.disclaimer-actions { justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.disclaimer-actions button { flex: 0 0 auto; }
+.app-dialog::backdrop { background: rgba(0, 0, 0, .62); backdrop-filter: blur(4px); }
+.app-dialog-heading { display: flex; align-items: center; gap: 10px; }
+.app-dialog-heading h2 { margin: 0; font-size: var(--fs-xl); }
+.app-dialog-mark {
+  width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center;
+  border-radius: 50%; color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent);
+  font-weight: 700;
+}
+.app-dialog-message { margin: 16px 0 22px; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; }
+.app-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .banner { background: rgba(255,194,94,.08); border: 1px solid rgba(255,194,94,.25); border-radius: var(--radius-sm);
   padding: 9px 12px; margin: 8px 0; color: var(--warn); font-size: 12px; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -284,17 +343,6 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
 
 /* Theme selection uses compact buttons; the setting should stay scannable. */
 .theme-switcher { display: flex; gap: 6px; flex-wrap: wrap; }
-
-/* The Apple hero dots are buttons for keyboard access, not browser-default buttons. */
-:root[data-theme='apple'] .ap-dot { display: block; margin: 0; padding: 0; border: 0; box-shadow: none; }
-
-/* Light themes must keep elevated popovers opaque enough for text and media beneath them. */
-:root[data-theme='bilibili'] .sp-panel,
-:root[data-theme='bilibili'] .srcpick-pop,
-:root[data-theme='apple'] .sp-panel,
-:root[data-theme='apple'] .srcpick-pop,
-:root[data-theme='douban'] .sp-panel,
-:root[data-theme='douban'] .srcpick-pop { background: var(--bg-elev2); }
 
 @media (max-width: 760px) {
   .sp-panel { width: min(520px, calc(100vw - 24px)); right: -6px; }
@@ -346,6 +394,7 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
 .list-item .li-name { flex: 1 1 auto; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .list-item .badge { position: static; margin-left: auto; flex: 0 0 auto; }
 .card-media { position: relative; overflow: visible; }
+.card-media-button { display: block; width: 100%; padding: 0; text-align: left; }
 .card-media .card { background: none; box-shadow: none; border: 1px solid var(--border-soft); border-radius: var(--radius); overflow: hidden;
   transition: transform var(--dur-state) var(--ease-spring), border-color var(--dur-state) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard); }
 .card-media:hover .card { transform: translateY(-3px); border-color: rgba(91,140,255,.6); box-shadow: 0 10px 28px rgba(0,0,0,.45); }
@@ -389,13 +438,13 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
    藏在 hover 里的按钮在触控/触控板场景基本发现不了。
    选择器写到 3 段 (0,3,0)，稳定压过上面 .card-media .badge 的绝对定位。 */
 .card-media .hist-corner {
-  position: absolute; top: 6px; right: 6px; z-index: 6;
+  position: absolute; top: 6px; right: 30px; z-index: 6;
   display: flex; align-items: center; gap: 5px;
 }
 /* 角标改为随 flex 流式排布（原 .card-media .badge 是绝对定位，会与 ✕ 重叠） */
 .card-media .hist-corner .badge { position: static; top: auto; right: auto; }
 .card-media .hist-del {
-  all: unset; cursor: pointer; flex: none;
+  all: unset; position: absolute; top: 6px; right: 6px; z-index: 7; cursor: pointer; flex: none;
   width: 20px; height: 20px; border-radius: 999px;
   display: inline-flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,.62); color: #dfe2ea;
@@ -404,6 +453,7 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
 }
 .card-media .hist-del:hover { background: #e5484d; color: #fff; border-color: #e5484d; transform: scale(1.06); }
 .card-media .hist-del:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.card-media .hist-card-action { display: block; width: 100%; padding: 0; text-align: left; }
 
 /* 单条移除后的撤销条（跨整宽，贴在内容区顶部） */
 .hist-undo {
@@ -503,6 +553,9 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
 .pwin-stage { flex: 1; min-height: 0; min-width: 0; display: flex; }
 .vp-stage { position: absolute; inset: 0; overflow: hidden; display: flex; align-items: center; justify-content: center;
   container-type: size; }
+.vp-stage-toggle { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0;
+  border-radius: 0; background: transparent; color: inherit; opacity: 0; cursor: pointer; }
+.vp-stage-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -4px; }
 .vp-ratio { width: 100%; height: 100%; min-height: 0; overflow: hidden; }
 .vp-stage video { width: 100%; height: 100%; object-fit: contain; }
 .vp-stage.fit-fill video { object-fit: fill; }
@@ -732,18 +785,30 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
 .vp-vpct { font-size: 11px; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* 竖向轨道：细条承载音量填充，自下而上 */
 .vp-vtrack {
-  position: relative; width: 6px; height: 92px; border-radius: 3px; cursor: pointer;
-  background: rgba(255, 255, 255, .16); touch-action: none;
+  appearance: none; writing-mode: vertical-lr; direction: rtl;
+  position: relative; width: 14px; height: 92px; margin: 0; padding: 0; border: 0;
+  border-radius: 7px; cursor: pointer; background: transparent; touch-action: none;
 }
 .vp-vtrack:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.vp-vfill {
-  position: absolute; left: 0; right: 0; bottom: 0; border-radius: 3px;
-  background: linear-gradient(180deg, var(--accent-2), var(--accent)); transition: height .1s linear;
+.vp-vtrack::-webkit-slider-runnable-track {
+  width: 6px; height: 100%; margin-inline: auto; border-radius: 3px;
+  background: linear-gradient(to top, var(--accent) 0, var(--accent) var(--volume), rgba(255, 255, 255, .16) var(--volume), rgba(255, 255, 255, .16) 100%);
 }
-.vp-vthumb {
-  position: absolute; left: 50%; transform: translate(-50%, 50%);
-  width: 14px; height: 14px; border-radius: 50%;
-  background: #fff; box-shadow: 0 0 6px rgba(0, 0, 0, .5); transition: bottom .1s linear;
+.vp-vtrack::-webkit-slider-thumb {
+  appearance: none; width: 14px; height: 14px; border: 0; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 6px rgba(0, 0, 0, .5);
+}
+.vp-vtrack::-moz-range-track {
+  width: 6px; height: 100%; border-radius: 3px;
+  background: rgba(255, 255, 255, .16);
+}
+.vp-vtrack::-moz-range-progress {
+  width: 6px; border-radius: 3px;
+  background: linear-gradient(to top, var(--accent), var(--accent-2));
+}
+.vp-vtrack::-moz-range-thumb {
+  width: 14px; height: 14px; border: 0; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 6px rgba(0, 0, 0, .5);
 }
 .vplayer video { width: 100%; height: 100%; object-fit: contain; outline: none; }
 /*
@@ -756,7 +821,7 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
 .vplayer.vfull { cursor: default; }
 .vplayer:fullscreen:not(.vui),
 .vplayer.vfull:not(.vui) { cursor: none; }
-/* ★ 2026-09-28（用户要求）：说明页（详细免责声明 + 开源/赞助入口） */
+/* 说明页（免责声明与项目主页） */
 /* ---- 说明页（免责声明）----
    ★ 2026-09-29（用户报「文本只占半边、还要下滑」）：① **整块居中**；② 宽屏**两列平铺**（左右都铺开、
    高度近乎减半，1080p 基本一屏放下）；③ 窄屏自动回单列，条款不被跨列断开。 */
@@ -781,11 +846,6 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
 :root[data-theme][data-theme] .titlebar .tb-btn:not(:hover):not(.tb-pin-on) { background: transparent; }
 /* Mouse focus is not a selected state. Preserve a visible ring only for keyboard navigation. */
 :root[data-theme][data-theme] button:focus:not(:focus-visible) { outline: none; }
-.about-support-dialog::backdrop { background: rgba(0,0,0,.55); backdrop-filter: blur(4px); }
-.app-confirm-dialog::backdrop { background: rgba(0,0,0,.55); backdrop-filter: blur(4px); }
-.about-support-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
-.about-support-header h3 { margin: 0; font-size: 16px; }
-.about-support-image { display: block; width: min(440px, calc(100vw - 62px), calc(100vh - 112px)); height: auto; border-radius: 8px; }
 
 /* ============================================================================
    ★★ 2026-10-16（用户要求）：播放器窗口**顶部标题栏** —— 去掉 38px 实心「边框」，改为
@@ -930,7 +990,7 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
 .dav-player { width: min(100%, calc(48vh * 16 / 9)); aspect-ratio: 16 / 9; display: flex; margin-bottom: 8px; }
 .dav-list { display: flex; flex-direction: column; }
 .dav-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--radius-sm);
-  cursor: pointer; font-size: 12.5px; border-bottom: 1px solid var(--border); }
+  width: 100%; cursor: pointer; font-size: 12.5px; border-bottom: 1px solid var(--border); }
 .dav-row:last-child { border-bottom: none; }
 .dav-row:hover { background: var(--bg-elev); }
 .dav-ico { flex: none; width: 18px; text-align: center; }
@@ -1195,4 +1255,23 @@ html[data-motion='off'] .vp-spin { animation: vspin 2.4s linear infinite !import
   .spot-stage { width: 128px; height: 192px; align-self: flex-end; }
   .spot-title { font-size: 30px; }
   .spot-dots { position: static; margin-top: 14px; }
+}
+}
+
+@layer tokens {
+  :root {
+    --surface: var(--bg0);
+    --surface-raised: var(--bg1);
+    --surface-elevated: var(--bg-elev);
+    --text-primary: var(--text);
+    --text-secondary: var(--text-dim);
+    --color-accent: var(--accent);
+    --on-accent: #fff;
+    --color-danger: var(--danger);
+    --on-danger: #111;
+    --border-subtle: var(--border-soft);
+    --backdrop: var(--bg-glass);
+    --radius-control: var(--radius-sm);
+    --radius-container: var(--radius);
+  }
 }

@@ -1,0 +1,13 @@
+.card {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-container);
+  color: var(--text-primary);
+  min-width: 0;
+  padding: 1rem;
+}
+
+.title {
+  font-size: 1rem;
+  margin: 0 0 0.875rem;
+}

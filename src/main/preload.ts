@@ -2,16 +2,31 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcResult } from '../shared/ipc-result';
 import { IPC } from '../shared/ipc-channels';
-import type { SiteConfig, ImportReport, SourceBean, SourceMoveDirection, SourceUpdatePatch, UserConfig, UserProfile, MetaHit, MetaExtra, DiscoverSection, DiscoverGenre, DiscoverGenrePage, MetaImages } from '../shared/types';
+import type { SiteConfig, ImportReport, SourceBean, SourceMoveDirection, SourceUpdatePatch, UserConfig, UserProfile, SubscriptionImportProgressEvent, SubscriptionRefreshResolution, MetaHit, MetaExtra, DiscoverSection, DiscoverGenre, DiscoverGenrePage, MetaImages } from '../shared/types';
 import type { SubtitleFetchResult } from '../shared/subtitle';
 import type { MetaSettings, MetaSettingsView, MetaSuggestion } from '../shared/meta';
+import type { UiPreferencesPatch, UiPreferencesSnapshot } from '../shared/uiPreferences';
 import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../shared/discover';
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<IpcResult<T>> =>
   ipcRenderer.invoke(channel, ...args);
 
 const api = {
-  system: { ping: () => invoke<string>(IPC.SYSTEM_PING), icon: () => invoke<string>(IPC.APP_ICON), setTheme: (t: string) => invoke<void>(IPC.THEME_SET, t), quit: () => invoke<void>(IPC.APP_QUIT), dataDir: () => invoke(IPC.SYSTEM_DATA_DIR), sessionId: () => invoke<string>(IPC.SYSTEM_SESSION_ID) },
+  system: {
+    ping: () => invoke<string>(IPC.SYSTEM_PING),
+    icon: () => invoke<string>(IPC.APP_ICON),
+    quit: () => invoke<void>(IPC.APP_QUIT),
+    dataDir: () => invoke(IPC.SYSTEM_DATA_DIR),
+    sessionId: () => invoke<string>(IPC.SYSTEM_SESSION_ID),
+    getUiPreferences: () => invoke<UiPreferencesSnapshot>(IPC.UI_PREFERENCES_GET),
+    initializeUiPreferences: (legacy: UiPreferencesPatch) => invoke<UiPreferencesSnapshot>(IPC.UI_PREFERENCES_INITIALIZE, legacy),
+    updateUiPreferences: (patch: UiPreferencesPatch) => invoke<UiPreferencesSnapshot>(IPC.UI_PREFERENCES_UPDATE, patch),
+    onUiPreferencesChanged: (cb: (snapshot: UiPreferencesSnapshot) => void) => {
+      const listener = (_event: unknown, snapshot: UiPreferencesSnapshot) => cb(snapshot);
+      ipcRenderer.on(IPC.UI_PREFERENCES_CHANGED, listener);
+      return () => ipcRenderer.removeListener(IPC.UI_PREFERENCES_CHANGED, listener);
+    },
+  },
   config: {
     import: (args: { url?: string; json?: string }) => invoke(IPC.CONFIG_IMPORT, args),
     listSites: () => invoke(IPC.CONFIG_LIST_SITES),
@@ -25,6 +40,29 @@ const api = {
     setActiveSource: (key: string) => invoke<void>(IPC.CFG_SET_ACTIVE_SOURCE, key),
     setActiveLive: (index: number) => invoke<void>(IPC.CFG_SET_ACTIVE_LIVE, index),
     importUrl: (url: string, name?: string) => invoke(IPC.CFG_IMPORT_URL, { url, name }),
+    startSubscriptionImport: (url: string, name?: string) =>
+      invoke<SubscriptionImportProgressEvent>(IPC.CFG_IMPORT_JOB_START, { url, name }),
+    cancelSubscriptionImport: (jobId: string) =>
+      invoke<SubscriptionImportProgressEvent>(IPC.CFG_IMPORT_JOB_CANCEL, jobId),
+    retryFailedSubscriptionImport: (jobId: string) =>
+      invoke<SubscriptionImportProgressEvent>(IPC.CFG_IMPORT_JOB_RETRY, jobId),
+    continueSubscriptionImport: (jobId: string) =>
+      invoke<SubscriptionImportProgressEvent>(IPC.CFG_IMPORT_JOB_CONTINUE, jobId),
+    getSubscriptionImport: (jobId: string) =>
+      invoke<SubscriptionImportProgressEvent | null>(IPC.CFG_IMPORT_JOB_GET, jobId),
+    listSubscriptionImports: () =>
+      invoke<SubscriptionImportProgressEvent[]>(IPC.CFG_IMPORT_JOB_LIST),
+    resumeSubscriptionImport: (jobId: string) =>
+      invoke<SubscriptionImportProgressEvent>(IPC.CFG_IMPORT_JOB_RESUME, jobId),
+    removeSubscriptionGroupMember: (groupId: string, memberId: string) =>
+      invoke<void>(IPC.CFG_SUBSCRIPTION_GROUP_REMOVE_MEMBER, { groupId, memberId }),
+    resolveSubscriptionGroupRefresh: (groupId: string, memberId: string, resolution: SubscriptionRefreshResolution) =>
+      invoke<void>(IPC.CFG_SUBSCRIPTION_GROUP_RESOLVE_REFRESH, { groupId, memberId, resolution }),
+    onSubscriptionImportProgress: (cb: (event: SubscriptionImportProgressEvent) => void) => {
+      const listener = (_event: unknown, value: SubscriptionImportProgressEvent) => cb(value);
+      ipcRenderer.on(IPC.CFG_IMPORT_JOB_PROGRESS, listener);
+      return () => ipcRenderer.removeListener(IPC.CFG_IMPORT_JOB_PROGRESS, listener);
+    },
     // ★ 2026-09-27（用户要求）：本地 .json 订阅文件导入（文件选择器；档案名默认取原始文件名）
     importJsonLocal: (name?: string) =>
       invoke<{
@@ -75,6 +113,7 @@ const api = {
     cfgProfiles: () => invoke(IPC.CFG_PROFILES),
     /** ★ 2026-09-30（用户要求）：换源弹层「左订阅 / 右源」——每份档案的源 key/name 清单 */
     profileSites: () => invoke(IPC.CFG_PROFILE_SITES),
+    profileSources: (profileId: string) => invoke<SourceBean[]>(IPC.CFG_PROFILE_SOURCES, profileId),
     /** ★ 2026-09-30（用户要求）：一步完成「切换档案 + 选中该档案下的源」 */
     switchProfileSource: (a: { profileId: string; key: string }) => invoke<void>(IPC.CFG_SWITCH_PROFILE_SOURCE, a),
     vodDebug: (key: string) => invoke(IPC.VOD_DEBUG, key),
@@ -92,12 +131,17 @@ const api = {
     },
   },
   vod: {
-    home: (key: string) => invoke(IPC.VOD_HOME, key),
-    category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string> }) => invoke(IPC.VOD_CATEGORY, a),
-    detail: (a: { key: string; ids: string[] }) => invoke(IPC.VOD_DETAIL, a),
-    search: (a: { key: string; wd: string }) => invoke(IPC.VOD_SEARCH, a),
+    home: (key: string, profileId?: string) => invoke(IPC.VOD_HOME, { key, profileId }),
+    category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }) => invoke(IPC.VOD_CATEGORY, a),
+    detail: (a: { key: string; ids: string[]; profileId?: string }) => invoke(IPC.VOD_DETAIL, a),
+    search: (a: { key: string; wd: string; profileId?: string }) => invoke(IPC.VOD_SEARCH, a),
     /** ★ opts.refresh=true 忽略本地缓存强制重搜（UI「重新搜索」）；缺省命中 5 分钟缓存即秒回 */
-    searchAll: (wd: string, opts?: { refresh?: boolean }) => invoke(IPC.VOD_SEARCH_ALL, { wd, refresh: !!opts?.refresh }),
+    searchAll: (wd: string, opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] }) => invoke(IPC.VOD_SEARCH_ALL, {
+      wd,
+      refresh: !!opts?.refresh,
+      profileId: opts?.profileId,
+      profileIds: opts?.profileIds,
+    }),
     /**
      * ★ 聚合搜索逐源进度（边搜边出）：订阅后返回退订函数。
      * ★★ 2026-09-24 修复：本方法此前被错放在 `api.config` 下，而渲染层调用的是
@@ -110,7 +154,7 @@ const api = {
       ipcRenderer.on(IPC.VOD_SEARCH_ALL_PROGRESS, l);
       return () => { ipcRenderer.removeListener(IPC.VOD_SEARCH_ALL_PROGRESS, l); };
     },
-    play: (a: { key: string; flag: string; id: string }) => invoke(IPC.VOD_PLAY, a),
+    play: (a: { key: string; flag: string; id: string; profileId?: string }) => invoke(IPC.VOD_PLAY, a),
     // ★ 2026-09-30（用户要求）：点播外部播放器（与磁力分开绑定）——探测本机播放器 / 用当前地址拉起
     detectPlayers: () => invoke<Array<{ id: string; name: string; path: string }>>(IPC.VOD_DETECT_PLAYERS),
     // ★ 2026-09-30（用户要求）：`seek`（秒）—— 从历史续播时按播放器类型拼起播参数
@@ -205,7 +249,7 @@ const api = {
     isAlwaysOnTop: () => invoke<boolean>(IPC.WIN_IS_ALWAYS_ON_TOP),
     // ★ 2026-10-08（用户要求）：详情页独立窗口（外观开关；已开则复用并通知换路由）
     openDetail: (a: { key: string; id: string; query?: string }) => invoke(IPC.WIN_OPEN_DETAIL, a),
-    openSearch: (term: string) => invoke(IPC.WIN_OPEN_SEARCH, term),
+    openSearch: (args: { term: string; profileId?: string }) => invoke(IPC.WIN_OPEN_SEARCH, args),
     routeReady: () => invoke(IPC.WIN_ROUTE_READY),
     reportError: (message: string) => invoke(IPC.WIN_REPORT_ERROR, message),
     onNavigate: (cb: (route: string) => void) => {

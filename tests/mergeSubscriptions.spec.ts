@@ -1,6 +1,6 @@
 // tests/mergeSubscriptions.spec.ts — 多配置合并去重（保留原始字段）
 import { describe, it, expect } from 'vitest';
-import { mergeSubscriptions, buildMergedSubscription, type MergeInput } from '../src/engine/config/mergeSubscriptions';
+import { mergeSubscriptions, buildMergedSubscription } from '../src/engine/config/mergeSubscriptions';
 import { parseSiteConfig } from '../src/engine/config/ApiConfigParser';
 import type { LiveBean, SourceBean } from '../src/shared/types';
 

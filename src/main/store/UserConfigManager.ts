@@ -21,12 +21,21 @@ import type {
   SourceBean,
   SourceMoveDirection,
   SourceUpdatePatch,
+  SubscriptionGroup,
+  SubscriptionRefreshResolution,
+  SubscriptionSourceRefreshDiff,
   UserConfig,
   UserProfile,
 } from '../../shared/types';
+import {
+  applySubscriptionSourceOverrides,
+  deriveSubscriptionSourceOverrides,
+  deriveSubscriptionSourceOverridesFromSnapshot,
+  serializeSubscriptionSourceOverrides,
+} from './subscriptionProfileMerge';
 
 export const USER_CONFIG_KEY = 'user-config';
-export const USER_CONFIG_VERSION = 2;
+export const USER_CONFIG_VERSION = 3;
 
 /** 允许 UI 修改的字段白名单（与 MutableSourceField 一致） */
 const MUTABLE_FIELDS: ReadonlySet<string> = new Set([
@@ -55,6 +64,7 @@ export function emptyUserConfig(): UserConfig {
     ui: { activeSourceKey: '', activeLiveIndex: 0 },
     profiles: [],
     activeProfileId: '',
+    subscriptionGroups: [],
     deletedSourceKeys: [],
   };
 }
@@ -105,14 +115,48 @@ function sanitizeParses(raw: unknown[]): ParseBean[] {
   return out;
 }
 
-/** 把解析后的订阅归一化为可离线重建的 JSON（parseSiteConfig 可再次解析） */
+function normalizeRefreshDiff(value: unknown): SubscriptionSourceRefreshDiff | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (!Array.isArray(raw.addedKeys) || !Array.isArray(raw.removedKeys) || !Array.isArray(raw.changed)) return undefined;
+  const addedKeys = raw.addedKeys.filter((item): item is string => typeof item === 'string');
+  const removedKeys = raw.removedKeys.filter((item): item is string => typeof item === 'string');
+  const changed = raw.changed.flatMap((item): SubscriptionSourceRefreshDiff['changed'] => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const entry = item as Record<string, unknown>;
+    if (typeof entry.key !== 'string' || !Array.isArray(entry.fields)) return [];
+    return [{ key: entry.key, fields: entry.fields.filter((field): field is string => typeof field === 'string') }];
+  });
+  return { addedKeys, removedKeys, changed };
+}
+
+/**
+ * 版本化的完整订阅快照。保留当前运行时模型以外的顶层字段，供档案切换、备份和重导入使用。
+ * `UserConfig` 只维护当前活动的字段；其它订阅级字段从档案 JSON 恢复并在编辑源时继续保留。
+ */
+export const PROFILE_SNAPSHOT_VERSION = 2;
+
 export function serializeImport(parsed: SiteConfig): string {
   return JSON.stringify({
-    version: 1,
+    version: PROFILE_SNAPSHOT_VERSION,
     spider: parsed.spider || '',
-    flags: Array.isArray(parsed.flags) ? parsed.flags : [],
-    sites: parsed.sites.map((s) => ({ ...s })),
-    lives: parsed.lives.map((l) => ({ ...l })),
+    flags: Array.isArray(parsed.flags) ? [...parsed.flags] : [],
+    jarCache: typeof parsed.jarCache === 'string' ? parsed.jarCache : '',
+    danmaku: typeof parsed.danmaku === 'string' ? parsed.danmaku : '',
+    wallpaper: typeof parsed.wallpaper === 'string' ? parsed.wallpaper : '',
+    hosts: parsed.hosts && typeof parsed.hosts === 'object' ? { ...parsed.hosts } : {},
+    rules: Array.isArray(parsed.rules) ? parsed.rules.map((rule) => ({ ...rule })) : [],
+    doh: Array.isArray(parsed.doh) ? [...parsed.doh] : [],
+    ads: Array.isArray(parsed.ads) ? [...parsed.ads] : [],
+    proxy: Array.isArray(parsed.proxy) ? parsed.proxy.map((rule) => ({ ...rule })) : [],
+    sites: Array.isArray(parsed.sites) ? parsed.sites.map((site) => ({
+      ...site,
+      categories: site.categories ? [...site.categories] : site.categories,
+    })) : [],
+    lives: Array.isArray(parsed.lives) ? parsed.lives.map((live) => ({
+      ...live,
+      header: live.header ? { ...live.header } : live.header,
+    })) : [],
     parses: realParses(parsed.parses),
   });
 }
@@ -134,6 +178,7 @@ export type ConfigChangeKind = 'content' | 'ui';
 export class UserConfigManager {
   private snap: UserConfig = emptyUserConfig();
   private loaded = false;
+  private revisionValue = 0;
   private onChange: ((snap: UserConfig, kind: ConfigChangeKind) => void) | null = null;
 
   constructor(
@@ -152,15 +197,22 @@ export class UserConfigManager {
     if (!raw) {
       this.snap = emptyUserConfig();
       this.loaded = false;
+      this.revisionValue++;
       return false;
     }
     this.loaded = true;
     this.snap = this.normalizeLoaded(raw);
+    this.revisionValue++;
     return true;
   }
 
   get hasPersisted(): boolean {
     return this.loaded;
+  }
+
+  /** Monotonic in-memory revision for guarding asynchronous imports from stale commits. */
+  get revision(): number {
+    return this.revisionValue;
   }
 
   /** 当前快照（深拷贝，防止调用方污染内部状态） */
@@ -287,6 +339,70 @@ export class UserConfigManager {
   }
 
   /**
+   * 一次提交多仓成员及其父组。只替换本次成功获取的子档案；失败成员保留旧快照与来源身份。
+   * `activateProfileId` 仅用于首次导入或刷新当前正在使用的成员。
+   */
+  commitSubscriptionGroup(
+    group: SubscriptionGroup,
+    importedProfiles: UserProfile[],
+    activateProfileId?: string,
+    expectedRevision?: number,
+    restoreDeletedSources = false,
+  ): void {
+    if (expectedRevision !== undefined && this.revisionValue !== expectedRevision) {
+      throw new Error('配置已在导入期间更改；多仓下载结果未保存，请重新导入');
+    }
+    if (!group.id || !group.url || !Array.isArray(group.members)) throw new Error('多仓订阅组数据无效');
+    const profilesById = new Map(this.snap.profiles.map((profile) => [profile.id, profile]));
+    for (const profile of importedProfiles) {
+      if (!profile.id || !profile.json || profile.groupId !== group.id) continue;
+      profilesById.set(profile.id, { ...profile });
+    }
+    const profiles = [...profilesById.values()];
+    const restoredKeys = new Set<string>();
+    if (restoreDeletedSources) {
+      for (const profile of importedProfiles) {
+        if (!profile.id || !profile.json || profile.groupId !== group.id) continue;
+        for (const source of parseSiteConfig(profile.json).config.sites) restoredKeys.add(source.key);
+      }
+    }
+    const deletedSourceKeys = this.snap.deletedSourceKeys.filter(key => !restoredKeys.has(key));
+    let next: UserConfig = {
+      ...this.snap,
+      profiles,
+      deletedSourceKeys,
+      subscriptionGroups: [
+        ...this.snap.subscriptionGroups.filter((existing) => existing.id !== group.id),
+        { ...group, members: group.members.map((member) => ({ ...member })) },
+      ],
+    };
+    if (activateProfileId) {
+      const profile = profiles.find((candidate) => candidate.id === activateProfileId);
+      if (!profile) throw new Error(`待切换的子档案不存在：${activateProfileId}`);
+      let parsed: SiteConfig;
+      try {
+        parsed = parseSiteConfig(profile.json).config;
+      } catch (error) {
+        throw new Error(`子档案「${profile.name}」快照无法恢复：${(error as Error).message}`);
+      }
+      next = {
+        ...next,
+        activeProfileId: profile.id,
+        apiUrl: profile.apiUrl,
+        global: { spider: parsed.spider || '', flags: [...(parsed.flags || [])] },
+        sources: parsed.sites.filter(site => !deletedSourceKeys.includes(site.key)).map((site) => ({ ...site })),
+        lives: parsed.lives.map((live) => ({ ...live, header: live.header ? { ...live.header } : undefined })),
+        parses: realParses(parsed.parses),
+      };
+      if (!next.sources.some((site) => site.key === next.ui.activeSourceKey)) {
+        next.ui = { ...next.ui, activeSourceKey: '' };
+      }
+      next.ui = { ...next.ui, activeLiveIndex: clampIndex(next.ui.activeLiveIndex, next.lives.length) };
+    }
+    this.apply(next);
+  }
+
+  /**
    * 切换档案：解析其 json 全量恢复 sources/lives/global。json 为空/解析失败抛中文错。
    * ★ 2026-09-30（用户要求）：`pickKey` 非空时在**同一次 apply 内**把选中源落到该档案下的这个 key
    *   （换源弹层「左订阅 → 右源」一步点选完成；两次调用会触发两轮内容变更与宿主重活）。
@@ -347,8 +463,17 @@ export class UserConfigManager {
     const p = this.snap.profiles.find((x) => x.id === id);
     if (!p) return;
     const profiles = this.snap.profiles.filter((x) => x.id !== id);
+    const subscriptionGroups = this.snap.subscriptionGroups
+      .map((group) => ({
+        ...group,
+        members: group.members.map((member) => member.profileId === id
+          ? { ...member, profileId: undefined }
+          : member),
+      }))
+      .filter((group) => group.members.length > 0);
+
     if (id !== this.snap.activeProfileId) {
-      this.apply({ ...this.snap, profiles });
+      this.apply({ ...this.snap, profiles, subscriptionGroups });
       return;
     }
     const nextProfile = profiles[0];
@@ -367,6 +492,7 @@ export class UserConfigManager {
         this.apply({
           ...this.snap,
           profiles,
+          subscriptionGroups,
           activeProfileId: nextProfile.id,
           apiUrl: '',
           global: { spider: '', flags: [] },
@@ -380,6 +506,7 @@ export class UserConfigManager {
       const next: UserConfig = {
         ...this.snap,
         profiles,
+        subscriptionGroups,
         activeProfileId: nextProfile.id,
         apiUrl: nextProfile.apiUrl || '',
         global: { spider: parsed.spider || '', flags: Array.isArray(parsed.flags) ? [...parsed.flags] : [] },
@@ -397,6 +524,7 @@ export class UserConfigManager {
     this.apply({
       ...this.snap,
       profiles: [],
+      subscriptionGroups,
       activeProfileId: '',
       apiUrl: '',
       global: { spider: '', flags: [] },
@@ -414,7 +542,107 @@ export class UserConfigManager {
     this.apply({
       ...this.snap,
       profiles: this.snap.profiles.map((p) => (p.id === id ? { ...p, name: t } : p)),
+      subscriptionGroups: this.snap.subscriptionGroups.map((group) => ({
+        ...group,
+        members: group.members.map((member) => member.profileId === id ? { ...member, name: t } : member),
+      })),
     });
+  }
+
+  /** Remove an upstream-removed member from its group while keeping its snapshot as a standalone profile. */
+  removeSubscriptionGroupMember(groupId: string, memberId: string): void {
+    const group = this.snap.subscriptionGroups.find((item) => item.id === groupId);
+    if (!group) throw new Error('订阅组不存在');
+    const member = group.members.find((item) => item.id === memberId);
+    if (!member) throw new Error('订阅组成员不存在');
+    const members = group.members.filter((item) => item.id !== memberId);
+    const ready = members.some((item) => item.status === 'ready');
+    const incomplete = members.some((item) => item.status !== 'ready');
+    this.apply({
+      ...this.snap,
+      profiles: this.snap.profiles.map((profile) => profile.groupId === groupId && profile.memberId === memberId
+        ? { ...profile, groupId: undefined, memberId: undefined }
+        : profile),
+      subscriptionGroups: this.snap.subscriptionGroups.map((item) => item.id !== groupId ? item : {
+        ...item,
+        members,
+        status: ready ? (incomplete ? 'partial' : 'complete') : members.length ? 'failed' : 'complete',
+        updatedAt: new Date().toISOString(),
+      }),
+    });
+  }
+
+  resolveSubscriptionGroupMemberRefresh(
+    groupId: string,
+    memberId: string,
+    resolution: SubscriptionRefreshResolution,
+  ): void {
+    const group = this.snap.subscriptionGroups.find((item) => item.id === groupId);
+    if (!group) throw new Error('订阅组不存在');
+    const member = group.members.find((item) => item.id === memberId);
+    if (!member) throw new Error('订阅组成员不存在');
+    if (!member.profileId) throw new Error('子仓档案不存在，无法处理首次刷新差异');
+    const profile = this.snap.profiles.find((item) => item.id === member.profileId);
+    if (!profile) throw new Error('子仓档案不存在，无法处理首次刷新差异');
+    if (!profile.pendingUpstreamJson) throw new Error('该子仓没有待处理的首次刷新差异');
+
+    let upstream: SiteConfig;
+    let current: SiteConfig;
+    try {
+      upstream = parseSiteConfig(profile.pendingUpstreamJson).config;
+      current = parseSiteConfig(profile.json).config;
+    } catch (error) {
+      throw new Error(`子仓快照无法解析：${(error as Error).message}`);
+    }
+    const overrides = resolution === 'keep-current'
+      ? deriveSubscriptionSourceOverrides(upstream.sites, current.sites)
+      : deriveSubscriptionSourceOverrides(upstream.sites, upstream.sites);
+    const effective: SiteConfig = {
+      ...upstream,
+      sites: applySubscriptionSourceOverrides(upstream.sites, overrides),
+    };
+    const profileWithoutCandidate = { ...profile };
+    delete profileWithoutCandidate.pendingUpstreamJson;
+    const updatedProfile: UserProfile = {
+      ...profileWithoutCandidate,
+      json: serializeImport(effective),
+      upstreamJson: profile.pendingUpstreamJson,
+      sourceOverridesJson: serializeSubscriptionSourceOverrides(overrides),
+      sourceCount: effective.sites.length,
+      importedAt: new Date().toISOString(),
+    };
+    const now = new Date().toISOString();
+    const members = group.members.map((item) => {
+      if (item.id !== memberId) return item;
+      const resolved = { ...item };
+      delete resolved.refreshDiff;
+      delete resolved.error;
+      return { ...resolved, status: 'ready' as const };
+    });
+    const hasReadyMember = members.some((item) => item.status === 'ready');
+    const hasIncompleteMember = members.some((item) => item.status !== 'ready');
+    const next: UserConfig = {
+      ...this.snap,
+      profiles: this.snap.profiles.map((item) => item.id === profile.id ? updatedProfile : item),
+      subscriptionGroups: this.snap.subscriptionGroups.map((item) => item.id !== groupId ? item : {
+        ...item,
+        members,
+        status: hasReadyMember ? (hasIncompleteMember ? 'partial' : 'complete') : 'failed',
+        updatedAt: now,
+      }),
+    };
+    if (next.activeProfileId === profile.id) {
+      next.apiUrl = updatedProfile.apiUrl;
+      next.global = { spider: effective.spider || '', flags: [...(effective.flags || [])] };
+      next.sources = effective.sites.map((source) => ({ ...source }));
+      next.lives = effective.lives.map((live) => ({ ...live, header: live.header ? { ...live.header } : undefined }));
+      next.parses = realParses(effective.parses);
+      if (!next.sources.some((source) => source.key === next.ui.activeSourceKey)) {
+        next.ui = { ...next.ui, activeSourceKey: '' };
+      }
+      next.ui = { ...next.ui, activeLiveIndex: clampIndex(next.ui.activeLiveIndex, next.lives.length) };
+    }
+    this.apply(next);
   }
 
   /**
@@ -430,7 +658,7 @@ export class UserConfigManager {
 
   /** 档案元信息（不含 json 体，避免 IPC 载荷过大） */
   profiles(): Array<{ id: string; name: string; apiUrl: string; sourceCount: number; importedAt: string }> {
-    return this.snap.profiles.map(({ json: _j, ...meta }) => meta);
+    return this.snap.profiles.map(({ id, name, apiUrl, sourceCount, importedAt }) => ({ id, name, apiUrl, sourceCount, importedAt }));
   }
 
   /**
@@ -463,6 +691,14 @@ export class UserConfigManager {
   /** 完整档案（含 json 体），供合并导出等主进程内部使用 */
   rawProfiles(): UserProfile[] {
     return this.snap.profiles.map((p) => ({ ...p }));
+  }
+
+  /** Read an inactive profile's saved execution configuration without changing the active profile. */
+  profileConfig(id: string): SiteConfig | null {
+    const profile = this.snap.profiles.find((candidate) => candidate.id === id);
+    if (!profile) return null;
+    if (!profile.json) throw new Error(`档案「${profile.name}」没有可恢复的订阅快照`);
+    return parseSiteConfig(profile.json).config;
   }
 
   activeProfileId(): string {
@@ -631,9 +867,26 @@ export class UserConfigManager {
   // ---------------------------------------------------------------
   private apply(next: UserConfig, kind: ConfigChangeKind = 'content'): void {
     // ★ 2026-09-30：内容型变更必须把「当前生效档案」的存档 json 一起对齐（见 withActiveProfileSynced）
+    const previous = this.snap;
+    const previousLoaded = this.loaded;
+    const previousRevision = this.revisionValue;
     this.snap = kind === 'content' ? this.withActiveProfileSynced(next) : next;
     this.loaded = true;
-    this.persist();
+    try {
+      this.persist();
+    } catch (error) {
+      this.snap = previous;
+      this.loaded = previousLoaded;
+      this.revisionValue = previousRevision;
+      try {
+        this.store.setObject(USER_CONFIG_KEY, previous);
+        this.store.flushStrict();
+      } catch {
+        // The atomic file replacement leaves the last committed snapshot on disk.
+      }
+      throw error;
+    }
+    this.revisionValue++;
     this.onChange?.(this.snapshot(), kind);
   }
 
@@ -650,7 +903,17 @@ export class UserConfigManager {
   private withActiveProfileSynced(next: UserConfig): UserConfig {
     const id = next.activeProfileId;
     if (!id || !next.profiles.some((p) => p.id === id)) return next;
+    const active = next.profiles.find((p) => p.id === id);
+    let stored: SiteConfig | undefined;
+    if (active?.json) {
+      try {
+        stored = parseSiteConfig(active.json).config;
+      } catch {
+        // A corrupt legacy snapshot must not block edits to the live configuration.
+      }
+    }
     const json = serializeImport({
+      ...stored,
       sites: next.sources,
       // ★ 2026-10-15：本地导入的直播线路不写进档案 json（它们由 withLocalLives 独立保住）
       lives: this.serializableLives(next.lives),
@@ -658,9 +921,17 @@ export class UserConfigManager {
       flags: next.global.flags,
       parses: next.parses,
     } as SiteConfig);
+    const sourceOverridesJson = deriveSubscriptionSourceOverridesFromSnapshot(active?.upstreamJson, next.sources);
     return {
       ...next,
-      profiles: next.profiles.map((p) => (p.id === id ? { ...p, json, sourceCount: next.sources.length } : p)),
+      profiles: next.profiles.map((p) => (p.id === id
+        ? {
+            ...p,
+            json,
+            sourceCount: next.sources.length,
+            ...(sourceOverridesJson ? { sourceOverridesJson } : {}),
+          }
+        : p)),
     };
   }
 
@@ -693,7 +964,7 @@ export class UserConfigManager {
 
   private persist(): void {
     this.store.setObject(USER_CONFIG_KEY, this.snap);
-    this.store.flush(); // 每次变更即写盘（JsonStore 另有 500ms 合并兜底）
+    this.store.flushStrict(); // 配置提交失败时保留内存和磁盘中的上一版本
   }
 
   /** 读入归一化：版本迁移钩子 + 逐条 source/live 校验剔除。 */
@@ -729,9 +1000,16 @@ export class UserConfigManager {
           id,
           name: typeof o.name === 'string' && o.name ? o.name : id,
           apiUrl: typeof o.apiUrl === 'string' ? o.apiUrl : '',
+          // Validate recognizable snapshots at load time. Keep malformed legacy text
+          // so the user can still recover/export it instead of silently replacing it.
           json: typeof o.json === 'string' ? o.json : '',
           sourceCount: Number(o.sourceCount) || 0,
           importedAt: typeof o.importedAt === 'string' ? o.importedAt : new Date(0).toISOString(),
+          ...(typeof o.upstreamJson === 'string' ? { upstreamJson: o.upstreamJson } : {}),
+          ...(typeof o.pendingUpstreamJson === 'string' ? { pendingUpstreamJson: o.pendingUpstreamJson } : {}),
+          ...(typeof o.sourceOverridesJson === 'string' ? { sourceOverridesJson: o.sourceOverridesJson } : {}),
+          ...(typeof o.groupId === 'string' && o.groupId ? { groupId: o.groupId } : {}),
+          ...(typeof o.memberId === 'string' && o.memberId ? { memberId: o.memberId } : {}),
         };
       })
       .filter((p): p is UserProfile => p !== null);
@@ -753,6 +1031,49 @@ export class UserConfigManager {
     }
     if (activeProfileId && !profiles.some((p) => p.id === activeProfileId)) activeProfileId = '';
     if (profiles.length === 0) activeProfileId = '';
+    const profileIds = new Set(profiles.map((profile) => profile.id));
+    const rawGroups = Array.isArray((raw as { subscriptionGroups?: unknown })?.subscriptionGroups)
+      ? (raw as { subscriptionGroups: unknown[] }).subscriptionGroups
+      : [];
+    const subscriptionGroups: SubscriptionGroup[] = rawGroups.flatMap((value): SubscriptionGroup[] => {
+      if (!value || typeof value !== 'object') return [];
+      const group = value as Record<string, unknown>;
+      if (typeof group.id !== 'string' || !group.id || typeof group.url !== 'string' || !group.url) return [];
+      const members: SubscriptionGroup['members'] = (Array.isArray(group.members) ? group.members : [])
+        .flatMap((value): SubscriptionGroup['members'] => {
+          if (!value || typeof value !== 'object') return [];
+          const member = value as Record<string, unknown>;
+          if (typeof member.id !== 'string' || !member.id || typeof member.url !== 'string' || !member.url) return [];
+          const profileId = typeof member.profileId === 'string' && profileIds.has(member.profileId)
+            ? member.profileId
+            : undefined;
+          const refreshDiff = normalizeRefreshDiff(member.refreshDiff);
+          return [{
+            id: member.id,
+            ...(profileId ? { profileId } : {}),
+            name: typeof member.name === 'string' && member.name ? member.name : member.url,
+            url: member.url,
+            ...(Number.isInteger(member.line) && Number(member.line) >= 0 ? { line: Number(member.line) } : {}),
+            status: member.status === 'failed' || member.status === 'pending' || member.status === 'pending-removal' || member.status === 'needs-review'
+              ? member.status
+              : 'ready',
+            ...(typeof member.error === 'string' && member.error ? { error: member.error } : {}),
+            ...(typeof member.lastAttemptAt === 'string' ? { lastAttemptAt: member.lastAttemptAt } : {}),
+            ...(typeof member.lastSuccessAt === 'string' ? { lastSuccessAt: member.lastSuccessAt } : {}),
+            ...(refreshDiff ? { refreshDiff } : {}),
+          }];
+        });
+      return [{
+        id: group.id,
+        name: typeof group.name === 'string' && group.name ? group.name : group.id,
+        url: group.url,
+        members,
+        status: group.status === 'partial' || group.status === 'failed' ? group.status : 'complete',
+        createdAt: typeof group.createdAt === 'string' ? group.createdAt : new Date(0).toISOString(),
+        updatedAt: typeof group.updatedAt === 'string' ? group.updatedAt : new Date(0).toISOString(),
+        ...(typeof group.lastRefreshAt === 'string' ? { lastRefreshAt: group.lastRefreshAt } : {}),
+      }];
+    });
     const next: UserConfig = {
       version,
       apiUrl: typeof raw?.apiUrl === 'string' ? raw.apiUrl : '',
@@ -769,6 +1090,7 @@ export class UserConfigManager {
       },
       profiles,
       activeProfileId,
+      subscriptionGroups,
       // ★ 2026-10-15：用户删除过的源 key 墓碑（见 UserConfig.deletedSourceKeys）
       deletedSourceKeys: Array.from(
         new Set((Array.isArray((raw as { deletedSourceKeys?: unknown })?.deletedSourceKeys)

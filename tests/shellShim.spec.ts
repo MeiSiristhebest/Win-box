@@ -36,13 +36,6 @@ function makeBridge(shellShimClasses?: string): { bridge: JarSpiderBridge; dir: 
   return { bridge, dir };
 }
 
-/** 从 spawn argv 里取出 -cp 之后的 classpath 字符串 */
-function classpathOf(argv: string[]): string {
-  const i = argv.indexOf('-cp');
-  expect(i).toBeGreaterThanOrEqual(0);
-  return argv[i + 1];
-}
-
 /**
  * ★★ 2026-09-26 分层修复后：**加载器 classpath**（`SpiderRunner` 之后的那个参数）才是
  *   蜘蛛 jar / shell-shim jar 该在的地方（顺序 = 改写产物目录 → shell-shim → 蜘蛛 jar）。

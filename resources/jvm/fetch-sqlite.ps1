@@ -4,9 +4,9 @@ $ErrorActionPreference = "Stop"
 if ([string]::IsNullOrEmpty($Out)) { $Out = Join-Path $PSScriptRoot "libs" }
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $assets = @(
-  @{ Path = "org/xerial/sqlite-jdbc/3.46.1.0/sqlite-jdbc-3.46.1.0.jar"; Hash = "6DC7464E3803648D3FF18A7359BAB6ADF079FCD8495B18991F6F5EDCB8AC6E3B" },
-  @{ Path = "org/slf4j/slf4j-api/2.0.16/slf4j-api-2.0.16.jar"; Hash = "A12578DDE1BA00BD9B816D388A0B879928D00BAB3C83C240F7013BF4196C579A" },
-  @{ Path = "org/slf4j/slf4j-simple/2.0.16/slf4j-simple-2.0.16.jar"; Hash = "EFFC32018658BEA09D1E08C7D1060CCAD46C086960F583D07DD7FFE9C1172A47" }
+  @{ Path = "org/xerial/sqlite-jdbc/3.53.4.0/sqlite-jdbc-3.53.4.0.jar"; Hash = "BCB1F51E36F940867E83342F9EFBF5968AC44A6BEF4D397BB4AF7B17B45CD2FB" },
+  @{ Path = "org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar"; Hash = "7E1446499B359675D8AABE6AF2DE86B85E72AE8A2A932C0B40D0E5BA57097439" },
+  @{ Path = "org/slf4j/slf4j-simple/2.0.20/slf4j-simple-2.0.20.jar"; Hash = "8E701404786A4F87219D39D4853C86DFE4E86AE99376A39749DF6C08E75022E0" }
 )
 foreach ($asset in $assets) {
   $target = Join-Path $Out ([IO.Path]::GetFileName($asset.Path))

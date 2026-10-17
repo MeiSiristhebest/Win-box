@@ -11,10 +11,10 @@
 #   - 正常：结果 json.dumps 到 stdout
 #   - 失败：`[SpiderRunner.ERROR] <type>: <msg>` + traceback 到 stderr，退出码 1
 #
-# ★ 嵌入式 Python（python-3.11.x-embed-amd64）的 python311._pth 是只读隔离的：
+# ★ 嵌入式 Python（python-3.15.x-embed-amd64）的 python315._pth 是只读隔离的：
 #   不加载 site-packages、忽略 PYTHONPATH。因此这里**必须**用绝对路径手动注入 sys.path：
 #   [pythonDir/Lib, pythonDir/Lib/site-packages, runnerDir/base, 脚本所在目录]
-#   （pythonDir = runner.py 所在目录；embed 包结构为 python.exe + python311.zip + Lib/）。
+#   （pythonDir = runner.py 所在目录；embed 包结构为 python.exe + python315.zip + Lib/）。
 
 import json
 import os
@@ -29,7 +29,7 @@ def _dir_of(p):
 
 RUNNER_DIR = _dir_of(sys.argv[0])
 PY_DIR = RUNNER_DIR  # embed 包：runner.py 与 python.exe 同目录
-# runner 落盘目录即为 embed 根目录（python.exe + python311.zip + Lib/ + base/ 同层），
+# runner 落盘目录即为 embed 根目录（python.exe + python315.zip + Lib/ + base/ 同层），
 # 因此把 PY_DIR 本身加入 sys.path 即可让 `import base.spider`（base/ 子目录）命中；
 # Lib 与 site-packages 也一并显式注入（embed 的 _pth 隔离不自动加载）。
 for _p in [

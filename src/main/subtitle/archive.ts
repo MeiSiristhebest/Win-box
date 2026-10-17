@@ -71,7 +71,7 @@ function hasZipEocd(buf: Buffer): boolean {
 function zipEntries(buf: Buffer): ArchiveEntry[] {
   try {
     return readZipEntries(buf)
-      .filter((e) => !/\/$/.test(e.name) && e.bytes.length > 0)
+      .filter((e) => !e.name.endsWith('/') && e.bytes.length > 0)
       .map((e) => ({ name: e.name, bytes: e.bytes }));
   } catch {
     return [];

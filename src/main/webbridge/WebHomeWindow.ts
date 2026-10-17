@@ -113,7 +113,7 @@ const http = new HttpClient();
 export async function webHomeReq(payload: FmReqPayload): Promise<FmReqResult> {
   const url = (payload.url || '').trim();
   if (!/^https?:\/\//i.test(url)) return { ok: false, status: 0, body: '', error: `仅支持 http(s)：${url}` };
-  const headers: Record<string, string> = { ...(payload.headers || {}) };
+  const headers: Record<string, string> = { ...payload.headers };
   const rawMethod = (payload.method || 'get').toLowerCase();
   const method = rawMethod === 'post' ? 'post' : rawMethod === 'head' ? 'head' : 'get';
   if (rawMethod !== method) fileLogger.w(`网页源 fm.req 的方法 ${rawMethod} 暂不支持，按 ${method} 处理：${url}`);

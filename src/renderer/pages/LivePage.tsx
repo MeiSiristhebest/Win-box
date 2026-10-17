@@ -162,9 +162,9 @@ export default function LivePage() {
       <div className="layout-2 content" style={{ padding: 12 }}>
         <div className="left">
           {groups.map((g) => (
-            <div key={g.group} className={`nav-item ${g.group === groupName ? 'active' : ''}`} onClick={() => { setGroupName(g.group); if (g.channels.length) pickChannel(g, g.channels[0].name, 0, groups); }}>
+            <button type="button" key={g.group} className={`nav-item ui-action ${g.group === groupName ? 'active' : ''}`} aria-pressed={g.group === groupName} onClick={() => { setGroupName(g.group); if (g.channels.length) pickChannel(g, g.channels[0].name, 0, groups); }}>
               {g.group} <span className="muted">({g.channels.length})</span>
-            </div>
+            </button>
           ))}
         </div>
         <div className="right">
@@ -173,18 +173,18 @@ export default function LivePage() {
             <>
               <div className="row" style={{ marginBottom: 10, maxHeight: 180, overflow: 'auto' }}>
                 {curGroup.channels.map((c) => (
-                  <span key={c.name} className={`tag ${c.name === channelName ? 'active' : ''}`} onClick={() => pickChannel(curGroup, c.name, 0, groups)}>
+                  <button type="button" key={c.name} className={`tag ui-action ${c.name === channelName ? 'active' : ''}`} aria-pressed={c.name === channelName} onClick={() => pickChannel(curGroup, c.name, 0, groups)}>
                     {c.name}
-                  </span>
+                  </button>
                 ))}
               </div>
               {lines.length > 1 && (
                 <div className="row" style={{ marginBottom: 8 }}>
                   <span className="muted">线路：</span>
                   {lines.map((l) => (
-                    <span key={l.index} className={`tag ${l.index - 1 === lineIdx ? 'active' : ''}`} onClick={() => { setLineIdx(l.index - 1); setPlayUrl(l.url); saveLiveMem({ liveIdx, groupName, channelName, lineIdx: l.index - 1 }); }}>
+                    <button type="button" key={l.index} className={`tag ui-action ${l.index - 1 === lineIdx ? 'active' : ''}`} aria-pressed={l.index - 1 === lineIdx} onClick={() => { setLineIdx(l.index - 1); setPlayUrl(l.url); saveLiveMem({ liveIdx, groupName, channelName, lineIdx: l.index - 1 }); }}>
                       {l.name}
-                    </span>
+                    </button>
                   ))}
                 </div>
               )}

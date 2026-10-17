@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "platform": "win32",
+    "architecture": "x64"
+  },
+  "required": [
+    {
+      "id": "jre17",
+      "phase": "pre-build",
+      "kind": "pe-x64",
+      "paths": ["resources/jvm/jre/bin/java.exe"],
+      "version": null,
+      "source": null,
+      "architecture": "win32-x64",
+      "sha256": null,
+      "purpose": "Run Java spiders and DEX conversion. Pin the JRE build, source archive, and SHA-256 before release."
+    },
+    {
+      "id": "dex2jar",
+      "phase": "pre-build",
+      "kind": "jar-directory",
+      "paths": ["resources/jvm/d2j"],
+      "version": null,
+      "source": null,
+      "architecture": "any",
+      "sha256": null,
+      "purpose": "Convert DEX files for Java spider execution. Pin the tool release, source archive, and SHA-256 before release."
+    },
+    {
+      "id": "spider-stubs",
+        "phase": "pre-build",
+      "kind": "jar",
+      "paths": ["resources/jvm/stubs/stubs.jar"],
+        "version": "local-baseline-rebuild",
+        "source": "locally supplied baseline JAR rebuilt with resources/jvm/stubs-src/build-stubs.ps1",
+      "architecture": "any",
+      "sha256": null,
+      "sha256Policy": "calculate-at-package-time",
+        "purpose": "Provide Android and CatVod classes to Java spiders. This file must be supplied before release; the build scripts do not create it."
+    },
+    {
+      "id": "sqlite-jdbc",
+      "phase": "pre-build",
+      "kind": "jar",
+      "paths": ["resources/jvm/libs/sqlite-jdbc-3.53.4.0.jar"],
+      "version": "3.53.4.0",
+      "source": "https://repo.maven.apache.org/maven2/org/xerial/sqlite-jdbc/3.53.4.0/sqlite-jdbc-3.53.4.0.jar",
+      "architecture": "win32-x64",
+      "sha256": "BCB1F51E36F940867E83342F9EFBF5968AC44A6BEF4D397BB4AF7B17B45CD2FB",
+      "purpose": "SQLite support for Java spiders."
+    },
+    {
+      "id": "slf4j-api",
+      "phase": "pre-build",
+      "kind": "jar",
+      "paths": ["resources/jvm/libs/slf4j-api-2.0.20.jar"],
+      "version": "2.0.20",
+      "source": "https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar",
+      "architecture": "any",
+      "sha256": "7E1446499B359675D8AABE6AF2DE86B85E72AE8A2A932C0B40D0E5BA57097439",
+      "purpose": "SQLite logging API."
+    },
+    {
+      "id": "slf4j-simple",
+      "phase": "pre-build",
+      "kind": "jar",
+      "paths": ["resources/jvm/libs/slf4j-simple-2.0.20.jar"],
+      "version": "2.0.20",
+      "source": "https://repo.maven.apache.org/maven2/org/slf4j/slf4j-simple/2.0.20/slf4j-simple-2.0.20.jar",
+      "architecture": "any",
+      "sha256": "8E701404786A4F87219D39D4853C86DFE4E86AE99376A39749DF6C08E75022E0",
+      "purpose": "SQLite logging backend."
+    },
+    {
+      "id": "prefs-shim",
+      "phase": "post-build-main",
+      "kind": "jar",
+      "paths": ["resources/jvm/prefs-shim/winbox-prefs-shim.jar"],
+      "version": "project-built",
+      "source": "src/engine/spider/prefsShim.ts and scripts/gen-prefs-shim.mjs",
+      "architecture": "any",
+      "sha256": null,
+      "sha256Policy": "calculate-at-package-time",
+      "purpose": "Persist SharedPreferences for Java spiders."
+    }
+  ],
+  "optional": [
+    {
+      "id": "aria2",
+      "kind": "pe-x64",
+      "paths": ["resources/aria2/aria2c.exe"],
+      "version": "1.37.0",
+      "source": "https://github.com/aria2/aria2/releases",
+      "architecture": "win32-x64",
+      "sha256": "BE2099C214F63A3CB4954B09A0BECD6E2E34660B886D4C898D260FEBFE9D70C2",
+      "purpose": "Download sidecar used by the torrent workflow."
+    },
+    {
+      "id": "okhttp4-compat",
+      "kind": "jar",
+      "paths": ["resources/jvm/okhttp4-compat/winbox-okhttp4-compat.jar"],
+      "version": "project-built-from-okhttp-3.14.9",
+      "source": "resources/jvm/libs/okhttp-3.14.9.jar and scripts/gen-okhttp-compat.mjs",
+      "architecture": "any",
+      "sha256": null,
+      "sha256Policy": "calculate-at-package-time",
+      "purpose": "Add OkHttp 4 overloads used by some Wex spiders."
+    },
+    {
+      "id": "native-bridge",
+      "kind": "jar",
+      "paths": ["resources/jvm/native-bridge/native-bridge.jar"],
+      "version": "project-built",
+      "source": "resources/jvm/native-bridge",
+      "architecture": "any",
+      "sha256": null,
+      "sha256Policy": "calculate-at-package-time",
+      "purpose": "Repair DEX constructors for some protected spiders."
+    },
+    {
+      "id": "mpv",
+      "kind": "pe-x64",
+      "paths": ["resources/mpv/mpv.exe"],
+      "version": "0.41.0",
+      "source": "https://github.com/mpv-player/mpv/releases",
+      "architecture": "win32-x64",
+      "sha256": null,
+      "purpose": "Bundled playback kernel; a configured or installed mpv can be used when this file is absent."
+    },
+    {
+      "id": "ffmpeg",
+      "kind": "pe-x64",
+      "paths": ["resources/ffmpeg/ffmpeg.exe", "resources/ffmpeg/ffprobe.exe"],
+      "version": "9.0.2",
+      "source": "https://ffmpeg.org/download.html",
+      "architecture": "win32-x64",
+      "sha256": null,
+      "purpose": "Optional media compatibility path for streams that need probing or remuxing."
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 // src/main/spider/SourceDebugger.ts
 // ★ 单源实时诊断：探活(HTTP)+解析计数+实际跑一遍 spider，输出人读结论。
 // 用途：排查"空结果"——区分 源站失效 / 接口结构变化 / 缺 ext / 需要 ac 参数 等。
-import type { HttpClient, SourceBean, SourceDebugReport, Logger, LiveGroup } from '../../shared/types';
+import type { HttpClient, SourceBean, SourceDebugReport, Logger } from '../../shared/types';
 import { parseSortJson, parseAbsJson } from '../../engine/parse/Movie';
 import { parseSortXml, parseAbsXml } from '../../engine/parse/AbsXml';
 import { validateExtJson } from '../../engine/config/extHelper';

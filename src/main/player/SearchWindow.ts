@@ -1,4 +1,7 @@
-import { app, BrowserWindow, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
+import { DEFAULT_THEME } from '../../shared/ui/themeTokens';
+import type { UiThemeId } from '../../shared/uiPreferences';
+import { windowSurfaceColor } from '../preferences/WindowSurfacePolicy';
 import { join } from 'node:path';
 import { IPC } from '../../shared/ipc-channels';
 import { searchWindowRoute } from '../../shared/searchWin';
@@ -22,9 +25,11 @@ export function searchWindowReady(senderId: number): void {
   searchWin.webContents.send(IPC.WIN_NAVIGATE, pendingRoute);
 }
 
-export function openSearchWindow(term: string): { ok: boolean; reused: boolean } {
-  if (typeof term !== 'string' || !term.trim()) throw new Error('搜索词不能为空');
-  pendingRoute = searchWindowRoute(term);
+export function openSearchWindow(term: string | { term: string; profileId?: string }, themeId: UiThemeId = DEFAULT_THEME): { ok: boolean; reused: boolean } {
+  const value = typeof term === 'string' ? { term } : term;
+  const searchTerm = String(value?.term || '');
+  if (!searchTerm.trim()) throw new Error('搜索词不能为空');
+  pendingRoute = searchWindowRoute(searchTerm, value.profileId);
   if (searchWin && !searchWin.isDestroyed()) {
     if (searchWin.isMinimized()) searchWin.restore();
     searchWin.show();
@@ -42,7 +47,7 @@ export function openSearchWindow(term: string): { ok: boolean; reused: boolean }
   const win = new BrowserWindow({
     width: size.width, height: size.height, minWidth: size.minWidth, minHeight: size.minHeight,
     title: 'Win-Box · 搜索结果', frame: false, autoHideMenuBar: true, show: false,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0c10' : '#dce4ec',
+    backgroundColor: windowSurfaceColor(themeId, 'application'),
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: false },
   });
   searchWin = win;

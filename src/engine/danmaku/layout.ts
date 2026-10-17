@@ -107,9 +107,9 @@ export function layoutDanmaku(items: DanmakuItem[], opts: LayoutOpts): DanmakuLa
   const scroll: PlacedDanmaku[] = [];
   const top: PlacedDanmaku[] = [];
   const bottom: PlacedDanmaku[] = [];
-  const scrollNext = new Array<number>(rows.scroll).fill(0);
-  const topUntil = new Array<number>(rows.top).fill(0);
-  const bottomUntil = new Array<number>(rows.bottom).fill(0);
+  const scrollNext = Array.from({ length: rows.scroll }, () => 0);
+  const topUntil = Array.from({ length: rows.top }, () => 0);
+  const bottomUntil = Array.from({ length: rows.bottom }, () => 0);
 
   const pickRow = (until: number[], time: number, fromBottom = false): number => {
     if (!fromBottom) {

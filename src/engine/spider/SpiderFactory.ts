@@ -41,20 +41,20 @@ export class SpiderFactory {
   }
 
   /**
-   * 缓存键 = 源 key + 影响蜘蛛行为的字段签名（api/ext/jar）。
+   * 缓存键 = 执行命名空间 + 影响蜘蛛行为的字段签名（api/ext/jar）。
    * ★ 修复"ext 模块缺陷"：同 key 下改 ext（含网盘绑定参数）必须新建蜘蛛实例，
    *   否则蜘蛛 init(Context, ext) 一直拿旧 ext → 表现为配置了也不生效。
    */
   private keyOf(bean: SourceBean): string {
     const sig = [bean.api, bean.ext, bean.jar].map((s) => String(s || '').length + ':' + String(s || '')).join('|');
-    return `${bean.key}::${sig}`;
+    return `${bean.runtimeScope || bean.key}::${sig}`;
   }
 
   /** 安卓 getCSP(sourceBean) 等价 —— 仅 type=3 */
   getCSP(bean: SourceBean, host: EngineHost): Spider {
     return this.cache.getOrPut(this.keyOf(bean), () => {
       const init: SpiderInit = {
-        key: bean.key,
+        key: bean.runtimeScope || bean.key,
         api: bean.api,
         ext: bean.ext,
         jar: bean.jar,
@@ -85,7 +85,7 @@ export class SpiderFactory {
 
   /** type=2 / 未知 → SpiderNull（与安卓一致：无分发分支） */
   getNull(bean: SourceBean, host: EngineHost): Spider {
-    return this.cache.getOrPut(this.keyOf(bean), () => new SpiderNull({ key: bean.key, api: bean.api, ext: bean.ext, jar: bean.jar, host }));
+    return this.cache.getOrPut(this.keyOf(bean), () => new SpiderNull({ key: bean.runtimeScope || bean.key, api: bean.api, ext: bean.ext, jar: bean.jar, host }));
   }
 
   clear(): void {

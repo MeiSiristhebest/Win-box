@@ -79,6 +79,18 @@ describe('deleteWatch — 单条移除', () => {
     expect(uiMem.history.size).toBe(2);
   });
 
+  it('episode URL 相同时，按档案分组键只移除对应记录', () => {
+    recordWatch({ url: 'shared-episode', name: '订阅 A', sourceKey: 'shared-source', vodId: 'v1', profileId: 'profile-a' });
+    recordWatch({ url: 'shared-episode', name: '订阅 B', sourceKey: 'shared-source', vodId: 'v1', profileId: 'profile-b' });
+    const keyA = historyGroupKey({ sourceKey: 'shared-source', vodId: 'v1', profileId: 'profile-a' });
+    const keyB = historyGroupKey({ sourceKey: 'shared-source', vodId: 'v1', profileId: 'profile-b' });
+
+    expect(uiMem.history.size).toBe(2);
+    expect(deleteWatch(keyA)).toBe(true);
+    expect(uiMem.history.has(keyA)).toBe(false);
+    expect(uiMem.history.has(keyB)).toBe(true);
+  });
+
   it('删除不存在的条目返回 false（不抛异常）', () => {
     expect(deleteWatch('nope')).toBe(false);
   });
@@ -170,6 +182,24 @@ describe('recordWatch — 续播所需字段（rawUrl/flag）', () => {
     expect(it.rawUrl).toBe('u-r');
     expect(it.flag).toBe('flag1');
     expect(it.time).toBe(66);
+  });
+
+  it('解析出档案后，将无档案的旧分组迁入档案键并保留进度', () => {
+    const oldKey = historyGroupKey({ sourceKey: 'src1', vodId: 'v1' });
+    uiMem.history.set(oldKey, {
+      name: '剧 - 第5集', url: 'ep5', rawUrl: 'ep5', flag: 'F', sourceName: '源',
+      sourceKey: 'src1', vodId: 'v1', time: 321, updatedAt: 10,
+    });
+
+    recordWatch({
+      name: '剧 - 第5集', url: 'ep5', rawUrl: 'ep5', flag: 'F', sourceName: '源',
+      sourceKey: 'src1', vodId: 'v1', profileId: 'profile-a', time: 321,
+    });
+
+    const scopedKey = historyGroupKey({ sourceKey: 'src1', vodId: 'v1', profileId: 'profile-a' });
+    expect(uiMem.history.has(oldKey)).toBe(false);
+    expect(uiMem.history.get(scopedKey)).toMatchObject({ profileId: 'profile-a', time: 321, rawUrl: 'ep5', flag: 'F' });
+    expect(uiMem.history.size).toBe(1);
   });
 });
 

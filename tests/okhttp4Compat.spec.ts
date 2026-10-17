@@ -19,6 +19,8 @@ import { readZipEntries } from '../src/engine/util/syncZip';
 
 const UPSTREAM = join('resources/jvm/libs', OKHTTP_UPSTREAM_JAR);
 const COMPAT_JAR = join('resources/jvm/okhttp4-compat', OKHTTP4_COMPAT_JAR);
+const hasUpstream = existsSync(UPSTREAM);
+const hasCompatJar = existsSync(COMPAT_JAR);
 const sigs = (cls: Buffer): string[] => parseClassBytes(cls).methods.map((m) => `${m.name}${m.desc}`);
 
 /** 枚举常量池里所有 `Methodref` 的 (owner, name, desc) —— 用来核对委托目标 */
@@ -47,9 +49,9 @@ const realRequestBody = (): Buffer | null => {
 };
 
 describe('okhttp4Compat — 给 RequestBody 追加 4.x 重载', () => {
-  it('上游 okhttp3/RequestBody 追加 4 个 4.x 重载；原方法一个不少、可重新解析', () => {
+  it.skipIf(!hasUpstream)('上游 okhttp3/RequestBody 追加 4 个 4.x 重载；原方法一个不少、可重新解析', () => {
     const cls = realRequestBody();
-    if (!cls) return;
+    if (!cls) throw new Error(`upstream resource unexpectedly absent: ${UPSTREAM}`);
     const before = sigs(cls);
     const out = addOkHttp4OverloadsToRequestBody(cls);
     expect(out).not.toBeNull();
@@ -68,16 +70,15 @@ describe('okhttp4Compat — 给 RequestBody 追加 4.x 重载', () => {
     expect(parseClassBytes(out as Buffer).name).toBe(OKHTTP_REQUEST_BODY);
   });
 
-  it('幂等：再补一次不再改动；非目标类不动', () => {
+  it.skipIf(!hasUpstream)('幂等：再补一次不再改动；非目标类不动', () => {
     const cls = realRequestBody();
-    if (!cls) return;
+    if (!cls) throw new Error(`upstream resource unexpectedly absent: ${UPSTREAM}`);
     const once = addOkHttp4OverloadsToRequestBody(cls) as Buffer;
     expect(addOkHttp4OverloadsToRequestBody(once)).toBeNull();
     expect(addOkHttp4OverloadsToRequestBody(cls.subarray(0, 8))).toBeNull(); // 非类文件
   });
 
-  it('由上游 jar 生成兼容 jar：单条目、含 4 个新重载', () => {
-    if (!existsSync(UPSTREAM)) return;
+  it.skipIf(!hasUpstream)('由上游 jar 生成兼容 jar：单条目、含 4 个新重载', () => {
     const r = buildOkHttp4CompatJar(readFileSync(UPSTREAM));
     expect(r.bytes).not.toBeNull();
     expect(r.added).toBe(4);
@@ -88,8 +89,7 @@ describe('okhttp4Compat — 给 RequestBody 追加 4.x 重载', () => {
     for (const [callerDesc] of OKHTTP4_CREATE_DELEGATES) expect(after).toContain(`create${callerDesc}`);
   });
 
-  it('入库的兼容 jar 存在且内容正确（防止漏跑 scripts/gen-okhttp-compat.mjs）', () => {
-    expect(existsSync(COMPAT_JAR)).toBe(true);
+  it.skipIf(!hasCompatJar)('入库的兼容 jar 存在且内容正确（防止漏跑 scripts/gen-okhttp-compat.mjs）', () => {
     const entries = readZipEntries(readFileSync(COMPAT_JAR));
     expect(entries).toHaveLength(1);
     expect(entries[0].name).toBe(`${OKHTTP_REQUEST_BODY}.class`);

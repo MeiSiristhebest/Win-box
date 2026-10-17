@@ -7,7 +7,10 @@
 // ★ 为什么复用「整个应用外壳」而不做极简壳：详情页里的 演员/相关推荐 会跳到 `/search`（全源搜索）
 //   与 `/home`，极简壳要逐个补路由且失去返回路径；直接复用主外壳（同 hash 路由）所有能力天然可用。
 //   渲染层用 hash 里的 `dw=1` 区分本窗口（只写历史/进度、返回键改为关窗、跳过更新门禁）。
-import { app, BrowserWindow, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, shell } from 'electron';
+import { DEFAULT_THEME } from '../../shared/ui/themeTokens';
+import type { UiThemeId } from '../../shared/uiPreferences';
+import { windowSurfaceColor } from '../preferences/WindowSurfacePolicy';
 import { join } from 'node:path';
 import { applyWindowCorner } from '../util/windowCorner';
 import { applyUiScale, registerUiWindow, scaledWindowFor } from '../ui/uiScale';
@@ -41,7 +44,7 @@ function isDev(): boolean {
  * 打开（或复用）详情窗口。
  * 复用路径：聚焦 + `WIN_NAVIGATE` 让渲染层切路由（不重载页面，保留窗口位置/尺寸）。
  */
-export function openDetailWindow(payload: { key?: string; id?: string; query?: string }): { ok: boolean; reused: boolean } {
+export function openDetailWindow(payload: { key?: string; id?: string; query?: string }, themeId: UiThemeId = DEFAULT_THEME): { ok: boolean; reused: boolean } {
   const key = String(payload?.key || '').trim();
   const id = String(payload?.id || '').trim();
   if (!key || !id) throw new Error('详情参数不完整（缺少源 key 或影片 id）');
@@ -70,7 +73,7 @@ export function openDetailWindow(payload: { key?: string; id?: string; query?: s
     autoHideMenuBar: true,
     show: false,
     // 详情窗口是普通不透明窗口（无 mpv 嵌入需求；与主窗口同款底色，避免最大化时未渲染区发黑）
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0c10' : '#dce4ec',
+    backgroundColor: windowSurfaceColor(themeId, 'application'),
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,

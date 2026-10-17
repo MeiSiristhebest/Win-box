@@ -1,14 +1,17 @@
-// Release-only build.
+import { spawn } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { once } from 'node:events';
+import { assertReleaseAssets } from './verify-release-assets.mjs';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const run = args => {
-  const result = spawnSync(process.execPath, args, { cwd: root, env: process.env, stdio: 'inherit' });
-  if (result.error) throw result.error;
-  if (result.status !== 0) process.exit(result.status ?? 1);
-};
-run(['scripts/build-main.mjs']);
-run(['node_modules/vite/bin/vite.js', 'build']);
-run(['node_modules/electron-builder/out/cli/cli.js', '--win', 'nsis', '--publish', 'never']);
+const root = resolve(dirname(import.meta.filename), '..');
+
+async function run(args) {
+  const child = spawn(process.execPath, args, { cwd: root, stdio: 'inherit', windowsHide: true });
+  const [code, signal] = await once(child, 'close');
+  if (code !== 0) throw new Error(`Release step ${args.join(' ')} failed (${signal ?? `exit ${code ?? 'unknown'}`}).`);
+}
+
+await assertReleaseAssets(root, { phase: 'pre-build' });
+await run(['scripts/build-main.mjs']);
+await run(['node_modules/vite/bin/vite.js', 'build']);
+await run(['scripts/package-app.mjs', '--installer', ...process.argv.slice(2)]);

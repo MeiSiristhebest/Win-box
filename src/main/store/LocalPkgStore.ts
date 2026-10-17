@@ -29,7 +29,7 @@ function references(config: UserConfig): string[] {
   const visit = (value: unknown): void => {
     if (typeof value === 'string') {
       out.push(value);
-      if (/^\s*[\[{]/.test(value)) {
+      if (/^\s*[[{]/.test(value)) {
         try { visit(JSON.parse(value)); } catch { /* non-JSON extension */ }
       }
     } else if (Array.isArray(value)) value.forEach(visit);
@@ -342,9 +342,13 @@ export class LocalPkgStore implements LocalPkgAccess {
 
 /** 用户命名的自动生成订阅文件名：只保留文件名，不允许目录穿越或 Windows 保留字符。 */
 function generatedJsonName(value: string): string {
-  const name = String(value || '')
-    .trim()
-    .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+  const rawName = String(value || '').trim();
+  const name = [...rawName]
+    .map((character) => {
+      const code = character.charCodeAt(0);
+      return code < 0x20 || '<>:"/\\|?*'.includes(character) ? '_' : character;
+    })
+    .join('')
     .replace(/[. ]+$/g, '')
     .replace(/^\.+$/, '');
   if (!name) throw new Error('本地 Python 包名称不能为空或不合法');

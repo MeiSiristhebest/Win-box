@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { client } from '../api/client';
 import { checkDriveCookie } from '../../shared/driveCookie';
 import { driveProviderLabel } from '../../shared/driveProvider';
+import { AppModal } from './AppDialog';
 import DriveLogin from './DriveLogin';
 import UcTvBind from './UcTvBind';
 
@@ -91,21 +92,15 @@ export default function DriveBindModal({ siteName, initialProvider, reason, onCl
   }
 
   return (
-    <div
-      className="modal-scrim"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.55)', backdropFilter: 'blur(3px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-      onClick={onClose}
+    <AppModal
+      open
+      className="app-dialog card modal-in drive-bind-dialog"
+      titleId="drive-bind-title"
+      closeOnBackdrop
+      onClose={onClose}
     >
-      <div
-        className="card modal-in"
-        style={{ width: 520, maxWidth: '92vw', padding: 18, background: 'var(--bg)', boxShadow: '0 18px 60px rgba(0,0,0,.5)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
         <div className="row" style={{ marginBottom: 10 }}>
-          <span style={{ fontWeight: 700 }}>网盘绑定 · {siteName}</span>
+          <h2 id="drive-bind-title" style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>网盘绑定 · {siteName}</h2>
           <button className="linkbtn" style={{ marginLeft: 'auto' }} onClick={onClose}>关闭</button>
         </div>
 
@@ -120,7 +115,8 @@ export default function DriveBindModal({ siteName, initialProvider, reason, onCl
           {PROVIDERS.map((p) => (
             <button
               key={p.key}
-              className={`tag ${provider === p.key ? 'active' : ''}`}
+              className={`tag ui-action ${provider === p.key ? 'active' : ''}`}
+              aria-pressed={provider === p.key}
               onClick={() => { setProvider(p.key); setMsg(''); }}
             >
               {p.label}{tokens[p.key] ? ' ✓' : ''}
@@ -141,6 +137,7 @@ export default function DriveBindModal({ siteName, initialProvider, reason, onCl
 
         <textarea
           value={cookie}
+          aria-label={`${driveProviderLabel(provider)} Cookie`}
           onChange={(e) => setCookie(e.target.value)}
           placeholder={`粘贴「${driveProviderLabel(provider)}」的完整 Cookie（形如 __pus=…; __puus=…）\n获取：浏览器打开网盘网页并登录 → F12 → Network → 任意请求 → 复制 Request Headers 里的完整 cookie`}
           style={{ width: '100%', height: 110, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
@@ -170,7 +167,6 @@ export default function DriveBindModal({ siteName, initialProvider, reason, onCl
         {provider === 'uc' && <UcTvBind cookieBound={bound} onBound={() => { refresh(); onSaved(); }} />}
 
         {msg && <div className="muted" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.7 }}>{msg}</div>}
-      </div>
-    </div>
+    </AppModal>
   );
 }

@@ -2,11 +2,14 @@
 // ★ 2026-09-30（用户要求「音乐需要独立的音乐播放器正确展示」）：
 //   音乐类源（酷我/汽水/音乐库/听书…）的播放地址是 mp3/flac/m4a —— 交给 `<video>` 只会黑屏出声。
 //   这里用音乐播放器接管：封面 + 标题 + 播放/暂停 + 可拖进度 + 上一首/下一首（联动外层剧集）+ 音量 + 单曲循环。
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { setPlayTime } from '../lib/uiMemory';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getPlayTime, setPlayTime } from '../lib/uiMemory';
+import type { PlaybackSourceRef } from '../lib/playbackProgress';
+import { isNativeModalOpen } from '../lib/modalScope';
 
 export interface AudioPlayerProps {
   url: string;
+  playbackSource?: PlaybackSourceRef;
   /** 资源名（曲名/书名-集名） */
   name?: string;
   /** 封面（详情页海报/歌曲封面） */
@@ -33,6 +36,7 @@ function fmt(sec: number): string {
 
 export default function AudioPlayer({
   url,
+  playbackSource,
   name,
   cover,
   index,
@@ -44,6 +48,12 @@ export default function AudioPlayer({
   startTime = 0,
   mini = false,
 }: AudioPlayerProps) {
+  const playbackProfileId = playbackSource?.profileId;
+  const playbackSourceKey = playbackSource?.key;
+  const progressSource = useMemo(
+    () => playbackSourceKey === undefined ? undefined : { profileId: playbackProfileId, key: playbackSourceKey },
+    [playbackProfileId, playbackSourceKey],
+  );
   const ref = useRef<HTMLAudioElement>(null);
   const [paused, setPaused] = useState(true);
   const [cur, setCur] = useState(0);
@@ -70,21 +80,21 @@ export default function AudioPlayer({
       /* 自动播放被策略拦下时保留"待播放"态，用户点一下即可 */
     });
     return () => {
-      setPlayTime(url, a.currentTime);
+      setPlayTime(url, a.currentTime, progressSource);
       a.pause();
     };
-  }, [url]);
+  }, [url, progressSource]);
 
   // 续播
   const tryRestore = useCallback(() => {
     const a = ref.current;
     if (!a || restoredRef.current) return;
-    const t = startTime > 3 ? startTime : 0;
+    const t = startTime > 3 ? startTime : getPlayTime(url, progressSource);
     if (t > 3 && Number.isFinite(a.duration) && t < a.duration - 3) {
       restoredRef.current = true;
       a.currentTime = t;
     }
-  }, [startTime]);
+  }, [startTime, url, progressSource]);
 
   const toggle = useCallback(() => {
     const a = ref.current;
@@ -119,6 +129,7 @@ export default function AudioPlayer({
   // 键盘：空格播放/暂停、←/→ 上下曲
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
+      if (isNativeModalOpen()) return;
       const t = e.target as HTMLElement | null;
       if (t && /^(INPUT|TEXTAREA)$/.test(t.tagName)) return;
       if (e.code === 'Space') { e.preventDefault(); toggle(); }
@@ -133,9 +144,11 @@ export default function AudioPlayer({
 
   return (
     <div className={`vplayer aud${mini ? ' aud-mini' : ''}`}>
+      {/* oxlint-disable-next-line jsx-a11y/media-has-caption -- This player has no caption source to attach. */}
       <audio
         ref={ref}
         src={url}
+        aria-label={name || '音频播放器'}
         preload="auto"
         loop={loop}
         onLoadedMetadata={() => {
@@ -149,7 +162,7 @@ export default function AudioPlayer({
           const a = ref.current;
           if (a) {
             setCur(a.currentTime);
-            setPlayTime(url, a.currentTime);
+            setPlayTime(url, a.currentTime, progressSource);
           }
         }}
         onPlay={() => setPaused(false)}
@@ -191,20 +204,20 @@ export default function AudioPlayer({
           <span className="aud-time">{fmt(dur)}</span>
         </div>
         <div className="aud-ctls">
-          <button className="vp-ctl" disabled={!canPrev} title="上一首（←）" onClick={onPrev}>
+          <button className="vp-ctl" aria-label="上一首" disabled={!canPrev} title="上一首（←）" onClick={onPrev}>
             <svg width="18" height="18" viewBox="0 0 24 24"><path d="M6 5v14M19 5.5v13l-11-6.5z" fill="currentColor" /></svg>
           </button>
-          <button className="aud-play" title={paused ? '播放（空格）' : '暂停（空格）'} onClick={toggle}>
+          <button className="aud-play" aria-label={paused ? '播放' : '暂停'} title={paused ? '播放（空格）' : '暂停（空格）'} onClick={toggle}>
             {paused ? (
               <svg width="24" height="24" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
             ) : (
               <svg width="24" height="24" viewBox="0 0 24 24"><path d="M7 5h3.6v14H7zM13.4 5H17v14h-3.6z" fill="currentColor" /></svg>
             )}
           </button>
-          <button className="vp-ctl" disabled={!canNext} title="下一首（→）" onClick={onNext}>
+          <button className="vp-ctl" aria-label="下一首" disabled={!canNext} title="下一首（→）" onClick={onNext}>
             <svg width="18" height="18" viewBox="0 0 24 24"><path d="M18 5v14M5 5.5v13l11-6.5z" fill="currentColor" /></svg>
           </button>
-          <button className={`vp-ctl${loop ? ' on' : ''}`} title="单曲循环" onClick={() => setLoop((v) => !v)}>
+          <button className={`vp-ctl${loop ? ' on' : ''}`} aria-label={loop ? '关闭单曲循环' : '开启单曲循环'} aria-pressed={loop} title="单曲循环" onClick={() => setLoop((v) => !v)}>
             <svg width="17" height="17" viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2z" fill="currentColor" /></svg>
           </button>
           <span className="aud-vol">

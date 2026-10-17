@@ -6,11 +6,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import VideoPlayer from '../components/VideoPlayer';
 import TitleBar from '../components/TitleBar';
 import { client } from '../api/client';
-import { uiMem, recordWatch, saveUiMemory, markHistoryOnlyWriter, historyGroupKey } from '../lib/uiMemory';
+import { uiMem, getPlayTime, recordWatch, saveUiMemory, markHistoryOnlyWriter, historyGroupKey } from '../lib/uiMemory';
 import { formatEpisodeLabel } from '../lib/epName';
 import { playerWindowTitle } from '../lib/videoResolution';
 import { makeStaleGuard, acceptInitSeq } from '../lib/staleGuard';
-import { restoreHistorySource } from '../lib/historySource';
+import { resolveHistorySource } from '../lib/historySource';
 import type { PlayResult } from '../../shared/types';
 import DriveBindModal from '../components/DriveBindModal';
 import { playbackResultError } from '../../shared/playbackResult';
@@ -97,12 +97,7 @@ export default function PlayerPage() {
     setParseMsg('');
     setDriveBind(null);
     try {
-      // 播放器打开后主窗口可能再次切订阅；换集/重试也恢复同一份订阅。
-      if (!preparedUrl && d.meta?.profileId) {
-        await restoreHistorySource(client, { profileId: d.meta.profileId, sourceKey: d.key, sourceName: d.meta.sourceName });
-        if (!resolveGen.current.isCurrent(gen)) return;
-      }
-      const r: PlayResult = preparedUrl ? { url: preparedUrl, parse: 0, flag: d.flag, playUrl: '' } : await client.play({ key: d.key, flag: d.flag, id: target.url });
+      const r: PlayResult = preparedUrl ? { url: preparedUrl, parse: 0, flag: d.flag, playUrl: '' } : await client.play({ key: d.key, flag: d.flag, id: target.url, profileId: d.meta?.profileId });
       if (!resolveGen.current.isCurrent(gen)) return; // 过期结果：不 setActiveUrl、不记历史
       setDriveBind(r.needDriveCookieBind || null);
       if (r.needDriveCookieBind) return;
@@ -121,8 +116,8 @@ export default function PlayerPage() {
       if (resolveGen.current.isCurrent(gen)) setResolving(false);
     }
     // 所属档案在初始化时固定，进度回写不能读取后来已切换的当前订阅。
-    if (d.meta?.fromKey || d.meta?.id) {
-      uiMem.playSource = { fromKey: d.meta?.fromKey || '', id: d.meta?.id || '', name: display };
+    if (d.meta?.fromKey || d.meta?.id || d.key) {
+      uiMem.playSource = { fromKey: d.meta?.fromKey || d.key || '', id: d.meta?.id || '', name: display };
     }
     recordWatch({
       url: target.url,
@@ -132,7 +127,7 @@ export default function PlayerPage() {
       pic: d.meta?.pic,
       remarks: label,
       sourceName: d.meta?.sourceName,
-      sourceKey: d.meta?.fromKey,
+      sourceKey: d.meta?.fromKey || d.key,
       profileId: d.meta?.profileId,
       vodId: d.meta?.vodId ?? d.meta?.id,
       time: d.startTime || 0,
@@ -149,26 +144,21 @@ export default function PlayerPage() {
       const hydrateGen = resolveGen.current.next();
       setResolving(true);
       setActiveUrl('');
-      if (d.key && d.meta?.profileId) {
+      if (d.key) {
         try {
-          await restoreHistorySource(client, { profileId: d.meta.profileId, sourceKey: d.key, sourceName: d.meta.sourceName });
+          const source = await resolveHistorySource(client, { profileId: d.meta?.profileId, sourceKey: d.key, sourceName: d.meta?.sourceName });
           if (!resolveGen.current.isCurrent(hydrateGen)) return;
+          d = { ...d, meta: { ...d.meta, profileId: source.profileId, sourceName: source.name } };
         } catch (e) {
           if (!resolveGen.current.isCurrent(hydrateGen)) return;
           setParseMsg(e instanceof Error ? e.message : String(e));
           setResolving(false);
           return;
         }
-      } else if (d.key) {
-        try {
-          const cfg = await client.cfgGet();
-          if (!resolveGen.current.isCurrent(hydrateGen)) return;
-          d = { ...d, meta: { ...d.meta, profileId: cfg.activeProfileId } };
-        } catch { /* 兼容不提供档案信息的旧初始化调用 */ }
       }
       if (d.episodes?.length === 1 && d.meta?.vodId && d.key) {
         try {
-          const detail = await client.detail({ key: d.key, ids: [d.meta.vodId] });
+          const detail = await client.detail({ key: d.key, ids: [d.meta.vodId], profileId: d.meta.profileId });
           if (!resolveGen.current.isCurrent(hydrateGen)) return;
           const eps = detail?.episodes[d.flag] || [];
           const idx = eps.findIndex((ep) => ep.url === d.episodes[0].url);
@@ -247,27 +237,36 @@ export default function PlayerPage() {
   const canPrev = !!init && epIndex > 0;
   const canNext = !!init && epIndex < eps.length - 1;
 
-  // ★★ 进度回写历史（与 PlayPage 对称）：读「播放直链」的 playTime，写到「原始 episode url」历史键。
-  //   历史键与直链键不同源 —— 只有这里定时回写，历史的 time 才会推进，下次续播才能 seek 新进度。
-  const liveRef = useRef<{ raw: string; url: string; name: string; flag?: string; meta?: PlayerInitData['meta'] }>({ raw: '', url: '', name: '' });
+  // 播放直链进度按 SourceRef 读取，历史仍写入原始 episode URL。
+  const liveRef = useRef<{ raw: string; url: string; name: string; flag?: string; sourceKey: string; meta?: PlayerInitData['meta'] }>({ raw: '', url: '', name: '', sourceKey: '' });
   useEffect(() => {
-    liveRef.current = { raw: init?.episodes?.[epIndex]?.url || '', url: activeUrl, name: curName || init?.lastName || '', flag: init?.flag, meta: init?.meta };
+    liveRef.current = {
+      raw: init?.episodes?.[epIndex]?.url || '',
+      url: activeUrl,
+      name: curName || init?.lastName || '',
+      flag: init?.flag,
+      sourceKey: init?.meta?.fromKey || init?.key || '',
+      meta: init?.meta,
+    };
   }, [init, epIndex, activeUrl, curName]);
   useEffect(() => {
     const raw = init?.episodes?.[epIndex]?.url || '';
-    if (!raw || !activeUrl) return;
+    if (!init || !raw || !activeUrl) return;
     // ★ 2026-09-29：回写进度也带上来源/资源标识 —— 否则会被写成「按 url 记」的第二条
     //   （历史按 sourceKey+vodId 分组，同片多集只留一条）
     const hist = {
       flag: init?.flag,
       sourceName: init?.meta?.sourceName,
-      sourceKey: init?.meta?.fromKey,
+      sourceKey: init?.meta?.fromKey || init?.key,
       profileId: init?.meta?.profileId,
       vodId: init?.meta?.vodId ?? init?.meta?.id,
       pic: init?.meta?.pic,
     };
     const t = setInterval(() => {
-      const sec = uiMem.playTime.get(activeUrl) || 0;
+      const sec = getPlayTime(activeUrl, {
+        profileId: init.meta?.profileId,
+        key: init.meta?.fromKey || init.key,
+      });
       if (sec > 0) {
         recordWatch({
           url: raw,
@@ -288,14 +287,14 @@ export default function PlayerPage() {
     return () => {
       const c = liveRef.current;
       if (c.raw && c.url) {
-        const sec = uiMem.playTime.get(c.url) || 0;
+        const sec = getPlayTime(c.url, { profileId: c.meta?.profileId, key: c.sourceKey });
         if (sec > 0) {
           recordWatch({
             url: c.raw,
             rawUrl: c.raw,
             flag: c.flag,
             sourceName: c.meta?.sourceName,
-            sourceKey: c.meta?.fromKey,
+            sourceKey: c.sourceKey,
             profileId: c.meta?.profileId,
             vodId: c.meta?.vodId ?? c.meta?.id,
             pic: c.meta?.pic,
@@ -337,14 +336,14 @@ export default function PlayerPage() {
                 </svg>
               )}
             </button>
-            <button className="mini-btn" title="恢复原窗口" onClick={() => void client.playerSetMini(false)}>
+            <button className="mini-btn" aria-label="恢复原窗口" title="恢复原窗口" onClick={() => void client.playerSetMini(false)}>
               <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
                 <rect x="2.5" y="2.5" width="11" height="11" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
                 <path d="M6.5 9.5V6.5h3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
                 <path d="M6.5 6.5l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
-            <button className="mini-btn mini-strip-close" title="关闭" onClick={() => void client.winClose()}>
+            <button className="mini-btn mini-strip-close" aria-label="关闭" title="关闭" onClick={() => void client.winClose()}>
               <svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true">
                 <line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                 <line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -387,6 +386,7 @@ export default function PlayerPage() {
           {activeUrl && !loadingRef.current ? (
             <VideoPlayer
               url={activeUrl}
+              playbackSource={init ? { profileId: init.meta?.profileId, key: init.meta?.fromKey || init.key } : undefined}
               resourceName={curName}
               playTitle={playName}
               onResolutionChange={setResolution}
@@ -416,10 +416,11 @@ export default function PlayerPage() {
               cover={init?.meta?.pic}
               // ★ 2026-10-08（用户要求）：跳过片头片尾 —— 资源键（与历史分组同口径）+ 本集键（原始 episode url）
               skipResourceKey={historyGroupKey({
-                sourceKey: init?.key,
+                sourceKey: init?.meta?.fromKey || init?.key,
                 vodId: init?.meta?.vodId ?? init?.meta?.id,
                 name: curName,
                 url: eps[epIndex]?.url,
+                profileId: init?.meta?.profileId,
               })}
               skipEpisodeKey={eps[epIndex]?.url || `#${epIndex}`}
               skipEpisodeLabel={eps[epIndex]?.name || curName}

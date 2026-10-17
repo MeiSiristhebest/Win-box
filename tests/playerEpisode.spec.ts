@@ -9,7 +9,7 @@ describe('player episode switch context', () => {
     epIndex: 0,
     lastUrl: 'https://cdn.example/old-episode.m3u8',
     startTime: 123,
-    meta: { vodId: 'vod-1', profileId: 'old-profile' },
+    meta: { vodId: 'vod-1', profileId: 'old-profile', sourceName: '旧源名' },
   };
 
   it('replaces the full episode list and invalidates the previous direct URL', () => {
@@ -36,8 +36,9 @@ describe('player episode switch context', () => {
       episodes: current.episodes,
       epIndex: 0,
       profileId: 'new-profile',
+      sourceName: '新源名',
     });
-    expect(next?.meta?.profileId).toBe('new-profile');
+    expect(next?.meta).toMatchObject({ profileId: 'new-profile', sourceName: '新源名' });
   });
 
   it('rejects a different title instead of switching the wrong player', () => {

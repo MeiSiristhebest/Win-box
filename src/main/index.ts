@@ -26,8 +26,12 @@ import { UpdateService } from './update/UpdateService';
 import { DavStore } from './store/DavStore';
 import { JsonStore } from './store/JsonStore';
 import { LocalPkgStore } from './store/LocalPkgStore';
+import { UiPreferencesService } from './store/UiPreferencesService';
+import { applyWindowSurfacePolicy, windowSurfaceColor } from './preferences/WindowSurfacePolicy';
+import { colorSchemeFor } from '../shared/ui/themeTokens';
 import { PluginHost } from './plugin/PluginHost';
 import { LOCAL_PROXY_BASE } from '../shared/constants';
+import { IPC } from '../shared/ipc-channels';
 import { builtinPluginsDir, cacheDir, legacyLocalImportsDir, localImportsDir, pluginsDir, userDataDir } from './util/paths';
 import { safeStorageDriveCodec } from './util/driveCodec';
 import { clearWinboxCache, type ClearCacheResult } from './util/cacheClean';
@@ -74,6 +78,19 @@ const localPkgs = new LocalPkgStore(
   localImportsDir(),
   legacyLocalImportsDir(),
 );
+const uiPreferences = new UiPreferencesService(
+  new JsonStore(join(userDataDir(), 'ui-preferences.json')),
+  (snapshot) => {
+    nativeTheme.themeSource = colorSchemeFor(snapshot.values.themeId);
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (window.isDestroyed()) continue;
+      const role = window === playerWindow() ? 'player' : 'application';
+      applyWindowSurfacePolicy(window, snapshot.values.themeId, role);
+      window.webContents.send(IPC.UI_PREFERENCES_CHANGED, snapshot);
+    }
+  },
+);
+nativeTheme.themeSource = colorSchemeFor(uiPreferences.get().values.themeId);
 /**
  * ★ 2026-10-16 插件系统（M1，用户拍板「方案 A」）：宿主聚合——
  *   随包官方插件启动时**物化**（`resources/plugins/*.winbox` → `<userData>/plugins/<id>.winbox/` + 侧签）
@@ -214,7 +231,7 @@ function createWindow(): void {
     // backgroundMaterial: 'mica' 仅 Win11 有效；旧版本自动降级无副作用
     // ★ 用不透明底色：无边框窗口若背景全透明，放大/最大化时未渲染区域会显示黑色残影/形状异常
     //   （--bg-glass 本身约 90% 不透明，视觉几乎无差异，Mica 磨砂不受影响）
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0a0c10' : '#dce4ec',
+    backgroundColor: windowSurfaceColor(uiPreferences.get().values.themeId, 'application'),
     title: 'Win-Box',
     // 无边框自定义标题栏：窗口控制（最小化/最大化/关闭）与拖拽由渲染层 TitleBar 处理
     frame: false,
@@ -374,7 +391,7 @@ app.whenReady().then(async () => {
   } catch (e) {
     fileLogger.w('插件初始化失败：' + (e instanceof Error ? e.message : String(e)));
   }
-  registerIpc(host, dav, dlna, updater, localPkgs, plugins);
+  registerIpc(host, dav, dlna, updater, localPkgs, uiPreferences, plugins);
   // 老板键：注入窗口提供者（主窗口 + 播放器窗口）并按上次设置注册全局快捷键
   bossKey.start(() => {
     const ws: BrowserWindow[] = [];

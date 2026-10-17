@@ -9,7 +9,7 @@
 //     utils.js 已由自研可执行子集覆盖（原 QuickJS 字节码不可执行），走正常模块加载。
 import type { EngineHost } from '../../ports';
 import * as cheerio from 'cheerio';
-import * as CryptoJS from 'crypto-js';
+import { CryptoJS } from './cryptoCompat';
 import { createHttpGlobals } from './SandboxHttp';
 import { createDrpyEngineGlobals } from './drpyEngine';
 import { createLocal } from './SandboxLocal';

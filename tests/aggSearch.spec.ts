@@ -1,6 +1,6 @@
 // tests/aggSearch.spec.ts — 聚合搜索汇总：不去重 / 来源标注 / 错误隔离 / 统计
 import { describe, it, expect } from 'vitest';
-import { mergeSearchResults, isSearchableSource, type AggSearchInput } from '../src/engine/vod/aggSearch';
+import { mergeSearchReports, mergeSearchResults, isSearchableSource, type AggSearchInput } from '../src/engine/vod/aggSearch';
 import type { VodItem } from '../src/shared/types';
 
 function v(id: string, name: string, src: string): VodItem {
@@ -58,6 +58,44 @@ describe('mergeSearchResults — 汇总不去重', () => {
   it('来源标注到每条结果', () => {
     const r = mergeSearchResults([src('a', '源A', [v('1', '片', 'a'), v('2', '剧', 'a')])]);
     expect(r.items.every((i) => i.sourceName === '源A' && i.sourceKey === 'a')).toBe(true);
+  });
+
+  it('相同 source key 在不同档案中保持独立并写入 SourceRef', () => {
+    const r = mergeSearchResults([
+      { profileId: 'profile-a', profileName: '订阅 A', ...src('same-key', '影视源', [v('same-id', '片 A', 'same-key')]) },
+      { profileId: 'profile-b', profileName: '订阅 B', ...src('same-key', '影视源', [v('same-id', '片 B', 'same-key')]) },
+    ]);
+
+    expect(r.perSource).toHaveLength(2);
+    expect(r.perSource.map((source) => source.profileId)).toEqual(['profile-a', 'profile-b']);
+    expect(r.items).toHaveLength(2);
+    expect(r.items.map((item) => item.sourceRef)).toEqual([
+      { profileId: 'profile-a', key: 'same-key' },
+      { profileId: 'profile-b', key: 'same-key' },
+    ]);
+    expect(r.items.map((item) => item.sourceProfileName)).toEqual(['订阅 A', '订阅 B']);
+  });
+
+  it('合并独立档案报告时不覆盖同 key 的结果并汇总 pending 状态', () => {
+    const reportA = mergeSearchResults([
+      { profileId: 'profile-a', key: 'same-key', name: '影视源', status: 'ok', items: [v('a', '片 A', 'same-key')] },
+      { profileId: 'profile-a', key: 'pending', name: '待准备源', status: 'error', error: '运行时就绪中' },
+    ]);
+    reportA.pendingSources = 1;
+    const reportB = mergeSearchResults([
+      { profileId: 'profile-b', key: 'same-key', name: '影视源', status: 'ok', items: [v('b', '片 B', 'same-key')] },
+    ]);
+
+    const r = mergeSearchReports([
+      { profileId: 'profile-a', profileName: '订阅 A', report: reportA },
+      { profileId: 'profile-b', profileName: '订阅 B', report: reportB },
+    ]);
+
+    expect(r.perSource).toHaveLength(3);
+    expect(r.items.map((item) => item.id)).toEqual(['a', 'b']);
+    expect(r.items.map((item) => item.sourceRef?.profileId)).toEqual(['profile-a', 'profile-b']);
+    expect(r.pendingSources).toBe(1);
+    expect(r.failedSources).toBe(1);
   });
 
   it('出错源隔离：不崩、不吞、不影响其它源', () => {

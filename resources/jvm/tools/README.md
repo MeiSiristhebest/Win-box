@@ -39,7 +39,7 @@ java.lang.VerifyError: Expecting a stackmap frame at branch target N
 :: 参数：<输入 jar> <输出 jar> [额外解析用 classpath，分号分隔]
 set JDK=<你的 JDK17>\bin\java.exe
 set T=<本目录>
-set CP=%T%\asm-9.7.jar;%T%\asm-tree-9.7.jar;%T%\asm-commons-9.7.jar
+set CP=%T%\asm-9.11.jar;%T%\asm-tree-9.11.jar;%T%\asm-commons-9.11.jar
 
 %JDK% -Xmx1024m -cp "%CP%;%T%" JarRewriter ^
       in.jar out.jar ^
@@ -75,7 +75,7 @@ rewrite done: classes=138 rewritten=138 fallback=0 ms=122 out=1039506
 ```bat
 set JDK=<你的 JDK17>
 set T=<本目录>
-%JDK%\bin\javac.exe -encoding UTF-8 -cp "%T%\asm-9.7.jar;%T%\asm-tree-9.7.jar;%T%\asm-commons-9.7.jar" -d "%T%" "%T%\JarRewriter.java"
+%JDK%\bin\javac.exe -encoding UTF-8 -cp "%T%\asm-9.11.jar;%T%\asm-tree-9.11.jar;%T%\asm-commons-9.11.jar" -d "%T%" "%T%\JarRewriter.java"
 ```
 
 > 注意：`javac` 在 zh-CN Windows 上默认 GBK，**必须带 `-encoding UTF-8`**（源码含中文注释）。
@@ -84,5 +84,5 @@ set T=<本目录>
 
 ## ASM 版本
 
-`asm-9.7.jar` / `asm-tree-9.7.jar` / `asm-commons-9.7.jar`，来自 Maven Central（`org.ow2.asm`，BSD-3-Clause）。
+`asm-9.11.jar` / `asm-tree-9.11.jar` / `asm-commons-9.11.jar`，来自 Maven Central（`org.ow2.asm`，BSD-3-Clause）。
 共约 250 KB。仅 `JarRewriter` 使用，主流程不依赖。

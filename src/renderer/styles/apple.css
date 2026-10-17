@@ -1,10 +1,14 @@
-/* apple.css — Win-Box 皮肤：Apple（macOS · Liquid Glass）风格
-   ★ 2026-10-16 现代化打磨（impeccable 口径：配色 / 动效 / 风格协调统一）：
-     · Liquid Glass 再提纯：工具栏/侧边栏玻璃折射高光 + 内容上浮「浮在玻璃下」的层次；
-     · 侧边栏选中弹跳、卡片弹簧上浮 + 封面慢推变焦 + 逐个错开入场、按钮按压回弹；
-     · 控件统一走全站动效令牌（--ease-x / --dur-x），四皮肤同一手感（只换配色）。
-   原规范：Liquid Glass（macOS Tahoe）半透明材质 + Apple TV app 布局 + HIG 侧边栏。
-   ★ 本皮肤**不复用**经典/Netflix 骨架：布局为「全宽统一工具栏（交通灯左置）＋ 玻璃侧边栏 ＋ 内容区」。
+@layer legacy {
+/* apple.css — Win-Box 第五套皮肤：Apple（macOS · Liquid Glass）风格（★ 2026-09-29 新增）
+   规范来源（联网查证的 Apple 官方资料）：
+     · Liquid Glass（macOS Tahoe 26）：半透明材质，侧边栏/工具栏「浮」在内容之上、反映并折射周围；
+       窗口圆角变大、控件随交互「活起来」；边栏与工具栏重新设计以**凸显内容**。
+     · Apple TV app（mac 版）布局：边栏「主页」→ **窗口顶部精选轮播（可逐个翻阅）** → 向下滚动是
+       内容栏（继续观看 / 新上映 / 热门 / 精选集 / 推荐）；**点栏目标题看全部**；缩略图悬停出现播放键
+       与「…」菜单；条目页 = 剧照 + 播放/待播清单 + 向下滚动看剧集/预告/相关。
+     · HIG 侧边栏：位于领先侧、**最多两级层次**、分组标签简短、图标用 SF Symbols 且随系统强调色。
+   ★ 本皮肤**不复用**经典/Netflix 骨架：布局为「全宽统一工具栏（交通灯左置）＋ 玻璃侧边栏 ＋ 内容区」，
+     由 App.tsx 的 apple 分支渲染；发现页/详情页启用 Apple TV 式 Hero 与内容栏。
    ★ 全部规则限定在 `[data-theme='apple']` 下，其余主题不受影响。 */
 
 :root[data-theme='apple'] {
@@ -320,6 +324,7 @@
   display: flex; align-items: center; justify-content: center; gap: 7px;
 }
 :root[data-theme='apple'] .ap-dot {
+  display: block; margin: 0; padding: 0; border: 0; box-shadow: none;
   width: 7px; height: 7px; border-radius: 999px; cursor: pointer;
   background: rgba(255, 255, 255, .42); transition: background .18s ease, width .18s ease;
 }
@@ -1013,4 +1018,9 @@
 @media (max-width: 900px) {
   :root[data-theme='apple'] .spot { padding: 26px 24px; }
   :root[data-theme='apple'] .spot-stage { width: 150px; height: 225px; }
+}
+}
+
+@layer tokens {
+  :root[data-theme='apple'] { --on-accent: #00264c; }
 }

@@ -1,9 +1,11 @@
-/* bilibili.css — Win-Box 皮肤：哔哩哔哩风格
-   ★ 2026-10-16 现代化重做（impeccable 口径：配色 / 动效 / 风格协调统一）：
-     · B站蓝 #00AEEC × B站粉 #FB7299 双品牌色：蓝主行动、粉点缀徽标；页面底 #F5F6F7 系；
-     · 导航 = 白玻璃 + 蓝底胶囊选中弹跳；卡片 = 弹簧上浮 + 封面慢推变焦 + 逐个错开入场；
-     · 控件统一走全站动效令牌（--ease-x / --dur-x），按压 100ms 内到位，焦点环 B站蓝。
-   原规范：主色 #00AEEC（hover #0095CC）；中性色 #18191C/#61666D/#9499A0/#E3E5E7；白卡 12px 圆角。
+@layer legacy {
+/* bilibili.css — Win-Box 第四套皮肤：哔哩哔哩风格（★ 2026-09-24 新增）
+   规范来源（联网查证 B 站品牌规范 / 社区 UI 规范）：
+     · 主色 B站蓝 #00AEEC（hover #0095CC，浅蓝底 rgba(0,174,236,.08)）；辅助色 B站粉 #FB7299（热门/强调）
+     · 中性色：主文本 #18191C、次要 #61666D、占位 #9499A0、边框 #E3E5E7、页面底 #F1F2F3、卡片 #FFFFFF
+     · 卡片白底 + 12px 圆角 + 轻阴影；hover 边框转蓝 + 浅蓝底（B 站列表/卡片的标志性反馈）
+     · 字体 Noto Sans（回退 PingFang / 微软雅黑）；过渡 200ms ease-in-out
+     · 布局：顶部导航（白底 + 蓝色字标），内容区浅灰底 —— 与 Netflix 皮肤共用 .nf-nav 结构，配色不同
    ★ 全部规则限定在 `[data-theme='bilibili']` 下，其余主题不受影响。 */
 
 :root[data-theme='bilibili'] {
@@ -165,6 +167,10 @@
 :root[data-theme='bilibili'] .sp-btn:focus-visible {
   outline: 2px solid var(--b-blue); outline-offset: 3px;
 }
+
+:root[data-theme='bilibili'] .srcpick-pop,
+:root[data-theme='bilibili'] .sp-panel { background: var(--bg-elev2); }
+
 
 /* ---- 详情页：选集按钮（B 站播放页的集数块） ---- */
 :root[data-theme='bilibili'] .ep {
@@ -608,4 +614,9 @@
 :root[data-theme='bilibili'] .vp-big:hover {
   transform: translate(-50%, -50%) scale(1.08);
   background: rgba(251, 114, 153, .95);
+}
+}
+
+@layer tokens {
+  :root[data-theme='bilibili'] { --on-accent: #08232c; }
 }

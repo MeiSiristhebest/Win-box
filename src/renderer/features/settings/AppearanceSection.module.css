@@ -1,0 +1,53 @@
+@layer components {
+  .card {
+    margin-bottom: 16px;
+    padding: 12px;
+  }
+
+  .heading {
+    margin: 0 0 8px;
+    color: var(--text-secondary);
+    font-size: var(--fs-sm);
+    font-weight: 600;
+  }
+
+  .options {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .radioOption {
+    position: relative;
+    cursor: pointer;
+  }
+
+  .radioInput {
+    clip: rect(0, 0, 0, 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .radioOption:focus-within {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .discoverToggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  .help {
+    margin-top: 6px;
+    font-size: var(--fs-xs);
+  }
+}

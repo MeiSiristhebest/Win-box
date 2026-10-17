@@ -6,10 +6,10 @@
 // ★ 2026-09-29（用户要求）：搜索框做大；热搜做成**右侧排名榜**；左侧下方为**搜索历史**
 //   （逐条可删 ✕、下方「清空搜索记录」、上限 10 条，第 11 条顶掉第 1 条）。
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { client } from '../api/client';
 import { openSearchWindow } from '../lib/searchWin';
-import { useConfirmDialog } from './ConfirmDialog';
+import { isNativeModalOpen } from '../lib/modalScope';
+import { useAppDialog } from './AppDialog';
 import type { MetaSuggestion } from '../../shared/meta';
 import type { MovieHotList } from '../../shared/types';
 import {
@@ -29,8 +29,7 @@ const HOT_RANK_MAX = 10;
  *   **M3 搜索条**（宽胶囊 + 占位文案），其余皮肤保持原来的「🔍 搜索」小胶囊（零影响）。
  */
 export default function SearchPanel({ bar = false }: { bar?: boolean }) {
-  const nav = useNavigate();
-  const { confirm: showMessage, dialog: messageDialog } = useConfirmDialog();
+  const dialog = useAppDialog();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [hot, setHot] = useState<MovieHotList | null>(null);
@@ -70,6 +69,7 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: globalThis.KeyboardEvent): void => {
+      if (isNativeModalOpen()) return;
       if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
@@ -117,14 +117,7 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
     setOpen(false);
     setQ('');
     setSug([]);
-    void openSearchWindow(t).catch((e) => {
-      void showMessage({
-        title: '无法打开搜索窗口',
-        message: e instanceof Error ? e.message : String(e),
-        confirmLabel: '知道了',
-        cancelLabel: null,
-      });
-    });
+    void openSearchWindow(t).catch((e) => void dialog.alert(`无法打开搜索窗口：${e instanceof Error ? e.message : String(e)}`, { title: '无法打开搜索窗口' }));
   };
 
   /** 删除一条搜索历史（不影响列表其它条目） */
@@ -140,29 +133,19 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
     setHist([]);
   };
 
-  const activate = (e: { key: string; preventDefault: () => void }, action: () => void): void => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      action();
-    }
-  };
-
   return (
     <div className={`srcpick${bar ? ' sp-bar-wrap' : ''}`} ref={wrapRef}>
-      <div
-        className={`srcpick-name sp-btn${bar ? ' sp-bar' : ''}`}
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
+        className={`srcpick-name sp-btn ui-action${bar ? ' sp-bar' : ''}`}
         aria-expanded={open}
-        aria-haspopup="dialog"
         title="搜索（全源搜索，结果边搜边出）"
         onClick={() => setOpen((v) => !v)}
-        onKeyDown={(e) => activate(e, () => setOpen((v) => !v))}
       >
         🔍 {bar ? <span className="sp-bar-hint">搜索影片、剧集、演员…</span> : '搜索'}
-      </div>
+      </button>
       {open && (
-        <div className="sp-panel" role="dialog">
+        <section className="sp-panel" aria-label="搜索建议">
           <div className="sp-row">
             <input
               ref={inputRef}
@@ -184,13 +167,13 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
               {busy && <div className="sp-item muted">联想中…</div>}
               {!busy && sug.length === 0 && <div className="sp-item muted">无联想结果，回车直接全源搜索「{q.trim()}」</div>}
               {sug.map((s) => (
-                <div key={`${s.mediaType}:${s.title}:${s.year}`} className="sp-item" role="button" tabIndex={0} onClick={() => go(s.title)} onKeyDown={(e) => activate(e, () => go(s.title))}>
+                <button type="button" key={`${s.mediaType}:${s.title}:${s.year}`} className="sp-item ui-action" onClick={() => go(s.title)}>
                   <span>{s.title}</span>
                   <span className="muted sp-meta">
                     {s.mediaType === 'tv' ? '剧集' : '电影'}
                     {s.year ? ` · ${s.year}` : ''}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           ) : (
@@ -203,11 +186,10 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
                 ) : (
                   <div className="sp-hist-list">
                     {hist.map((t) => (
-                      <div key={t} className="sp-item sp-hist-item" role="button" tabIndex={0} onClick={() => go(t)} onKeyDown={(e) => activate(e, () => go(t))}>
-                        <span className="sp-hist-txt" title={t}>{t}</span>
+                      <div key={t} className="sp-item sp-hist-item">
+                        <button type="button" className="sp-hist-txt ui-action" title={t} onClick={() => go(t)}>{t}</button>
                         <button
                           className="sp-hist-del"
-                          title="删除这条搜索记录"
                           aria-label={`删除搜索记录 ${t}`}
                           onClick={(e) => { e.stopPropagation(); delHist(t); }}
                         >
@@ -231,20 +213,19 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
                 ) : (
                   <div className="sp-rank-list">
                     {hot.items.slice(0, HOT_RANK_MAX).map((item) => (
-                      <div key={item.title} className="sp-rank-item" role="button" tabIndex={0} onClick={() => go(item.title)} onKeyDown={(e) => activate(e, () => go(item.title))} title={`${item.title} · 热搜指数 ${item.score}`}>
+                      <button type="button" key={item.title} className="sp-rank-item ui-action" onClick={() => go(item.title)} title={`${item.title} · 热搜指数 ${item.score}`}>
                         <span className={`sp-rank-no${item.rank <= 3 ? ' top' : ''}`}>{item.rank}</span>
                         <span className="sp-rank-txt">{item.title}</span>
                         <span className="muted sp-hot-score">{item.score}</span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 )}
               </div>
             </div>
           )}
-        </div>
+        </section>
       )}
-      {messageDialog}
     </div>
   );
 }

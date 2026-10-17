@@ -1,5 +1,5 @@
 // src/main/ipc/index.ts — 注册所有 IPC handler
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain } from 'electron';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { registerHandler } from '../util/ipcGuard';
 import { fileLogger } from '../util/logger';
@@ -8,6 +8,7 @@ import { setUiScalePref, uiScaleState } from '../ui/uiScale';
 import { SpiderHost } from '../spider/SpiderHost';
 import { resourcesDir, userDataDir, spiderCacheDir } from '../util/paths';
 import type { LocalPkgStore } from '../store/LocalPkgStore';
+import type { UiPreferencesService } from '../store/UiPreferencesService';
 import { pkgSubUrl } from '../../engine/config/localPkg';
 import {
   openWebHomeWindow,
@@ -51,9 +52,8 @@ import type { MpvCommand, MpvStartOptions } from '../../shared/player';
 import { bossKey, BOSS_DEFAULT_ACCEL } from '../bossKey';
 import { playerSettings } from '../player/playerSettings';
 import { detectPlayers, launchPlayer, seekArgs } from '../torrent/externalPlayer';
-import { ok } from '../../shared/ipc-result';
 import type { IpcMainInvokeEvent } from 'electron';
-import type { BossKeySettings, EpgChannelRef, ImportReport, LiveBean, MultiConfigEntry, SiteConfig, SourceBean, SourceMoveDirection, SourceUpdatePatch } from '../../shared/types';
+import type { BossKeySettings, EpgChannelRef, ImportReport, LiveBean, MultiConfigEntry, SearchAllProgressEvent, SiteConfig, SourceBean, SourceMoveDirection, SourceUpdatePatch } from '../../shared/types';
 import type { MetaSettings } from '../../shared/meta';
 import type { PlayerSettings } from '../../shared/player';
 
@@ -90,7 +90,7 @@ function importLiveFile(srcPath: string, nameOverride: string): { fileName: stri
   return { fileName, name, needsName: !nameOverride };
 }
 
-export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService, updater: UpdateService, pkgs: LocalPkgStore, plugins: PluginHost): void {
+export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService, updater: UpdateService, pkgs: LocalPkgStore, uiPreferences: UiPreferencesService, plugins: PluginHost): void {
   const log = fileLogger;
   /** ★ 2026-10-08 MPV 播放内核（单会话；播放器窗口关闭/退出应用会 dispose） */
   const mpv = new MpvController(fileLogger);
@@ -133,23 +133,13 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
    *   决定是否丢弃页面状态类记忆（搜索态/浏览态/详情态）。见 renderer/lib/uiMemory.ts。
    */
   registerHandler(IPC.SYSTEM_SESSION_ID, () => SESSION_ID, log);
+  registerHandler(IPC.UI_PREFERENCES_GET, () => uiPreferences.get(), log);
+  registerHandler(IPC.UI_PREFERENCES_INITIALIZE, (_e: unknown, legacy: unknown) => uiPreferences.initialize(legacy), log);
+  registerHandler(IPC.UI_PREFERENCES_UPDATE, (_e: unknown, patch: unknown) => uiPreferences.update(patch), log);
   // 退出整个应用（免责声明「拒绝」等场景）
   registerHandler(IPC.APP_QUIT, () => {
     app.quit();
     return { ok: true };
-  }, log);
-  // 亮/深色模式：同步到原生主题（影响 Mica 背景与窗口底色），并更新当前窗口背景色
-  registerHandler(IPC.THEME_SET, (_e: any, theme: string) => {
-    nativeTheme.themeSource = theme === 'light' ? 'light' : theme === 'dark' ? 'dark' : 'system';
-    const w = winOf(_e as IpcMainInvokeEvent);
-    // ★ 不透明底色：对齐主窗口 createWindow 的修复（透明背景在放大/最大化时残影异形）
-    // ★★ 2026-10-08（用户报「b蓝光 / 自建 4K-2 有声音无图像」根因修复）★★：
-    //   **播放器窗口是透明窗**（mpv 画面从播放区透明处透出），它自己也跑主题引导 → 会走到这里；
-    //   一旦给它设不透明底色，mpv 画面被整块盖住（实测复现 + `setBackgroundColor` 最小复现）。
-    //   该窗口的底色必须保持 `#00000000`（构造项），其「最大化残影」由 PlayerWindow 自身的
-    //   maximize/unmaximize → invalidate + 圆角处理兜底。
-    const dark = nativeTheme.shouldUseDarkColors;
-    if (w && !isPlayerWindow(w)) w.setBackgroundColor(dark ? '#0a0c10' : '#dce4ec');
   }, log);
   // 应用图标 dataURL（标题栏/窗口内展示与进程图标一致）
   registerHandler(IPC.APP_ICON, () => {
@@ -191,6 +181,35 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
     const r = await host.importConfig({ url: a.url, name: a.name });
     return { config: r.config, report: r.report, warnings: r.warnings, urls: r.urls };
   }, log);
+  host.onSubscriptionImportProgress = (event) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      try {
+        if (!window.isDestroyed()) window.webContents.send(IPC.CFG_IMPORT_JOB_PROGRESS, event);
+      } catch {
+        // A window can close while the main-process import continues.
+      }
+    }
+  };
+  registerHandler(IPC.CFG_IMPORT_JOB_START, (_e: any, a: { url: string; name?: string }) =>
+    host.startSubscriptionImport(String(a?.url || ''), String(a?.name || '')), log);
+  registerHandler(IPC.CFG_IMPORT_JOB_CANCEL, (_e: any, jobId: string) =>
+    host.cancelSubscriptionImport(String(jobId || '')), log);
+  registerHandler(IPC.CFG_IMPORT_JOB_RETRY, (_e: any, jobId: string) =>
+    host.retryFailedSubscriptionImport(String(jobId || '')), log);
+  registerHandler(IPC.CFG_IMPORT_JOB_CONTINUE, (_e: any, jobId: string) =>
+    host.continueSubscriptionImport(String(jobId || '')), log);
+  registerHandler(IPC.CFG_IMPORT_JOB_GET, (_e: any, jobId: string) =>
+    host.getSubscriptionImport(String(jobId || '')), log);
+  registerHandler(IPC.CFG_IMPORT_JOB_LIST, () => host.listSubscriptionImports(), log);
+  registerHandler(IPC.CFG_IMPORT_JOB_RESUME, (_e: any, jobId: string) =>
+    host.resumeSubscriptionImport(String(jobId || '')), log);
+  registerHandler(IPC.CFG_SUBSCRIPTION_GROUP_REMOVE_MEMBER, (_e: any, args: { groupId: string; memberId: string }) =>
+    host.cfgRemoveSubscriptionGroupMember(String(args?.groupId || ''), String(args?.memberId || '')), log);
+  registerHandler(IPC.CFG_SUBSCRIPTION_GROUP_RESOLVE_REFRESH, (_e: any, args: { groupId: string; memberId: string; resolution: string }) => {
+    const resolution = args?.resolution;
+    if (resolution !== 'keep-current' && resolution !== 'use-upstream') throw new Error('首次刷新处理方式无效');
+    return host.cfgResolveSubscriptionRefresh(String(args?.groupId || ''), String(args?.memberId || ''), resolution);
+  }, log);
   registerHandler(IPC.CFG_PROFILES, () => host.cfgProfiles(), log);
   registerHandler(IPC.CFG_PROFILE_SAVE, (_e: any, name: string) => host.cfgSaveAsProfile(name), log);
   registerHandler(IPC.CFG_PROFILE_ACTIVATE, (_e: any, id: string) => host.cfgActivateProfile(id), log);
@@ -201,6 +220,7 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
    * 当前生效档案取运行期真实源列表；其余档案解析其存档 JSON（坏档给空清单，不阻塞弹层）。
    */
   registerHandler(IPC.CFG_PROFILE_SITES, () => host.cfgProfileSites(), log);
+  registerHandler(IPC.CFG_PROFILE_SOURCES, (_e: any, profileId: string) => host.cfgProfileSources(String(profileId || '')), log);
   /** ★ 2026-09-30（用户要求）：一步完成「切换档案 + 选中该档案下的源」（单次 apply，避免两轮宿主重活） */
   registerHandler(IPC.CFG_SWITCH_PROFILE_SOURCE, (_e: any, a: { profileId: string; key: string }) =>
     host.cfgSwitchProfileSource(String(a?.profileId || ''), String(a?.key || '')), log);
@@ -531,30 +551,30 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   registerHandler(IPC.WEBHOME_FM_PLAY, (_e: any, payload: { url?: string; title?: unknown }) => webHomePlay(payload || {}), log);
   registerHandler(IPC.WEBHOME_FM_COOKIE, (_e: any, domain: string) => webHomeCookie(domain), log);
 
-  registerHandler(IPC.VOD_HOME, (_e: any, key: string) => host.home(key), log);
-  registerHandler(IPC.VOD_CATEGORY, (_e: any, a: { key: string; tid: string; pg: string; extend?: Record<string, string> }) =>
-    host.category(a.key, a.tid, a.pg, a.extend || {}), log);
-  registerHandler(IPC.VOD_DETAIL, (_e: any, a: { key: string; ids: string[] }) => host.detail(a.key, a.ids), log);
-  registerHandler(IPC.VOD_SEARCH, (_e: any, a: { key: string; wd: string }) => host.search(a.key, a.wd), log);
+  registerHandler(IPC.VOD_HOME, (_e: any, a: { key: string; profileId?: string }) => host.home(a.key, a.profileId), log);
+  registerHandler(IPC.VOD_CATEGORY, (_e: any, a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }) =>
+    host.category(a.key, a.tid, a.pg, a.extend || {}, a.profileId), log);
+  registerHandler(IPC.VOD_DETAIL, (_e: any, a: { key: string; ids: string[]; profileId?: string }) => host.detail(a.key, a.ids, a.profileId), log);
+  registerHandler(IPC.VOD_SEARCH, (_e: any, a: { key: string; wd: string; profileId?: string }) => host.search(a.key, a.wd, a.profileId), log);
   // ★ 聚合搜索：逐源进度经 VOD_SEARCH_ALL_PROGRESS 推给发起窗口 → 渲染层边搜边出
   //   参数 { wd, refresh }：refresh=true 忽略本地缓存强制重搜（「重新搜索」按钮）
-  registerHandler(IPC.VOD_SEARCH_ALL, async (e: any, a: { wd: string; refresh?: boolean } | string) => {
+  registerHandler(IPC.VOD_SEARCH_ALL, async (e: any, a: { wd: string; refresh?: boolean; profileId?: string; profileIds?: string[] } | string) => {
     const arg = typeof a === 'string' ? { wd: a, refresh: false } : a || { wd: '', refresh: false };
     const w = winOf(e as IpcMainInvokeEvent);
-    host.onSearchAllProgress = (ev) => {
+    const onProgress = (ev: SearchAllProgressEvent): void => {
       try { w?.webContents.send(IPC.VOD_SEARCH_ALL_PROGRESS, ev); } catch { /* 窗口已关：忽略 */ }
     };
-    try {
-      return await host.searchAll(arg.wd, { refresh: !!arg.refresh });
-    } finally {
-      host.onSearchAllProgress = undefined;
-    }
+    return await host.searchAll(arg.wd, {
+      refresh: !!arg.refresh,
+      profileId: typeof arg.profileId === 'string' ? arg.profileId : undefined,
+      profileIds: Array.isArray(arg.profileIds) ? arg.profileIds : undefined,
+    }, onProgress);
   }, log);
   // ★ 2026-09-24：vipFlags 由主进程按订阅顶层 flags 自行决定（渲染层不再传）
   // ★ 2026-09-29：磁力/电驴这类「桌面版无载体」的播放链接 → 顺手复制到剪贴板，
   //   用户看到上屏提示后可直接粘进 qBittorrent / 迅雷等工具（见 engine/vod/playLink.ts）。
-  registerHandler(IPC.VOD_PLAY, async (_e: any, a: { key: string; flag: string; id: string }) => {
-    const r = await host.play(a.key, a.flag, a.id);
+  registerHandler(IPC.VOD_PLAY, async (_e: any, a: { key: string; flag: string; id: string; profileId?: string }) => {
+    const r = await host.play(a.key, a.flag, a.id, a.profileId);
     if (r.externalLink) {
       try { clipboard.writeText(r.externalLink); } catch { /* 剪贴板不可用不影响播放结果 */ }
     }
@@ -591,8 +611,8 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
 
   // ---- 详情/搜索独立窗口（已开则复用：聚焦 + 通知其换路由）----
   registerHandler(IPC.WIN_OPEN_DETAIL, (_e: any, a: { key?: string; id?: string; query?: string }) =>
-    openDetailWindow(a || {}), log);
-  registerHandler(IPC.WIN_OPEN_SEARCH, (_e: any, term: string) => openSearchWindow(term), log);
+    openDetailWindow(a || {}, uiPreferences.get().values.themeId), log);
+  registerHandler(IPC.WIN_OPEN_SEARCH, (_e: any, value: string | { term: string; profileId?: string }) => openSearchWindow(value, uiPreferences.get().values.themeId), log);
   registerHandler(IPC.WIN_ROUTE_READY, (e: any) => {
     searchWindowReady(e.sender.id);
     detailWindowReady(e.sender.id);

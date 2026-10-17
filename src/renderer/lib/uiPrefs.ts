@@ -1,124 +1,46 @@
 // src/renderer/lib/uiPrefs.ts
-// ★ 2026-09-30（用户要求「给发现页在配置中加一个开关，可以让用户手动选择是否展示发现页，默认展示」）：
-//   界面级偏好（localStorage 持久化 + 广播事件），与主题（lib/theme.ts）同一套做法 ——
-//   纯渲染层偏好，不必进主进程、不进备份（重装/换机后回到默认：展示）。
-import { useEffect, useState } from 'react';
-
-export const UI_PREFS_EVENT = 'winbox:ui-prefs-changed';
+// 界面偏好使用共享 preferenceStore，持久值由主进程管理，localStorage 仅作启动缓存和备份兼容。
+import { useSyncExternalStore } from 'react';
+import type { MotionPreference } from '../../shared/uiPreferences';
+import { readPreference, subscribePreference, writePreference } from './preferenceStore';
 
 const KEY_DISCOVER = 'winbox-show-discover';
+const subscribeShowDiscover = (notify: () => void): (() => void) => subscribePreference(KEY_DISCOVER, notify);
 
 /** 是否展示「发现」页（默认展示；只有显式关过才是 false） */
 export function getShowDiscover(): boolean {
-  try {
-    return localStorage.getItem(KEY_DISCOVER) !== '0';
-  } catch {
-    return true;
-  }
+  return readPreference(KEY_DISCOVER) !== '0';
 }
 
 /** 设置「是否展示发现页」并广播（App 侧导航与路由据此即时变化） */
 export function setShowDiscover(v: boolean): void {
-  try {
-    localStorage.setItem(KEY_DISCOVER, v ? '1' : '0');
-  } catch {
-    /* ignore */
-  }
-  try {
-    window.dispatchEvent(new Event(UI_PREFS_EVENT));
-  } catch {
-    /* ignore */
-  }
+  writePreference(KEY_DISCOVER, v ? '1' : '0');
 }
 
 /** React Hook：订阅「是否展示发现页」（配置页切换后，侧边栏/顶部导航立即跟着变） */
 export function useShowDiscover(): boolean {
-  const [on, setOn] = useState<boolean>(() => getShowDiscover());
-  useEffect(() => {
-    const onChange = (): void => setOn(getShowDiscover());
-    window.addEventListener(UI_PREFS_EVENT, onChange);
-    return () => window.removeEventListener(UI_PREFS_EVENT, onChange);
-  }, []);
-  return on;
+  return useSyncExternalStore(subscribeShowDiscover, getShowDiscover, () => true);
 }
 
 /**
  * ★ 2026-09-30（用户要求「为现在点播分类要翻页的增加一个可以一直下拉的瀑布模式」）：
  *   点播分类浏览的「瀑布模式」（一直下滑自动加载下一页）——默认**关**（保持原来的翻页）。
- *   持久化在 localStorage（同 uiPrefs 惯例）：用户点开详情再返回时模式不丢。
+ *   持久化到主进程偏好：用户点开详情再返回时模式不丢。
  */
 const KEY_WATERFALL = 'winbox-waterfall';
+const subscribeWaterfall = (notify: () => void): (() => void) => subscribePreference(KEY_WATERFALL, notify);
 
 export function getWaterfall(): boolean {
-  try {
-    return localStorage.getItem(KEY_WATERFALL) === '1';
-  } catch {
-    return false;
-  }
+  return readPreference(KEY_WATERFALL) === '1';
 }
 
 export function setWaterfall(v: boolean): void {
-  try {
-    localStorage.setItem(KEY_WATERFALL, v ? '1' : '0');
-  } catch {
-    /* ignore */
-  }
-  try {
-    window.dispatchEvent(new Event(UI_PREFS_EVENT));
-  } catch {
-    /* ignore */
-  }
+  writePreference(KEY_WATERFALL, v ? '1' : '0');
 }
 
-/** React Hook：订阅「瀑布模式」（同窗口内多组件同步；跨窗口由 storage 事件兜底） */
+/** React Hook：订阅瀑布模式的共享快照。 */
 export function useWaterfall(): boolean {
-  const [on, setOn] = useState<boolean>(() => getWaterfall());
-  useEffect(() => {
-    const onChange = (): void => setOn(getWaterfall());
-    window.addEventListener(UI_PREFS_EVENT, onChange);
-    return () => window.removeEventListener(UI_PREFS_EVENT, onChange);
-  }, []);
-  return on;
-}
-
-/**
- * ★ 2026-10-16（用户要求）：点播页「筛选」开关 —— 默认**关**（点播页不显示源分类与筛选条；
- *   只有打开才出现），打开后**一次性展开全部**（点播页不再逐级展开，逐级展开只留给发现页）。
- *   持久化在 localStorage（同 uiPrefs 惯例）⇒ **换源 / 重启后都保持**。
- */
-const KEY_HOME_FILTERS = 'winbox-home-filters';
-
-export function getHomeFilters(): boolean {
-  try {
-    return localStorage.getItem(KEY_HOME_FILTERS) === '1';
-  } catch {
-    return false;
-  }
-}
-
-/** 设置「点播页筛选展开」并广播（多窗口 / 多入口同步） */
-export function setHomeFilters(v: boolean): void {
-  try {
-    localStorage.setItem(KEY_HOME_FILTERS, v ? '1' : '0');
-  } catch {
-    /* ignore */
-  }
-  try {
-    window.dispatchEvent(new Event(UI_PREFS_EVENT));
-  } catch {
-    /* ignore */
-  }
-}
-
-/** React Hook：订阅「点播页筛选展开」 */
-export function useHomeFilters(): boolean {
-  const [on, setOn] = useState<boolean>(() => getHomeFilters());
-  useEffect(() => {
-    const onChange = (): void => setOn(getHomeFilters());
-    window.addEventListener(UI_PREFS_EVENT, onChange);
-    return () => window.removeEventListener(UI_PREFS_EVENT, onChange);
-  }, []);
-  return on;
+  return useSyncExternalStore(subscribeWaterfall, getWaterfall, () => false);
 }
 
 /**
@@ -128,17 +50,15 @@ export function useHomeFilters(): boolean {
  *     `auto`（默认，跟随系统）/ `on`（始终开启，无视系统）/ `off`（关闭动效）。
  *   落地方式：`<html data-motion="on|off">`（auto 时不写属性）——CSS 里据此决定是否折叠动画。
  */
-export type MotionPref = 'auto' | 'on' | 'off';
+export type MotionPref = MotionPreference;
 
 const KEY_MOTION = 'winbox-motion';
+const subscribeMotion = (notify: () => void): (() => void) =>
+  subscribePreference(KEY_MOTION, () => { applyMotionPref(getMotionPref()); notify(); });
 
 export function getMotionPref(): MotionPref {
-  try {
-    const v = localStorage.getItem(KEY_MOTION);
-    return v === 'on' || v === 'off' ? v : 'auto';
-  } catch {
-    return 'auto';
-  }
+  const v = readPreference(KEY_MOTION);
+  return v === 'on' || v === 'off' ? v : 'auto';
 }
 
 /** 把偏好写到 `<html data-motion>`（auto = 移除属性，交给系统偏好） */
@@ -152,28 +72,17 @@ export function applyMotionPref(v: MotionPref): void {
 }
 
 export function setMotionPref(v: MotionPref): void {
-  try {
-    localStorage.setItem(KEY_MOTION, v);
-  } catch {
-    /* ignore */
-  }
+  writePreference(KEY_MOTION, v);
   applyMotionPref(v);
-  try {
-    window.dispatchEvent(new Event(UI_PREFS_EVENT));
-  } catch {
-    /* ignore */
-  }
 }
 
 /** React Hook：订阅「界面动效」偏好（配置页切换后立即生效） */
 export function useMotionPref(): MotionPref {
-  const [v, setV] = useState<MotionPref>(() => getMotionPref());
-  useEffect(() => {
-    const onChange = (): void => setV(getMotionPref());
-    window.addEventListener(UI_PREFS_EVENT, onChange);
-    return () => window.removeEventListener(UI_PREFS_EVENT, onChange);
-  }, []);
-  return v;
+  return useSyncExternalStore(
+    subscribeMotion,
+    getMotionPref,
+    () => 'auto',
+  );
 }
 
 /** 启动时应用（在 React 挂载前调用，避免首屏用错动效档） */
@@ -181,48 +90,14 @@ export function initMotionPref(): void {
   applyMotionPref(getMotionPref());
 }
 
-/**
- * ★ 2026-10-15（用户要求「详情/搜索的打开方式改回单页内，并做成可切换」）：
- *   页面打开方式 —— `inline`（本页内跳转，主界面内替换可见内容）/ `window`（独立弹出窗口）。
- *
- *   `inline` 走「伪墓碑」：上一个页面**保持挂载、仅隐藏**（见 components 里的 KeepAliveRoutes），
- *   返回时零重载、状态原样保留 —— 刻意不做「真墓碑」（页面卸载后序列化/恢复状态，多窗口下易错）。
- *   默认 `inline`（用户反馈希望回到单页状态）。
- */
 export type NavMode = 'inline' | 'window';
-
 const KEY_NAV_MODE = 'winbox-nav-mode';
-
-/** 页面打开方式（默认「本页内」；只有显式存过 `window` 才是独立窗口） */
-export function getNavMode(): NavMode {
-  try {
-    return localStorage.getItem(KEY_NAV_MODE) === 'window' ? 'window' : 'inline';
-  } catch {
-    return 'inline';
-  }
-}
-
-/** 设置页面打开方式并广播（切换后新的点击立即按新模式分流） */
-export function setNavMode(v: NavMode): void {
-  try {
-    localStorage.setItem(KEY_NAV_MODE, v === 'window' ? 'window' : 'inline');
-  } catch {
-    /* ignore */
-  }
-  try {
-    window.dispatchEvent(new Event(UI_PREFS_EVENT));
-  } catch {
-    /* ignore */
-  }
-}
-
-/** React Hook：订阅「页面打开方式」（配置页切换后即时生效） */
-export function useNavMode(): NavMode {
-  const [v, setV] = useState<NavMode>(() => getNavMode());
-  useEffect(() => {
-    const onChange = (): void => setV(getNavMode());
-    window.addEventListener(UI_PREFS_EVENT, onChange);
-    return () => window.removeEventListener(UI_PREFS_EVENT, onChange);
-  }, []);
-  return v;
-}
+const KEY_HOME_FILTERS = 'winbox-home-filters';
+const subscribeNavMode = (notify: () => void): (() => void) => subscribePreference(KEY_NAV_MODE, notify);
+const subscribeHomeFilters = (notify: () => void): (() => void) => subscribePreference(KEY_HOME_FILTERS, notify);
+export function getNavMode(): NavMode { return readPreference(KEY_NAV_MODE) === 'window' ? 'window' : 'inline'; }
+export function setNavMode(value: NavMode): void { writePreference(KEY_NAV_MODE, value); }
+export function useNavMode(): NavMode { return useSyncExternalStore(subscribeNavMode, getNavMode, () => 'inline'); }
+export function getHomeFilters(): boolean { return readPreference(KEY_HOME_FILTERS) === '1'; }
+export function setHomeFilters(value: boolean): void { writePreference(KEY_HOME_FILTERS, value ? '1' : '0'); }
+export function useHomeFilters(): boolean { return useSyncExternalStore(subscribeHomeFilters, getHomeFilters, () => false); }

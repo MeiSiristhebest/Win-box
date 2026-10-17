@@ -386,7 +386,11 @@ const VIDEO_RE = /\.(mkv|mp4|ts|avi|rmvb|flv|mov|wmv|m4v|webm)$/i;
 
 /** 只允许应用缓存内的子项，不能把根目录或可跳出缓存的路径登记为清理目标。 */
 function isCacheItemPath(path: string): boolean {
-  return path.startsWith(`/${BAIDU_CACHE_DIR_NAME}/`) && !/[\\\x00-\x1f]/.test(path) &&
+  const containsControlOrBackslash = [...path].some((character) => {
+    const code = character.charCodeAt(0);
+    return character === '\\' || code < 0x20;
+  });
+  return path.startsWith(`/${BAIDU_CACHE_DIR_NAME}/`) && !containsControlOrBackslash &&
     path.split('/').slice(2).every((part) => part !== '' && part !== '.' && part !== '..');
 }
 

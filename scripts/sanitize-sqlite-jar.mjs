@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, resolve } from 'node:path';
 
-const SQLITE_JAR = 'sqlite-jdbc-3.46.1.0.jar';
+const SQLITE_JAR = 'sqlite-jdbc-3.53.4.0.jar';
 const CENTRAL = 0x02014b50;
 const LOCAL = 0x04034b50;
 const END = 0x06054b50;

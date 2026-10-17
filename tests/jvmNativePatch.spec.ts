@@ -18,7 +18,7 @@ describe.skipIf(!ready)('真实 JVM dynamic native patch', () => {
     };
     try {
       const classes = join(dir, 'classes'), fixture = join(dir, 'fixture'); mkdirSync(classes); mkdirSync(fixture);
-      const cp = [classes, join(jvm, 'native-bridge/native-bridge.jar'), join(jvm, 'tools/asm-9.7.jar'),
+      const cp = [classes, join(jvm, 'native-bridge/native-bridge.jar'), join(jvm, 'tools/asm-9.11.jar'),
         ...readdirSync(rt).filter(n => n.endsWith('.jar')).map(n => join(rt, n))].join(delimiter);
       const nativeSources = join(jvm, 'native-bridge/com/winbox/nativebridge');
       command(join(bin, 'javac' + exe), ['-encoding', 'UTF-8', '-cp', cp, '-d', classes,

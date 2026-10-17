@@ -89,7 +89,9 @@ export async function tryDecryptConfig(
   rawUrl: string,
   rawText: string,
   logger?: Logger,
+  signal?: AbortSignal,
 ): Promise<DecryptOutcome | null> {
+  if (signal?.aborted) throw signal.reason ?? new Error('请求已取消');
   const local = decodeLocalCipher(rawText);
   if (local) {
     logger?.i(`订阅解密兜底：本地 ${local.how} 解码成功（${local.text.length}B）`);
@@ -98,7 +100,7 @@ export async function tryDecryptConfig(
   if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) return null;
   try {
     const url = `${REMOTE_DECRYPT_ENDPOINT}?url=${encodeURIComponent(rawUrl)}`;
-    const res = await http.request({ url, method: 'get', timeoutMs: 25_000, buffer: 0, redirect: 1, headers: { 'User-Agent': 'okhttp/3.12.0' } });
+    const res = await http.request({ url, method: 'get', timeoutMs: 25_000, buffer: 0, redirect: 1, signal, headers: { 'User-Agent': 'okhttp/3.12.0' } });
     const text = typeof res.content === 'string' ? res.content : Buffer.from(res.content || []).toString('utf-8');
     if (res.status !== 200 || /解密失败/.test(text)) {
       logger?.w(`订阅解密兜底：远程解密服务未成功（HTTP ${res.status}${/解密失败/.test(text) ? '，返回"解密失败"' : ''}）`);
@@ -113,6 +115,7 @@ export async function tryDecryptConfig(
     logger?.w(`订阅解密兜底：已使用**第三方解密服务**取回明文（${body.length}B）—— 该地址已发送给 ${REMOTE_DECRYPT_ENDPOINT}`);
     return { text: body, how: 'remote-jiemi' };
   } catch (e) {
+    if (signal?.aborted) throw signal.reason ?? e;
     logger?.w(`订阅解密兜底：远程解密服务请求失败：${(e as Error).message}`);
     return null;
   }

@@ -1,73 +1,104 @@
 import { readFileSync } from 'node:fs';
+import { parse } from '@babel/parser';
 import { describe, expect, it } from 'vitest';
-import ts from 'typescript';
 
-// Protect the wiring that Electron's mouse regression exercises: click selects,
-// double-click passes its own global index, and the play callback never uses a stale selection.
+type AstNode = { type: string; start: number | null; end: number | null; [key: string]: unknown };
 const source = readFileSync(new URL('../src/renderer/pages/DetailPage.tsx', import.meta.url), 'utf8');
-const file = ts.createSourceFile('DetailPage.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const findFunction = (name: string): ts.FunctionDeclaration => {
-  let found: ts.FunctionDeclaration | undefined;
-  const visit = (node: ts.Node) => {
-    if (ts.isFunctionDeclaration(node) && node.name?.text === name) found = node;
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
+const file = parse(source, { sourceType: 'unambiguous', plugins: ['typescript', 'jsx'] });
+const playbackSource = readFileSync(new URL('../src/renderer/features/detail/useDetailPlaybackController.ts', import.meta.url), 'utf8');
+const playbackFile = parse(playbackSource, { sourceType: 'unambiguous', plugins: ['typescript', 'jsx'] });
+const episodeListSource = readFileSync(new URL('../src/renderer/features/detail/DetailEpisodeList.tsx', import.meta.url), 'utf8');
+
+function walk(value: unknown, visit: (node: AstNode) => void): void {
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const entry of value) walk(entry, visit);
+    return;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.type === 'string') visit(candidate as AstNode);
+  for (const [key, child] of Object.entries(candidate)) {
+    if (key !== 'loc' && key !== 'start' && key !== 'end' && key !== 'extra' && key !== 'tokens' && key !== 'comments') {
+      walk(child, visit);
+    }
+  }
+}
+
+function textOf(node: AstNode, code: string): string {
+  if (node.start === null || node.end === null) throw new Error('AST node has no source range');
+  return code.slice(node.start, node.end);
+}
+
+function findFunction(name: string, ast: unknown = file): AstNode {
+  let found: AstNode | undefined;
+  walk(ast, (node) => {
+    const id = node.id as AstNode | undefined;
+    if (node.type === 'FunctionDeclaration' && id?.name === name) found = node;
+  });
   if (!found) throw new Error(`Missing ${name}`);
   return found;
-};
+}
+
+function callsOnClient(code: string): string[] {
+  const ast = parse(code, { sourceType: 'unambiguous', plugins: ['typescript', 'jsx'] });
+  const calls: string[] = [];
+  walk(ast, (node) => {
+    const callee = node.callee as AstNode | undefined;
+    const object = callee?.object as AstNode | undefined;
+    const property = callee?.property as AstNode | undefined;
+    if (node.type === 'CallExpression' && callee?.type === 'MemberExpression' && object?.name === 'client' && typeof property?.name === 'string') {
+      calls.push(property.name);
+    }
+  });
+  return calls;
+}
 
 describe('detail episode playback intent', () => {
   it('取链失败不会把原始选集参数回退交给播放器，preparedUrl 也经过校验', () => {
-    const play = findFunction('play').getText(file);
-    expect(play).toContain('playbackResultError(r)');
-    expect(play).toContain('onPlay(r.url,');
-    expect(play).not.toContain('r.url || target.url');
+    const play = textOf(findFunction('play', playbackFile), playbackSource);
+    expect(play).toContain('playbackResultError(result)');
+    expect(play).toContain('onPlay(result.url,');
+    expect(play).not.toContain('result.url || target.url');
     const player = readFileSync(new URL('../src/renderer/pages/PlayerPage.tsx', import.meta.url), 'utf8');
     expect(player).toContain('playbackResultError(r)');
     expect(player).not.toContain('setActiveUrl(target.url)');
   });
+
   it('封面与背景加载不进入播放链路，简介仍展示源数据', () => {
     const player = readFileSync(new URL('../src/renderer/pages/PlayerPage.tsx', import.meta.url), 'utf8');
-    for (const content of [source, player]) {
-      const parsed = ts.createSourceFile('page.tsx', content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-      const calls: string[] = [];
-      const visit = (node: ts.Node) => {
-        if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) &&
-          node.expression.expression.getText(parsed) === 'client') calls.push(node.expression.name.text);
-        ts.forEachChild(node, visit);
-      };
-      visit(parsed);
+    for (const content of [source, player, playbackSource]) {
+      const calls = callsOnClient(content);
       expect(calls).not.toContain('metaSearch');
       expect(calls).not.toContain('metaExtra');
       expect(calls).not.toContain('metaImages');
-      expect(calls).toContain('play');
     }
-    expect(findFunction('play').getText(file)).not.toMatch(/useCovers|metaSearch|metaDiscoverImages/);
+    expect(callsOnClient(player)).toContain('play');
+    expect(callsOnClient(playbackSource)).toContain('play');
+    expect(textOf(findFunction('play', playbackFile), playbackSource)).not.toMatch(/useCovers|metaSearch|metaDiscoverImages/);
     expect(source).toContain("pic: detail?.pic || fromListPic || ''");
     expect(source).toContain("const introText = (detail?.des || '').trim()");
   });
 
   it('single-click updates selection without switching or opening a player', () => {
-    const choose = findFunction('chooseEp').getText(file);
-    expect(choose).toContain('setEp(i)');
+    const choose = textOf(findFunction('chooseEp', playbackFile), playbackSource);
+    expect(choose).toContain('setEp(index)');
     expect(choose).not.toMatch(/playerSwitchEp|playerIsOpen|onPlay\(|client\.play\(/);
   });
 
   it('double-click submits the clicked global index, not the asynchronous selection state', () => {
-    const attributes: ts.JsxAttribute[] = [];
-    const visit = (node: ts.Node) => {
-      if (ts.isJsxAttribute(node) && node.name.getText(file) === 'onDoubleClick') attributes.push(node);
-      ts.forEachChild(node, visit);
-    };
-    visit(file);
-    expect(attributes.some(a => /play\(gi\)/.test(a.getText(file)))).toBe(true);
-    const play = findFunction('play');
-    expect(play.parameters[0].name.getText(file)).toBe('index');
-    expect(play.parameters[0].initializer?.getText(file)).toBe('ep');
-    expect(play.body?.getText(file)).toContain('const target = eps[index]');
-    expect(play.body?.getText(file)).toContain('epIndex: index');
-    expect(play.body?.getText(file)).not.toMatch(/eps\[ep\]|epIndex:\s*ep\b/);
+    expect(episodeListSource).toContain('onDoubleClick={() => onPlayEpisode(globalIndex)}');
+    expect(source).toContain('onPlayEpisode={(index) => { void play(index); }}');
+    const play = findFunction('play', playbackFile);
+    const parameters = play.params as AstNode[];
+    const first = parameters[0];
+    const body = play.body as AstNode;
+    const parameter = first.type === 'AssignmentPattern' ? first.left as AstNode : first;
+    expect(parameter.name).toBe('index');
+    const fallback = first.type === 'AssignmentPattern' ? first.right as AstNode : undefined;
+    expect(fallback ? textOf(fallback, playbackSource) : undefined).toBe('ep');
+    expect(textOf(body, playbackSource)).toContain('const target = episodes[index]');
+    expect(textOf(body, playbackSource)).toContain('epIndex: index');
+    expect(textOf(body, playbackSource)).not.toMatch(/episodes\[ep\]|epIndex:\s*ep\b/);
   });
 
   it('the play button calls play rather than passing the MouseEvent as an episode index', () => {

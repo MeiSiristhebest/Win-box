@@ -1,4 +1,5 @@
-/* douban.css — Win-Box 皮肤：**大豆**（Material 3 Expressive × 豆瓣，浅色）
+@layer legacy {
+/* douban.css — Win-Box 第四套皮肤：**大豆**（Material 3 Expressive × 豆瓣，浅色）
    ================================================================================
    ★★ 2026-10-09 整体重做（用户口径：皮肤改叫「大豆」，风格重做、务必大改、参考更多开源 UI）：
      · 设计语言 = **Material 3 Expressive**（2025 Google：大圆角 / 鲜明容器色 / 弹性动效 /
@@ -578,18 +579,6 @@
 :root[data-theme='douban'] .list-item:hover { transform: translateY(-1px); }
 
 /* ---- ⑦ 细节修正（2026-10-09 真机截图复验发现）---- */
-/* 配置页二级 tab（内联样式驱动，跨皮肤共用）：大豆里改成 M3 tonal 片 —— 选中浅绿底 + 豆绿字
-   （内联样式优先级高于类选择器，必须 !important 压过；.cfg-tab 类名由 ConfigPage 提供）
-   ★ 2026-10-16（用户要求）：**圆角改成「圆角长方形」**（参考 Netflix 页签 = 上角圆、下角平齐于分类行
-   底边线），不再是四角全圆的芯片形态 —— 只保留上两角 10px，下两角 0（压过 ConfigPage 内联的 0 亦是同值）。 */
-:root[data-theme='douban'] .cfg-tab {
-  background: transparent !important; border: none !important; border-radius: 10px 10px 0 0 !important;
-  color: var(--text-dim) !important; font-weight: 500 !important;
-}
-:root[data-theme='douban'] .cfg-tab:hover { background: rgba(26, 32, 25, .06) !important; color: var(--text) !important; box-shadow: none !important; }
-:root[data-theme='douban'] .cfg-tab.active { background: var(--accent-container) !important; color: var(--accent-strong) !important; font-weight: 750 !important; }
-:root[data-theme='douban'] .cfg-tab.active:hover { background: #D2EDCE !important; color: var(--accent-strong) !important; box-shadow: none !important; }
-
 /* The wall is dense by design, but its interactive items still need a crisp keyboard state. */
 :root[data-theme='douban'] .db-wall-chip:focus-visible,
 :root[data-theme='douban'] .db-fab:focus-visible,
@@ -1112,3 +1101,8 @@
 :root[data-theme='douban'] .vp-big:active { transform: translate(-50%, -50%) scale(.95); }
 /* 小窗模式：dock 收敛（避免大内边距挤占小窗空间） */
 :root[data-theme='douban'] .vplayer.vp-mini .vp-controls { padding: 10px 14px 12px; border-radius: 22px; }
+}
+
+@layer tokens {
+  :root[data-theme='douban'] { --on-accent: #102610; }
+}
