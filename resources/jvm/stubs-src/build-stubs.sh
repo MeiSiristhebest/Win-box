@@ -74,7 +74,7 @@ if ls "$HERE"/../libs/jython-standalone*.jar >/dev/null 2>&1; then
     fi
 fi
 
-"$JAVAC" -encoding UTF-8 -nowarn \
+"$JAVAC" --release 17 -encoding UTF-8 -nowarn \
     -cp "$W_WORK;$WIN_LIBS" \
     -sourcepath "$W_HERE" \
     -d "$W_WORK" \

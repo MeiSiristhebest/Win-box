@@ -54,7 +54,7 @@ try {
 
   # 3) compile (-cp baseline dir + libs; -sourcepath for same-package cross refs)
   $libs = @(Get-ChildItem (Join-Path $Root "libs") -Filter *.jar | ForEach-Object { $_.FullName }) -join ';'
-  & $Javac -encoding UTF-8 -nowarn -cp "$Work;$libs" -sourcepath $Here -d $Work "@$filesTxt"
+  & $Javac --release 17 -encoding UTF-8 -nowarn -cp "$Work;$libs" -sourcepath $Here -d $Work "@$filesTxt"
   if ($LASTEXITCODE -ne 0) { throw "javac failed: $LASTEXITCODE" }
 
   # 4) package (baseline resources + compiled classes; no compiler lists/tmp jars)

@@ -94,7 +94,9 @@ function missingMetadata(entry) {
   if (!entry.version) missing.push('version');
   if (!entry.source) missing.push('source');
   if (!entry.architecture) missing.push('architecture');
-  if (!entry.sha256 && entry.sha256Policy !== 'calculate-at-package-time') missing.push('SHA-256');
+  if (!entry.sha256 && !entry.archiveSha256 && entry.sha256Policy !== 'calculate-at-package-time') {
+    missing.push('SHA-256');
+  }
   return missing;
 }
 

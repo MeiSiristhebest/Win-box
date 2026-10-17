@@ -1,9 +1,9 @@
 // Upload installers only to an existing Release. Never include blockmap/build metadata.
 // By default use the local HTTPS proxy commonly configured by Clash/Mihomo on Windows.
 // Override with GH_UPLOAD_PROXY, or set it to an empty string for direct access.
-// Usage: pnpm run release:upload [-- --dry-run]
+// Usage: pnpm run release:upload [-- --dry-run] [--output-dir <path>]
 import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createConnection } from 'node:net';
@@ -22,14 +22,33 @@ const proxyReachable = (proxyUrl) => new Promise((resolve) => {
   }
 });
 const args = process.argv.slice(2).filter(a => a !== '--');
-if (args.some(a => a !== '--dry-run')) {
-  console.error('Usage: node scripts/upload-release.mjs [--dry-run]');
+const outputDirFlag = args.indexOf('--output-dir');
+if (outputDirFlag !== -1 && outputDirFlag !== args.lastIndexOf('--output-dir')) {
+  console.error('Use --output-dir once.');
+  process.exit(1);
+}
+const outputDirArgument = outputDirFlag === -1 ? null : args[outputDirFlag + 1];
+const outputDirArgumentIndex = outputDirFlag === -1 ? -1 : outputDirFlag + 1;
+if (outputDirFlag !== -1 && (!outputDirArgument || outputDirArgument.startsWith('--'))) {
+  console.error('--output-dir requires a path inside the workspace.');
+  process.exit(1);
+}
+const unrecognized = args.filter((arg, index) =>
+  arg !== '--dry-run' && arg !== '--output-dir' && index !== outputDirArgumentIndex,
+);
+if (unrecognized.length) {
+  console.error('Usage: node scripts/upload-release.mjs [--dry-run] [--output-dir <path>]');
   process.exit(1);
 }
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const tag = `release${pkg.version}`;
 const repo = 'MeiSiristhebest/Win-box';
-const output = resolve(root, pkg.build.directories.output);
+const output = resolve(root, outputDirArgument ?? 'release' + pkg.version);
+const outputRelative = relative(root, output);
+if (outputRelative === '' || outputRelative === '..' || outputRelative.startsWith('..' + sep) || isAbsolute(outputRelative)) {
+  console.error('Refusing to read installers outside the workspace: ' + output);
+  process.exit(1);
+}
 // electron-builder normalizes numeric version components when it creates the
 // artifact name (for example, package version 1.21.01 becomes 1.21.1).
 const artifactVersions = [...new Set([

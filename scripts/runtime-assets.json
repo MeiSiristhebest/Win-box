@@ -9,41 +9,53 @@
       "id": "jre17",
       "phase": "pre-build",
       "kind": "pe-x64",
-      "paths": ["resources/jvm/jre/bin/java.exe"],
-      "version": null,
-      "source": null,
+      "paths": [
+        "resources/jvm/jre/bin/java.exe"
+      ],
+      "version": "17.0.20.1+1",
+      "source": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.20.1+1/OpenJDK17U-jre_x64_windows_hotspot_17.0.20.1_1.zip",
       "architecture": "win32-x64",
       "sha256": null,
-      "purpose": "Run Java spiders and DEX conversion. Pin the JRE build, source archive, and SHA-256 before release."
+      "purpose": "Run Java spiders and DEX conversion. Its archive SHA-256 is pinned; the extracted executable is fingerprinted during packaging.",
+      "archiveSha256": "BC21A93923103CDAAC93EE337B0AE4365E739FDE36DF823DD456BC67C8A9D352",
+      "sha256Policy": "calculate-at-package-time"
     },
     {
       "id": "dex2jar",
       "phase": "pre-build",
       "kind": "jar-directory",
-      "paths": ["resources/jvm/d2j"],
-      "version": null,
-      "source": null,
+      "paths": [
+        "resources/jvm/d2j"
+      ],
+      "version": "2.4",
+      "source": "https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip",
       "architecture": "any",
       "sha256": null,
-      "purpose": "Convert DEX files for Java spider execution. Pin the tool release, source archive, and SHA-256 before release."
+      "purpose": "Convert DEX files for Java spider execution. Its archive SHA-256 is pinned; extracted JARs are fingerprinted during packaging.",
+      "archiveSha256": "EE7C45EB3C1D2474A6145D8D447E651A736A22D9664B6D3D3BE5A5A817DDA23A",
+      "sha256Policy": "calculate-at-package-time"
     },
     {
       "id": "spider-stubs",
-        "phase": "pre-build",
+      "phase": "pre-build",
       "kind": "jar",
-      "paths": ["resources/jvm/stubs/stubs.jar"],
-        "version": "local-baseline-rebuild",
-        "source": "locally supplied baseline JAR rebuilt with resources/jvm/stubs-src/build-stubs.ps1",
+      "paths": [
+        "resources/jvm/stubs/stubs.jar"
+      ],
+      "version": "local-baseline-rebuild",
+      "source": "locally supplied baseline JAR rebuilt with resources/jvm/stubs-src/build-stubs.ps1",
       "architecture": "any",
       "sha256": null,
       "sha256Policy": "calculate-at-package-time",
-        "purpose": "Provide Android and CatVod classes to Java spiders. This file must be supplied before release; the build scripts do not create it."
+      "purpose": "Provide Android and CatVod classes to Java spiders. Rebuilding requires the original baseline JAR, which is not in this repository."
     },
     {
       "id": "sqlite-jdbc",
       "phase": "pre-build",
       "kind": "jar",
-      "paths": ["resources/jvm/libs/sqlite-jdbc-3.53.4.0.jar"],
+      "paths": [
+        "resources/jvm/libs/sqlite-jdbc-3.53.4.0.jar"
+      ],
       "version": "3.53.4.0",
       "source": "https://repo.maven.apache.org/maven2/org/xerial/sqlite-jdbc/3.53.4.0/sqlite-jdbc-3.53.4.0.jar",
       "architecture": "win32-x64",
@@ -54,7 +66,9 @@
       "id": "slf4j-api",
       "phase": "pre-build",
       "kind": "jar",
-      "paths": ["resources/jvm/libs/slf4j-api-2.0.20.jar"],
+      "paths": [
+        "resources/jvm/libs/slf4j-api-2.0.20.jar"
+      ],
       "version": "2.0.20",
       "source": "https://repo.maven.apache.org/maven2/org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar",
       "architecture": "any",
@@ -65,7 +79,9 @@
       "id": "slf4j-simple",
       "phase": "pre-build",
       "kind": "jar",
-      "paths": ["resources/jvm/libs/slf4j-simple-2.0.20.jar"],
+      "paths": [
+        "resources/jvm/libs/slf4j-simple-2.0.20.jar"
+      ],
       "version": "2.0.20",
       "source": "https://repo.maven.apache.org/maven2/org/slf4j/slf4j-simple/2.0.20/slf4j-simple-2.0.20.jar",
       "architecture": "any",
@@ -73,10 +89,90 @@
       "purpose": "SQLite logging backend."
     },
     {
+      "id": "bcprov",
+      "phase": "pre-build",
+      "kind": "jar",
+      "paths": [
+        "resources/jvm/libs/bcprov-jdk18on-1.78.1.jar"
+      ],
+      "version": "1.78.1",
+      "source": "https://repo.maven.apache.org/maven2/org/bouncycastle/bcprov-jdk18on/1.78.1/bcprov-jdk18on-1.78.1.jar",
+      "architecture": "any",
+      "sha256": "ADD5915E6ACFC6AB5836E1FD8A5E21C6488536A8C1F21F386EEB3BF280B702D7",
+      "purpose": "Bouncy Castle provider used by SpiderRunner.java."
+    },
+    {
+      "id": "gson",
+      "phase": "pre-build",
+      "kind": "jar",
+      "paths": [
+        "resources/jvm/libs/gson-2.10.1.jar"
+      ],
+      "version": "2.10.1",
+      "source": "https://repo.maven.apache.org/maven2/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar",
+      "architecture": "any",
+      "sha256": "4241C14A7727C34FEEA6507EC801318A3D4A90F070E4525681079FB94EE4C593",
+      "purpose": "JSON support required by Java spider APIs."
+    },
+    {
+      "id": "json",
+      "phase": "pre-build",
+      "kind": "jar",
+      "paths": [
+        "resources/jvm/libs/json-20180813.jar"
+      ],
+      "version": "20180813",
+      "source": "https://repo.maven.apache.org/maven2/org/json/json/20180813/json-20180813.jar",
+      "architecture": "any",
+      "sha256": "518080049BA83181914419D11A25D9BC9833A2D729B6A6E7469FA52851356DA8",
+      "purpose": "org.json classes used by Java spider APIs."
+    },
+    {
+      "id": "jsoup",
+      "phase": "pre-build",
+      "kind": "jar",
+      "paths": [
+        "resources/jvm/libs/jsoup-1.17.2.jar"
+      ],
+      "version": "1.17.2",
+      "source": "https://repo.maven.apache.org/maven2/org/jsoup/jsoup/1.17.2/jsoup-1.17.2.jar",
+      "architecture": "any",
+      "sha256": "F60B33B38E9D7AC93EAAA68A6C70F706BB99036494B2E2ADD2BFEE11D09AC6F5",
+      "purpose": "HTML parsing required by the Java PushAgent."
+    },
+    {
+      "id": "okhttp3",
+      "phase": "pre-build",
+      "kind": "jar",
+      "paths": [
+        "resources/jvm/libs/okhttp-3.14.9.jar"
+      ],
+      "version": "3.14.9",
+      "source": "https://repo.maven.apache.org/maven2/com/squareup/okhttp3/okhttp/3.14.9/okhttp-3.14.9.jar",
+      "architecture": "any",
+      "sha256": "2570FAB55515CBF881D7A4CEEF49FC515490BC027057E666776A2832465AECA0",
+      "purpose": "HTTP client required by Java spider APIs."
+    },
+    {
+      "id": "okio",
+      "phase": "pre-build",
+      "kind": "jar",
+      "paths": [
+        "resources/jvm/libs/okio-1.17.5.jar"
+      ],
+      "version": "1.17.5",
+      "source": "https://repo.maven.apache.org/maven2/com/squareup/okio/okio/1.17.5/okio-1.17.5.jar",
+      "architecture": "any",
+      "sha256": "19A7FF48D86D3CF4497F7F250FBF295F430C13A528DD5B7B203F821802B886AD",
+      "purpose": "OkHttp 3.14.9 runtime dependency."
+    },
+    {
       "id": "prefs-shim",
       "phase": "post-build-main",
       "kind": "jar",
-      "paths": ["resources/jvm/prefs-shim/winbox-prefs-shim.jar"],
+      "paths": [
+        "resources/jvm/prefs-shim/winbox-prefs-shim.jar"
+      ],
       "version": "project-built",
       "source": "src/engine/spider/prefsShim.ts and scripts/gen-prefs-shim.mjs",
       "architecture": "any",
@@ -89,7 +185,9 @@
     {
       "id": "aria2",
       "kind": "pe-x64",
-      "paths": ["resources/aria2/aria2c.exe"],
+      "paths": [
+        "resources/aria2/aria2c.exe"
+      ],
       "version": "1.37.0",
       "source": "https://github.com/aria2/aria2/releases",
       "architecture": "win32-x64",
@@ -99,7 +197,9 @@
     {
       "id": "okhttp4-compat",
       "kind": "jar",
-      "paths": ["resources/jvm/okhttp4-compat/winbox-okhttp4-compat.jar"],
+      "paths": [
+        "resources/jvm/okhttp4-compat/winbox-okhttp4-compat.jar"
+      ],
       "version": "project-built-from-okhttp-3.14.9",
       "source": "resources/jvm/libs/okhttp-3.14.9.jar and scripts/gen-okhttp-compat.mjs",
       "architecture": "any",
@@ -110,7 +210,9 @@
     {
       "id": "native-bridge",
       "kind": "jar",
-      "paths": ["resources/jvm/native-bridge/native-bridge.jar"],
+      "paths": [
+        "resources/jvm/native-bridge/native-bridge.jar"
+      ],
       "version": "project-built",
       "source": "resources/jvm/native-bridge",
       "architecture": "any",
@@ -121,7 +223,9 @@
     {
       "id": "mpv",
       "kind": "pe-x64",
-      "paths": ["resources/mpv/mpv.exe"],
+      "paths": [
+        "resources/mpv/mpv.exe"
+      ],
       "version": "0.41.0",
       "source": "https://github.com/mpv-player/mpv/releases",
       "architecture": "win32-x64",
@@ -131,7 +235,10 @@
     {
       "id": "ffmpeg",
       "kind": "pe-x64",
-      "paths": ["resources/ffmpeg/ffmpeg.exe", "resources/ffmpeg/ffprobe.exe"],
+      "paths": [
+        "resources/ffmpeg/ffmpeg.exe",
+        "resources/ffmpeg/ffprobe.exe"
+      ],
       "version": "9.0.2",
       "source": "https://ffmpeg.org/download.html",
       "architecture": "win32-x64",
