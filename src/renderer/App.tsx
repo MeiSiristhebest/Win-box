@@ -19,8 +19,6 @@ const FavoritesPage = lazy(() => import('./pages/FavoritesPage'));
 /** ★ 2026-09-29：启动更新提示（本地版本低于 GitHub 最新 Release 时由用户决定是否更新） */
 import UpdateGate from './components/UpdateGate';
 import { loadUiMemory, sameEpProgress, saveUiMemory, markHistoryOnlyWriter } from './lib/uiMemory';
-// ★ 2026-10-17（用户要求）：二次修改与再分发的免责条款（说明页与首启弹窗共用同一句话）
-import { MODIFIED_BUILD_DISCLAIMER } from './lib/disclaimerText';
 // ★ 2026-10-17（用户要求）：收藏（独立 localStorage 键，不并入 uiMemory）
 import { FAVORITES_EVENT, loadFavorites } from './lib/favorites';
 // ★ 2026-09-30（用户要求）：显式绑定第三方播放器时点播直接由它播放（详见 lib/externalPlay.ts）
@@ -126,7 +124,7 @@ function AppShell() {
     else if (isDetailWindow() || isSearchWindow()) void client.winClose();
     else nav(backHome, { replace: true });
   };
-  // 首次启动免责声明弹窗：已同意过（localStorage 标记）则不再弹出
+  // 首次启动使用须知：确认后保存标记，后续启动不再显示
   const [disclaim, setDisclaim] = useState(() => {
     try {
       return localStorage.getItem('winbox-disclaim-agreed') !== '1';
@@ -236,7 +234,7 @@ function AppShell() {
     return () => window.removeEventListener('focus', onFocus);
   }, [isPlayerWin]);
 
-  // 首次同意后主窗口进入说明页；记录标记，下次启动不再弹出或跳转。
+  // 记录确认状态，下次启动不再显示使用须知。
   const agreeDisclaim = () => {
     try {
       localStorage.setItem('winbox-disclaim-agreed', '1');
@@ -244,7 +242,6 @@ function AppShell() {
       /* ignore */
     }
     setDisclaim(false);
-    if (!isPlayerWin && !isDetailWindow() && !isSearchWindow()) nav('/about', { replace: true });
   };
 
   const DisclaimerModal = (
@@ -256,24 +253,19 @@ function AppShell() {
       className="app-dialog card modal-in disclaimer-dialog"
       onClose={() => undefined}
     >
-      <h2 id="disclaimer-title">Win-Box 使用声明</h2>
-      <div className="muted disclaimer-lead" id="disclaimer-description">请在使用前阅读以下内容：</div>
+      <h2 id="disclaimer-title">Win-Box 使用须知</h2>
+      <div className="muted disclaimer-lead" id="disclaimer-description">播放源和媒体内容由你自行配置。</div>
       <div className="disclaimer-copy">
           <p>
-            Win-Box 是一个<b>开源（Open Source）学习项目</b>，本质上仅为一个通用的影片播放工具。
+            Win-Box 不提供或托管媒体内容。播放内容来自你添加的来源。
           </p>
           <p>
-            本项目<b>不含任何盈利行为</b>，不提供服务、不存储、不推送任何影视资源与内容，主要用途是个人学习研究，尤其是「Vibe Coding」编程体验。
+            请确认你有权访问所配置的播放源和内容，并遵守所在地的相关规定。
           </p>
-          <p>
-            你在使用过程中自行配置/导入的播放源与资源均来自<b>第三方</b>，与本软件及作者无关。
-            因使用第三方来源所引发的一切后果（含版权、侵权、内容合法性）由用户与第三方自行承担，作者免责。
-          </p>
-          <p>{MODIFIED_BUILD_DISCLAIMER}</p>
       </div>
       <div className="row disclaimer-actions">
         <button onClick={() => void client.appQuit()}>拒绝</button>
-        <button className="primary" onClick={agreeDisclaim}>同意</button>
+        <button className="primary" onClick={agreeDisclaim}>继续使用</button>
       </div>
     </AppModal>
   );
