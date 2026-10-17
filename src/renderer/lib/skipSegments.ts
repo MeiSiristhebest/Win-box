@@ -24,6 +24,8 @@ export interface SkipRecord extends SkipSeg {
   at: number;
   /** 写入时的集展示名（如「第12集」）——「沿用 X 的设置」提示用 */
   from?: string;
+  /** 用户明确清除了本集设置；保留此标记以阻止跨窗口合并复活旧记录或重新继承。 */
+  cleared?: true;
 }
 
 /** 键 = `资源键|集键`（资源键由调用方给，与历史分组同口径：见 uiMemory.historyGroupKey） */
@@ -57,6 +59,25 @@ export function normalizeSkipRecord(raw: unknown): SkipRecord | null {
   return { intro, outro, at: Number(r.at) || 0, from: typeof r.from === 'string' ? r.from : undefined };
 }
 
+/** Normalize a stored record while preserving explicit per-episode clears. */
+function normalizeStoredSkipRecord(raw: unknown): SkipRecord | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as { intro?: unknown; outro?: unknown; at?: unknown; from?: unknown; cleared?: unknown };
+  if (record.cleared === true) {
+    const intro = clampSeconds(record.intro);
+    const outro = clampSeconds(record.outro);
+    if (intro !== 0 || outro !== 0) return null;
+    return {
+      intro: 0,
+      outro: 0,
+      at: Number(record.at) || 0,
+      from: typeof record.from === 'string' ? record.from : undefined,
+      cleared: true,
+    };
+  }
+  return normalizeSkipRecord(raw);
+}
+
 /** 从存储里取资源下的全部记录（键格式 `资源|集`，按前缀精确匹配资源） */
 function recordsOfResource(store: SkipStore, resource: string): Array<{ ep: string; rec: SkipRecord }> {
   const prefix = `${(resource || '').trim()}|`;
@@ -81,7 +102,7 @@ export function latestSkipOfResource(
   resource: string,
   exceptEp?: string,
 ): { ep: string; rec: SkipRecord } | null {
-  const list = recordsOfResource(store, resource).filter((x) => !exceptEp || x.ep !== exceptEp);
+  const list = recordsOfResource(store, resource).filter((x) => !x.rec.cleared && (!exceptEp || x.ep !== exceptEp));
   if (!list.length) return null;
   return list.reduce((best, x) => ((x.rec.at || 0) > (best.rec.at || 0) ? x : best), list[0]);
 }
@@ -113,9 +134,12 @@ export function putSkipRecord(
 ): SkipStore {
   const out: SkipStore = { ...store };
   const key = skipStoreKey(resource, ep);
-  const norm = normalizeSkipRecord({ ...seg, at: now, from: label });
-  if (!norm) delete out[key];
-  else out[key] = norm;
+  const at = Math.max(now, (out[key]?.at ?? -1) + 1);
+  const intro = clampSeconds(seg.intro);
+  const outro = clampSeconds(seg.outro);
+  out[key] = intro || outro
+    ? { intro, outro, at, from: label }
+    : { intro: 0, outro: 0, at, from: label, cleared: true };
   return out;
 }
 
@@ -149,7 +173,7 @@ export function loadSkipStore(): SkipStore {
     const out: SkipStore = {};
     for (const [k, v] of Object.entries(data)) {
       if (!k) continue;
-      const rec = normalizeSkipRecord(v);
+      const rec = normalizeStoredSkipRecord(v);
       if (rec) out[k] = rec;
     }
     return out;

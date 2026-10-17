@@ -21,6 +21,8 @@ import { unsupportedNestedProvider } from '../net/driveDescriptor';
 import { fileLogger } from '../util/logger';
 import { parseSiteConfig, parseSiteConfigWithBase, looksLikeSubscribeJson, type ParseResult } from '../../engine/config/ApiConfigParser';
 import { parseMultiRepo, isFetchedRepoUrl, repoDisplayName, pickRepoLine, splitRepoLine, type MultiRepo } from '../../engine/config/multiRepo';
+import { buildMergedSubscription, mergeSubscriptions, type MergeInput } from '../../engine/config/mergeSubscriptions';
+import { buildImportReport } from '../../engine/config/ImportReport';
 import { SourceViewModel } from '../../engine/vod/SourceViewModel';
 import { parseToJsonArray, toLiveGroups } from '../../engine/live/TxtSubscribe';
 import { parseXmltv, buildEpgMap, pickCurrentNext, type ParsedXmltv } from '../../engine/live/epg';
@@ -86,7 +88,6 @@ import {
 } from '../../engine/vod/searchScheduler';
 import { SearchCache } from '../../engine/vod/searchCache';
 import { classifyHealth } from '../../engine/vod/sourceHealth';
-import { buildMergedSubscription, type MergeInput } from '../../engine/config/mergeSubscriptions';
 import type { AuditItem, SearchAllReport, SearchAllProgressEvent } from '../../shared/types';
 import {
   describeFailures,
@@ -1567,7 +1568,7 @@ export class SpiderHost {
     // ★ 多仓（{urls:[{url,name},...]}）导入：影视仓/多仓盒子订阅格式，逐个子仓取首个可用
     const multi = parseMultiRepo(text);
     if (multi) {
-      return this.importMultiRepo(multi, snapshot, source.name, sub.line);
+      return this.importMultiRepo(multi, snapshot, source.name, sub.line, source.url || '');
     }
     // ★ 从 URL 导入时传基准地址：配置内 `./xxx.jar` 等相对路径需按订阅目录展开
     //   （对齐上游 ApiConfig.fixContentPath）。粘贴 JSON（无 url）保持原样。
@@ -1710,21 +1711,22 @@ export class SpiderHost {
   }
 
   /**
-   * ★ 多仓导入：对每个子仓按序拉取解析，取第一个可成功解析的作为当前配置落地；
-   *   clan:// 等本地协议仓与失败仓跳过并在提示中说明（影视仓的本地目录仓桌面版无载体）。
+   * 多仓导入：按序拉取可访问的子仓，合并到一个配置档案；
+   *   clan:// 等本地协议仓、失败仓和重复源在提示中说明。
    *
    * ★ 2026-09-26（用户报「R18 那份配置导进去什么都没有 / 一直转圈」）：
    *   线上多仓动辄**上千个子仓**（实测 `18CR.json` = **1336 项**，全指向 `mirror.ghproxy.com`
    *   这类镜像），逐个「默认 UA → okhttp UA → +DoH」三连尝试（每项最长 90s）会**永远跑不完**
    *   —— 用户看到的就是「导入没反应 / 导进去 0 个源」。这里加两道闸：
-   *     ① 单项走**快取模式**（2 次尝试、每次 12s，不做 DoH 兜底）；
-   *     ② 整轮有**总预算 60s** 且最多试 12 项，超了就把「还有多少项没试」写进错误里。
+   *     ① 单项走快取模式（2 次尝试、每次 12s，不做 DoH 兜底）；
+   *     ② 整轮有总预算 60s 且最多试 12 项，未尝试项会写进导入提示。
    *
    * ★ 2026-09-29：`preferLine ≥ 0`（订阅地址带 `#line=N`）→ **只取第 N 条**，不走上面的逐条试；
    *   越界按上游 `Math.Clamp` 口径收敛到末条，失败时把「第几条 + 名称 + 原因」一次说清。
    */
-  private async importMultiRepo(multi: MultiRepo, snapshot: boolean, name = '', preferLine = -1): Promise<ParseResult> {
+  private async importMultiRepo(multi: MultiRepo, snapshot: boolean, name = '', preferLine = -1, parentUrl = ''): Promise<ParseResult> {
     const skipped: string[] = [];
+    let skippedCount = 0;
     const total = multi.items.length;
     // ★ 2026-09-29：`#line=N` 指定线路 → **只取那一条**（不做逐条试到可用；越界按上游口径收敛到末条）
     if (preferLine >= 0) {
@@ -1743,6 +1745,7 @@ export class SpiderHost {
         this.report = result.report;
         this.config = result.config;
         this.applyConfig(result.config);
+        if (snapshot) this.manager.clearDeletedSourceKeys(result.config.sites.map((site) => site.key));
         this.applyImportedConfig(result.config, picked.item.url, snapshot, name);
         const note = `已按地址指定的 #line=${preferLine} 导入多仓第 ${lineNo}/${total} 条线路「${label}」${clampedNote}${this.lastConfigFetchHint ? `｜诊断：${this.lastConfigFetchHint}` : ''}`;
         this.logger.i('multi-repo(line): ' + note);
@@ -1754,42 +1757,123 @@ export class SpiderHost {
     }
     const started = Date.now();
     let tried = 0;
-    for (const item of multi.items) {
-      // 总预算/次数闸门（第 1 项总是允许尝试：正常多仓第一项就该成功）
+    const imported: Array<{ label: string; result: ParseResult }> = [];
+    for (let index = 0; index < multi.items.length; index++) {
+      // 至少尝试第一项；超过轮次上限或总预算后报告剩余项数。
       if (tried >= SpiderHost.MULTI_REPO_MAX_TRY || (tried > 0 && Date.now() - started > SpiderHost.MULTI_REPO_BUDGET_MS)) {
-        skipped.push(`其余 ${total - tried} 项未尝试（多仓过大，已按 ${Math.round(SpiderHost.MULTI_REPO_BUDGET_MS / 1000)}s 预算截断）`);
+        const remaining = total - index;
+        if (remaining > 0) {
+          skippedCount += remaining;
+          skipped.push(`其余 ${remaining} 项未尝试（达到多仓导入上限）`);
+        }
         break;
       }
+      const item = multi.items[index];
       const label = repoDisplayName(item.url, item.name);
       if (!isFetchedRepoUrl(item.url)) {
         const why = /^clan:/i.test(item.url) ? '本地目录仓（clan://）桌面版不可用' : '不支持的协议';
         skipped.push(`「${label}」${why}`);
+        skippedCount++;
         continue;
       }
       tried += 1;
       try {
         const text = await this.fetchConfigText(item.url, true);
         const result = parseSiteConfigWithBase(text, item.url);
-        if (!result.config.sites.length && !result.config.lives.length) {
-          skipped.push(`「${label}」内容为空/非订阅配置`);
+        if (result.urls?.length) {
+          skipped.push(`「${label}」包含嵌套多仓，当前未展开`);
+          skippedCount++;
           continue;
         }
-        // 落地（与 importConfig 单仓路径一致：新增订阅 → 旧档案「旧订阅 xx」+ 新档案「新订阅 xx」）
-        this.report = result.report;
-        this.config = result.config;
-        this.applyConfig(result.config);
-        // ★ 同 importConfig：用户主动导入的多仓订阅也清各自源 key 的墓碑（自动刷新 snapshot=false 不清）
-        if (snapshot) this.manager.clearDeletedSourceKeys(result.config.sites.map((s) => s.key));
-        this.applyImportedConfig(result.config, item.url, snapshot, name);
-        const note = `多仓共 ${total} 项，已导入首个可用子仓「${label}」${total > 1 ? `；其余 ${total - 1} 项：${skipped.join('；') || '均可用（可另行单独导入）'}；如需指定线路，在订阅地址尾加 #line=N（N 从 0 起）` : ''}`;
-        this.logger.i('multi-repo: ' + note);
-        return { ...result, warnings: [...(result.warnings || []), note] };
+        if (!result.config.sites.length && !result.config.lives.length) {
+          skipped.push(`「${label}」内容为空/非订阅配置`);
+          skippedCount++;
+          continue;
+        }
+        imported.push({ label, result });
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         skipped.push(`「${label}」${msg}`);
+        skippedCount++;
       }
     }
-    throw new Error(`多仓订阅 ${total} 个子仓里没有可用的（已尝试 ${tried} 项）：${skipped.join('；') || '无有效子仓'}`);
+    if (!imported.length) {
+      throw new Error(`多仓订阅 ${total} 个子仓里没有可用的（已尝试 ${tried} 项）：${skipped.join('；') || '无有效子仓'}`);
+    }
+
+    const mergeInputs = imported.map(({ label, result }) => ({ name: label, sites: result.config.sites, lives: result.config.lives }));
+    const mergedSources = mergeSubscriptions(mergeInputs);
+    const mergedSubscription = buildMergedSubscription(imported.map(({ label, result }) => ({
+      name: label,
+      json: JSON.stringify(result.config),
+    })));
+    const mergedParsed = parseSiteConfig(mergedSubscription.content);
+
+    // 保留合并订阅格式之外的顶层设置。相同列表项只保留第一次出现的值。
+    const mergeUnique = <T>(groups: T[][]): T[] => {
+      const values: T[] = [];
+      const seen = new Set<string>();
+      for (const group of groups) {
+        for (const value of group) {
+          const key = JSON.stringify(value) ?? String(value);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          values.push(value);
+        }
+      }
+      return values;
+    };
+    const hosts: SiteConfig['hosts'] = {};
+    for (const { result } of imported) {
+      for (const [host, value] of Object.entries(result.config.hosts)) {
+        if (!Object.prototype.hasOwnProperty.call(hosts, host)) hosts[host] = value;
+      }
+    }
+    const config: SiteConfig = {
+      ...mergedParsed.config,
+      jarCache: imported.find(({ result }) => result.config.jarCache)?.result.config.jarCache || 'true',
+      danmaku: imported.find(({ result }) => result.config.danmaku)?.result.config.danmaku || '',
+      wallpaper: imported.find(({ result }) => result.config.wallpaper)?.result.config.wallpaper || '',
+      hosts,
+      rules: mergeUnique(imported.map(({ result }) => result.config.rules)),
+      doh: mergeUnique(imported.map(({ result }) => result.config.doh)),
+      ads: mergeUnique(imported.map(({ result }) => result.config.ads)),
+      proxy: mergeUnique(imported.map(({ result }) => result.config.proxy)),
+    };
+
+    const droppedKeys = new Map<string, number>();
+    for (const item of mergedSources.dropped) {
+      const key = JSON.stringify([item.key.trim().toLowerCase(), item.name]);
+      droppedKeys.set(key, (droppedKeys.get(key) || 0) + 1);
+    }
+    const reportItems = imported.flatMap(({ result }) => result.report.items).map((item, index) => ({ ...item, index }));
+    for (let index = reportItems.length - 1; index >= 0; index--) {
+      const item = reportItems[index];
+      if (item.status === 'SKIP') continue;
+      const key = JSON.stringify([item.key.trim().toLowerCase(), item.name]);
+      const remaining = droppedKeys.get(key) || 0;
+      if (!remaining) continue;
+      reportItems[index] = { ...item, status: 'SKIP', message: '重复源，已保留先导入的版本' };
+      droppedKeys.set(key, remaining - 1);
+    }
+    const report = buildImportReport(reportItems);
+    const sourceLiveCount = imported.reduce((count, entry) => count + entry.result.config.lives.length, 0);
+    const duplicateLives = sourceLiveCount - config.lives.length;
+    const warnings = imported.flatMap(({ label, result }) => (result.warnings || []).map((warning) => `「${label}」${warning}`));
+    const details = skipped.length ? `；未导入 ${skippedCount} 项：${skipped.slice(0, 6).join('；')}${skipped.length > 6 ? '；…' : ''}` : '';
+    const dedup = mergedSources.dropped.length || duplicateLives
+      ? `；去重 ${mergedSources.dropped.length} 个源、${duplicateLives} 条直播线路`
+      : '';
+    const note = `多仓共 ${total} 项，已导入 ${imported.length} 个子仓，合并为 ${config.sites.length} 个源和 ${config.lives.length} 条直播线路${dedup}${details}`;
+    warnings.push(note);
+
+    this.report = report;
+    this.config = config;
+    this.applyConfig(config);
+    if (snapshot) this.manager.clearDeletedSourceKeys(config.sites.map((s) => s.key));
+    this.applyImportedConfig(config, parentUrl, snapshot, name);
+    this.logger.i('multi-repo: ' + note);
+    return { ...mergedParsed, config, report, warnings };
   }
 
   /** 多仓单轮预算与最多尝试项数（见 importMultiRepo 注释） */

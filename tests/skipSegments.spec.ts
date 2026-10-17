@@ -63,11 +63,17 @@ describe('putSkipRecord / resolveSkip — 逐集记录 + 资源继承', () => {
     expect(next[skipStoreKey(R, 'ep1')]).toEqual({ intro: 90, outro: 120, at: 1000, from: '第1集' });
   });
 
-  it('两项都为 0 = 清除本集记录（不再继承）', () => {
+  it('两项都为 0 = 保存显式清除（不再继承，也不被旧记录复活）', () => {
     const s1 = putSkipRecord({}, R, 'ep1', { intro: 90, outro: 0 }, '第1集', 1000);
-    const s2 = putSkipRecord(s1, R, 'ep1', { intro: 0, outro: 0 }, '第1集', 2000);
-    expect(ownSkip(s2, R, 'ep1')).toBeNull();
-    expect(resolveSkip(s2, R, 'ep1')).toBeNull(); // 已无任何记录可继承
+    const withOtherEpisode = putSkipRecord(s1, R, 'ep2', { intro: 45, outro: 30 }, '第2集', 1500);
+    const s2 = putSkipRecord(withOtherEpisode, R, 'ep2', { intro: 0, outro: 0 }, '第2集', 2000);
+    expect(ownSkip(s2, R, 'ep2')).toMatchObject({ intro: 0, outro: 0, at: 2000, cleared: true });
+    expect(resolveSkip(s2, R, 'ep2')).toEqual({ seg: { intro: 0, outro: 0 }, inheritedFrom: null });
+    expect(resolveSkip(mergeSkipStores(s2, withOtherEpisode), R, 'ep2')).toEqual({
+      seg: { intro: 0, outro: 0 },
+      inheritedFrom: null,
+    });
+    expect(resolveSkip(s2, R, 'ep3')).toEqual({ seg: { intro: 90, outro: 0 }, inheritedFrom: '第1集' });
   });
 
   it('本集有记录 → 用本集（不标继承）', () => {

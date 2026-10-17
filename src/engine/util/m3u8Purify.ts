@@ -584,7 +584,7 @@ function cleanDecimalPrecisionGroups(content: string, st: PurifyState): string {
   }
   if (majorPrecision < 0 || majorCount / totalSegments < 0.7) return content;
 
-  const removeGroups = new Array<boolean>(groups.length).fill(false);
+  const removeGroups = Array.from({ length: groups.length }, () => false);
   let removableSegments = 0;
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i];
@@ -649,7 +649,7 @@ function cleanFrameRateGroups(content: string, st: PurifyState): string {
   if (masterFrameRate === 0) return content;
 
   let removableSegments = 0;
-  const removeGroups = new Array<boolean>(groups.length).fill(false);
+  const removeGroups = Array.from({ length: groups.length }, () => false);
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i];
     if (i === groups.length - 1 || group.segmentCount === 0 || group.segmentCount > MAX_FRAME_RATE_AD_BLOCK_SIZE) continue;

@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '../api/client';
 import { openSearchWindow } from '../lib/searchWin';
+import { useConfirmDialog } from './ConfirmDialog';
 import type { MetaSuggestion } from '../../shared/meta';
 import type { MovieHotList } from '../../shared/types';
 import {
@@ -29,6 +30,7 @@ const HOT_RANK_MAX = 10;
  */
 export default function SearchPanel({ bar = false }: { bar?: boolean }) {
   const nav = useNavigate();
+  const { confirm: showMessage, dialog: messageDialog } = useConfirmDialog();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [hot, setHot] = useState<MovieHotList | null>(null);
@@ -115,7 +117,14 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
     setOpen(false);
     setQ('');
     setSug([]);
-    void openSearchWindow(t).catch((e) => window.alert(`无法打开搜索窗口：${e instanceof Error ? e.message : String(e)}`));
+    void openSearchWindow(t).catch((e) => {
+      void showMessage({
+        title: '无法打开搜索窗口',
+        message: e instanceof Error ? e.message : String(e),
+        confirmLabel: '知道了',
+        cancelLabel: null,
+      });
+    });
   };
 
   /** 删除一条搜索历史（不影响列表其它条目） */
@@ -235,6 +244,7 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
           )}
         </div>
       )}
+      {messageDialog}
     </div>
   );
 }

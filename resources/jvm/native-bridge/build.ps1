@@ -6,7 +6,7 @@
 # -Lib  : directory holding the native runtime jars (unidbg-android / unidbg-api / unidbg-unicorn2 ...).
 #         Those jars are NOT in the repo (see native runtime download in the app); either point at
 #         <userData>\cache\native\unidbg-0.9.9 after running the app once, or fetch them from Maven Central.
-# -Asm  : defaults to ..\tools (asm-9.7.jar lives there in the dev tree).
+# -Asm  : defaults to ..\tools and expects asm-9.11.jar there.
 # NOTES: comments are ASCII-only on purpose (PowerShell 5.1 misreads CJK in .ps1).
 param(
   [Parameter(Mandatory = $true)][string]$Jdk,
@@ -22,8 +22,8 @@ $javac = Join-Path $Jdk "bin\javac.exe"
 $jarExe = Join-Path $Jdk "bin\jar.exe"
 if (-not (Test-Path $javac)) { throw "javac not found: $javac" }
 
-$asmCore = Join-Path $Asm "asm-9.7.jar"
-if (-not (Test-Path $asmCore)) { throw "asm-9.7.jar not found: $asmCore" }
+$asmCore = Join-Path $Asm "asm-9.11.jar"
+if (-not (Test-Path $asmCore)) { throw "asm-9.11.jar not found: $asmCore" }
 
 $libJars = @()
 if (Test-Path $Lib) { $libJars = Get-ChildItem -Path $Lib -Filter *.jar | ForEach-Object { $_.FullName } }

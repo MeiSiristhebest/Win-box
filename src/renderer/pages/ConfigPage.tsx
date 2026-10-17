@@ -15,6 +15,7 @@ import { UI_SCALE_OPTIONS, type UiScaleState } from '../../shared/uiScale';
 import { DEFAULT_PLAYER_SETTINGS, type PlayerSettings, type MpvStatus } from '../../shared/player';
 import type { PluginView } from '../../shared/plugin';
 import type { DavServer } from '../../shared/webdav';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 
 type TabId = 'sources' | 'health' | 'profiles' | 'account' | 'storage' | 'appearance' | 'play' | 'plugins' | 'shortcut' | 'network' | 'backup';
 
@@ -67,6 +68,7 @@ function FlagSelect({ label, hint, value, onChange }: { label: string; hint: str
 }
 
 export default function ConfigPage() {
+  const { confirm: confirmAction, dialog: confirmDialog } = useConfirmDialog();
   const [url, setUrl] = useState('');
   /** ★ 2026-09-27（用户要求）：导入时可自填订阅名；留空 → 主进程按「新订阅 xx」/ 本地文件名自动命名 */
   const [subName, setSubName] = useState('');
@@ -176,7 +178,12 @@ export default function ConfigPage() {
     }
   };
   const uninstallPlugin = async (id: string, name: string) => {
-    if (!window.confirm(`确定卸载插件「${name}」？（删掉磁盘上的插件目录；随包官方插件下次启动会重新就位）`)) return;
+    if (!(await confirmAction({
+      title: '卸载插件',
+      message: `确定卸载「${name}」？这会删除磁盘上的插件目录。随包官方插件会在下次启动时重新就位。`,
+      confirmLabel: '卸载',
+      destructive: true,
+    }))) return;
     setPluginBusy(true);
     try {
       applyPluginResult(await client.pluginUninstall(id), '已卸载');
@@ -622,7 +629,12 @@ export default function ConfigPage() {
 
   /** ★ 2026-10-14（用户要求）：删除某条直播线路（导入的 TXT/M3U 直播源从此可删）。 */
   async function delLive(index: number, name: string) {
-    if (!window.confirm(`确定删除直播线路「${name || `线路${index + 1}`}」吗？\n删除后直播页顶部线路下拉将不再出现它（原始文件不会被改动）。`)) return;
+    if (!(await confirmAction({
+      title: '删除直播线路',
+      message: `确定删除「${name || `线路${index + 1}`}」吗？\n直播页将不再显示这条线路。原始文件不会被修改。`,
+      confirmLabel: '删除',
+      destructive: true,
+    }))) return;
     setErr('');
     try {
       await client.cfgDeleteLive(index);
@@ -647,7 +659,12 @@ export default function ConfigPage() {
     const picked = lives.map((_, i) => i).filter((i) => livePick.has(i));
     if (!picked.length || liveDeleteBusy) return;
     const names = picked.map((i) => lives[i]?.name || `线路${i + 1}`);
-    if (!window.confirm(`确定删除选中的 ${picked.length} 条直播线路吗？\n${names.slice(0, 6).join('、')}${names.length > 6 ? '…' : ''}\n只从应用线路列表移除，不改动你导入的原始文件。`)) return;
+    if (!(await confirmAction({
+      title: `删除 ${picked.length} 条直播线路`,
+      message: `${names.slice(0, 6).join('、')}${names.length > 6 ? '…' : ''}\n只从应用线路列表移除，不修改导入的原始文件。`,
+      confirmLabel: '删除',
+      destructive: true,
+    }))) return;
     setLiveDeleteBusy(true);
     setErr('');
     try {
@@ -706,7 +723,12 @@ export default function ConfigPage() {
   async function deleteSelectedSources() {
     const selected = sources.filter(s => sourcePick.has(s.key));
     if (!selected.length || sourceDeleteBusy) return;
-    if (!window.confirm(`确定删除选中的 ${selected.length} 个源吗？\n${selected.slice(0, 6).map(s => s.name || s.key).join('、')}${selected.length > 6 ? '…' : ''}\n原始文件不会被修改；不再被其它档案引用的导入脚本副本将被清理。`)) return;
+    if (!(await confirmAction({
+      title: `删除 ${selected.length} 个源`,
+      message: `${selected.slice(0, 6).map(s => s.name || s.key).join('、')}${selected.length > 6 ? '…' : ''}\n原始文件不会被修改；不再被其它档案引用的导入脚本副本将被清理。`,
+      confirmLabel: '删除',
+      destructive: true,
+    }))) return;
     setSourceDeleteBusy(true);
     setErr('');
     try {
@@ -821,7 +843,12 @@ export default function ConfigPage() {
         ? '删除后将自动切换到剩下的配置。'
         : '这是唯一一份配置：删除后当前订阅的源列表会被清空（本机导入的直播线路保留）。'
       : '';
-    if (!window.confirm(`确定删除配置「${name}」吗？${tail}`)) return;
+    if (!(await confirmAction({
+      title: '删除配置',
+      message: `确定删除「${name}」吗？${tail}`,
+      confirmLabel: '删除',
+      destructive: true,
+    }))) return;
     setErr('');
     try { await client.cfgDeleteProfile(id); setRenameId(null); await refresh(); }
     catch (e) { setErr((e as Error).message); }
@@ -831,7 +858,12 @@ export default function ConfigPage() {
     if (!audit) return;
     const failed = audit.filter((a) => a.health === 'error');
     if (!failed.length) { setMergeMsg({ text: '没有体检为「失败/报错」的源可删', kind: 'err' }); return; }
-    if (!window.confirm(`确定删除 ${failed.length} 个体检失败源吗？\n（${failed.slice(0, 6).map((a) => a.name).join('、')}${failed.length > 6 ? '…' : ''}）\n此操作只影响当前列表并写入应用配置，不会改动任何导入的原始 JSON 文件。`)) return;
+    if (!(await confirmAction({
+      title: `删除 ${failed.length} 个体检失败的源`,
+      message: `${failed.slice(0, 6).map((a) => a.name).join('、')}${failed.length > 6 ? '…' : ''}\n此操作只更新当前应用配置，不会修改导入的 JSON 文件。`,
+      confirmLabel: '删除',
+      destructive: true,
+    }))) return;
     setErr('');
     for (const a of failed) {
       try { await client.cfgDeleteSource(a.key); } catch { /* 单个失败继续 */ }
@@ -951,7 +983,12 @@ export default function ConfigPage() {
   }
 
   async function doBackupImport() {
-    if (!window.confirm('导入备份会覆盖当前的设置、凭据与观看历史，确定继续？')) return;
+    if (!(await confirmAction({
+      title: '导入设置备份',
+      message: '备份会覆盖当前设置、凭据和观看历史。是否继续？',
+      confirmLabel: '导入备份',
+      destructive: true,
+    }))) return;
     setBkBusy(true); setBkMsg(null);
     try {
       const r = await client.backupImport();
@@ -999,7 +1036,12 @@ export default function ConfigPage() {
   }
 
   async function removeDav(s: DavServer) {
-    if (!window.confirm(`确定删除存储「${s.name}」？`)) return;
+    if (!(await confirmAction({
+      title: '删除存储',
+      message: `确定删除「${s.name}」？`,
+      confirmLabel: '删除',
+      destructive: true,
+    }))) return;
     setDavBusy(true); setDavMsg(null);
     try {
       await client.davRemove(s.id);
@@ -1126,9 +1168,17 @@ export default function ConfigPage() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
           />
-          <button className="primary" disabled={busy || !url.trim()} onClick={doImportUrl}>
+          <button
+            className="primary"
+            disabled={busy || !url.trim()}
+            onClick={doImportUrl}
+            title="多仓地址会合并可用子仓；末尾加 #line=N 可只导入指定线路"
+          >
             从地址导入
           </button>
+        </div>
+        <div className="muted" style={{ fontSize: 11, marginBottom: 8 }}>
+          多仓订阅最多扫描 12 个网络子仓或 60 秒，并合并可用子仓；未扫描项会在结果中列出。#line=N 可只导入指定线路（N 从 0 开始）。
         </div>
         {/* ★ 2026-09-27（用户要求）：本地 .json 订阅文件导入（原「粘贴 JSON 文本」入口已删除）；
             档案名默认取原始文件名，自填「订阅名称」优先 */}
@@ -2487,6 +2537,7 @@ export default function ConfigPage() {
           </div>
         </dialog>
       )}
+      {confirmDialog}
     </div>
   );
 }

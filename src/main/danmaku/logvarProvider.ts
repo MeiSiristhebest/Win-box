@@ -208,7 +208,7 @@ export class DanmakuEndpointHealth {
 
 /** 限并发映射（公开接口 20+ 个，避免一次性打满连接） */
 export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
+  const out: R[] = [];
   let next = 0;
   const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
     for (;;) {

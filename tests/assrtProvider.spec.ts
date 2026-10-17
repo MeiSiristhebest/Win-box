@@ -55,7 +55,6 @@ describe('decodeSubtitle（S3：UTF-8 / GBK 判别）', () => {
     // "Hello 中文" 的 GBK 字节：Hello 是 ASCII，中文 GB2312 双字节；
     // 中=D6D0、文=CEC4（注意 0xD6D0/0xCEC4 作为 UTF-8 双字节序列也是合法的，
     // 旧实现会误判为 UTF-8 解成拉丁乱码——新实现打分选优走 GB18030）
-    const s = 'Hello 中文';
     const ascii = Buffer.from('Hello ', 'ascii');
     const gbk = Buffer.concat([ascii, Buffer.from([0xd6, 0xd0, 0xce, 0xc4])]);
     const fakeUtf8 = Buffer.from('Hello 中文', 'utf-8');

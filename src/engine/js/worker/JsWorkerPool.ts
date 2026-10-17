@@ -8,9 +8,8 @@
 //   超时即 `terminate()` 杀掉重建（旧实现只能干等到 V8 返回）。
 import { Worker } from 'node:worker_threads';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { EngineHost } from '../../ports';
-import type { KVStore, Logger, HttpResponse } from '../../../shared/types';
+import type { KVStore, Logger } from '../../../shared/types';
 import type { JsSandboxLike, SpiderStyle } from '../JsSandbox';
 import { SAB_HEADER, type HostCall, type WorkerReply, type WorkerTask } from './protocol';
 
@@ -108,7 +107,7 @@ export class JsWorkerPool {
     });
     const pw: PoolWorker = { w, keys: new Set(), queue: [], running: false, pending: new Map(), nextId: 1, down: false };
     w.on('message', (msg: WorkerReply | HostCall) => this.onMessage(pw, msg));
-    w.on('error', (e) => this.onDown(pw, e.message));
+    w.on('error', (error: unknown) => this.onDown(pw, error instanceof Error ? error.message : String(error)));
     w.on('exit', (code) => {
       if (!this.disposed && code !== 0) this.onDown(pw, `worker 退出（code=${code}）`);
     });
@@ -196,8 +195,8 @@ export class JsWorkerPool {
     pw.pending.clear();
     const i = this.workers.indexOf(pw);
     if (i >= 0) this.workers.splice(i, 1);
-    for (const [k, w] of [...this.route.entries()]) if (w === pw) this.route.delete(k);
-    for (const [k, w] of [...this.openedOn.entries()]) if (w === pw) this.openedOn.delete(k);
+    for (const [k, w] of this.route.entries()) if (w === pw) this.route.delete(k);
+    for (const [k, w] of this.openedOn.entries()) if (w === pw) this.openedOn.delete(k);
     pw.keys.clear();
     this.host.logger.w(`js-worker 已摘除（${reason}），下次调用自动重建`);
   }

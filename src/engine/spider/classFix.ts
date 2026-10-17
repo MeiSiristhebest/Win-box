@@ -23,7 +23,7 @@
 //
 // 只做 2 字节就地改写、不重排字节码（不改代码布局 ⇒ 不涉及栈映射帧；运行器本就带 `-noverify`）。
 import { readFileSync } from 'node:fs';
-import { buildZip, listZipEntries, readZipEntries, type ZipEntryData } from '../util/syncZip';
+import { buildZip, readZipEntries, type ZipEntryData } from '../util/syncZip';
 
 // ---- class 文件解析（只取需要的东西：常量池 / 方法表 / 方法体内的 invoke 指令）----
 
@@ -122,7 +122,8 @@ export function parseClassBytes(input: Buffer): ClassInfo {
   let p = 8;
   const cpCount = b.readUInt16BE(p);
   p += 2;
-  const cp: CpEntry[] = new Array(cpCount);
+  const cp: CpEntry[] = [];
+  cp.length = cpCount;
   const cpOff = new Int32Array(cpCount);
   for (let i = 1; i < cpCount; i++) {
     cpOff[i] = p;

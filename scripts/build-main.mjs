@@ -34,11 +34,21 @@ const opts = {
   bundle: true,
   platform: 'node',
   format: 'cjs',
-  target: 'node20',
+  target: 'node24',
   sourcemap: true,
   // ★ 2026-09-24：wasm 解压库（字幕压缩包）走 external，运行时从 node_modules 加载，
   //   wasm 二进制由代码内 `wasmBinary` 显式传入（不依赖库内部的 __dirname 路径解析）。
-  external: ['electron', 'iconv-lite', 'fast-xml-parser', 'node-unrar-js', '7z-wasm'],
+  // Babel 8 uses import.meta.url at runtime; keep its ESM packages external so the CJS bundle does not replace it with undefined.
+  external: [
+    'electron',
+    'iconv-lite',
+    'fast-xml-parser',
+    'node-unrar-js',
+    '7z-wasm',
+    '@babel/core',
+    '@babel/parser',
+    '@babel/plugin-transform-modules-commonjs',
+  ],
   logLevel: 'info',
 };
 
@@ -53,7 +63,7 @@ const entries = [
 /**
  * ★★ 2026-09-30：JS 蜘蛛 worker 产物（`dist/js-worker.cjs`）。
  *   主进程用 `new Worker(代码, { eval: true })` 启动它（见 engine/js/worker/JsWorkerPool.ts）——
- *   eval 方式不依赖模块路径解析，asar 内也能跑。**必须整包 bundle**（cheerio/crypto-js/iconv-lite
+ *   eval 方式不依赖模块路径解析，asar 内也能跑。**必须整包 bundle**（cheerio/crypto-es/iconv-lite
  *   都要内联）：eval 出来的 worker 没有自己的目录，运行时 `require('cheerio')` 会解析不到。
  */
 const workerFile = resolve(src, 'dist/js-worker.cjs');
@@ -61,9 +71,9 @@ const workerOpts = {
   bundle: true,
   platform: 'node',
   format: 'cjs',
-  target: 'node20',
+  target: 'node24',
   sourcemap: false,
-  external: ['electron'],
+  external: ['electron', '@babel/core', '@babel/parser', '@babel/plugin-transform-modules-commonjs'],
   logLevel: 'info',
 };
 

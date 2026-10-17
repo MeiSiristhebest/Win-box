@@ -9,6 +9,7 @@ import { client } from '../api/client';
 import { openSearchWindow } from '../lib/searchWin';
 import { useTheme } from '../lib/theme';
 import HScrollRow from '../components/HScrollRow';
+import { useConfirmDialog } from '../components/ConfirmDialog';
 // ★ 2026-10-16（用户要求「四套皮肤绝对大改」）：首屏聚光卡（四皮肤共用结构，材质由各皮肤 CSS 决定）
 import DiscoverSpotlight from '../components/DiscoverSpotlight';
 import CascadeBar, { type CascadeLevel, type CascadeOption } from '../components/CascadeBar';
@@ -69,6 +70,7 @@ function ItemCard({ it, poster, onError, onOpen, playBadge, dbPlay, dbYear }: { 
 export default function DiscoverPage() {
   // 发现页直接展示分类与榜单；Netflix / Apple 保留横向内容行，豆风使用海报网格。
   const theme = useTheme();
+  const { confirm: showMessage, dialog: messageDialog } = useConfirmDialog();
   const nf = theme === 'netflix';
   const ap = theme === 'apple';
   const db = theme === 'douban';
@@ -101,7 +103,16 @@ export default function DiscoverPage() {
     : (db ? sections?.[wallSec]?.items || [] : sections?.flatMap(s => s.items) || []);
   const covers = useCovers(coverSource.map(coverItem));
 
-  const goSearch = (title: string): void => { void openSearchWindow(title).catch((e) => window.alert(String(e))); };
+  const goSearch = (title: string): void => {
+    void openSearchWindow(title).catch((e) => {
+      void showMessage({
+        title: '无法打开搜索窗口',
+        message: e instanceof Error ? e.message : String(e),
+        confirmLabel: '知道了',
+        cancelLabel: null,
+      });
+    });
+  };
 
   /**
    * 拉榜单（走主进程 6h 缓存）。
@@ -364,6 +375,7 @@ export default function DiscoverPage() {
           </>
         )}
       </div>
+      {messageDialog}
     </>
   );
 }

@@ -95,13 +95,14 @@ export default function TitleBar({ title = 'Win-Box', showMini = false, mini = f
             )}
           </button>
         )}
-        <button className="tb-btn" title="最小化" onClick={() => void client.winMinimize()}>
+        <button className="tb-btn" aria-label="最小化" title="最小化" onClick={() => void client.winMinimize()}>
           <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><line x1="3.5" y1="8" x2="12.5" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
         {/* 小窗口 / 恢复原窗口（仅播放器窗口；mini 时全屏功能消失，以恢复按钮替代） */}
         {showMini && (
           <button
             className="tb-btn"
+            aria-label={mini ? '恢复原窗口' : '小窗口'}
             title={mini ? '恢复原窗口' : '小窗口'}
             onClick={() => onMiniToggle?.()}
           >
@@ -122,7 +123,7 @@ export default function TitleBar({ title = 'Win-Box', showMini = false, mini = f
         )}
         {/* 小窗口模式下全屏/最大化功能消失，隐藏该按钮 */}
         {!mini && (
-          <button className="tb-btn" title={max ? '还原' : '最大化'} onClick={() => void toggleMax()}>
+          <button className="tb-btn" aria-label={max ? '还原' : '最大化'} title={max ? '还原' : '最大化'} onClick={() => void toggleMax()}>
             {max ? (
               <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true">
                 <rect x="3" y="6.5" width="9" height="7" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
@@ -133,7 +134,7 @@ export default function TitleBar({ title = 'Win-Box', showMini = false, mini = f
             )}
           </button>
         )}
-        <button className="tb-btn tb-close" title="关闭" onClick={() => void client.winClose()}>
+        <button className="tb-btn tb-close" aria-label="关闭" title="关闭" onClick={() => void client.winClose()}>
           <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><line x1="4" y1="4" x2="12" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /><line x1="12" y1="4" x2="4" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
       </div>
