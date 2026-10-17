@@ -29,6 +29,7 @@ import { useShowDiscover } from './lib/uiPrefs';
 import { isDetailWindow, openDetailRoute } from './lib/detailWin';
 import { isSearchWindow, bindSearchNav } from './lib/searchWin';
 import { useTheme } from './lib/theme';
+import { setImageFreezeActive } from './lib/freezeImages';
 import { presentationFor } from './lib/themeTokens';
 import { isNativeModalOpen } from './lib/modalScope';
 import { client } from './api/client';
@@ -233,6 +234,17 @@ function AppShell() {
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
+  }, [isPlayerWin]);
+
+  /**
+   * ★ 2026-10-17（B3「冻结/解冻」）：播放器窗口打开期间，把**本窗口里不可见**的已解码图片释放掉
+   *   （只清 `img.src`、原值备份、React 树与数据原地保留，零重载）；播放器关闭即全部挂回。
+   *   动因：主窗口图片墙的已解码位图 ≈130~200MB 记在 **GPU 进程**（见 docs/design/内存优化_专项立项.md §2.9）。
+   *   玩家窗口自身不接（主进程广播时已排除；这里再兜一道，避免它冻自己的封面）。
+   */
+  useEffect(() => {
+    if (isPlayerWin) return;
+    return client.playerOnWindowState((open) => setImageFreezeActive(open));
   }, [isPlayerWin]);
 
   // 首次同意后主窗口进入说明页；记录标记，下次启动不再弹出或跳转。

@@ -6,14 +6,18 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { extractArchiveEntries } from '../src/main/subtitle/archive';
 import {
   validatePluginManifest,
+  validateThemeContribute,
+  themeContributeOf,
   isSafeRelPath,
   pluginLevelOf,
   shadersForMode,
   shaderModes,
   HOST_API_VERSION,
   DEP_ALLOWLIST,
+  THEME_TOKENS,
   type PluginManifest,
 } from '../src/shared/plugin';
 
@@ -120,6 +124,106 @@ describe('plugin 契约 — 分级与档位', () => {
   });
 });
 
+describe('plugin 契约 — theme（皮肤：纯令牌 + 声明式 layout）', () => {
+  const theme = (over: Record<string, unknown> = {}) => ({
+    type: 'theme', id: 'sakura', label: '🌸 樱花', base: 'dark',
+    tokens: { '--accent': '#e879a6', '--surface-0': '#120d12' },
+    ...over,
+  });
+
+  it('合法 theme 通过（含 layout）', () => {
+    expect(validateThemeContribute(theme({ layout: { nav: 'top', density: 'comfy', radiusScale: 1.5 } })))
+      .toEqual({ ok: true });
+  });
+
+  it('词表完整且不含任何私有前缀', () => {
+    expect(THEME_TOKENS['--surface-glass']?.requiresAlpha).toBe(true);
+    expect(THEME_TOKENS['--on-accent']).toBeTruthy();
+    expect(THEME_TOKENS['--dur-page']?.max).toBe(800);
+    expect(THEME_TOKENS['--fs-2xl']).toBeTruthy();
+    for (const k of ['--nf-red', '--b-blue', '--ap-dim', '--db-orange']) expect(THEME_TOKENS[k]).toBeUndefined();
+  });
+
+  it('缺 id/label/base/tokens → THEME_TOKENS_REQUIRED', () => {
+    expect(validateThemeContribute(theme({ id: 'AB' })).reasonCode).toBe('THEME_TOKENS_REQUIRED');
+    expect(validateThemeContribute(theme({ label: '  ' })).reasonCode).toBe('THEME_TOKENS_REQUIRED');
+    expect(validateThemeContribute(theme({ base: 'gray' })).reasonCode).toBe('THEME_TOKENS_REQUIRED');
+    expect(validateThemeContribute(theme({ tokens: {} })).reasonCode).toBe('THEME_TOKENS_REQUIRED');
+    expect(validateThemeContribute(theme({ tokens: [] })).reasonCode).toBe('THEME_TOKENS_REQUIRED');
+  });
+
+  it('自造 / 未收录令牌名 → UNKNOWN_THEME_TOKEN', () => {
+    expect(validateThemeContribute(theme({ tokens: { '--nf-red': '#e50914' } })).reasonCode).toBe('UNKNOWN_THEME_TOKEN');
+    expect(validateThemeContribute(theme({ tokens: { '--nope': '#ffffff' } })).reasonCode).toBe('UNKNOWN_THEME_TOKEN');
+  });
+
+  it('值类型 / 范围错 → BAD_THEME_TOKEN_VALUE', () => {
+    expect(validateThemeContribute(theme({ tokens: { '--accent': 'red' } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');
+    expect(validateThemeContribute(theme({ tokens: { '--accent': '12px' } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');
+    expect(validateThemeContribute(theme({ tokens: { '--radius': '40px' } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');
+    expect(validateThemeContribute(theme({ tokens: { '--radius': '12' } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');
+    expect(validateThemeContribute(theme({ tokens: { '--dur-panel': '2s' } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');
+    expect(validateThemeContribute(theme({ tokens: { '--ease-standard': 'ease-in' } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');
+    expect(validateThemeContribute(theme({ tokens: { '--shadow': '#000' } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');
+    expect(validateThemeContribute(theme({ tokens: { '--dur-panel': '240ms' } })).ok).toBe(true);
+    expect(validateThemeContribute(theme({ tokens: { '--shadow': '0 8px 24px rgba(0,0,0,.35)' } })).ok).toBe(true);
+  });
+
+  it('需透明通道的令牌给不透明色 → BAD_THEME_TOKEN_VALUE', () => {
+    expect(validateThemeContribute(theme({ tokens: { '--surface-glass': '#000000' } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');
+    expect(validateThemeContribute(theme({ tokens: { '--surface-glass': 'rgba(0,0,0,.9)' } })).ok).toBe(true);
+    expect(validateThemeContribute(theme({ tokens: { '--hairline': '#262c3b80' } })).ok).toBe(true);
+  });
+
+  it('var() 只允许引用词表内令牌', () => {
+    expect(validateThemeContribute(theme({ tokens: { '--hairline': 'var(--border-soft)' } })).ok).toBe(true);
+    expect(validateThemeContribute(theme({ tokens: { '--hairline': 'var(--nf-dim)' } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');
+  });
+
+  it('CSS 注入片段一律拒', () => {
+    for (const bad of ['#fff;color:red', 'url(x)', 'rgb(0,0,0)}', '#fff/*x*/']) {
+      expect(validateThemeContribute(theme({ tokens: { '--accent': bad } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');
+    }
+  });
+
+  it('夹带样式表 → THEME_STYLE_NOT_ALLOWED（v1）', () => {
+    expect(validateThemeContribute(theme({ css: 'button{}' })).reasonCode).toBe('THEME_STYLE_NOT_ALLOWED');
+    expect(validateThemeContribute(theme({ style: 'theme.css' })).reasonCode).toBe('THEME_STYLE_NOT_ALLOWED');
+  });
+
+  it('layout 非法 → BAD_THEME_LAYOUT', () => {
+    expect(validateThemeContribute(theme({ layout: { nav: 'left' } })).reasonCode).toBe('BAD_THEME_LAYOUT');
+    expect(validateThemeContribute(theme({ layout: { nope: 1 } })).reasonCode).toBe('BAD_THEME_LAYOUT');
+    expect(validateThemeContribute(theme({ layout: { sideWidth: 999 } })).reasonCode).toBe('BAD_THEME_LAYOUT');
+    expect(validateThemeContribute(theme({ layout: { density: 'compact', cardWidth: 160 } })).ok).toBe(true);
+  });
+
+  it('结构枚举（shell / detailStyle / discoverStyle / filterStyle）取值受控', () => {
+    expect(validateThemeContribute(theme({ layout: { shell: 'sidebar', detailStyle: 'cinema', discoverStyle: 'shelf', filterStyle: 'card' } })).ok).toBe(true);
+    expect(validateThemeContribute(theme({ layout: { shell: 'pillbar', discoverStyle: 'wall' } })).ok).toBe(true);
+    expect(validateThemeContribute(theme({ layout: { shell: 'floating' } })).reasonCode).toBe('BAD_THEME_LAYOUT');
+    expect(validateThemeContribute(theme({ layout: { detailStyle: 'foo' } })).reasonCode).toBe('BAD_THEME_LAYOUT');
+    expect(validateThemeContribute(theme({ layout: { discoverStyle: 'poster-wall' } })).reasonCode).toBe('BAD_THEME_LAYOUT');
+    expect(validateThemeContribute(theme({ layout: { filterStyle: 'pill' } })).reasonCode).toBe('BAD_THEME_LAYOUT');
+  });
+
+  it('整单走通：theme 插件是 L1 asset', () => {
+    const m = base({ contributes: [theme({ layout: { nav: 'top' } })] as PluginManifest['contributes'] });
+    expect(validatePluginManifest(m)).toEqual({ ok: true });
+    expect(pluginLevelOf(m)).toBe('L1');
+  });
+
+  it('整单拒装：theme 内容非法时与直接校验同码', () => {
+    const bad = base({ contributes: [{ type: 'theme', id: 'sakura', label: 'x', base: 'dark', tokens: { '--nf-red': '#e50914' } }] });
+    expect(validatePluginManifest(bad).reasonCode).toBe('UNKNOWN_THEME_TOKEN');
+  });
+
+  it('code 插件不得声明 theme（kind 不匹配）', () => {
+    const bad = base({ kind: 'code', main: 'main.js', permissions: ['net'], contributes: [theme()] as PluginManifest['contributes'] });
+    expect(validatePluginManifest(bad).reasonCode).toBe('UNKNOWN_CONTRIBUTE_KIND');
+  });
+});
+
 describe('plugin 契约 — 示例清单校验', () => {
   it('仓库内的超分示例清单必须通过宿主契约校验', () => {
     const p = fileURLToPath(
@@ -131,5 +235,37 @@ describe('plugin 契约 — 示例清单校验', () => {
     // 四档位（效率/质量/通用/高质量）都在
     expect(shaderModes((m as PluginManifest).contributes, 'mpv.shaders').map((x) => x.id))
       .toEqual(['efficiency', 'quality', 'general', 'high']);
+  });
+
+  it('★ 2026-10-18：skill 里的皮肤骨架必须通过校验（词表 / 布局枚举 / base 全对口径）', () => {
+    const p = fileURLToPath(
+      new URL('../../.trae/skills/winbox-plugin/assets/plugin.theme.json', import.meta.url),
+    );
+    const m = JSON.parse(readFileSync(p, 'utf-8')) as PluginManifest;
+    expect(validatePluginManifest(m)).toEqual({ ok: true });
+    const t = themeContributeOf(m.contributes);
+    expect(t).toBeTruthy();
+    expect(validateThemeContribute(t)).toEqual({ ok: true });
+    // 骨架必须给全 39 项词表（作者照着改就不会漏 —— 亮色皮肤漏项会露深色基线）
+    expect(Object.keys(t!.tokens).sort()).toEqual(Object.keys(THEME_TOKENS).sort());
+    // 声明式布局：枚举值合法
+    expect(t!.layout?.shell).toBe('topbar');
+  });
+
+  it('★ 2026-10-18：skill 归档的示例皮肤包（.winbox）必须是「可安装的发布产物」', async () => {
+    const p = fileURLToPath(
+      new URL('../../.trae/skills/winbox-plugin/assets/theme-sakura.winbox', import.meta.url),
+    );
+    const entries = await extractArchiveEntries(readFileSync(p));
+    const names = entries.map((e) => e.name);
+    // 根级 plugin.json + LICENSE（不得多套目录层）
+    expect(names).toContain('plugin.json');
+    expect(names).toContain('LICENSE');
+    expect(names.some((n) => n.includes('/'))).toBe(false);
+    // v1 皮肤不许有任何样式表：包里出现 .css 即不合规
+    expect(names.some((n) => n.toLowerCase().endsWith('.css'))).toBe(false);
+    const m = JSON.parse(entries.find((e) => e.name === 'plugin.json')!.bytes.toString('utf8')) as PluginManifest;
+    expect(validatePluginManifest(m)).toEqual({ ok: true });
+    expect(validateThemeContribute(themeContributeOf(m.contributes))).toEqual({ ok: true });
   });
 });

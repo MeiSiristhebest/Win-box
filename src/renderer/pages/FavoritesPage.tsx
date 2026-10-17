@@ -231,7 +231,7 @@ export default function FavoritesPage() {
                               ) : (
                                 <div
                                   style={{
-                                    aspectRatio: '2/3', width: '100%', background: 'linear-gradient(160deg, var(--bg-elev2), var(--bg-elev))',
+                                    aspectRatio: '2/3', width: '100%', background: 'linear-gradient(160deg, var(--surface-3), var(--surface-2))',
                                     display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-dim)', fontSize: 11,
                                   }}
                                 >

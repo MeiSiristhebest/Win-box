@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { registerHandler } from '../util/ipcGuard';
 import { fileLogger } from '../util/logger';
 import { noteMediaState } from '../util/mediaDiag';
+import { startPlayMemWatch } from '../util/memProbe';
 import { setUiScalePref, uiScaleState } from '../ui/uiScale';
 import { SpiderHost } from '../spider/SpiderHost';
 import { resourcesDir, userDataDir, spiderCacheDir } from '../util/paths';
@@ -94,6 +95,18 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   const log = fileLogger;
   /** ★ 2026-10-08 MPV 播放内核（单会话；播放器窗口关闭/退出应用会 dispose） */
   const mpv = new MpvController(fileLogger);
+  /**
+   * ★ 2026-10-17（B3「冻结/解冻」）：播放器窗口开/关 → 广播给**其余窗口**。
+   *   主窗口据此把隐藏页里已解码的图片位图释放掉（只清 `img.src`、React 树与数据原地保留，零重载）；
+   *   实测这部分埋在 GPU 进程里 ≈130~200MB（见 docs/design/内存优化_专项立项.md §2.9）。
+   */
+  const notifyPlayerWindowState = (open: boolean): void => {
+    const pwin = playerWindow();
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (w === pwin || w.isDestroyed()) continue;
+      try { w.webContents.send(IPC.PLAYER_WINDOW_STATE, { open }); } catch { /* 窗口已关：忽略 */ }
+    }
+  };
 
   // 自定义无边框窗口控制
   ipcMain.handle(IPC.WIN_MINIMIZE, (e) => winOf(e)?.minimize());
@@ -584,6 +597,8 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   // ---- 独立播放器窗口 ----
   registerHandler(IPC.PLAYER_OPEN, (_e: any, init: any) => {
     openPlayerWindow(init);
+    // ★ 2026-10-17（B3）：播放器已开 → 通知其余窗口冻结隐藏页的已解码图片
+    notifyPlayerWindowState(true);
     return { ok: true };
   }, log);
   registerHandler(IPC.PLAYER_SWITCH_EP, (_e: any, request: number | import('../../shared/playerEpisode').PlayerEpisodeSwitch) => {
@@ -648,6 +663,8 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   }, log);
   // 播放器窗口关闭 → 停 mpv（不留孤儿进程）；退出应用再兜一道（will-quit）
   onPlayerWindowClosed(() => mpv.dispose());
+  // ★ 2026-10-17（B3）：播放器窗口关闭 → 通知其余窗口把 `img.src` 挂回（解冻）
+  onPlayerWindowClosed(() => notifyPlayerWindowState(false));
   app.on('will-quit', () => {
     try {
       mpv.dispose();
@@ -680,7 +697,22 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
    */
   ipcMain.on(IPC.MEDIA_STATE, (e, ev: unknown) => {
     const w = BrowserWindow.fromWebContents(e.sender);
-    noteMediaState(e.sender.id, isPlayerWindow(w) ? 'player' : w ? 'main' : 'gone', ev);
+    const playerWin = isPlayerWindow(w);
+    noteMediaState(e.sender.id, playerWin ? 'player' : w ? 'main' : 'gone', ev);
+    /**
+     * ★ 2026-10-17：内存基线探针触发点 —— **播放器窗口**（点播 1080P 的主战场）开始播放时，
+     *   起一轮 60s / 每 5s 的内存采样（Electron 逐进程 + 我们 spawn 的子进程 RSS）。
+     *   主窗口内嵌播放（直播 / WebDAV）不触发，避免浏览过程中的噪声；一轮内重复触发会被去重。
+     */
+    const evType = (ev && typeof ev === 'object' ? (ev as { event?: unknown }).event : '') as string;
+    if (playerWin && (evType === 'play' || evType === 'playing')) {
+      startPlayMemWatch();
+      /**
+       * ★ 2026-10-17（B1）：播放期间不会再发搜索请求 → 常驻蜘蛛池纯属白占内存，
+       *   布防「播放期收缩」（整体空闲 30s 后收敛到 1 个热进程）。
+       */
+      host.onPlaybackStarted();
+    }
   });
 
   // ---- ★ 网络代理（DNS 污染 / TLS SNI 阻断站点用；改后即时生效，无需重启）----
@@ -712,6 +744,7 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   registerHandler(IPC.PLUGIN_UNINSTALL, async (_e: any, id: string) => plugins.uninstall(String(id || '')), log);
   registerHandler(IPC.PLUGIN_SET_ENABLED, async (_e: any, a: { id: string; enabled: boolean }) => plugins.setEnabled(String(a?.id || ''), !!a?.enabled), log);
   registerHandler(IPC.PLUGIN_SR, () => plugins.srState(playerSettings.settings.srMode), log);
+  registerHandler(IPC.PLUGIN_THEMES, () => plugins.themeSkins(), log);
   // ---- ★ 2026-09-29 磁力外部播放器探测（MKV/HEVC 接力用；只列本机已安装的，不启动）----
   registerHandler(
     IPC.BT_DETECT_PLAYERS,

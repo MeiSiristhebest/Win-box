@@ -15,7 +15,10 @@ import { join } from 'node:path';
 import { JsonStore } from '../store/JsonStore';
 import { PluginInstaller } from './PluginInstaller';
 import { PluginRegistry, BUILTIN_MARKER, type PluginEntry } from './PluginRegistry';
-import { shaderModes, shadersForMode, type PluginView, type SrState } from '../../shared/plugin';
+import {
+  shaderModes, shadersForMode, themeContributeOf, validateThemeContribute,
+  type PluginView, type SrState, type ThemeSkinView,
+} from '../../shared/plugin';
 import { srModeUsable } from '../../shared/player';
 
 export interface PluginOpResult {
@@ -131,6 +134,32 @@ export class PluginHost {
   async srModes(): Promise<Array<{ id: string; label: string }>> {
     const e = await this.srPlugin();
     return e ? this.modesOf(e) : [];
+  }
+
+  /**
+   * ★ 插件皮肤（`contributes.theme`）：已启用 + 载荷就位 + 通过内容校验。
+   * `id` 已带 `plugin:` 前缀 —— 渲染层**直接拿它作 `data-theme`**。
+   * 规范：docs/design/皮肤与主题规范.md（令牌词表 / layout / 校验）。
+   */
+  async themeSkins(): Promise<ThemeSkinView[]> {
+    await this.ensureLoaded();
+    const out: ThemeSkinView[] = [];
+    for (const e of this.entries) {
+      if (!this.enabled(e.id)) continue;
+      if (!e.payloadReady || !isDirPath(e.path)) continue;
+      const c = themeContributeOf(e.manifest.contributes);
+      if (!c) continue;
+      if (!validateThemeContribute(c).ok) continue; // 安装期已校验，这里兜一道
+      out.push({
+        id: `plugin:${c.id}`,
+        pluginId: e.id,
+        label: c.label,
+        base: c.base,
+        tokens: c.tokens,
+        layout: c.layout ?? {},
+      });
+    }
+    return out;
   }
 
   // ---- 内部 ----

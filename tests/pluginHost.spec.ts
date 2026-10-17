@@ -202,6 +202,66 @@ function writeTemp(m: PluginManifest): string {
   return p;
 }
 
+describe('PluginHost — 插件皮肤（contributes.theme）', () => {
+  const themeManifest = (over: Partial<PluginManifest> = {}): PluginManifest =>
+    manifest({
+      id: 'sakura-skin',
+      name: '樱花皮肤',
+      contributes: [
+        {
+          type: 'theme', id: 'sakura', label: '🌸 樱花', base: 'dark',
+          tokens: { '--accent': '#e879a6', '--surface-0': '#120d12' },
+          layout: { nav: 'top', density: 'comfy' },
+        },
+      ],
+      ...over,
+    });
+
+  it('声明 theme 且已启用 → 返回 plugin:<skinId> + 令牌 + layout', async () => {
+    writeBuiltin(themeManifest());
+    const h = host();
+    await h.init();
+    expect(await h.themeSkins()).toEqual([
+      {
+        id: 'plugin:sakura',
+        pluginId: 'sakura-skin',
+        label: '🌸 樱花',
+        base: 'dark',
+        tokens: { '--accent': '#e879a6', '--surface-0': '#120d12' },
+        layout: { nav: 'top', density: 'comfy' },
+      },
+    ]);
+  });
+
+  it('停用 → 不参与皮肤列表', async () => {
+    writeBuiltin(themeManifest());
+    const h = host();
+    await h.init();
+    await h.setEnabled('sakura-skin', false);
+    expect(await h.themeSkins()).toEqual([]);
+  });
+
+  it('只声明 mpv.shaders 的插件 → 无皮肤', async () => {
+    writeBuiltin(manifest());
+    const h = host();
+    await h.init();
+    expect(await h.themeSkins()).toEqual([]);
+  });
+
+  it('磁盘清单被篡改（词表外令牌）→ 跳过装配（内容级兜底）', async () => {
+    writeBuiltin(themeManifest());
+    const h1 = host();
+    await h1.init();
+    const pj = join(pluginsDir, 'sakura-skin.winbox', 'plugin.json');
+    const m = JSON.parse(readFileSync(pj, 'utf-8')) as { contributes: Array<{ tokens: Record<string, string> }> };
+    m.contributes[0].tokens = { '--nf-red': '#e50914' };
+    writeFileSync(pj, JSON.stringify(m));
+    const h2 = host();
+    await h2.init();
+    expect(await h2.themeSkins()).toEqual([]);
+  });
+});
+
 describe('PluginHost — 目录整洁', () => {
   it('物化/安装后 pluginsDir 无 .tmp/.bak 残留', async () => {
     writeBuiltin(manifest());

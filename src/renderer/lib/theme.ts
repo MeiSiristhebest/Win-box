@@ -14,7 +14,7 @@ function applyThemeTokens(theme: Theme): void {
   for (const name of SEMANTIC_TOKEN_NAMES) root.style.setProperty(`--${name}`, tokens[name]);
 }
 
-/** 当前主题（从 DOM 读取，本地持久化后的最终生效值）。 */
+/** 当前皮肤（从 DOM 读取，本地持久化后的最终生效值）。 */
 export function currentTheme(): Theme {
   return normalizeTheme(document.documentElement.getAttribute('data-theme'));
 }

@@ -185,6 +185,9 @@ export const IPC = {
    *  （修「新窗口首推与 React 挂载竞态」：`did-finish-load` 发出的 init 可能早于订阅，直接丢） */
   PLAYER_READY: 'player:ready',
   PLAYER_IS_OPEN: 'player:isOpen',
+  /** ★ 2026-10-17（B3「冻结/解冻」）：播放器窗口开/关 → 广播给其余窗口。
+   *  主窗口据此把**隐藏页**里已解码的图片位图释放掉（只清 `img.src`、React 树原地保留，零重载）。 */
+  PLAYER_WINDOW_STATE: 'player:windowState',
   PLAYER_SET_MINI: 'player:setMini',
   PLAYER_IS_MINI: 'player:isMini',
   PLAYER_SET_FULLSCREEN: 'player:setFullscreen',
@@ -219,6 +222,8 @@ export const IPC = {
   PLUGIN_SET_ENABLED: 'plugin:setEnabled',
   /** 超分状态（是否可用 / 可选档位 / 实际生效档位）—— 播放器按钮据此显示与高亮 */
   PLUGIN_SR: 'plugin:sr',
+  /** ★ 皮肤（contributes.theme）列表：已启用 + 就位的插件皮肤 */
+  PLUGIN_THEMES: 'plugin:themes',
   /** ★ 2026-09-29 磁力（BT）：探测本机已安装的外部播放器（MKV/HEVC 接力用；只探测不启动） */
   BT_DETECT_PLAYERS: 'bt:detectPlayers',
   // ★ 2026-10-08 MPV 高兼容播放内核（独立播放器窗口内嵌 --wid + JSON IPC；见 main/player/MpvController）

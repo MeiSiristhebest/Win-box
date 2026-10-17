@@ -7,7 +7,7 @@
 //   · 点某个 chip → 回调 `onPick(该级 key, 选项 id)`；**是否允许再点取消由调用方决定**（组件只管派发）。
 //
 // 皮肤：豆风走已有 `.db-filters` 组（与顶栏胶囊导航同观感）；其余皮肤走基类 `.cascade*`（global.css）。
-import { useTheme } from '../lib/theme';
+import { useSkinLayout } from '../lib/theme';
 
 export interface CascadeOption {
   id: string;
@@ -36,7 +36,8 @@ export default function CascadeBar({
   onPick: (levelKey: string, id: string) => void;
   style?: React.CSSProperties;
 }) {
-  const db = useTheme() === 'douban';
+  /** 筛选条形态由皮肤的 layout 声明决定（`card` = 卡片容器，缺省 = 朴素行） */
+  const db = useSkinLayout().filterStyle === 'card';
   return (
     <div className={db ? 'db-filters cascade' : 'cascade'} style={style}>
       {levels.map((lv) => {

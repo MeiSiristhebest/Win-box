@@ -38,7 +38,7 @@ import type { MetaHit, MetaExtra, DiscoverSection, DiscoverGenre, DiscoverGenreP
 import type { MetaSettings, MetaSettingsView, MetaSuggestion } from '../../shared/meta';
 import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../../shared/discover';
 import type { PlayerSettings, MpvStatus, MpvStartOptions, MpvCommand, MpvStateEvent, MediaStateEvent } from '../../shared/player';
-import type { PluginView, SrState } from '../../shared/plugin';
+import type { PluginView, SrState, ThemeSkinView } from '../../shared/plugin';
 import type { BackupExportResult, BackupImportResult } from '../../shared/backup';
 import type { DavBrowseResult, DavServer } from '../../shared/webdav';
 import type { DlnaCastResult, DlnaCastTarget, DlnaDevice } from '../../shared/dlna';
@@ -272,6 +272,8 @@ declare global {
         onSwitchEp: (cb: (epIndex: number) => void) => () => void;
         onMini: (cb: (mini: boolean) => void) => () => void;
         onFullscreen: (cb: (fullscreen: boolean) => void) => () => void;
+        /** ★ 2026-10-17（B3）：播放器窗口开/关（主窗口据此冻结/解冻隐藏页的已解码图片） */
+        onWindowState: (cb: (s: { open: boolean }) => void) => () => void;
       };
       /**
        * ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）：播放诊断上报（渲染层 → 主进程）。
@@ -311,6 +313,7 @@ declare global {
         uninstall: (id: string) => Promise<IpcResult<{ ok: boolean; reason?: string; items?: PluginView[] }>>;
         setEnabled: (a: { id: string; enabled: boolean }) => Promise<IpcResult<{ ok: boolean; reason?: string; items?: PluginView[] }>>;
         sr: () => Promise<IpcResult<SrState>>;
+        themes: () => Promise<IpcResult<ThemeSkinView[]>>;
       };
       // ★ 2026-09-29 磁力（BT）：本机已安装的外部播放器（MKV/HEVC 接力；只探测不启动）
       bt: {
@@ -442,6 +445,8 @@ export const client = {
   playerSetResizable: (resizable: boolean) => unwrap(window.api.player.setResizable(resizable)),
   playerOnMini: (cb: (mini: boolean) => void) => window.api.player.onMini(cb),
   playerOnFullscreen: (cb: (fullscreen: boolean) => void) => window.api.player.onFullscreen(cb),
+  /** ★ 2026-10-17（B3）：播放器窗口开/关 → 主窗口据此冻结/解冻隐藏页的已解码图片（零重载） */
+  playerOnWindowState: (cb: (open: boolean) => void) => window.api.player.onWindowState((s) => cb(!!s?.open)),
   /** ★ 2026-10-16（用户报「播放时画面突然消失、只剩声音」）：播放诊断上报（fire-and-forget；见 main/util/mediaDiag.ts） */
   mediaReport: (ev: MediaStateEvent) => window.api.media.report(ev),
   bossGet: () => unwrap(window.api.boss.get()),
@@ -541,6 +546,8 @@ export const client = {
   pluginSetEnabled: (a: { id: string; enabled: boolean }) =>
     unwrap<{ ok: boolean; reason?: string; items?: PluginView[] }>(window.api.plugins.setEnabled(a)),
   pluginSr: () => unwrap<SrState>(window.api.plugins.sr()),
+  /** ★ 插件皮肤列表（`contributes.theme`）—— 渲染层注册表据此并入可选皮肤 */
+  pluginThemes: () => unwrap<ThemeSkinView[]>(window.api.plugins.themes()),
   /** ★ 2026-09-29 磁力（BT）：探测本机外部播放器（MKV/HEVC 接力；配置页可指定路径） */
   btDetectPlayers: () => unwrap(window.api.bt.detectPlayers()),
   /** ★ 2026-09-30（用户要求）：点播外部播放器（与磁力分开绑定）——探测本机播放器 / 用当前地址拉起 */

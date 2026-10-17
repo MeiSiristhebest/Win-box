@@ -303,6 +303,12 @@ const api = {
       ipcRenderer.on('player:fullscreen', l);
       return () => ipcRenderer.removeListener('player:fullscreen', l);
     },
+    /** ★ 2026-10-17（B3）：播放器窗口开/关 → 主窗口据此冻结/解冻隐藏页的已解码图片 */
+    onWindowState: (cb: (s: { open: boolean }) => void) => {
+      const l = (_e: unknown, s: { open: boolean }) => cb(s);
+      ipcRenderer.on(IPC.PLAYER_WINDOW_STATE, l);
+      return () => ipcRenderer.removeListener(IPC.PLAYER_WINDOW_STATE, l);
+    },
   },
   /**
    * ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）：播放诊断上报（渲染层 → 主进程）。
@@ -352,6 +358,7 @@ const api = {
     uninstall: (id: string) => invoke(IPC.PLUGIN_UNINSTALL, id),
     setEnabled: (a: { id: string; enabled: boolean }) => invoke(IPC.PLUGIN_SET_ENABLED, a),
     sr: () => invoke(IPC.PLUGIN_SR),
+    themes: () => invoke(IPC.PLUGIN_THEMES),
   },
   // ★ 2026-09-29 磁力（BT）：探测本机已安装的外部播放器（MKV/HEVC 接力；只探测不启动）
   bt: {
