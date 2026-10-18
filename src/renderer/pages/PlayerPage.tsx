@@ -237,6 +237,34 @@ export default function PlayerPage() {
   const canPrev = !!init && epIndex > 0;
   const canNext = !!init && epIndex < eps.length - 1;
 
+  /**
+   * ★ 2026-10-18（R10）：L4 插件 `winbox.player.*` 的**转发事件**（主进程 → 本窗口）。
+   *   插件不碰内核 —— 这里把它转成宿主既有的 `mpv:cmd` / 换集逻辑（与手动操作同一路径）。
+   */
+  useEffect(() => {
+    const off = client.onPlayerCtl(({ op, value }) => {
+      const num = typeof value === 'number' ? value : Number(value);
+      if (op === 'next') {
+        if (epIndex < eps.length - 1) goEp(epIndex + 1);
+        return;
+      }
+      if (op === 'prev') {
+        if (epIndex > 0) goEp(epIndex - 1);
+        return;
+      }
+      if (op === 'play' || op === 'pause') {
+        void client.mpvCmd({ type: op }).catch(() => undefined);
+        return;
+      }
+      if (op === 'seek' && Number.isFinite(num)) void client.mpvCmd({ type: 'seek', value: num }).catch(() => undefined);
+      else if (op === 'volume' && Number.isFinite(num)) void client.mpvCmd({ type: 'volume', value: num }).catch(() => undefined);
+      else if (op === 'audioTrack' && Number.isFinite(num)) void client.mpvCmd({ type: 'aid', value: num }).catch(() => undefined);
+      else if (op === 'subtitle' && Number.isFinite(num)) void client.mpvCmd({ type: 'sid', value: num }).catch(() => undefined);
+    });
+    return off;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goEp, epIndex, eps.length]);
+
   // 播放直链进度按 SourceRef 读取，历史仍写入原始 episode URL。
   const liveRef = useRef<{ raw: string; url: string; name: string; flag?: string; sourceKey: string; meta?: PlayerInitData['meta'] }>({ raw: '', url: '', name: '', sourceKey: '' });
   useEffect(() => {

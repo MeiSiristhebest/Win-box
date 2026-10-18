@@ -3,6 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { detailRouteParams } from '../../shared/detailWin';
 import { client } from '../api/client';
+// ★ 2026-10-18 受限 UI 槽位（`contributes.ui.slot`）：宿主页面的槽位落点
+import PluginSlot from '../components/PluginSlot';
 import { openSearchWindow } from '../lib/searchWin';
 import BackButton from '../components/BackButton';
 import { isDetailWindow } from '../lib/detailWin';
@@ -245,6 +247,7 @@ export default function DetailPage({
         </div>
       )}
       <div className={['content', presentation.contentClass].filter(Boolean).join(' ')} ref={contentRef}>
+        <PluginSlot slot="detail" />
         {loading ? (
           <div className="empty"><span className="spinner" aria-hidden="true" />加载中…</div>
         ) : err ? (

@@ -73,6 +73,17 @@ export interface PlayerSettings {
    * 换档走运行期 IPC（逐条 clr+append），**不重启 mpv 会话**。
    */
   srMode: SrMode;
+  /**
+   * ★ 2026-10-18（R11）第三方播放内核（`player.engine`）的**启用开关**（键 = 引擎 id `engine:<contributeId>`）。
+   * ★ 默认**关**（全表为空 = 全关）：开启意味着「将执行插件提供的本机程序」，故需配置页单独开关 + 首次开启二次确认。
+   * `engine:start` 前由主进程校验本表（未启用 → 明确拒绝）。
+   */
+  engineEnabled: Record<string, boolean>;
+  /**
+   * ★ 2026-10-18（R11）第三方播放内核的**本机程序路径**（键 = 引擎 id `engine:<contributeId>`）。
+   * 仅 `binary.source === 'local-path'` 的引擎使用（对位 `mpvPath` 口径：留空 = 未就绪，需用户在配置页填写）。
+   */
+  enginePaths: Record<string, string>;
 }
 
 export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
@@ -82,6 +93,8 @@ export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   vodExternalPlayerEnabled: false,
   mpvPath: '',
   srMode: 'off',
+  engineEnabled: {},
+  enginePaths: {},
 };
 
 /** 归一（容错旧值/缺字段；纯函数，配置页与主进程共用） */
@@ -100,7 +113,31 @@ export function normalizePlayerSettings(s: Partial<PlayerSettings> | null | unde
     vodExternalPlayerEnabled: vodOn,
     mpvPath: mpv,
     srMode: sr,
+    engineEnabled: normalizeBoolMap(s?.engineEnabled),
+    enginePaths: normalizeStrMap(s?.enginePaths),
   };
+}
+
+/** ★ R11：`Record<string, boolean>` 归一（非对象/非布尔值丢弃；键去空白） */
+export function normalizeBoolMap(v: unknown): Record<string, boolean> {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  const out: Record<string, boolean> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    const key = String(k || '').trim();
+    if (key && typeof val === 'boolean') out[key] = val;
+  }
+  return out;
+}
+
+/** ★ R11：`Record<string, string>` 归一（非对象/非字符串值丢弃；键值去空白） */
+export function normalizeStrMap(v: unknown): Record<string, string> {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    const key = String(k || '').trim();
+    if (key && typeof val === 'string') out[key] = val.trim();
+  }
+  return out;
 }
 
 // ---------- ★ 2026-10-08 MPV 播放内核（主进程 MpvController ↔ 渲染层 VideoPlayer） ----------

@@ -4,8 +4,8 @@
 //   必须早于 logger / 各 Store 的模块求值，否则它们会把路径解析到旧位置。
 import { dataDirReport } from './util/dataDirBootstrap';
 import { registerAppQuitCleanup } from './util/appQuit';
-import { app, BrowserWindow, nativeTheme, shell, webContents } from 'electron';
 import { createConnection } from 'node:net';
+import { app, BrowserWindow, clipboard, dialog, nativeTheme, Notification, shell, webContents } from 'electron';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { registerIpc } from './ipc';
@@ -32,9 +32,13 @@ import { UiPreferencesService } from './store/UiPreferencesService';
 import { applyWindowSurfacePolicy, windowSurfaceColor } from './preferences/WindowSurfacePolicy';
 import { colorSchemeFor } from '../shared/ui/themeTokens';
 import { PluginHost } from './plugin/PluginHost';
+import { PlayerEngineController } from './player/PlayerEngineController';
+import { PluginKv } from './plugin/PluginKv';
+import { createPluginSandboxApi } from './plugin/pluginHostApi';
+import { HttpClient } from './net/HttpClient';
 import { LOCAL_PROXY_BASE } from '../shared/constants';
 import { IPC } from '../shared/ipc-channels';
-import { builtinPluginsDir, cacheDir, legacyLocalImportsDir, localImportsDir, pluginsDir, userDataDir } from './util/paths';
+import { builtinPluginsDir, cacheDir, distDir, legacyLocalImportsDir, localImportsDir, pluginsDir, userDataDir } from './util/paths';
 import { safeStorageDriveCodec } from './util/driveCodec';
 import { clearWinboxCache, type ClearCacheResult } from './util/cacheClean';
 import {
@@ -98,11 +102,94 @@ nativeTheme.themeSource = colorSchemeFor(uiPreferences.get().values.themeId);
  *   随包官方插件启动时**物化**（`resources/plugins/*.winbox` → `<userData>/plugins/<id>.winbox/` + 侧签）
  *   → 与用户安装**同构**；用户插件安装/启停；超分档位 → mpv 着色器**绝对路径**解析。
  */
+/** ★ R10：L4 沙箱用的 HTTP（独立实例；与 SpiderHost 内部实例同实现，无共享状态） */
+const pluginHttp = new HttpClient();
 const plugins = new PluginHost({
   pluginsDir: pluginsDir(),
   builtinDir: builtinPluginsDir(),
   statePath: join(userDataDir(), 'plugins-state.json'),
+  // ★ 2026-10-18 插件设置面板（`contributes.settings.panel`）：宿主**代插件持久化**字段值（读取面留给 L4）
+  settingsPath: join(userDataDir(), 'plugin-settings.json'),
+  // ★ 2026-10-18（R11）第三方播放内核：`local-path` 来源的本机程序路径由用户在配置页填写
+  enginePaths: () => playerSettings.settings.enginePaths,
 });
+// ★ 2026-10-18（R10）L4 沙箱（`kind:"code"`）：**每插件独立 worker**；宿主能力经 API 面回主进程。
+//   权限门禁在 worker 侧 globals 构造（未授权的 `winbox.*` 根本不存在）；沙箱内无 require/process/fs。
+//   kv 走独立 `<userData>/plugin-kv.json`（键前缀 `plugin:<id>:` 由宿主拼接）；
+//   settings 与设置面板**同一份存储**（`plugin-settings.json`）；
+//   player.control 经 `player:ctl` 事件转给播放器窗口（插件不碰内核）。
+plugins.attachSandbox({
+  workerFile: join(distDir(), 'plugin-worker.cjs'),
+  logger: fileLogger,
+  api: createPluginSandboxApi({
+    http: pluginHttp,
+    logger: fileLogger,
+    pluginsDir: pluginsDir(),
+    settings: plugins.pluginSettingsAccess(),
+    kv: new PluginKv(new JsonStore(join(userDataDir(), 'plugin-kv.json'))),
+    playerRelay: (op, value) => {
+      const w = playerWindow();
+      if (!w) return { ok: false, reason: '播放器未打开' };
+      try {
+        w.webContents.send(IPC.PLAYER_CTL, { op, value });
+        return { ok: true };
+      } catch {
+        return { ok: false, reason: '播放器窗口不可用' };
+      }
+    },
+    notify: (title, body) => {
+      try {
+        new Notification({ title: String(title), body: String(body) }).show();
+      } catch {
+        /* 通知不可用（无权限 / 无 DBus）不影响插件 */
+      }
+    },
+    clipboardRead: () => clipboard.readText(),
+    clipboardWrite: (text) => clipboard.writeText(String(text)),
+    dialogBox: async (op, message, title) => {
+      const w = mainWindow;
+      const r = await dialog.showMessageBox(w ?? undefined!, {
+        type: 'info',
+        title: title || '插件',
+        message: String(message),
+        buttons: op === 'confirm' ? ['取消', '确定'] : ['确定'],
+        cancelId: 0,
+        defaultId: op === 'confirm' ? 1 : 0,
+      });
+      return op === 'confirm' ? r.response === 1 : undefined;
+    },
+    openExternal: (url) => shell.openExternal(url),
+  }),
+});
+// 退出时释放全部 L4 沙箱 worker（避免残留线程）
+app.on('will-quit', () => plugins.dispose());
+/**
+ * ★ 2026-10-18（R11）第三方播放内核（`contributes.player.engine`）：宿主托管的引擎**单会话控制器**
+ *   （插件永不拉进程 —— `spawn` 是规范 §6.2 永久禁止项）。与内置 `MpvController` 实例分离，零回归。
+ */
+const playerEngines = new PlayerEngineController(fileLogger);
+app.on('will-quit', () => {
+  try {
+    playerEngines.dispose();
+  } catch {
+    /* ignore */
+  }
+});
+// ★ 2026-10-18 插件字幕源（`contributes.subtitle.provider`）：宿主按插件声明取数 →
+//   与内置源（assrt / subtitlecat）合并进同一套字幕检索/下载链路（见 SpiderHost.allSubtitleProviders）。
+host.pluginSubtitleProviders = () => plugins.subtitleProviders();
+// ★ 2026-10-18 插件元数据源（`contributes.meta.provider`）：作为**兜底**接进 metaSearch
+//   （内置 TMDB / 豆瓣都未命中时才轮到它；见 SpiderHost.pluginMetaLookup）。
+host.pluginMetaProviders = () => plugins.metaProviders();
+// ★ 2026-10-18 插件发现页数据源（`contributes.discover.source`）：作为**增补**接进发现页
+//   （插件分区追加在内置榜单之后；见 SpiderHost.pluginDiscoverSections）。
+host.pluginDiscoverSources = () => plugins.discoverSources();
+// ★ 2026-10-18 插件弹幕源（`contributes.danmaku.source`）：与内置外部接口**并列**接进三步弹幕链路
+//   （搜索番剧 → 剧集列表 → 弹幕 XML；见 SpiderHost.danmakuSearch / danmakuEpisodes / danmakuFetch）。
+host.pluginDanmakuSources = () => plugins.danmakuSources();
+// ★ 2026-10-18 插件直播输出模板（`contributes.live.template`）：接进「导出直播线路」
+//   （宿主把**已解析**的 LiveGroup[] 按模板格式化输出 TXT / M3U；★ 本类型不发请求、不解析）。
+host.pluginLiveTemplates = () => plugins.liveTemplates();
 const proxy = new LocalProxyServer(
   fileLogger,
   () => host.driveList(),
@@ -415,7 +502,7 @@ app.whenReady().then(async () => {
   } catch (e) {
     fileLogger.w('插件初始化失败：' + (e instanceof Error ? e.message : String(e)));
   }
-  registerIpc(host, dav, dlna, updater, localPkgs, uiPreferences, plugins);
+  registerIpc(host, dav, dlna, updater, localPkgs, uiPreferences, plugins, playerEngines);
   /**
    * ★ 2026-10-17：内存基线探针 —— 启动后 15s 采一次「空闲基线」（此时预热常驻池已就绪），
    *   供与「播放中」的采样对照；播放中的 60s 采样由 ipc 的 `media:state`（播放器窗口）触发。

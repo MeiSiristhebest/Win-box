@@ -12,10 +12,15 @@ const agent = new Agent({ connect: { timeout: 15000 } });
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Win-Box/0.98';
 const MAX_REDIRECTS = 3;
 
-/** 单接口默认超时：搜索/剧集 8s、弹幕 25s（实测自建服务首次取弹幕要回源聚合，约 14s，之后走其缓存） */
+/**
+ * 单接口默认超时：搜索/剧集 8s、弹幕 40s。
+ * ★ 2026-10-18（用户报「有时搜不到弹幕」）：实测「炊烟袅袅」首次取弹幕要回源聚合，
+ *   正常集 6~24s（第4集 23.6s），慢集直接 >30s；旧值 25s 太紧 —— 正常集也会被判超时 → 空结果。
+ *   抬高到 40s（该源失败会记会话冷却，不会反复白等）。
+ */
 export const LOGVAR_SEARCH_TIMEOUT_MS = 8000;
 export const LOGVAR_BANGUMI_TIMEOUT_MS = 8000;
-export const LOGVAR_COMMENT_TIMEOUT_MS = 25000;
+export const LOGVAR_COMMENT_TIMEOUT_MS = 40000;
 
 interface HttpText {
   status: number;

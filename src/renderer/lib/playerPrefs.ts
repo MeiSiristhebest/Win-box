@@ -6,7 +6,7 @@
 //     · 字幕时间偏移
 //   ★ 不在此重复持久化的项：字幕字号/位置/开关（主进程 subtitleSet → subtitle.json）、
 //     弹幕设置（主进程 danmakuSet → danmaku.json），二者已是跨窗口持久的。
-import type { KernelPref } from './kernel';
+import { isEngineKernel, type KernelPref } from './kernel';
 import { normalizeSpdif } from '../../shared/player';
 
 export interface PlayerPrefs {
@@ -51,9 +51,14 @@ export function normalizeFit(v: unknown): PlayerFit {
   return PLAYER_FITS.some((f) => f.value === v) ? (v as PlayerFit) : 'contain';
 }
 
-/** 内核偏好兜底：非法/未知值一律回落「自动」（见 lib/kernel.ts） */
+/**
+ * 内核偏好兜底：非法/未知值一律回落「自动」（见 lib/kernel.ts）。
+ * ★ R11：`engine:<id>` 形态**保留**（插件引擎是否可用要到渲染时才知 ——
+ *   由 `resolveKernel(pref, url, { engines })` 按「已启用且就绪」集合收敛，不可用则回落 auto 结果）。
+ */
 export function normalizeKernelPref(v: unknown): KernelPref {
-  return v === 'html5' || v === 'mpv' ? v : 'auto';
+  if (v === 'html5' || v === 'mpv' || v === 'auto') return v;
+  return isEngineKernel(v) ? v : 'auto';
 }
 
 /**

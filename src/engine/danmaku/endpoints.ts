@@ -208,7 +208,7 @@ export function pickAnimesForExpand(list: DanmakuAnime[], max: number): DanmakuA
   return out;
 }
 
-/** 从剧集标题里提集号（返回 null = 没集号）：`第12话` / `S01E12` / `12` 都认（与 epName 同口径的宽松匹配） */
+/** 从剧集标题里提集号（返回 null = 没集号）：接口 `episodeNumber` 优先，其次标题显式写法。 */
 function epNumber(c: DanmakuCandidateLike): number | null {
   // ★ 2026-09-29：接口给的集号字段优先（tencent 等条目标题可能不提集号，只靠标题会漏）
   const num = Number(c.episodeNumber);
@@ -217,11 +217,31 @@ function epNumber(c: DanmakuCandidateLike): number | null {
   if (!t) return null;
   const m =
     /第\s*(\d{1,4})\s*[集话期]/.exec(t) ??
-    /[Ss]\d{1,2}\s*[Ee]\s*(\d{1,4})/.exec(t) ??
-    /(?:^|\D)(\d{1,4})(?:\D|$)/.exec(t);
-  if (!m) return null;
-  const n = Number(m[1]);
-  return Number.isFinite(n) ? n : null;
+    /(?:更新至|至)\s*(\d{1,4})\s*[集话期]?/.exec(t) ??
+    /[Ss]\d{1,2}\s*[Ee]\s*(\d{1,4})/.exec(t);
+  if (m) {
+    const n = Number(m[1]);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  // ★ 2026-10-18（用户报「集号 4 却自动匹配到错误的剧集」）：兜底只认「独立数字」，
+  //   并**排除分辨率标记与年份** —— 旧口径 `(?:^|\D)(\d{1,4})(?:\D|$)` 会把 `4K` 的 4、
+  //   `2024` 的 4 当集号（`4K` 后接字母算 `\D`，照样命中），使「第4集」误判到别的集。
+  const tail = /(?<![0-9A-Za-z])(\d{1,4})(?![0-9A-Za-z])/.exec(t);
+  if (!tail || /^(?:19|20)\d{2}$/.test(tail[1])) return null;
+  const n = Number(tail[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * ★ 2026-10-18：候选是否为「第 targetEp 集」—— 接口集号字段优先，标题显式集号兜底（排除 `4K`/年份等噪声）。
+ * 自动匹配据此**只用同集候选**：实测正确集若慢/无弹幕，旧的「取弹幕最多者」会被别集（常是第1集）
+ * 的丰富弹幕顶替 → 用户看到「自动匹配到错误的剧集」。
+ */
+export function candidateMatchesEp(c: DanmakuCandidateLike, targetEp: string): boolean {
+  const t = (targetEp || '').replace(/^0+/, '');
+  if (!t) return false;
+  const n = epNumber(c);
+  return n != null && String(n) === t;
 }
 
 /** 候选列表排序用到的字段（避免与 shared 类型耦合过紧；DanmakuCandidate 结构满足） */

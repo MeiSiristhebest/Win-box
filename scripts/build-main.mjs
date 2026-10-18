@@ -103,6 +103,14 @@ const workerOpts = {
   logLevel: 'info',
 };
 
+/**
+ * ★★ 2026-10-18（R10）：L4 插件沙箱 worker 产物（`dist/plugin-worker.cjs`）。
+ *   同 js-worker 口径：主进程 `new Worker(code, { eval: true, workerData })` 启动（见
+ *   plugin/sandbox/PluginSandbox.ts）。**整包 bundle** —— 只依赖 node 内建 + 本仓代码，
+ *   不 import electron（第三方代码绝不能进主进程，worker 内也没有 electron）。
+ */
+const pluginWorkerFile = resolve(src, 'dist/plugin-worker.cjs');
+
 if (watch) {
   mkdirSync(dirname(devReadyFile), { recursive: true });
   rmSync(devReadyFile, { force: true });
@@ -122,6 +130,13 @@ if (watch) {
     outfile: workerFile,
   });
   await wctx.watch();
+  // ★ R10：L4 插件沙箱 worker 也进 watch
+  const pctx = await context({
+    ...workerOpts,
+    entryPoints: [resolve(src, 'src/main/plugin/sandbox/pluginWorkerEntry.ts')],
+    outfile: pluginWorkerFile,
+  });
+  await pctx.watch();
   console.log('[main] watching...');
 } else {
   for (const e of entries) {
@@ -129,5 +144,7 @@ if (watch) {
   }
   // ★ JS 蜘蛛 worker（独立 bundle，见上面 workerOpts 注释）
   await build({ ...workerOpts, entryPoints: [resolve(src, 'src/engine/js/worker/entry.ts')], outfile: workerFile });
+  // ★ R10：L4 插件沙箱 worker（独立 bundle，见上面 pluginWorkerFile 注释）
+  await build({ ...workerOpts, entryPoints: [resolve(src, 'src/main/plugin/sandbox/pluginWorkerEntry.ts')], outfile: pluginWorkerFile });
   console.log('[main] build done');
 }

@@ -117,13 +117,19 @@ import { classifyPlayLink } from '../../engine/vod/playLink';
 import type { TorrentPlay } from '../torrent/torrentPlay';
 import { SubtitleStore } from '../subtitle/SubtitleStore';
 import { diagTimer, logPlayDiag, shortHash } from '../util/playDiag';
-import { fetchSubtitle, providerSettingsView, searchSubtitles } from '../subtitle';
-import type { SubtitleSearchContext } from '../subtitle/provider';
+import { fetchSubtitle, providerSettingsView, searchSubtitles, SUBTITLE_PROVIDERS } from '../subtitle';
+import type { SubtitleProvider, SubtitleSearchContext } from '../subtitle/provider';
+import type { MetaProvider } from '../plugin/pluginMetaProvider';
+import type { DiscoverSource } from '../plugin/pluginDiscoverSource';
+import type { DanmakuSource } from '../plugin/pluginDanmakuSource';
+import { builtinLiveTemplates, type LiveTemplate } from '../plugin/pluginLiveTemplate';
+import type { LiveTemplateView } from '../../shared/plugin';
 import { buildSearchQuery, normalizeSubtitleQuery, titleVariants } from '../../engine/subtitle/normalizeQuery';
 import type {
   SubtitleCandidate,
   SubtitleSettings,
   SubtitleFetchResult,
+  SubtitleProviderView,
   SubtitleSearchReport,
 } from '../../shared/subtitle';
 import { DanmakuStore } from '../danmaku/DanmakuStore';
@@ -376,6 +382,31 @@ export class SpiderHost {
    * （相对路径已由 LocalPkgStore.readSubscription 展开）。未注入 = pkg:// 一律报「未登记」。
    */
   localPkgs?: LocalPkgAccess;
+  /**
+   * ★ 2026-10-18 插件字幕源（`main/index.ts` 注入 `PluginHost.subtitleProviders`）。
+   * 未注入 / 抛错 → 退化为「只有内置源」，插件问题绝不拖垮字幕整条链路。
+   */
+  pluginSubtitleProviders?: () => Promise<SubtitleProvider[]>;
+  /**
+   * ★ 2026-10-18 插件元数据源（`main/index.ts` 注入 `PluginHost.metaProviders`）。
+   * 定位 = **兜底**：内置 TMDB / 豆瓣都未命中时才轮到它；未注入 / 抛错 → 视作「无插件源」。
+   */
+  pluginMetaProviders?: () => Promise<MetaProvider[]>;
+  /**
+   * ★ 2026-10-18 插件发现页数据源（`main/index.ts` 注入 `PluginHost.discoverSources`）。
+   * 定位 = **增补**：插件分区**追加**在内置榜单之后（内置分区先占 id，同 id 的插件分区被忽略）。
+   */
+  pluginDiscoverSources?: () => Promise<DiscoverSource[]>;
+  /**
+   * ★ 2026-10-18 插件弹幕源（`main/index.ts` 注入 `PluginHost.danmakuSources`）。
+   * 与内置外部接口**并列**参与三步链路（搜索 / 剧集 / 弹幕）；其合成 source 键 = `plugin:<id>`。
+   */
+  pluginDanmakuSources?: () => Promise<DanmakuSource[]>;
+  /**
+   * ★ 2026-10-18 插件直播输出模板（`main/index.ts` 注入 `PluginHost.liveTemplates`）。
+   * 定位 = **输出侧格式化**（★ 本类型**不发请求**）：宿主把已解析的 `LiveGroup[]` 按模板渲染成 TXT / M3U。
+   */
+  pluginLiveTemplates?: () => Promise<LiveTemplate[]>;
 
   constructor() {
     const store = new JsonStore(join(cacheDir(), 'spider-local.json'));
@@ -855,9 +886,23 @@ export class SpiderHost {
   subtitleSetSettings(patch: Partial<SubtitleSettings>): SubtitleSettings {
     return this.subtitles.update(patch);
   }
-  /** 各字幕源的开关/可用状态（配置页渲染用） */
-  subtitleProviderView() {
-    return providerSettingsView(this.subtitles.settings);
+  /** 各字幕源的开关/可用状态（配置页渲染用；含**插件字幕源**） */
+  async subtitleProviderView(): Promise<SubtitleProviderView[]> {
+    return providerSettingsView(this.subtitles.settings, await this.allSubtitleProviders());
+  }
+  /**
+   * 内置源 + 插件源（插件源按 id 去重：与内置同 id 的插件源被忽略）。
+   * 插件侧任何异常都吞掉 → 字幕链路始终可用（只记录，不影响检索）。
+   */
+  private async allSubtitleProviders(): Promise<SubtitleProvider[]> {
+    let extra: SubtitleProvider[] = [];
+    try {
+      extra = (await this.pluginSubtitleProviders?.()) ?? [];
+    } catch (e) {
+      this.logger.w(`插件字幕源加载失败（已忽略）：${(e as Error).message}`);
+    }
+    const seen = new Set(SUBTITLE_PROVIDERS.map((p) => p.id));
+    return [...SUBTITLE_PROVIDERS, ...extra.filter((p) => p && !seen.has(p.id))];
   }
   /** 组装检索上下文（标题 / 关键词候选 / 集号）——各 Provider 共用同一份口径 */
   private subtitleContext(resourceName: string): SubtitleSearchContext {
@@ -870,7 +915,7 @@ export class SpiderHost {
   async subtitleSearch(resourceName: string): Promise<SubtitleSearchReport> {
     const ctx = this.subtitleContext(resourceName);
     if (!ctx.keywords.length) throw new Error('无法从该资源名提取剧名');
-    const report = await searchSubtitles(ctx);
+    const report = await searchSubtitles(ctx, await this.allSubtitleProviders());
     // 逐源状态落日志：用户反馈「搜不到字幕」时这是第一手证据（跳过 / 失败 / 命中数）
     for (const p of report.providers) {
       this.logger.w(
@@ -882,7 +927,7 @@ export class SpiderHost {
   async subtitleFetch(candidate: SubtitleCandidate): Promise<SubtitleFetchResult> {
     if (!candidate || !candidate.file) return { text: '', fileName: '', reason: '字幕候选缺少下载标识' };
     // 下载只为拿“包内真实文件名/集号提示”，用候选自带的名字重建上下文即可
-    return fetchSubtitle(candidate, this.subtitleContext(candidate.subname || ''));
+    return fetchSubtitle(candidate, this.subtitleContext(candidate.subname || ''), await this.allSubtitleProviders());
   }
 
   // ---- 弹幕（★ 2026-09-26 外部接口清单；偏好见 DanmakuStore） ----
@@ -901,6 +946,22 @@ export class SpiderHost {
     const hit = (this.danmakuStore.settings.endpoints || []).find((e) => e.url === url);
     return (hit?.name || '').trim() || endpointLabel(url) || '外部接口';
   }
+  /**
+   * ★ 2026-10-18 插件弹幕源（含失败吞掉）。
+   * 未注入 / 抛错 → 空数组：插件问题绝不拖垮内置弹幕链路。
+   */
+  private async pluginDanmakuList(): Promise<DanmakuSource[]> {
+    try {
+      return (await this.pluginDanmakuSources?.()) ?? [];
+    } catch (e) {
+      this.logger.w(`插件弹幕源加载失败（已忽略）：${(e as Error).message}`);
+      return [];
+    }
+  }
+  /** source 键是否是插件弹幕源（插件源的合成键统一 `plugin:` 前缀；内置源是接口 URL） */
+  private static isPluginDanmakuKey(source: string): boolean {
+    return source.startsWith('plugin:');
+  }
 
   /**
    * 按作品名搜索候选：全部启用接口**并行**查询 → 按匹配度合并排序。
@@ -914,17 +975,33 @@ export class SpiderHost {
     const t0 = Date.now();
     const all = this.danmakuEndpoints();
     const live = all.filter((e) => !this.danmakuHealth.isCooling(e.url));
-    const external = await mapLimit(live, 10, async (e): Promise<DanmakuAnime[]> => {
-      try {
-        const list = await logvarSearchAnime(e.url, kw, e.name);
-        this.danmakuHealth.markOk(e.url);
-        return list;
-      } catch (err) {
-        this.danmakuHealth.markFail(e.url);
-        this.logger.w(`danmaku:接口失败「${e.name}」${(err as Error).message}`);
-        return [];
-      }
-    });
+    const plugins = await this.pluginDanmakuList();
+    // ★ 插件源与内置接口**并列**（同一并发闸门、同一冷却表、同一排序）
+    const jobs: Array<() => Promise<DanmakuAnime[]>> = [
+      ...live.map((e) => async (): Promise<DanmakuAnime[]> => {
+        try {
+          const list = await logvarSearchAnime(e.url, kw, e.name);
+          this.danmakuHealth.markOk(e.url);
+          return list;
+        } catch (err) {
+          this.danmakuHealth.markFail(e.url);
+          this.logger.w(`danmaku:接口失败「${e.name}」${(err as Error).message}`);
+          return [];
+        }
+      }),
+      ...plugins.map((p) => async (): Promise<DanmakuAnime[]> => {
+        try {
+          const list = await p.search(kw, season);
+          this.danmakuHealth.markOk(p.key);
+          return list;
+        } catch (err) {
+          this.danmakuHealth.markFail(p.key);
+          this.logger.w(`danmaku:插件源失败「${p.name}」${(err as Error).message}`);
+          return [];
+        }
+      }),
+    ];
+    const external = await mapLimit(jobs, 10, (job) => job());
     const merged = rankDanmakuAnimes(external.flat(), kw, season);
     // ★ 每来源上限 15：避免单来源（常一次吐几十条平台变体）刷满全局上限，
     //   把其它来源挤出去 —— 否则自动依次尝试永远轮不到别的源。
@@ -937,13 +1014,29 @@ export class SpiderHost {
       return true;
     });
     this.logger.i(
-      `弹幕搜索「${kw}」：外部${live.length}源（跳过冷却${all.length - live.length}）；命中${limited.length}部/来自${perSource.size}个来源；${Date.now() - t0}ms`,
+      `弹幕搜索「${kw}」：外部${live.length}源+插件${plugins.length}源（跳过冷却${all.length - live.length}）；命中${limited.length}部/来自${perSource.size}个来源；${Date.now() - t0}ms`,
     );
     return limited.slice(0, 60);
   }
-  /** 取某番剧的剧集列表（候选 episodeId 供 danmakuFetch 使用）；source = 接口基础地址；失败 → []。 */
+  /**
+   * 取某番剧的剧集列表（候选 episodeId 供 danmakuFetch 使用）；source = 接口基础地址**或**插件源合成键；失败 → []。
+   */
   async danmakuEpisodes(bangumiId: number, animeTitle: string | undefined, source: string): Promise<DanmakuCandidate[]> {
     if (!bangumiId || !source) return [];
+    // ★ 插件弹幕源：按合成键 `plugin:<id>` 路由（与内置接口同一套冷却表）
+    if (SpiderHost.isPluginDanmakuKey(source)) {
+      const p = (await this.pluginDanmakuList()).find((x) => x.key === source);
+      if (!p) return [];
+      try {
+        const list = await p.episodes(Number(bangumiId), animeTitle);
+        this.danmakuHealth.markOk(source);
+        return list;
+      } catch (e) {
+        this.danmakuHealth.markFail(source);
+        this.logger.w(`danmaku:插件剧集失败「${p.name}」${(e as Error).message}`);
+        return [];
+      }
+    }
     try {
       const list = await logvarBangumi(source, Number(bangumiId), this.danmakuEndpointName(source), animeTitle);
       this.danmakuHealth.markOk(source);
@@ -963,11 +1056,18 @@ export class SpiderHost {
     if (hit) return hit;
     let xml = '';
     try {
-      xml = await logvarComment(source, episodeId);
-      this.danmakuHealth.markOk(source);
+      if (SpiderHost.isPluginDanmakuKey(source)) {
+        const p = (await this.pluginDanmakuList()).find((x) => x.key === source);
+        if (!p) return '';
+        xml = await p.comment(episodeId);
+        this.danmakuHealth.markOk(source);
+      } else {
+        xml = await logvarComment(source, episodeId);
+        this.danmakuHealth.markOk(source);
+      }
     } catch (e) {
       this.danmakuHealth.markFail(source);
-      this.logger.w(`danmaku:弹幕失败「${this.danmakuEndpointName(source)}」${(e as Error).message}`);
+      this.logger.w(`danmaku:弹幕失败「${source.startsWith('plugin:') ? source : this.danmakuEndpointName(source)}」${(e as Error).message}`);
       return '';
     }
     if (xml) {
@@ -1055,11 +1155,38 @@ export class SpiderHost {
         } catch { /* TMDB 不可用仍允许回退到豆瓣。 */ }
       }
       if (provider === 'tmdb') return null;
-      return await this.doubanLookup(n, year);
+      const douban = await this.doubanLookup(n, year);
+      if (douban) return douban;
+      // ★ 内置来源都未命中 → 才轮到**插件元数据源**（兜底，不抢占内置；显式指定来源时不用插件）
+      if (provider) return null;
+      return await this.pluginMetaLookup(n, year);
     } catch (e) {
       this.logger.e('meta:搜索失败', e);
       return null;
     }
+  }
+
+  /** 插件元数据源（自定义顺序 = 登记顺序）；任一异常只记日志、继续下一个，绝不影响内置链路 */
+  private async pluginMetaLookup(name: string, year?: string): Promise<MetaHit | null> {
+    let list: MetaProvider[] = [];
+    try {
+      list = (await this.pluginMetaProviders?.()) ?? [];
+    } catch (e) {
+      this.logger.w(`插件元数据源加载失败（已忽略）：${(e as Error).message}`);
+      return null;
+    }
+    for (const p of list) {
+      try {
+        const hit = await p.search({ title: name, year: year || undefined });
+        if (hit) {
+          this.logger.i(`meta: 插件元数据源命中（${p.id}）`);
+          return hit;
+        }
+      } catch (e) {
+        this.logger.w(`插件元数据源 ${p.id} 查询失败（已跳过）：${(e as Error).message}`);
+      }
+    }
+    return null;
   }
 
   /**
@@ -1078,14 +1205,43 @@ export class SpiderHost {
     }
   }
 
-  /** 默认国内榜单；只有用户配置 TMDB 凭据后才使用 TMDB。 */
+  /** 默认国内榜单；只有用户配置 TMDB 凭据后才使用 TMDB。★ 插件分区**追加**在末尾（内置先占 id）。 */
   async metaDiscover(refresh = false): Promise<DiscoverSection[]> {
+    let base: DiscoverSection[] = [];
     try {
-      return hasUserTmdbKey() ? await tmdbDiscover(this.logger, !!refresh) : await this.domesticDiscover.discover(!!refresh);
+      base = hasUserTmdbKey() ? await tmdbDiscover(this.logger, !!refresh) : await this.domesticDiscover.discover(!!refresh);
     } catch (e) {
       this.logger.w(`meta:发现页查询失败: ${(e as Error).message}`);
+    }
+    // ★ 内置失败也照样展示插件分区（插件是「增补」，不是「替代」）
+    const extra = await this.pluginDiscoverSections();
+    const seen = new Set(base.map((s) => s.id));
+    return [...base, ...extra.filter((s) => !seen.has(s.id))];
+  }
+
+  /**
+   * 插件发现页分区（顺序 = 插件登记顺序 → 各插件内声明顺序）。
+   * 与内置**同 id** 的分区、以及插件之间重复的分区都会被丢弃；单插件异常只记日志跳过。
+   */
+  private async pluginDiscoverSections(): Promise<DiscoverSection[]> {
+    let list: DiscoverSource[] = [];
+    try {
+      list = (await this.pluginDiscoverSources?.()) ?? [];
+    } catch (e) {
+      this.logger.w(`插件发现页数据源加载失败（已忽略）：${(e as Error).message}`);
       return [];
     }
+    const out: DiscoverSection[] = [];
+    for (const p of list) {
+      try {
+        for (const s of await p.sections()) {
+          if (!out.some((x) => x.id === s.id)) out.push(s);
+        }
+      } catch (e) {
+        this.logger.w(`插件发现页数据源 ${p.id} 查询失败（已跳过）：${(e as Error).message}`);
+      }
+    }
+    return out;
   }
 
   /** 分类编号必须和当前发现页来源一致。 */
@@ -3325,6 +3481,50 @@ export class SpiderHost {
   }
   get lives() {
     return this.config?.lives ?? [];
+  }
+
+  /**
+   * ★ 2026-10-18 直播输出模板列表 = **内置 2 个**（`builtin:txt` / `builtin:m3u`）+ 插件模板。
+   * 内置先占 id（同 id 的插件模板被忽略）；插件未注入 / 抛错 → 只有内置（**内置永远可用**）。
+   */
+  async liveTemplates(): Promise<LiveTemplateView[]> {
+    return (await this.liveTemplateList()).map((t) => ({
+      id: t.id, pluginId: t.pluginId, label: t.label, format: t.format, ext: t.ext,
+    }));
+  }
+
+  /** 内置 + 插件的模板实现（按 id 去重，内置在前） */
+  private async liveTemplateList(): Promise<LiveTemplate[]> {
+    const out = builtinLiveTemplates();
+    const seen = new Set(out.map((t) => t.id));
+    let list: LiveTemplate[] = [];
+    try {
+      list = (await this.pluginLiveTemplates?.()) ?? [];
+    } catch (e) {
+      this.logger.w(`插件直播输出模板加载失败（已忽略）：${(e as Error).message}`);
+      return out;
+    }
+    for (const t of list) {
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      out.push(t);
+    }
+    return out;
+  }
+
+  /**
+   * ★ 2026-10-18 按模板渲染导出文本（**纯本地**：不取数、不发请求、不弹框）。
+   * ★ 本类型只做**输出侧格式化** —— 频道来自调用方已解析的 `LiveGroup[]`，宿主不解析任何订阅格式。
+   * 找不到 `templateId` → 回落第一个模板（内置 `builtin:txt`）。
+   */
+  async renderLiveExport(templateId: string, groups: LiveGroup[]): Promise<LiveTemplateView & { content: string }> {
+    const list = await this.liveTemplateList();
+    const want = String(templateId || '').trim();
+    const tpl = list.find((t) => t.id === want) ?? list[0];
+    return {
+      id: tpl.id, pluginId: tpl.pluginId, label: tpl.label, format: tpl.format, ext: tpl.ext,
+      content: tpl.render(Array.isArray(groups) ? groups : [], { liveName: '' }),
+    };
   }
 
   /**

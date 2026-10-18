@@ -177,6 +177,12 @@ export const IPC = {
   LIVE_GROUPS: 'live:groups',
   /** ★ 2026-09-29 EPG 节目单：按线路取各频道「当前 / 下一档」（XMLTV 拉取+缓存+匹配在主进程） */
   LIVE_EPG: 'live:epg',
+  /** ★ 2026-10-18 直播输出模板（内置 2 个 + 插件 `contributes.live.template`；见 SpiderHost.liveTemplates） */
+  LIVE_TEMPLATES: 'live:templates',
+  /** ★ 2026-10-18 按模板渲染导出文本（**纯本地无副作用**：不取数、不发请求、不弹框） */
+  LIVE_RENDER: 'live:render',
+  /** ★ 2026-10-18 导出直播线路：按模板渲染（纯本地）→ 保存对话框 → 写新文件 */
+  LIVE_EXPORT: 'live:export',
   // 独立播放器窗口
   PLAYER_OPEN: 'player:open',
   PLAYER_SWITCH_EP: 'player:switchEp',
@@ -194,6 +200,9 @@ export const IPC = {
   PLAYER_IS_FULLSCREEN: 'player:isFullscreen',
   /** 全屏元素（HTML5）也需要锁定无边框窗口的系统边缘缩放命中区 */
   PLAYER_SET_RESIZABLE: 'player:setResizable',
+  /** ★ 2026-10-18（R10）主进程 → 播放器窗口：L4 插件 `winbox.player.*` 的转发事件
+   *  （`{op: PlayerOp, value?}`；插件不碰内核，由渲染层转 `mpv:cmd` / 换集） */
+  PLAYER_CTL: 'player:ctl',
   // 老板键（全局快捷键隐藏/恢复）
   BOSS_GET: 'boss:get',
   BOSS_SET: 'boss:set',
@@ -214,8 +223,10 @@ export const IPC = {
   // ★ 2026-10-16 插件系统（M1）：登记 / 安装 / 卸载 / 启停 / 超分状态与着色器链
   /** 已登记插件列表（user 目录 + builtin 随包 zip；见 main/plugin/PluginHost.list） */
   PLUGIN_LIST: 'plugin:list',
-  /** 安装 `.winbox`（主进程弹文件选择框；安装成功返回新表） */
+  /** 安装 `.winbox`（`{path}` = 干跑选定后的文件；缺省则弹文件选择框） */
   PLUGIN_INSTALL: 'plugin:install',
+  /** ★ 2026-10-18（R10）安装前**干跑**：弹文件框 + 解包校验但**不落盘**，返回权限清单供确认 */
+  PLUGIN_INSPECT: 'plugin:inspect',
   /** 卸载（删 `<id>.winbox/`；builtin 下次启动会重新物化） */
   PLUGIN_UNINSTALL: 'plugin:uninstall',
   /** 启停整插件（停用保留磁盘、不参与宿主装配） */
@@ -224,6 +235,16 @@ export const IPC = {
   PLUGIN_SR: 'plugin:sr',
   /** ★ 皮肤（contributes.theme）列表：已启用 + 就位的插件皮肤 */
   PLUGIN_THEMES: 'plugin:themes',
+  /** ★ 2026-10-18 受限动作按钮（contributes.ui.command）列表：配置页 / 播放器据此渲染（动作由渲染层执行） */
+  PLUGIN_COMMANDS: 'plugin:commands',
+  /** ★ 2026-10-18 追加快捷键（contributes.keymap）列表：配置页一览 / 播放器键位面板 + 渲染层分发 */
+  PLUGIN_KEYMAPS: 'plugin:keymaps',
+  /** ★ 2026-10-18 插件设置面板（contributes.settings.panel）列表：配置页每插件卡片内渲染表单 */
+  PLUGIN_SETTINGS: 'plugin:settings',
+  /** ★ 2026-10-18 写一个设置字段值（渲染层表单 onChange → 宿主代持久化 + 值校验） */
+  PLUGIN_SETTINGS_SET: 'plugin:settings:set',
+  /** ★ 2026-10-18 受限 UI 槽位（contributes.ui.slot）列表：渲染层按页面语义名落槽渲染 */
+  PLUGIN_SLOTS: 'plugin:slots',
   /** ★ 2026-09-29 磁力（BT）：探测本机已安装的外部播放器（MKV/HEVC 接力用；只探测不启动） */
   BT_DETECT_PLAYERS: 'bt:detectPlayers',
   // ★ 2026-10-08 MPV 高兼容播放内核（独立播放器窗口内嵌 --wid + JSON IPC；见 main/player/MpvController）
@@ -237,6 +258,21 @@ export const IPC = {
   MPV_STOP: 'mpv:stop',
   /** 主进程 → 渲染层：内核状态推送（时间/时长/暂停/缓冲/直播/尺寸/缓存速度；见 MpvStateEvent） */
   MPV_STATE: 'mpv:state',
+  // ★ 2026-10-18（R11）第三方播放内核（`contributes.player.engine`；宿主托管，插件只给描述符）
+  /** 引擎列表（内置 2 + 插件 N；未就绪项带 `note`）→ `PlayerEngineView[]` */
+  ENGINE_LIST: 'engine:list',
+  /** 按 id 查单个引擎状态（就绪 / 路径 / 原因）→ `{ id, ready, path, note }` */
+  ENGINE_STATUS: 'engine:status',
+  /** 写启用开关（`playerSettings.engineEnabled`；默认关，首次开启由渲染层二次确认） */
+  ENGINE_ENABLE: 'engine:enable',
+  /** 拉起一次引擎会话（★ 先过**启用闸门**：未启用 → 明确拒绝）→ `{ session }` */
+  ENGINE_START: 'engine:start',
+  /** 引擎控制命令（play/pause/seek/volume/rate/fit…；按协议分派） */
+  ENGINE_CMD: 'engine:cmd',
+  /** 停止引擎会话（切回内置内核 / 关窗口 / 退出） */
+  ENGINE_STOP: 'engine:stop',
+  /** 主进程 → 渲染层：引擎状态推送（与 `MPV_STATE` 同形 `{session, state}`；节流 200ms） */
+  ENGINE_STATE: 'engine:state',
   /** ★ 2026-09-30（用户要求「点播也应该支持绑定外部播放器，和磁力区分开」）：
    *  点播外部播放器（探测 / 用当前播放地址拉起）—— 绑定值 `vodExternalPlayer` 与磁力分开 */
   VOD_DETECT_PLAYERS: 'vod:detectPlayers',

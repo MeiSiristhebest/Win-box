@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { client } from '../api/client';
+// ★ 2026-10-18 受限 UI 槽位（`contributes.ui.slot`）：宿主页面的槽位落点
+import PluginSlot from '../components/PluginSlot';
 import type { LiveGroup, LiveBean, LiveEpgEntry, EpgChannelRef } from '../../shared/types';
+import type { LiveTemplateView } from '../../shared/plugin';
 import VideoPlayer from '../components/VideoPlayer';
 import { splitLine } from '../../engine/live/LiveUtils';
 
@@ -28,6 +31,11 @@ export default function LivePage() {
   const [playUrl, setPlayUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  /** ★ 2026-10-18 导出：当前线路名 + 输出模板（内置 2 个 + 插件）+ 选中模板 + 结果提示 */
+  const [liveName, setLiveName] = useState('');
+  const [exportTpls, setExportTpls] = useState<LiveTemplateView[]>([]);
+  const [exportTplId, setExportTplId] = useState('');
+  const [exportMsg, setExportMsg] = useState('');
   /** ★ 2026-09-29 EPG：键（tvg-id / tvg-name / 频道名）→ 当前 / 下一档 */
   const [epg, setEpg] = useState<Record<string, LiveEpgEntry>>({});
   const epgTimer = useRef<number | null>(null);
@@ -39,8 +47,11 @@ export default function LivePage() {
         // 恢复持久化的"直播线路"选中（ui.activeLiveIndex），重启后保持一致
         const cfg = await client.cfgGet();
         const m = await client.liveMeta();
+        const tpls = await client.liveTemplates().catch(() => [] as LiveTemplateView[]);
         if (cancelled) return;
         setLives(m);
+        setExportTpls(tpls);
+        if (tpls.length) setExportTplId(tpls[0].id);
         if (m.length) {
           const start = cfg.ui.activeLiveIndex < m.length ? cfg.ui.activeLiveIndex : 0;
           setLiveIdx(start);
@@ -64,6 +75,26 @@ export default function LivePage() {
     void loadLive(index, m);
   }
 
+  /**
+   * ★ 2026-10-18 导出当前线路：把**已加载**的分组按模板渲染 → 主进程保存对话框 → 写文件。
+   * ★ 只做输出侧格式化（不重新拉源、不发请求、不解析）。
+   */
+  async function doExport(): Promise<void> {
+    const tpl = exportTpls.find((t) => t.id === exportTplId) ?? exportTpls[0];
+    if (!tpl || !groups.length) return;
+    setExportMsg('导出中…');
+    try {
+      const r = await client.liveExport({
+        templateId: tpl.id,
+        groups,
+        defaultName: `${liveName || 'live'}.${tpl.ext}`,
+      });
+      setExportMsg(r.saved ? `已导出到：${r.path}` : '已取消导出');
+    } catch (e) {
+      setExportMsg(`导出失败：${(e as Error).message}`);
+    }
+  }
+
   async function loadLive(index: number, meta?: LiveBean[]) {
     const m = meta ?? lives;
     if (!m.length) return;
@@ -72,6 +103,7 @@ export default function LivePage() {
     try {
       const r = await client.loadLive(index);
       setGroups(r.groups);
+      setLiveName(r.liveName);
       if (r.groups.length) {
         // 恢复上次浏览的分组/频道/线路（仅当记忆与当前线路对应且组/频道仍存在）
         const mem = loadLiveMem();
@@ -157,8 +189,16 @@ export default function LivePage() {
         <select value={liveIdx} onChange={(e) => pickLive(Number(e.target.value))} disabled={loading}>
           {lives.map((l, i) => <option key={i} value={i}>{l.name}</option>)}
         </select>
+        {/* ★ 2026-10-18 导出当前线路（输出格式由模板决定：内置 2 个 + 插件 `live.template`） */}
+        <select value={exportTplId} onChange={(e) => setExportTplId(e.target.value)} disabled={loading || !exportTpls.length} title="导出格式">
+          {exportTpls.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
+        </select>
+        <button className="linkbtn" disabled={loading || !groups.length} title="把当前线路的频道导出为文件" onClick={() => void doExport()}>导出</button>
         <span className="status" style={{ marginLeft: 'auto' }}>{loading ? '加载中…' : `${groups.length} 组`}</span>
+        {exportMsg && <span className="muted" style={{ fontSize: 12 }}>{exportMsg}</span>}
       </div>
+      {/* ★ 2026-10-18 插件受限 UI 槽位（`contributes.ui.slot`；无插件声明时零影响） */}
+      <PluginSlot slot="live" />
       <div className="layout-2 content" style={{ padding: 12 }}>
         <div className="left">
           {groups.map((g) => (

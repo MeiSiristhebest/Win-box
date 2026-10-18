@@ -4,6 +4,7 @@
 //   ② 分类（国内标签推荐分页，与 TMDB 类型 ID 解耦）
 // 交互：点任意影片 → 走 `#/search?agg=<片名>` 用「源」做一次全源搜索（没源时提示去导入）。
 import { useState } from 'react';
+import PluginSlot from '../components/PluginSlot';
 import { openSearchWindow } from '../lib/searchWin';
 import { useAppDialog } from '../components/AppDialog';
 import { useTheme } from '../lib/theme';
@@ -75,6 +76,7 @@ export default function DiscoverPage() {
       <div className="content">
         {/* ★ 2026-09-24（用户定稿）：原来那排「发现 ……… 【刷新】」整排删除（标题与刷新按钮都属冗余）；
             ★ 2026-09-26（用户指令）：无源时的「还没有导入任何源 —— 去导入源」提示条也整条删除。 */}
+        <PluginSlot slot="discover" />
         {media === null && sections && sections.length > 0 && (
           <DiscoverSpotlight items={sections[0].items.slice(0, 12)} picOf={(item) => covers.picOf(coverItem(item))} onOpen={goSearch} landscape={view.spotlightLandscape} />
         )}

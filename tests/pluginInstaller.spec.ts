@@ -99,4 +99,33 @@ describe('PluginInstaller — 安装', () => {
     expect(r.ok).toBe(false);
     expect(r.reasonCode).toBe('EMPTY_PACKAGE');
   });
+
+  // ★ 2026-10-18（R10）干跑 inspect：解包 + 校验但**不落盘**（安装期权限确认两段式）
+  it('inspect：合法 code 包返回权限清单，**不落盘**', async () => {
+    const codePlugin = manifest({
+      kind: 'code',
+      main: 'main.js',
+      permissions: ['log', 'kv'],
+      permissionNotes: { log: '写日志', kv: '存设置' },
+      contributes: [{ type: 'settings.panel', id: 'cfg', label: '配置', fields: [{ key: 'a', label: 'A', type: 'toggle', default: false }] }],
+    } as Partial<PluginManifest>);
+    const zip = buildZip([
+      { name: 'plugin.json', bytes: Buffer.from(JSON.stringify(codePlugin)) },
+      { name: 'main.js', bytes: Buffer.from('winbox.log.i("hi")') },
+    ]);
+    const r = await new PluginInstaller(pluginsDir).inspect(zip);
+    expect(r.ok).toBe(true);
+    expect(r.id).toBe('super-resolution');
+    expect(r.manifest?.permissions).toEqual(['log', 'kv']);
+    expect(r.manifest?.permissionNotes).toEqual({ log: '写日志', kv: '存设置' });
+    // ★ 干跑的核心断言：什么都没写盘
+    expect(existsSync(join(pluginsDir, 'super-resolution.winbox'))).toBe(false);
+  });
+
+  it('inspect：坏包返回 reasonCode，同样不落盘', async () => {
+    const r = await new PluginInstaller(pluginsDir).inspect(Buffer.from('not an archive'));
+    expect(r.ok).toBe(false);
+    expect(r.reasonCode).toBe('EMPTY_PACKAGE');
+    expect(existsSync(pluginsDir)).toBe(false);
+  });
 });

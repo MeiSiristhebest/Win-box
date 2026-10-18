@@ -187,6 +187,15 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   //   HTML 控制条/弹幕仍绘制在 mpv 之上且点击归 HTML（PoC 实测；地址链路不变，mpv 直接吃既有 /play 中继）。
   const allowMpv = !!props.allowMpv && !isImage && !isAudio && mediaKind !== 'unsupported';
   const [mpvInfo, setMpvInfo] = useState<MpvStatus | null>(null);
+  /**
+   * ★ R11：插件播放内核（`engine:*`）。`engine:list` 的**插件项**（内置 2 由 HTML5 自身 / `mpvInfo` 表示）；
+   * 未就绪项也收下（列表里显示为不可选 + 原因）。
+   */
+  const [pluginEngines, setPluginEngines] = useState<PlayerEngineView[]>([]);
+  /** ★ R11：引擎启用开关（`playerSettings.engineEnabled`；默认关 → 前端据此收敛可选集合） */
+  const [engineEnabled, setEngineEnabled] = useState<Record<string, boolean>>({});
+  /** ★ R11：起播失败的引擎 id —— 剔除出可用集合，避免「失败回落 html5 → 偏好仍指向引擎」的死循环 */
+  const engineFailRef = useRef('');
   const [kernelPref, setKernelPref] = useState<KernelPref>(() => prefsRef.current!.kernel);
   const [kernel, setKernel] = useState<Kernel>('html5');
   const kernelRef = useRef<Kernel>('html5');
@@ -333,13 +342,22 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   } = playbackKernel;
   const boost = usePlaybackBoost(rate, setTemporaryRate, mini, url);
 
-  // MPV 可用性（仅播放器窗口需要；一处探活供切换按钮/自动选择用）
+  // MPV 可用性 + ★ R11 插件内核列表/启用开关（仅播放器窗口需要；供切换按钮/自动选择/回落判定用）
   useEffect(() => {
     if (!allowMpv) return;
     void client
       .mpvStatus()
       .then((s) => setMpvInfo(s))
       .catch(() => setMpvInfo(null));
+    // ★ R11：插件内核（列表里的内置 2 由 HTML5 自身 / mpvInfo 表示 → 只留插件项）
+    void client
+      .engineList()
+      .then((l) => setPluginEngines(l.filter((e) => isEngineKernel(e.id))))
+      .catch(() => setPluginEngines([]));
+    void client
+      .playerPrefsGet()
+      .then((s) => setEngineEnabled(s.engineEnabled ?? {}))
+      .catch(() => undefined);
   }, [allowMpv]);
 
   // 本次生效内核（显式偏好优先；auto 按资源形态；mpv 不可用一律回落 html5）
@@ -348,33 +366,34 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       setKernel('html5');
       return;
     }
-    setKernel(resolveKernel(kernelPref, url, !!mpvInfo?.available));
-  }, [allowMpv, mpvInfo, kernelPref, url]);
+    setKernel(resolveKernel(kernelPref, url, { mpvAvailable: !!mpvInfo?.available, engines: usableEngines }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowMpv, mpvInfo, kernelPref, url, usableEnginesSig]);
 
   // mpv 激活时给页面打标（global.css 据此把播放区整链透明化，让 mpv 子窗口透出）
   useEffect(() => {
     const root = document.documentElement;
-    if (kernel === 'mpv') root.dataset.mpv = '1';
+    if (kernel !== 'html5') root.dataset.mpv = '1';
     else delete root.dataset.mpv;
     return () => {
       delete root.dataset.mpv;
     };
   }, [kernel]);
 
-  /** 手动切换内核（记住选择；mpv 侧/HTML5 侧都从当前位置续播） */
+  /** 手动切换内核（记住选择；进程型内核侧 / HTML5 侧都从当前位置续播） */
   const switchKernel = (k: Kernel, persist = true) => {
     if (kernelSwitchRef.current || k === kernelRef.current) return;
     kernelSwitchRef.current = k;
     boost.release();
     const t = kTime();
     handoffRef.current = { url, paused: kPaused() && !err && !mpvErr };
-    if (!kIsMpv() && ref.current) {
+    if (!kIsChild() && ref.current) {
       volRef.current = ref.current.volume;
       setVol(ref.current.volume);
       setRate(ref.current.playbackRate);
     }
     clearAuto();
-    if (k === 'mpv') mpvResumeRef.current = t;
+    if (k !== 'html5') mpvResumeRef.current = t;
     else html5ResumeRef.current = t;
     // MPV fullscreen is a native BrowserWindow state, while HTML5 fullscreen
     // belongs to the document.  Do not carry one mechanism into the other:
@@ -570,10 +589,10 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
   // ★ 2026-10-08 MPV 内核：外挂字幕改走 mpv（`sub-add` 读 SRT 文件；字号/位置换算见 shared/player.mpvFontSize/mpvSubPos）
 
-  // ★ 2026-10-08 MPV 内核：画面比例改走 mpv 属性（keepaspect / panscan / video-aspect-override）
+  // ★ 2026-10-08 MPV 内核 ／ ★ R11 插件内核：画面比例走进程内核属性（两内核命令词表一致）
   useEffect(() => {
-    if (!(allowMpv && kernel === 'mpv')) return;
-    void client.mpvCmd({ type: 'fit', value: fit }).catch(() => undefined);
+    if (!allowMpv || kernel === 'html5') return;
+    kCmd({ type: 'fit', value: fit });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowMpv, kernel, fit]);
 
@@ -767,7 +786,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   const bossSnapRef = useRef<{ wasPlaying: boolean; vol: number } | null>(null);
   useEffect(() => {
     const offEnter = client.bossOnEnter(() => {
-      if (!ref.current && !kIsMpv()) return;
+      if (!ref.current && !kIsChild()) return;
       bossActiveRef.current = true; // 临时静音期间不写记忆（见上方 persist effect）
       bossSnapRef.current = { wasPlaying: !kPaused(), vol: volRef.current };
       kPause();
@@ -792,7 +811,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   }, [kIsMpv, kPause, kPaused, kPlay, kSetVol]);
 
   // ★ 2026-09-28（用户要求）：字幕/弹幕图标手势 —— 左键单击=开关，右键或长按=打开调整框（三者互斥）
-  const openPanel = (which: 'sub' | 'dm' | 'fit' | 'audio' | 'sr') => {
+  const openPanel = (which: 'sub' | 'dm' | 'fit' | 'audio' | 'sr' | 'kernel') => {
     subHover.cancel();
     dmHover.cancel();
     volumeHover.cancel();
@@ -913,7 +932,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           ★ 2026-10-08 MPV 内核：时间/画面尺寸由主进程事件驱动（mpv 子窗口在 Chromium 之下，覆盖层仍在其上） */}
       <DanmakuOverlay
         videoRef={ref}
-        mpv={kernel === 'mpv' ? { time: mpvTimeRef, size: mpvSizeRef } : null}
+        // ★ R11：进程型内核（mpv / 插件引擎）都走主进程推送的时间/尺寸镜像
+        mpv={kernel !== 'html5' ? { time: mpvTimeRef, size: mpvSizeRef } : null}
         items={dmItems}
         enabled={dmEnabled}
         fit={fit}
@@ -1000,8 +1020,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           </div>
         </div>
       )}
-      {/* ★ 2026-10-08 MPV 内核自身的错误（启动失败/进程退出）→ 切回内置内核 */}
-      {mpvErr && kernel === 'mpv' && (
+      {/* ★ 2026-10-08 MPV 内核 ／ ★ R11 插件内核自身的错误（启动失败/进程退出）→ 切回内置内核 */}
+      {mpvErr && kernel !== 'html5' && (
         <div className="vp-err" onDoubleClick={(e) => e.stopPropagation()}>
           <div>{mpvErr}</div>
           <div className="row" style={{ gap: 10, justifyContent: 'center' }}>
@@ -1206,16 +1226,13 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             onRateChange={kSetRate}
           />
           {/* ★ 2026-10-08（用户拍板「内置官方构建」）：MPV 高兼容内核一键切换（仅独立播放器窗口 + mpv 可用时显示；
-              单击切换并记住选择；4K / HEVC / MKV 等 Chromium 播不好的形态用得上） */}
-          {allowMpv && mpvInfo?.available && (
-            <button
-              className={`vp-ctl vp-kernel${kernel === 'mpv' ? ' vp-on' : ''}`}
-              title={
-                kernel === 'mpv'
-                  ? `当前内核：MPV（${mpvInfo.note}）—— 点击切回内置（HTML5）`
-                  : `当前内核：内置（HTML5）—— 点击改用 MPV（4K / HEVC / MKV 兼容更好；${mpvInfo.note}）`
-              }
-              onClick={() => switchKernel(kernel === 'mpv' ? 'html5' : 'mpv')}
+              单击切换并记住选择；4K / HEVC / MKV 等 Chromium 播不好的形态用得上）
+              ★ R11：可选内核 > 2（即另有已启用且就绪的插件内核）时**按钮变列表**（D5 口径）。 */}
+          {allowMpv && (kernelChoices.length > 2 ? (
+            <div
+              className="vp-vol"
+              onPointerEnter={() => { setSubPanel(false); setDmPanel(false); setFitPanel(false); setAudioPanel(false); setSrPanel(false); setKernelPanel(true); poke(); }}
+              onPointerLeave={() => setKernelPanel(false)}
             >
               <span className="vp-kernel-tag">MPV</span>
             </button>

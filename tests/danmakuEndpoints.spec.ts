@@ -6,6 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  candidateMatchesEp,
   customEndpointsText,
   endpointLabel,
   isBuiltinEndpoint,
@@ -331,5 +332,48 @@ describe('sortCandidatesByEp（候选列表按集号排序）', () => {
       { episodeId: 4, episodeTitle: undefined, episodeNumber: '2', source: 'd', sourceName: 'd' },
     ];
     expect(sortCandidatesByEp(list).map((x) => x.source)).toEqual(['b', 'd', 'a', 'c']);
+  });
+
+  it('★ 2026-10-18：分辨率/年份不当集号（4K / 2024 沉底，不再排到前面）', () => {
+    const out = sortCandidatesByEp([c('4K修复版', 'a'), c('第2集', 'b'), c('2024', 'c')]);
+    expect(out.map((x) => x.episodeTitle)).toEqual(['第2集', '4K修复版', '2024']);
+  });
+});
+
+// ★ 2026-10-18（用户报「集号 4 却自动匹配到错误的剧集」）：同集判定 —— 接口字段优先 + 标题显式集号，
+//   并排除 `4K`/年份等噪声。自动匹配据此只用同集候选，避免正确集慢/无弹幕时被别集顶替。
+describe('candidateMatchesEp（同集判定）', () => {
+  const c = (episodeTitle?: string, episodeNumber?: string) => ({
+    episodeTitle,
+    episodeNumber,
+    source: 's',
+    sourceName: 's',
+    episodeId: 0,
+  });
+
+  it('接口集号字段优先（标题提不出也能判定）', () => {
+    expect(candidateMatchesEp(c(undefined, '4'), '4')).toBe(true);
+    expect(candidateMatchesEp(c('【renren】 第04集', '4'), '4')).toBe(true);
+    expect(candidateMatchesEp(c(undefined, '3'), '4')).toBe(false);
+  });
+
+  it('标题显式写法：第N集/话/期、SxxExx、独立数字', () => {
+    expect(candidateMatchesEp(c('【renren】 第04集'), '4')).toBe(true);
+    expect(candidateMatchesEp(c('S02E04'), '4')).toBe(true);
+    expect(candidateMatchesEp(c('04'), '4')).toBe(true);
+    expect(candidateMatchesEp(c('第03集'), '4')).toBe(false);
+    expect(candidateMatchesEp(c('第4K修复版'), '4')).toBe(false);
+  });
+
+  it('★ 分辨率标记/年份不作集号（修 4K→4、2024→4 的误判）', () => {
+    expect(candidateMatchesEp(c('4K修复版'), '4')).toBe(false);
+    expect(candidateMatchesEp(c('1080P'), '4')).toBe(false);
+    expect(candidateMatchesEp(c('2024'), '4')).toBe(false);
+    expect(candidateMatchesEp(c('爱情怎么翻译 2026'), '4')).toBe(false);
+  });
+
+  it('无集号 / 空目标集 → 一律不判为同集', () => {
+    expect(candidateMatchesEp(c('花絮'), '4')).toBe(false);
+    expect(candidateMatchesEp(c('第4集'), '')).toBe(false);
   });
 });

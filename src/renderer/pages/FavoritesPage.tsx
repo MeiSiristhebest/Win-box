@@ -7,6 +7,8 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '../api/client';
+// ★ 2026-10-18 受限 UI 槽位（`contributes.ui.slot`）：宿主页面的槽位落点
+import PluginSlot from '../components/PluginSlot';
 import { useCovers } from '../lib/useCovers';
 import { openDetailRoute } from '../lib/detailWin';
 import { restoreHistorySource } from '../lib/historySource';
@@ -157,6 +159,9 @@ export default function FavoritesPage() {
           </button>
         )}
       </div>
+
+      {/* ★ 2026-10-18 插件受限 UI 槽位（`contributes.ui.slot`；无插件声明时零影响） */}
+      <PluginSlot slot="favorites" />
 
       {/* 撤销条：单条移除后出现，可无损还原（含原收藏时间与备注） */}
       {lastDeleted && (

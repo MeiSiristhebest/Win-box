@@ -34,8 +34,8 @@ export class PluginInstaller {
     private readonly extract: (buf: Buffer) => Promise<ArchiveEntry[]> = extractArchiveEntries,
   ) {}
 
-  /** 从 `.winbox` 字节安装（或覆盖安装）一个插件 */
-  async install(buf: Buffer): Promise<PluginInstallResult> {
+  /** 解包 + 包级校验（`install` 与 `inspect` **共用**；不落盘） */
+  private async prepare(buf: Buffer): Promise<{ entries: ArchiveEntry[]; manifest: PluginManifest } | { error: PluginInstallResult }> {
     let entries: ArchiveEntry[] = [];
     try {
       entries = await this.extract(buf);
@@ -43,9 +43,27 @@ export class PluginInstaller {
       entries = [];
     }
     const v = validatePluginPackage(entries);
-    if (!v.ok || !v.manifest) return { ok: false, reasonCode: v.reasonCode, reason: v.reason };
+    if (!v.ok || !v.manifest) return { error: { ok: false, reasonCode: v.reasonCode, reason: v.reason } };
+    return { entries, manifest: v.manifest };
+  }
 
-    const id = v.manifest.id;
+  /**
+   * ★ 2026-10-18（R10）**干跑**：解包 + 校验但**不写盘** —— 供安装期「权限确认」两段式。
+   * 返回清单（含 `permissions` / `permissionNotes`），由渲染层展示给用户确认后再 `install`。
+   */
+  async inspect(buf: Buffer): Promise<PluginInstallResult> {
+    const p = await this.prepare(buf);
+    if ('error' in p) return p.error;
+    return { ok: true, id: p.manifest.id, manifest: p.manifest };
+  }
+
+  /** 从 `.winbox` 字节安装（或覆盖安装）一个插件 */
+  async install(buf: Buffer): Promise<PluginInstallResult> {
+    const p = await this.prepare(buf);
+    if ('error' in p) return p.error;
+    const { entries, manifest } = p;
+
+    const id = manifest.id;
     const finalDir = join(this.pluginsDir, `${id}.winbox`);
     const tmpDir = join(this.pluginsDir, `${id}${TMP_SUFFIX}`);
     const bakDir = join(this.pluginsDir, `${id}${BAK_SUFFIX}`);
@@ -82,7 +100,7 @@ export class PluginInstaller {
       return { ok: false, reasonCode: 'INSTALL_IO', reason: `替换插件目录失败：${msg(e)}` };
     }
 
-    return { ok: true, id, dir: finalDir, manifest: v.manifest };
+    return { ok: true, id, dir: finalDir, manifest };
   }
 
   /** 写单条目；目录项跳过；目标必须落在 tmpDir 内（防路径逃逸兜底） */

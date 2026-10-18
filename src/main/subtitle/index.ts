@@ -27,9 +27,15 @@ export function findProvider(id: string | undefined): SubtitleProvider | undefin
   return SUBTITLE_PROVIDERS.find((p) => p.id === key);
 }
 
-/** 各源在 UI 上的开关状态（供配置页渲染；纯函数） */
-export function providerSettingsView(settings: SubtitleSettings): SubtitleProviderView[] {
-  return SUBTITLE_PROVIDERS.map((p) => {
+/**
+ * 各源在 UI 上的开关状态（供配置页渲染；纯函数）。
+ * @param providers 覆盖源清单（默认内置源；宿主把**插件源**一并传入 → 配置页自动出现插件字幕源开关）
+ */
+export function providerSettingsView(
+  settings: SubtitleSettings,
+  providers: SubtitleProvider[] = SUBTITLE_PROVIDERS,
+): SubtitleProviderView[] {
+  return providers.map((p) => {
     const av = p.available(settings);
     return {
       id: p.id,

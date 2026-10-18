@@ -166,6 +166,12 @@ const api = {
     meta: () => invoke('live:meta'),
     /** ★ 2026-09-29 EPG：传入该线路的频道引用（tvg-id/tvg-name/频道名/频道级 epg），返回各键的当前/下一档 */
     epg: (index: number, channels: unknown) => invoke(IPC.LIVE_EPG, { index, channels }),
+    /** ★ 2026-10-18 直播输出模板（内置 2 个 + 插件 `contributes.live.template`） */
+    templates: () => invoke(IPC.LIVE_TEMPLATES),
+    /** ★ 2026-10-18 按模板渲染导出文本（纯本地无副作用，不弹框） */
+    render: (a: { templateId: string; groups: unknown }) => invoke(IPC.LIVE_RENDER, a),
+    /** ★ 2026-10-18 导出直播线路：按模板渲染（纯本地）→ 主进程保存对话框 → 只写新文件 */
+    export: (a: { templateId: string; groups: unknown; defaultName?: string }) => invoke(IPC.LIVE_EXPORT, a),
   },
   /** ★ 2026-09-29 设置备份：导出（含渲染层 localStorage）/ 导入（返回需写回的 localStorage） */
   backup: {
@@ -309,6 +315,12 @@ const api = {
       ipcRenderer.on(IPC.PLAYER_WINDOW_STATE, l);
       return () => ipcRenderer.removeListener(IPC.PLAYER_WINDOW_STATE, l);
     },
+    /** ★ 2026-10-18（R10）：L4 插件 `winbox.player.*` 的转发事件（主进程 → 播放器窗口渲染层执行） */
+    onCtl: (cb: (a: { op: string; value?: unknown }) => void) => {
+      const l = (_e: unknown, a: { op: string; value?: unknown }) => cb(a);
+      ipcRenderer.on(IPC.PLAYER_CTL, l);
+      return () => ipcRenderer.removeListener(IPC.PLAYER_CTL, l);
+    },
   },
   /**
    * ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）：播放诊断上报（渲染层 → 主进程）。
@@ -351,14 +363,42 @@ const api = {
       return () => ipcRenderer.removeListener(IPC.MPV_STATE, l);
     },
   },
-  // ★ 2026-10-16 插件系统（M1）：列表 / 安装（主进程弹选择框）/ 卸载 / 启停 / 超分状态
+  // ★ 2026-10-18（R11）第三方播放内核（`contributes.player.engine`；宿主托管，插件只给描述符）
+  engine: {
+    /** 内置 2（html5/mpv）+ 插件 N（`engine:<contributeId>`） */
+    list: () => invoke(IPC.ENGINE_LIST),
+    status: (id: string) => invoke(IPC.ENGINE_STATUS, id),
+    /** 写启用开关（`playerSettings.engineEnabled`；默认关） */
+    setEnabled: (a: { id: string; enabled: boolean }) => invoke(IPC.ENGINE_ENABLE, a),
+    start: (opts: unknown) => invoke(IPC.ENGINE_START, opts),
+    cmd: (cmd: unknown) => invoke(IPC.ENGINE_CMD, cmd),
+    stop: () => invoke(IPC.ENGINE_STOP),
+    onState: (cb: (s: unknown) => void) => {
+      const l = (_e: unknown, s: unknown) => cb(s);
+      ipcRenderer.on(IPC.ENGINE_STATE, l);
+      return () => ipcRenderer.removeListener(IPC.ENGINE_STATE, l);
+    },
+  },
+  // ★ 2026-10-16 插件系统（M1）：列表 / 安装（两段式）/ 卸载 / 启停 / 超分状态
   plugins: {
     list: () => invoke(IPC.PLUGIN_LIST),
-    install: () => invoke(IPC.PLUGIN_INSTALL),
+    /** ★ 2026-10-18（R10）安装第 ① 段：弹框 + 干跑校验，返回权限清单供确认 */
+    inspect: () => invoke(IPC.PLUGIN_INSPECT),
+    /** 安装第 ② 段：传干跑选定的 `{path}`（缺省则回退弹框 + 装） */
+    install: (a?: { path?: string }) => invoke(IPC.PLUGIN_INSTALL, a ?? {}),
     uninstall: (id: string) => invoke(IPC.PLUGIN_UNINSTALL, id),
     setEnabled: (a: { id: string; enabled: boolean }) => invoke(IPC.PLUGIN_SET_ENABLED, a),
     sr: () => invoke(IPC.PLUGIN_SR),
     themes: () => invoke(IPC.PLUGIN_THEMES),
+    /** ★ 2026-10-18 受限动作按钮（`contributes.ui.command`）—— 主进程只装配，动作由渲染层执行 */
+    commands: () => invoke(IPC.PLUGIN_COMMANDS),
+    /** ★ 2026-10-18 追加快捷键（`contributes.keymap`）—— 主进程只装配，分发/执行由渲染层完成 */
+    keymaps: () => invoke(IPC.PLUGIN_KEYMAPS),
+    /** ★ 2026-10-18 插件设置面板（`contributes.settings.panel`）—— 主进程装配 + 代持久化 */
+    settings: () => invoke(IPC.PLUGIN_SETTINGS),
+    setSetting: (a: { id: string; panelId: string; key: string; value: unknown }) => invoke(IPC.PLUGIN_SETTINGS_SET, a),
+    /** ★ 2026-10-18 受限 UI 槽位（`contributes.ui.slot`）—— 主进程只装配，渲染层落槽 */
+    slots: () => invoke(IPC.PLUGIN_SLOTS),
   },
   // ★ 2026-09-29 磁力（BT）：探测本机已安装的外部播放器（MKV/HEVC 接力；只探测不启动）
   bt: {

@@ -130,6 +130,9 @@ describe('PlayerSettings 归一 — btExternalPlayer / vodExternalPlayer（容�
     expect(DEFAULT_PLAYER_SETTINGS.vodExternalPlayerEnabled).toBe(false);
     expect(DEFAULT_PLAYER_SETTINGS.mpvPath).toBe('');
     expect(DEFAULT_PLAYER_SETTINGS.srMode).toBe('off'); // ★ 超分插件（M1）：默认关
+    // ★ R11：插件播放内核默认全关（空表）
+    expect(DEFAULT_PLAYER_SETTINGS.engineEnabled).toEqual({});
+    expect(DEFAULT_PLAYER_SETTINGS.enginePaths).toEqual({});
     expect(normalizePlayerSettings(undefined)).toEqual({
       m3u8Purify: false,
       btExternalPlayer: '',
@@ -137,6 +140,8 @@ describe('PlayerSettings 归一 — btExternalPlayer / vodExternalPlayer（容�
       vodExternalPlayerEnabled: false,
       mpvPath: '',
       srMode: 'off',
+      engineEnabled: {},
+      enginePaths: {},
     });
   });
 

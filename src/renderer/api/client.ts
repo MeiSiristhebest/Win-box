@@ -38,7 +38,7 @@ import type { MetaHit, MetaExtra, DiscoverSection, DiscoverGenre, DiscoverGenreP
 import type { MetaSettings, MetaSettingsView, MetaSuggestion } from '../../shared/meta';
 import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../../shared/discover';
 import type { PlayerSettings, MpvStatus, MpvStartOptions, MpvCommand, MpvStateEvent, MediaStateEvent } from '../../shared/player';
-import type { PluginView, SrState, ThemeSkinView } from '../../shared/plugin';
+import type { PluginView, PluginInspectResult, SrState, ThemeSkinView, LiveTemplateView, UiCommandView, KeymapView, SettingsPanelView, UiSlotView, PlayerEngineView } from '../../shared/plugin';
 import type { BackupExportResult, BackupImportResult } from '../../shared/backup';
 import type { DavBrowseResult, DavServer } from '../../shared/webdav';
 import type { DlnaCastResult, DlnaCastTarget, DlnaDevice } from '../../shared/dlna';
@@ -160,6 +160,14 @@ declare global {
         meta: () => Promise<IpcResult<LiveBean[]>>;
         /** ★ 2026-09-29 EPG：传入该线路的频道引用，返回各键（tvg-id/tvg-name/频道名）的「当前 / 下一档」 */
         epg: (index: number, channels: EpgChannelRef[]) => Promise<IpcResult<LiveEpgResult>>;
+        /** ★ 2026-10-18 直播输出模板（内置 2 个 + 插件 `contributes.live.template`） */
+        templates: () => Promise<IpcResult<LiveTemplateView[]>>;
+        /** ★ 2026-10-18 按模板渲染导出文本（纯本地无副作用，不弹框） */
+        render: (a: { templateId: string; groups: LiveGroup[] }) =>
+          Promise<IpcResult<LiveTemplateView & { content: string }>>;
+        /** ★ 2026-10-18 导出直播线路：按模板渲染（纯本地）→ 主进程保存对话框 → 只写新文件 */
+        export: (a: { templateId: string; groups: LiveGroup[]; defaultName?: string }) =>
+          Promise<IpcResult<{ saved: boolean; path: string }>>;
       };
       /** ★ 2026-09-29 设置备份（含渲染层 localStorage） */
       backup: {
@@ -274,6 +282,8 @@ declare global {
         onFullscreen: (cb: (fullscreen: boolean) => void) => () => void;
         /** ★ 2026-10-17（B3）：播放器窗口开/关（主窗口据此冻结/解冻隐藏页的已解码图片） */
         onWindowState: (cb: (s: { open: boolean }) => void) => () => void;
+        /** ★ 2026-10-18（R10）：L4 插件 `winbox.player.*` 的转发事件（播放器窗口渲染层执行） */
+        onCtl: (cb: (a: { op: string; value?: unknown }) => void) => () => void;
       };
       /**
        * ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）：播放诊断上报（渲染层 → 主进程）。
@@ -306,14 +316,41 @@ declare global {
         stop: () => Promise<IpcResult<{ ok: boolean }>>;
         onState: (cb: (s: MpvStateEvent) => void) => () => void;
       };
-      // ★ 2026-10-16 插件系统（M1）：列表 / 安装（主进程弹选择框）/ 卸载 / 启停 / 超分状态
+      // ★ 2026-10-18（R11）第三方播放内核（`contributes.player.engine`；宿主托管，插件只给描述符）
+      engine: {
+        /** 内置 2（html5/mpv）+ 插件 N（`engine:<contributeId>`） */
+        list: () => Promise<IpcResult<PlayerEngineView[]>>;
+        status: (id: string) => Promise<IpcResult<{ id: string; ready: boolean; path?: string; note?: string }>>;
+        /** 写启用开关（`playerSettings.engineEnabled`；默认关） */
+        setEnabled: (a: { id: string; enabled: boolean }) => Promise<IpcResult<{ ok: boolean; reason?: string }>>;
+        /** 拉起会话（★ 未启用 → `{ok:false, reason}`；就绪异常 → throw） */
+        start: (opts: MpvStartOptions & { engineId: string }) =>
+          Promise<IpcResult<{ ok: boolean; reason?: string; session?: number }>>;
+        cmd: (cmd: MpvCommand) => Promise<IpcResult<{ ok: boolean }>>;
+        stop: () => Promise<IpcResult<{ ok: boolean }>>;
+        onState: (cb: (s: MpvStateEvent) => void) => () => void;
+      };
+      // ★ 2026-10-16 插件系统（M1）：列表 / 安装（两段式）/ 卸载 / 启停 / 超分状态
       plugins: {
         list: () => Promise<IpcResult<PluginView[]>>;
-        install: () => Promise<IpcResult<{ ok: boolean; canceled?: boolean; reason?: string; items?: PluginView[] }>>;
+        /** ★ 2026-10-18（R10）第 ① 段：干跑校验，返回权限清单供确认（不落盘） */
+        inspect: () => Promise<IpcResult<PluginInspectResult>>;
+        /** 第 ② 段：传干跑选定的 `{path}` 安装 */
+        install: (a?: { path?: string }) => Promise<IpcResult<{ ok: boolean; canceled?: boolean; reason?: string; items?: PluginView[] }>>;
         uninstall: (id: string) => Promise<IpcResult<{ ok: boolean; reason?: string; items?: PluginView[] }>>;
         setEnabled: (a: { id: string; enabled: boolean }) => Promise<IpcResult<{ ok: boolean; reason?: string; items?: PluginView[] }>>;
         sr: () => Promise<IpcResult<SrState>>;
         themes: () => Promise<IpcResult<ThemeSkinView[]>>;
+        /** ★ 2026-10-18 受限动作按钮（`contributes.ui.command`）—— 主进程只装配，动作由渲染层执行 */
+        commands: () => Promise<IpcResult<UiCommandView[]>>;
+        /** ★ 2026-10-18 追加快捷键（`contributes.keymap`）—— 主进程只装配，分发/执行由渲染层完成 */
+        keymaps: () => Promise<IpcResult<KeymapView[]>>;
+        /** ★ 2026-10-18 插件设置面板（`contributes.settings.panel`）—— 主进程装配 + 代持久化 */
+        settings: () => Promise<IpcResult<SettingsPanelView[]>>;
+        setSetting: (a: { id: string; panelId: string; key: string; value: unknown }) =>
+          Promise<IpcResult<{ ok: boolean; reason?: string; panels?: SettingsPanelView[] }>>;
+        /** ★ 2026-10-18 受限 UI 槽位（`contributes.ui.slot`）—— 主进程只装配，渲染层落槽 */
+        slots: () => Promise<IpcResult<UiSlotView[]>>;
       };
       // ★ 2026-09-29 磁力（BT）：本机已安装的外部播放器（MKV/HEVC 接力；只探测不启动）
       bt: {
@@ -447,6 +484,8 @@ export const client = {
   playerOnFullscreen: (cb: (fullscreen: boolean) => void) => window.api.player.onFullscreen(cb),
   /** ★ 2026-10-17（B3）：播放器窗口开/关 → 主窗口据此冻结/解冻隐藏页的已解码图片（零重载） */
   playerOnWindowState: (cb: (open: boolean) => void) => window.api.player.onWindowState((s) => cb(!!s?.open)),
+  /** ★ 2026-10-18（R10）：L4 插件 `winbox.player.*` 转发事件（播放器窗口渲染层执行；不带 `MPV_` 前缀） */
+  onPlayerCtl: (cb: (a: { op: string; value?: unknown }) => void) => window.api.player.onCtl(cb),
   /** ★ 2026-10-16（用户报「播放时画面突然消失、只剩声音」）：播放诊断上报（fire-and-forget；见 main/util/mediaDiag.ts） */
   mediaReport: (ev: MediaStateEvent) => window.api.media.report(ev),
   bossGet: () => unwrap(window.api.boss.get()),
@@ -480,6 +519,11 @@ export const client = {
   loadLive: (index: number) => unwrap(window.api.live.load(index)),
   liveMeta: () => unwrap(window.api.live.meta()),
   liveEpg: (index: number, channels: EpgChannelRef[]) => unwrap(window.api.live.epg(index, channels)),
+  liveTemplates: () => unwrap<LiveTemplateView[]>(window.api.live.templates()),
+  liveRender: (a: { templateId: string; groups: LiveGroup[] }) =>
+    unwrap<LiveTemplateView & { content: string }>(window.api.live.render(a)),
+  liveExport: (a: { templateId: string; groups: LiveGroup[]; defaultName?: string }) =>
+    unwrap<{ saved: boolean; path: string }>(window.api.live.export(a)),
   /** ★ 2026-09-29 设置备份 */
   backupExport: (renderer: Record<string, string>) => unwrap(window.api.backup.export(renderer)),
   backupImport: () => unwrap(window.api.backup.import()),
@@ -539,15 +583,41 @@ export const client = {
   mpvCmd: (cmd: MpvCommand) => unwrap<{ ok: boolean }>(window.api.mpv.cmd(cmd)),
   mpvStop: () => unwrap<{ ok: boolean }>(window.api.mpv.stop()),
   mpvOnState: (cb: (s: MpvStateEvent) => void) => window.api.mpv.onState(cb as (s: unknown) => void),
-  // ★ 2026-10-16 插件系统（M1）：列表 / 安装 / 卸载 / 启停 / 超分状态
+  // ★ 2026-10-18（R11）第三方播放内核（`contributes.player.engine`；宿主托管，插件只给描述符）
+  /** 内置 2（html5/mpv）+ 插件 N（`engine:<contributeId>`）—— 配置页内核列表 / 播放器切换按钮用 */
+  engineList: () => unwrap<PlayerEngineView[]>(window.api.engine.list()),
+  engineStatus: (id: string) => unwrap<{ id: string; ready: boolean; path?: string; note?: string }>(window.api.engine.status(id)),
+  /** 写启用开关（默认关；首次开启的二次确认在渲染层做） */
+  engineSetEnabled: (a: { id: string; enabled: boolean }) => unwrap<{ ok: boolean; reason?: string }>(window.api.engine.setEnabled(a)),
+  /** 拉起引擎会话（★ 未启用 → 返回 `{ok:false, reason}`，不抛） */
+  engineStart: (a: MpvStartOptions & { engineId: string }) =>
+    unwrap<{ ok: boolean; reason?: string; session?: number }>(window.api.engine.start(a)),
+  engineCmd: (cmd: MpvCommand) => unwrap<{ ok: boolean }>(window.api.engine.cmd(cmd)),
+  engineStop: () => unwrap<{ ok: boolean }>(window.api.engine.stop()),
+  engineOnState: (cb: (s: MpvStateEvent) => void) => window.api.engine.onState(cb as (s: unknown) => void),
+  // ★ 2026-10-16 插件系统（M1）：列表 / 安装（两段式）/ 卸载 / 启停 / 超分状态
   pluginList: () => unwrap<PluginView[]>(window.api.plugins.list()),
-  pluginInstall: () => unwrap<{ ok: boolean; canceled?: boolean; reason?: string; items?: PluginView[] }>(window.api.plugins.install()),
+  /** ★ 2026-10-18（R10）安装第 ① 段：干跑校验 → 权限清单（不落盘） */
+  pluginInspect: () => unwrap<PluginInspectResult>(window.api.plugins.inspect()),
+  pluginInstall: (a?: { path?: string }) =>
+    unwrap<{ ok: boolean; canceled?: boolean; reason?: string; items?: PluginView[] }>(window.api.plugins.install(a)),
   pluginUninstall: (id: string) => unwrap<{ ok: boolean; reason?: string; items?: PluginView[] }>(window.api.plugins.uninstall(id)),
   pluginSetEnabled: (a: { id: string; enabled: boolean }) =>
     unwrap<{ ok: boolean; reason?: string; items?: PluginView[] }>(window.api.plugins.setEnabled(a)),
   pluginSr: () => unwrap<SrState>(window.api.plugins.sr()),
   /** ★ 插件皮肤列表（`contributes.theme`）—— 渲染层注册表据此并入可选皮肤 */
   pluginThemes: () => unwrap<ThemeSkinView[]>(window.api.plugins.themes()),
+  /** ★ 2026-10-18 插件受限动作按钮（`contributes.ui.command`）—— 配置页 / 播放器据此渲染 */
+  pluginCommands: () => unwrap<UiCommandView[]>(window.api.plugins.commands()),
+  /** ★ 2026-10-18 追加快捷键（`contributes.keymap`）—— 配置页一览 / 播放器键位面板 + 渲染层分发 */
+  pluginKeymaps: () => unwrap<KeymapView[]>(window.api.plugins.keymaps()),
+  /** ★ 2026-10-18 插件设置面板（`contributes.settings.panel`）—— 配置页每插件卡片内渲染表单 */
+  pluginSettings: () => unwrap<SettingsPanelView[]>(window.api.plugins.settings()),
+  /** ★ 写一个设置字段值（宿主代持久化 + 值校验；成功时回带最新面板列表） */
+  pluginSettingSet: (a: { id: string; panelId: string; key: string; value: unknown }) =>
+    unwrap<{ ok: boolean; reason?: string; panels?: SettingsPanelView[] }>(window.api.plugins.setSetting(a)),
+  /** ★ 2026-10-18 受限 UI 槽位（`contributes.ui.slot`）—— 渲染层 `<PluginSlot slot="…" />` 消费 */
+  pluginSlots: () => unwrap<UiSlotView[]>(window.api.plugins.slots()),
   /** ★ 2026-09-29 磁力（BT）：探测本机外部播放器（MKV/HEVC 接力；配置页可指定路径） */
   btDetectPlayers: () => unwrap(window.api.bt.detectPlayers()),
   /** ★ 2026-09-30（用户要求）：点播外部播放器（与磁力分开绑定）——探测本机播放器 / 用当前地址拉起 */
