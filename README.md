@@ -2,7 +2,7 @@
 
 Win-Box 是 Windows 桌面媒体源管理与播放工具。你可以导入多份配置、分别管理播放源，并合并导出配置。应用使用 Electron、React、TypeScript 和 Vite。
 
-应用不附带播放源或媒体内容。启动后可在“配置”页导入或添加自己的来源。
+应用不附带播放源或媒体内容。启动后可在“配置”页导入或添加自己的来源。多仓导入会分别记录子仓失败原因；已知 GitHub 代理无法取回配置时，会尝试该地址中明确指向的 GitHub 原始文件。
 
 ## 免责声明（请务必阅读）
 
@@ -18,7 +18,7 @@ Win-Box 是 Windows 桌面媒体源管理与播放工具。你可以导入多份
 
 ## 开发
 
-开发环境使用 Node.js 26.12.0 和 pnpm 12.14.0。
+开发环境使用 Node.js 26.12.0、pnpm 12.14.0 和 JDK 17 或更新版本。JDK 用于首次构建 ARM 桥接；可通过 `WINBOX_JDK_HOME` 或 `JAVA_HOME` 指定，也可使用 PATH 中的 `javac` 和 `jar`。
 
 ```bash
 pnpm install --frozen-lockfile
@@ -27,6 +27,19 @@ pnpm test
 pnpm run dev
 pnpm run build
 ```
+
+`pnpm run dev` 启动开发版：界面组件和样式由 Vite 热更新；主进程、preload 或 JS worker 构建成功后，Electron 自动退出并重启。构建失败时保留当前应用，修正后再自动重启，调试时无需生成安装包。
+
+开发版的数据目录默认为 `%APPDATA%\win-box-dev`。可在启动前用 `WINBOX_DEV_USER_DATA` 指定其他开发目录。
+
+```powershell
+$env:WINBOX_DEV_USER_DATA = 'D:\win-box-dev-data'
+pnpm run dev
+```
+
+`pnpm run build:native-bridge` 可单独构建 ARM 桥接。首次构建从 Maven 官方源下载固定版本依赖并核对 SHA-256；生成 Java 17 字节码，后续按源码与依赖指纹复用产物。主进程构建会自动执行该步骤。
+
+开发流程回归可分别运行 `pnpm run test:dev` 和 `pnpm run test:native-bridge`；后者需要已准备的 `resources/jvm/jre`，并会按需下载 ARM 模拟运行时依赖。
 
 ## 目录结构
 
@@ -37,9 +50,9 @@ pnpm run build
 
 ## 打包
 
-运行时依赖不随源码仓库分发。`pnpm run build` 构建主进程和界面，不要求准备完整的 Java 运行时。运行 `pnpm run pack` 或 `pnpm run dist` 前，须按 `scripts/runtime-assets.json` 准备 `resources/jvm/jre/bin/java.exe`、`resources/jvm/d2j/*.jar`、`resources/jvm/stubs/stubs.jar` 和清单列出的库 JAR。
+运行时依赖不随源码仓库分发。`pnpm run build` 构建主进程、ARM 桥接和界面；首次桥接编译需要 JDK，应用随附的 Java 运行时在打包前准备。运行 `pnpm run pack` 或 `pnpm run dist` 前，须按 `scripts/runtime-assets.json` 准备 `resources/jvm/jre/bin/java.exe`、`resources/jvm/d2j/*.jar`、`resources/jvm/stubs/stubs.jar` 和清单列出的库 JAR。
 
-`resources/jvm/stubs/stubs.jar` 不入库，也不会由普通构建生成。重建脚本使用现有 JAR 作为基线，因此运行前必须提供该文件；Windows 上还需提供 JDK 的 `javac.exe` 和 `jar.exe`。发布前须在 `scripts/runtime-assets.json` 中填写 JRE 和 dex2jar 的版本、来源及 SHA-256。`pnpm run dist` 会在编译前检查资源；`pnpm run pack` 会在创建打包暂存目录前运行完整预检。两者都会拒绝缺失的必需文件或来源信息。嵌入式 CPython、shell-shim 和 unidbg 运行时等资源仍需按使用场景自行准备。
+`resources/jvm/stubs/stubs.jar` 不入库，也不会由普通构建生成。重建脚本使用现有 JAR 作为基线，因此运行前必须提供该文件；Windows 上还需提供 JDK 的 `javac.exe` 和 `jar.exe`。发布前须在 `scripts/runtime-assets.json` 中填写 JRE 和 dex2jar 的版本、来源及 SHA-256。`pnpm run dist` 会在编译前检查资源；`pnpm run pack` 会在创建打包暂存目录前运行完整预检。两者都会拒绝缺失的必需文件或来源信息。生成的 `native-bridge.jar` 为发布必需资源，缺失时预检会阻止打包。嵌入式 CPython、shell-shim 和 unidbg 运行时等资源仍需按使用场景准备。
 
 ## 许可证与反馈
 

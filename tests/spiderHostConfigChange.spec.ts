@@ -29,6 +29,7 @@ vi.mock('electron', async () => {
 
 import { rmSync } from 'node:fs';
 import { SpiderHost } from '../src/main/spider/SpiderHost';
+import { parseSiteConfigWithBase } from '../src/engine/config/ApiConfigParser';
 import type { SourceBean } from '../src/shared/types';
 
 describe('SpiderHost — 全源搜索不把已失败 jar 当成准备中', () => {
@@ -91,17 +92,17 @@ describe('SpiderHost — 多仓父清单失败后重试', () => {
     });
     const fetchedUrls: string[] = [];
     let rootFetchCount = 0;
-    const fetchConfigText = vi.spyOn(host as any, 'fetchConfigText').mockImplementation(async (...args: unknown[]) => {
+    const fetchConfigText = vi.spyOn(host as any, 'fetchConfigWithDiagnostics').mockImplementation(async (...args: unknown[]) => {
       const url = String(args[0] ?? '');
       fetchedUrls.push(url);
       if (url === rootUrl) {
         rootFetchCount += 1;
         if (rootFetchCount === 1) throw new Error('parent manifest unavailable');
-        return manifest;
+        return { text: manifest, hint: '' };
       }
       const key = url === childUrls[0] ? 'repo-1' : url === childUrls[1] ? 'repo-2' : '';
       if (!key) throw new Error(`unexpected fetch: ${url}`);
-      return JSON.stringify({ sites: [{ key, name: key, type: 0, api: 'https://x/api.php/provide/vod' }] });
+      return { text: JSON.stringify({ sites: [{ key, name: key, type: 0, api: 'https://x/api.php/provide/vod' }] }), hint: '' };
     });
 
     try {
@@ -138,12 +139,12 @@ describe('SpiderHost — 多仓父清单失败后重试', () => {
     const before = host.cfgSnapshot();
     let blockedSignal: AbortSignal | undefined;
     let childFetchCount = 0;
-    vi.spyOn(host as any, 'fetchConfigText').mockImplementation(async (...args: unknown[]) => {
+    vi.spyOn(host as any, 'fetchConfigWithDiagnostics').mockImplementation(async (...args: unknown[]) => {
       const url = String(args[0] ?? '');
-      if (url === rootUrl) return manifest;
+      if (url === rootUrl) return { text: manifest, hint: '' };
       childFetchCount += 1;
       if (url === childUrls[0]) {
-        return JSON.stringify({ sites: [{ key: 'repo-1', name: 'repo-1', type: 0, api: 'https://x/api.php/provide/vod' }] });
+        return { text: JSON.stringify({ sites: [{ key: 'repo-1', name: 'repo-1', type: 0, api: 'https://x/api.php/provide/vod' }] }), hint: '' };
       }
       if (url === childUrls[1]) {
         blockedSignal = args[2] as AbortSignal;
@@ -375,6 +376,62 @@ describe('SpiderHost — 详情判定 + 播放失败翻译（缺口 B）', () =>
       await expect(host.play('cms', 'HD', '1')).rejects.toThrow('UnknownHostException');
       expect(host.driveBindLearned()).not.toContain('cms');
     } finally {
+      try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  });
+});
+
+
+describe('SpiderHost — 并发子仓失败诊断', () => {
+  it('每个失败成员保留自身诊断，不使用其他请求的共享状态', async () => {
+    const host = new SpiderHost();
+    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
+    const rootUrl = 'https://example.test/diagnostic-repos.json';
+    const names = ['missing', 'html', 'working'];
+    const urls = names.map(name => 'https://example.test/' + name + '.json');
+    vi.spyOn(host as any, 'fetchConfigWithDiagnostics').mockImplementation(async (...args: unknown[]) => {
+      const url = String(args[0]);
+      if (url === rootUrl) return { text: JSON.stringify({ urls: urls.map((url, i) => ({ url, name: names[i] })) }), hint: '' };
+      if (url === urls[0]) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+        return { text: '', hint: 'HTTP 404 非成功响应' };
+      }
+      if (url === urls[1]) return { text: '<html>{broken}</html>', hint: '最后响应为 html（27B）' };
+      return { text: JSON.stringify({ sites: [{ key: 'working', name: 'working', type: 0, api: 'https://example.test/api' }] }), hint: '' };
+    });
+    try {
+      const job = host.startSubscriptionImport(rootUrl, 'diagnostics');
+      await vi.waitFor(() => expect(host.getSubscriptionImport(job.jobId)?.state).toBe('partial'));
+      const members = host.cfgSnapshot().subscriptionGroups.find(group => group.url === rootUrl)!.members;
+      expect(members.find(member => member.url === urls[0])).toMatchObject({ status: 'failed', error: expect.stringContaining('HTTP 404') });
+      expect(members.find(member => member.url === urls[1])).toMatchObject({ status: 'failed', error: expect.stringContaining('html') });
+      expect(members.find(member => member.url === urls[2])).toMatchObject({ status: 'ready' });
+    } finally {
+      vi.restoreAllMocks();
+      try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+    }
+  });
+});
+
+
+describe('SpiderHost — GitHub 原站恢复', () => {
+  it.each(['plain', 'base64'])('%s：按原站展开相对资源地址', async mode => {
+    const host = new SpiderHost();
+    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
+    const proxy = 'https://github.moeyy.xyz/https://raw.githubusercontent.com/owner/repo/main/config.json';
+    vi.spyOn((host as any).http, 'request').mockImplementation(async (...args: unknown[]) => {
+      const req = args[0] as { url: string };
+      const direct = req.url.startsWith('https://raw.githubusercontent.com/');
+      const text = '// collected config\n' + JSON.stringify({ spider: './spider.jar', sites: [{ key: 'a', name: 'a', type: 0, api: 'https://example.test/api' }] });
+      const body = direct ? mode === 'base64' ? Buffer.from(text).toString('base64') : text : '<html>proxy unavailable</html>';
+      return { status: direct ? 200 : 502, headers: {}, finalUrl: req.url, content: Array.from(Buffer.from(body)) };
+    });
+    try {
+      const result = await (host as any).fetchConfigWithDiagnostics(proxy, true);
+      expect(parseSiteConfigWithBase(result.text, proxy).config.spider).toBe('https://raw.githubusercontent.com/owner/repo/main/spider.jar');
+      expect(result.hint).toBe('');
+    } finally {
+      vi.restoreAllMocks();
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   });

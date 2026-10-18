@@ -1,5 +1,6 @@
 // scripts/build-main.mjs — 用 esbuild 把主进程 + preload 打成 CJS（Electron 需 CJS）
 import { build, context } from 'esbuild';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 // ★ 2026-10-14：okhttp 4.x 兼容 jar（`resources/jvm/okhttp4-compat/winbox-okhttp4-compat.jar`）是
@@ -11,10 +12,32 @@ import { generateOkHttp4Compat } from './gen-okhttp-compat.mjs';
 //   且 `resources/jvm/**/*.jar` 不进仓库 ⇒ 随构建现场产出；缺失时 stubs.jar 里那个纯内存的
 //   `android/content/SharedPreferences$Mem` 会让 wex 族永远读到空 cookie。
 import { generatePrefsShim } from './gen-prefs-shim.mjs';
+import { generateNativeBridge } from './gen-native-bridge.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const src = resolve(root, '..');
 const watch = process.argv.includes('--watch');
+const devReadyFile = resolve(src, '.tmp', 'dev-main-build-ready');
+const devReady = { main: false, worker: false };
+let devBuildSerial = 0;
+
+function devReadyPlugin(target) {
+  return {
+    name: `dev-ready-${target}`,
+    setup(buildContext) {
+      buildContext.onStart(() => {
+        devReady[target] = false;
+        rmSync(devReadyFile, { force: true });
+      });
+      buildContext.onEnd((result) => {
+        devReady[target] = result.errors.length === 0;
+        if (devReady.main && devReady.worker) {
+          writeFileSync(devReadyFile, JSON.stringify({ pid: process.pid, serial: ++devBuildSerial }), 'utf8');
+        }
+      });
+    },
+  };
+}
 
 try {
   const r = await generateOkHttp4Compat();
@@ -29,6 +52,9 @@ try {
 } catch (e) {
   console.warn(`[prefs-shim] 生成失败（不阻断构建）: ${(e && e.message) || e}`);
 }
+
+const nativeBridge = await generateNativeBridge();
+console.log(`[native-bridge] ${nativeBridge.cached ? '已就绪' : '已生成'}（${nativeBridge.bytes} bytes）`);
 
 const opts = {
   bundle: true,
@@ -78,8 +104,11 @@ const workerOpts = {
 };
 
 if (watch) {
+  mkdirSync(dirname(devReadyFile), { recursive: true });
+  rmSync(devReadyFile, { force: true });
   const ctx = await context({
     ...opts,
+    plugins: [...(opts.plugins || []), devReadyPlugin('main')],
     entryPoints: entries.map((e) => ({ in: e.in, out: e.out })),
     outdir: resolve(src, 'dist'),
     outExtension: { '.js': '.cjs' },
@@ -88,6 +117,7 @@ if (watch) {
   // worker 也进 watch（改动即重建）
   const wctx = await context({
     ...workerOpts,
+    plugins: [...(workerOpts.plugins || []), devReadyPlugin('worker')],
     entryPoints: [resolve(src, 'src/engine/js/worker/entry.ts')],
     outfile: workerFile,
   });

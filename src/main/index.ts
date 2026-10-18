@@ -3,7 +3,9 @@
 //   并在老用户首次启动时自动迁移 %APPDATA%\win-box（见 dataDirBootstrap.ts 头注释）。
 //   必须早于 logger / 各 Store 的模块求值，否则它们会把路径解析到旧位置。
 import { dataDirReport } from './util/dataDirBootstrap';
+import { registerAppQuitCleanup } from './util/appQuit';
 import { app, BrowserWindow, nativeTheme, shell, webContents } from 'electron';
+import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { registerIpc } from './ipc';
@@ -134,6 +136,28 @@ proxy.bt = torrent;
 
 function isDev(): boolean {
   return !app.isPackaged && process.env.NODE_ENV !== 'production';
+}
+
+const devReloadPipe = process.env.WINBOX_DEV_RELOAD_PIPE;
+if (!app.isPackaged && devReloadPipe) {
+  const devReloadConnection = createConnection(devReloadPipe);
+  devReloadConnection.setEncoding('utf8');
+  let devReloadCommand = '';
+  devReloadConnection.on('data', (chunk) => {
+    devReloadCommand += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+    const newline = devReloadCommand.indexOf('\n');
+    if (newline < 0) return;
+    const command = devReloadCommand.slice(0, newline).trim();
+    devReloadCommand = devReloadCommand.slice(newline + 1);
+    if (command === 'quit') {
+      fileLogger.i('开发重启：收到退出命令');
+      devReloadConnection.end();
+      app.quit();
+    }
+  });
+  devReloadConnection.on('error', (error) => {
+    fileLogger.w(`开发重启通道连接失败：${error.message}`);
+  });
 }
 
 // 渲染策略：**不再强制禁用 GPU/硬件加速**。
@@ -422,41 +446,34 @@ app.on('window-all-closed', () => {
 
 // ★ 退出前彻底清理：terminate 所有 JVM 蜘蛛子进程 + 停本地代理 + 断 token 解码，
 //   确保关闭应用后无任何后台残留进程/服务（含 Electron 隐含子进程会在 app.quit 后自行结束）。
-let quitCleanupStarted = false;
-app.on('will-quit', (event) => {
-  // will-quit 不会等待普通 async 回调；先阻止退出，给待清理的网盘目录一次有限时长的
-  // 删除机会，避免窗口关闭后马上退出导致“播完即删”只写入队列却未发出请求。
-  if (!quitCleanupStarted) {
-    quitCleanupStarted = true;
-    event.preventDefault();
-    void Promise.race([
-      host.quarkDeletePending(),
-      new Promise<void>((resolve) => setTimeout(resolve, 8_000)),
-    ]).finally(() => app.quit());
-    return;
-  }
-  try {
-    // ★ 退出前再尝试一次夸克落盘文件清理（失败会持久化到下次启动重试）
-    void host.quarkDeletePending();
-  } catch {
-    /* ignore */
-  }
-  try {
-    host.dispose();
-  } catch {
-    /* ignore */
-  }
-  try {
-    // ★ 2026-09-29：停 BT 引擎（回收到 win-quit 这一步，保证不留 aria2c 孤儿进程）
-    torrent.dispose();
-  } catch {
-    /* ignore */
-  }
-  try {
-    proxy.stop();
-  } catch {
-    /* ignore */
-  }
+registerAppQuitCleanup(app, {
+  cleanup: () => host.quarkDeletePending(),
+  timeoutMs: 8_000,
+  onError: error => fileLogger.w(`退出清理失败：${error instanceof Error ? error.message : String(error)}`),
+  dispose: () => {
+    try {
+      // ★ 退出前再尝试一次夸克落盘文件清理（失败会持久化到下次启动重试）
+      void host.quarkDeletePending();
+    } catch {
+      /* ignore */
+    }
+    try {
+      host.dispose();
+    } catch {
+      /* ignore */
+    }
+    try {
+      // ★ 2026-09-29：停 BT 引擎（回收到 win-quit 这一步，保证不留 aria2c 孤儿进程）
+      torrent.dispose();
+    } catch {
+      /* ignore */
+    }
+    try {
+      proxy.stop();
+    } catch {
+      /* ignore */
+    }
+  },
 });
 
 // 兜底：若 did-fail-load 或异常，也让 JVM 子进程不残留

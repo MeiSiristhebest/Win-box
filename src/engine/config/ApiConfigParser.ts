@@ -1,6 +1,6 @@
 // src/engine/config/ApiConfigParser.ts
 // ★ 站源 JSON 解析总入口。1:1 对齐 ApiConfig.java 的 trimJsonObject / parseApiCollection / parseJson。
-import { safeJsonString, safeJsonStringList, parseJsonLenient } from '../util/json';
+import { safeJsonString, safeJsonStringList, parseJsonLenient, stripJsonComments } from '../util/json';
 import { parseSite } from './SiteParser';
 import { parseParses } from './ParseConfigParser';
 import { parseLives } from './LiveConfigParser';
@@ -143,9 +143,9 @@ export function parseSiteConfig(jsonStr: string): ParseResult {
  * 只做形状判断（对象 + 订阅关键字段），不追求严格解析。
  */
 export function looksLikeSubscribeJson(text: string): boolean {
-  const t = (text || '').trim();
+  const t = stripJsonComments(text || '').trim();
   if (!t.startsWith('{')) return false;
-  return /"(sites|lives|urls|spider|parses|wallpaper|danmaku)"\s*:/.test(t.slice(0, 4096));
+  return /(?:["'](?:sites|lives|urls|spider|parses|wallpaper|danmaku)["']|(?:^|[,{])\s*(?:sites|lives|urls|spider|parses|wallpaper|danmaku))\s*:/.test(t.slice(0, 4096));
 }
 
 /**

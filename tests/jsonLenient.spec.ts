@@ -5,7 +5,7 @@
 // —— 同一份订阅安卓能导入、桌面报「配置不是合法 JSON 对象」。
 // 实测：https://700sjro44343.vicp.fun/eggp/0211/tv.json 剥注释后仍挂在 `"",\n ],` 上。
 import { describe, it, expect } from 'vitest';
-import { parseJsonLenient, stripTrailingCommas, stripJsonComments, quoteUnquotedKeys } from '../src/engine/util/json';
+import { parseJsonLenient, stripTrailingCommas, stripJsonComments, quoteUnquotedKeys, quoteSingleQuotedStrings } from '../src/engine/util/json';
 
 describe('stripTrailingCommas', () => {
   it('数组/对象尾随逗号被去掉（含空白与换行）', () => {
@@ -77,4 +77,63 @@ describe('quoteUnquotedKeys（裸键名兜底）', () => {
   it('补引号后仍非法的文本仍抛错', () => {
     expect(() => parseJsonLenient('{ext: {a:1}, "b": }')).toThrow();
   });
+});
+
+describe('quoteSingleQuotedStrings（单引号字符串兜底）', () => {
+  it('只转换单引号字符串，保留双引号字符串中的撇号', () => {
+    const text = String.raw`{"leave":"don't alter","urls":[{'name':'It\'s ready','api':'https://example.invalid/api'}]}`;
+    expect(JSON.parse(quoteSingleQuotedStrings(text))).toEqual({
+      leave: "don't alter",
+      urls: [{ name: "It's ready", api: 'https://example.invalid/api' }],
+    });
+  });
+
+  it('解析单引号、裸键、注释和尾随逗号同时出现的配置', () => {
+    const text = String.raw`{
+      urls: [
+        {name:'line\nnext', quote:'say "yes"',},
+      ], // comment outside the strings
+    }`;
+    expect(parseJsonLenient(text)).toEqual({ urls: [{ name: 'line\nnext', quote: 'say "yes"' }] });
+  });
+
+  it('保留未闭合单引号字符串的解析错误', () => {
+    expect(() => parseJsonLenient("{'a':'unterminated}")).toThrow();
+  });
+});
+
+
+describe('订阅格式回归', () => {
+  it('保留双引号字符串中的原始换行与制表符', () => {
+    const text = '{"sites":[{"key":"a","name":"line\nnext\titem","api":"csp_A"}]}'.replaceAll('\\n', '\n').replaceAll('\\t', '\t');
+    expect(parseJsonLenient(text)).toEqual({ sites: [{ key: 'a', name: 'line\nnext\titem', api: 'csp_A' }] });
+  });
+
+  it('单引号配置中的 CR 行注释不会吞掉下一行', () => {
+    expect(parseJsonLenient("{ // note\r name:'one', api:'https://example.invalid/a'\r}")).toEqual({
+      name: 'one', api: 'https://example.invalid/a',
+    });
+  });
+
+  it.each([
+    [String.raw`{'value':'\\path\\file'}`, { value: '\\path\\file' }],
+    [String.raw`{'value':'\u4e2d\x41'}`, { value: '中A' }],
+    [String.raw`{'value':'it\'s "ok"'}`, { value: 'it\'s "ok"' }],
+  ])('保留单引号转义的字符串值 %s', (text, expected) => {
+    expect(parseJsonLenient(text)).toEqual(expected);
+  });
+
+  it('数字后多余的引号仍报错', () => {
+    expect(() => parseJsonLenient('{"sites":[{"searchable":0"}]}')).toThrow();
+  });
+
+  it('拒绝对象中的可执行表达式', () => {
+    expect(() => parseJsonLenient("{name: (() => 'value')()} ")).toThrow();
+  });
+});
+
+
+it('有转义引号时仍只转义字符串内部的控制字符', () => {
+  const text = '{name:"say \\"yes\\"\nnext"}'.replaceAll('\\n', '\n');
+  expect(parseJsonLenient(text)).toEqual({ name: 'say "yes"\nnext' });
 });

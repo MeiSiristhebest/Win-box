@@ -1,6 +1,6 @@
 // tests/dataDirBootstrap.spec.ts
 // ★ 2026-09-30：dataDirBootstrap 接线单测（mock electron）——
-//   dev 不动 / 打包态切到安装目录/data 并迁移 / 目标不可写回退 / 迁移失败回滚 setPath 并保留旧目录。
+//   dev 独立目录 / 打包态切到安装目录/data 并迁移 / 目标不可写回退 / 迁移失败回滚 setPath 并保留旧目录。
 //   模块是「import 即执行」，每个用例先 vi.resetModules() 再动态 import 拿全新实例。
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -10,6 +10,7 @@ import { join } from 'node:path';
 const state = vi.hoisted(() => ({
   isPackaged: false,
   userData: '',
+  appData: '',
   exe: '',
   setPathCalls: [] as Array<[string, string]>,
 }));
@@ -19,7 +20,7 @@ vi.mock('electron', () => ({
     get isPackaged() {
       return state.isPackaged;
     },
-    getPath: (name: string) => (name === 'userData' ? state.userData : state.exe),
+    getPath: (name: string) => name === 'userData' ? state.userData : name === 'appData' ? state.appData : state.exe,
     setPath: (name: string, p: string) => {
       state.setPathCalls.push([name, p]);
     },
@@ -36,12 +37,15 @@ function tmpDir(): string {
 beforeEach(() => {
   state.isPackaged = false;
   state.userData = '';
+  state.appData = '';
   state.exe = '';
+  vi.stubEnv('WINBOX_DEV_USER_DATA', undefined);
   state.setPathCalls = [];
   delete process.env.PORTABLE_EXECUTABLE_DIR;
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const d of dirs) {
     try { rmSync(d, { recursive: true, force: true }); } catch { /* ignore */ }
   }
@@ -54,14 +58,40 @@ async function importBootstrap() {
 }
 
 describe('dataDirBootstrap — 启动接线', () => {
-  it('开发态：不切换、不迁移（沿用系统默认位置）', async () => {
+  it('开发态：使用独立目录，保留安装版原始数据', async () => {
     const base = tmpDir();
     state.isPackaged = false;
     state.userData = join(base, 'appdata', 'win-box');
+    state.appData = join(base, 'appdata');
+    mkdirSync(state.userData, { recursive: true });
+    writeFileSync(join(state.userData, 'user-config.json'), 'installed-data');
     state.exe = join(base, 'node_modules', 'electron.exe');
     const { dataDirReport } = await importBootstrap();
+    const target = join(state.appData, 'win-box-dev');
     expect(dataDirReport.mode).toBe('dev');
-    expect(state.setPathCalls.length).toBe(0);
+    expect(dataDirReport.target).toBe(target);
+    expect(state.setPathCalls).toEqual([['userData', target]]);
+    expect(existsSync(join(state.userData, 'user-config.json'))).toBe(true);
+    expect(existsSync(join(target, 'user-config.json'))).toBe(false);
+  });
+
+  it('开发态：使用指定目录', async () => {
+    const base = tmpDir();
+    const target = join(base, 'custom-dev');
+    state.userData = join(base, 'installed');
+    vi.stubEnv('WINBOX_DEV_USER_DATA', target);
+    const { dataDirReport } = await importBootstrap();
+    expect(dataDirReport.target).toBe(target);
+    expect(state.setPathCalls).toEqual([['userData', target]]);
+  });
+
+  it('开发态：指定目录不可写时拒绝启动', async () => {
+    const base = tmpDir();
+    const target = join(base, 'occupied');
+    writeFileSync(target, 'file');
+    vi.stubEnv('WINBOX_DEV_USER_DATA', target);
+    await expect(importBootstrap()).rejects.toThrow('开发数据目录不可写');
+    expect(state.setPathCalls).toEqual([]);
   });
 
   it('打包态：切到安装目录/data，老数据自动迁移（含旧目录清理）', async () => {

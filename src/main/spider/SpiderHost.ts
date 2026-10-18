@@ -20,7 +20,7 @@ import { baiduResolveShare, baiduResolveSharedFile, baiduFileDelete, isBaiduShar
 // ★ 2026-10-14：嵌套信封（`base64(JSON{a:<商>,b:<内层>})`，实测 wex 立播）——解出暂不支持的网盘商时给出明确提示
 import { unsupportedNestedProvider } from '../net/driveDescriptor';
 import { fileLogger } from '../util/logger';
-import { parseSiteConfig, parseSiteConfigWithBase, looksLikeSubscribeJson, type ParseResult } from '../../engine/config/ApiConfigParser';
+import { parseSiteConfig, parseSiteConfigWithBase, looksLikeSubscribeJson, fixContentPath, type ParseResult } from '../../engine/config/ApiConfigParser';
 import { parseMultiRepo, isFetchedRepoUrl, repoDisplayName, pickRepoLine, splitRepoLine, type MultiRepo } from '../../engine/config/multiRepo';
 import { SourceViewModel } from '../../engine/vod/SourceViewModel';
 import { parseToJsonArray, toLiveGroups } from '../../engine/live/TxtSubscribe';
@@ -1787,11 +1787,19 @@ export class SpiderHost {
    *
    * 阶梯（常规）：默认 UA → okhttp UA → okhttp+Referer → okhttp+Referer+Cookie → okhttp+DoH，
    *   全失败后自动**换另一种协议（http↔https）同路径再试一次**；每次尝试的响应特征都写日志。
-   *   `quick=true`（多仓扫描上千子仓）只跑「默认 UA → okhttp UA」两档，避免导入跑不完。
+   *   `quick=true` 使用默认与 okhttp UA；已知 GitHub 代理失败后再尝试地址中的原站。
+   *   单子仓与整批时间上限由导入调度器控制。
    * 解密兜底（用户口径「用解密来兜底」）：本地 base64/hex → 第三方解密服务（详见 configDecrypt.ts 的隐私口径）。
    * 失败时把**分档诊断**记进 `lastConfigFetchHint`，由 importConfig 上屏「为什么导入不了」。
    */
   private async fetchConfigText(url: string, quick = false, signal?: AbortSignal): Promise<string> {
+    this.lastConfigFetchHint = '';
+    const result = await this.fetchConfigWithDiagnostics(url, quick, signal);
+    this.lastConfigFetchHint = result.hint;
+    return result.text;
+  }
+
+  private async fetchConfigWithDiagnostics(url: string, quick = false, signal?: AbortSignal): Promise<{ text: string; hint: string }> {
     if (signal?.aborted) throw signal.reason ?? new Error('导入已取消');
     // ★ 2026-09-29（用户要求）本地包：`pkg://<i>/<rel>` —— 不联网，直接读包内订阅文本。
     //   文本已由 LocalPkgStore.readSubscription 用 rewritePkgPaths 展开相对路径（"/pkg" 或 file://），
@@ -1799,25 +1807,22 @@ export class SpiderHost {
     //   包被移动/删除时给出可执行提示（重新导入该包）。
     const pkgRef = parsePkgUrl(url);
     if (pkgRef) {
-      this.lastConfigFetchHint = '';
       const got = this.localPkgs?.readSubscription(pkgRef.index, pkgRef.rel);
       if (!got) {
-        this.lastConfigFetchHint =
-          '本地包未登记或包内订阅文件已不存在（包目录被移动/删除？）—— 请在配置页重新「导入本地包」。';
-        return '';
+        return { text: '', hint: '本地包未登记或包内订阅文件已不存在（包目录被移动/删除？）—— 请在配置页重新「导入本地包」。' };
       }
       for (const w of got.warnings) this.logger.w(`本地包：${w}`);
       this.logger.i(`本地包订阅读取：${url} → ${got.text.length}B`);
-      return got.text;
+      return { text: got.text, hint: '' };
     }
     const timeoutMs = quick
       ? SUBSCRIPTION_IMPORT_POLICY.requestTimeoutMs.quick
       : SUBSCRIPTION_IMPORT_POLICY.requestTimeoutMs.standard;
     const attempts = disguiseLadder({ quick, referer: siteRootOf(url) });
-    this.lastConfigFetchHint = '';
     const isSubJson = (b: Buffer): boolean => looksLikeSubscribeJson(b.toString('utf-8'));
     const res = await fetchWithDisguise(this.http, url, {
       accept: isSubJson,
+      tryGitHubOrigin: true,
       attempts: quick ? attempts.slice(0, SUBSCRIPTION_IMPORT_POLICY.maxQuickAttempts) : attempts,
       timeoutMs,
       signal,
@@ -1828,17 +1833,20 @@ export class SpiderHost {
         this.logger.i(`订阅尝试「${t.label}」${t.ok ? '命中' : '未命中'}：${feat} ← ${t.url}`);
       },
     });
+    const normalizeOriginPaths = (text: string): string => res.originUrl ? fixContentPath(res.originUrl, text) : text;
     if (res.buf) {
       if (res.used && res.used.label !== '默认 UA') this.logger.i(`订阅按「${res.used.label}」取到内容：${url}`);
       if (res.altUrl) this.logger.i(`订阅换协议后取到内容（${res.altUrl}）：${url}`);
-      return res.buf.toString('utf-8');
+      const text = res.buf.toString('utf-8');
+      if (res.originUrl) this.logger.i(`订阅代理未命中，已从 GitHub 原站读取：${res.originUrl}`);
+      return { text: normalizeOriginPaths(text), hint: '' };
     }
     // ★ 2026-09-29：图片尾部隐写（饭太硬防直连；参照 CatClawVideo TvBoxSubscriptionManager.cs:548）。
     //   必须拿**原始字节**试 —— 先转 utf-8 字符串会把二进制毁成替换字符，载荷就找不回来了。
     const stego = res.last ? extractStegoConfig(res.last) : null;
     if (stego) {
       this.logger.i(`订阅图片尾部隐写：已提取配置（${stego.kind}，尾段 ${stego.offset} 起，${stego.text.length}B）：${url}`);
-      return stego.text;
+      return { text: normalizeOriginPaths(stego.text), hint: '' };
     }
     const raw = res.last ? res.last.toString('utf-8') : '';
     // ★ 2026-10-15：**伪装体**兜底（例 `https://yc.wya6.cn/wykj.php`）—— 真体整段是一个 jar 的
@@ -1850,15 +1858,15 @@ export class SpiderHost {
         `订阅伪装体：已提取配置（${disguise.how}${disguise.marker ? `，marker=${disguise.marker}` : ''}，` +
           `载荷起于 ${disguise.offset}，${disguise.text.length}B）：${url}`,
       );
-      return disguise.text;
+      return { text: normalizeOriginPaths(disguise.text), hint: '' };
     }
     // ★ 解密兜底：本地编码优先，其次第三方解密服务（仅此处、且仅在所有伪装手段失败后）
     const dec = await tryDecryptConfig(this.http, url, raw, this.logger, signal);
-    if (dec) return dec.text;
+    if (dec) return { text: normalizeOriginPaths(dec.text), hint: '' };
     const encrypted = res.last ? looksEncrypted(res.last) : false;
     const image = res.last ? looksLikeImage(res.last) : false;
     const sn = res.last ? sniffBody(res.last) : null;
-    this.lastConfigFetchHint =
+    const hint =
       (encrypted ? '该地址返回的内容疑似**加密配置**（普通客户端无法直接使用）。' : '') +
       (image ? '该地址返回的是**图片**（疑似图片尾部隐写，但未从中提取到配置）。' : '') +
       (sn?.kind === 'dump'
@@ -1866,7 +1874,7 @@ export class SpiderHost {
         : '') +
       (sn ? `最后响应为 ${sn.kind}（${sn.size}B）${sn.head ? `，开头是「${sn.head.slice(0, 60)}」` : ''}。` : '所有尝试都没有拿到响应体。') +
       `已尝试：${describeFailures(res.tries)}`;
-    return raw;
+    return { text: normalizeOriginPaths(raw), hint };
   }
 
   /**
@@ -1952,10 +1960,15 @@ export class SpiderHost {
         : null,
       load: async (item, itemSignal) => {
         const childRef = splitRepoLine(item.url);
-        const childText = await this.fetchConfigText(childRef.url, true, itemSignal);
-        const result = parseSiteConfigWithBase(childText, childRef.url);
-        if (!result.config.sites.length && !result.config.lives.length) throw new Error('内容为空/非订阅配置');
-        return result;
+        const fetched = await this.fetchConfigWithDiagnostics(childRef.url, true, itemSignal);
+        try {
+          const result = parseSiteConfigWithBase(fetched.text, childRef.url);
+          if (!result.config.sites.length && !result.config.lives.length) throw new Error('内容为空/非订阅配置');
+          return result;
+        } catch (error) {
+          if (fetched.hint) throw new Error(fetched.hint);
+          throw error;
+        }
       },
       onProgress: (progress) => options?.onProgress?.({ state: 'running', ...progress }),
       onRevisionConflict: (message) => options?.onProgress?.({ total: 0, completed: 0, succeeded: 0, failed: 0, pending: 0, message }),

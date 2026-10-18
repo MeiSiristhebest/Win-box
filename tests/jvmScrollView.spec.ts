@@ -35,7 +35,7 @@ describe.skipIf(!bin || !existsSync(javac) || !existsSync(java))('桌面 JVM Scr
         '}',
       ].join('\n'), { encoding: 'utf8' });
       const cp = resolve('resources/jvm/stubs/stubs.jar');
-      const compile = spawnSync(javac, ['-encoding', 'UTF-8', '-cp', cp, '-d', dir, source], { encoding: 'utf8', timeout: 30000 });
+      const compile = spawnSync(javac, ['--release', '17', '-encoding', 'UTF-8', '-cp', cp, '-d', dir, source], { encoding: 'utf8', timeout: 30000 });
       expect(compile.status, compile.stderr).toBe(0);
       const run = spawnSync(java, ['-cp', [dir, cp].join(delimiter), 'ScrollViewProbe'], { encoding: 'utf8', timeout: 10000 });
       expect(run.status, run.stderr).toBe(0);

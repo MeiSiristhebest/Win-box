@@ -13,7 +13,7 @@ describe.skipIf(!bin || !existsSync(javac) || !existsSync(java))('真实 JVM Vie
     try {
       const classes = join(dir, 'classes'); mkdirSync(classes);
       const cp = [classes, resolve('resources/jvm/stubs/stubs.jar')].join(delimiter);
-      const compile = spawnSync(javac, ['-encoding', 'UTF-8', '-cp', cp, '-d', classes,
+      const compile = spawnSync(javac, ['--release', '17', '-encoding', 'UTF-8', '-cp', cp, '-d', classes,
         resolve('resources/jvm/stubs-src/android/view/View.java'),
         resolve('resources/jvm/stubs-src/android/view/ViewTreeObserver.java'),
         resolve('resources/jvm/stubs-src/android/widget/Toast.java'),

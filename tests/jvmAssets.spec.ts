@@ -24,7 +24,7 @@ describe.skipIf(!ready)('实际发布 JVM 资产', () => {
       const cp = [dir, join(jvm, 'stubs/stubs.jar'), join(jvm, 'native-bridge/native-bridge.jar'), join(jvm, 'libs/*'),
         ...readdirSync(rt).filter(n => n.endsWith('.jar')).map(n => join(rt, n))].join(delimiter);
       const fixtures = ['SQLiteProbe', 'ViewTreeObserverProbe', 'ArmSignalProbe', 'ArmEventfdProbe', 'BridgeFileSystemProbe'];
-      command(javac, ['-encoding', 'UTF-8', '-cp', cp, '-d', dir,
+      command(javac, ['--release', '17', '-encoding', 'UTF-8', '-cp', cp, '-d', dir,
         ...fixtures.map(n => resolve('tests/fixtures/jvm-native/' + n + '.java'))]);
       for (const [name, marker] of [['SQLiteProbe', 'sqlite-cache-ok'], ['ViewTreeObserverProbe', 'view-tree-observer-ok'],
         ['ArmSignalProbe', 'arm-signals-ok'], ['ArmEventfdProbe', 'arm-eventfd-ok'], ['BridgeFileSystemProbe', 'bridge-files-ok']]) {

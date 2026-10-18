@@ -164,6 +164,172 @@ export function quoteUnquotedKeys(input: string): string {
 }
 
 /**
+ * Convert JSON5-style single-quoted strings to JSON strings.
+ * This only runs as a last parser fallback. Comments and existing double-quoted
+ * strings are copied unchanged, so URLs and apostrophes in valid JSON are safe.
+ */
+export function quoteSingleQuotedStrings(input: string): string {
+  let out = '';
+  let inDoubleString = false;
+  let doubleStringEscape = false;
+  let changed = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    const next = input[i + 1];
+
+    if (inDoubleString) {
+      out += c;
+      if (doubleStringEscape) doubleStringEscape = false;
+      else if (c === '\\') doubleStringEscape = true;
+      else if (c === '"') inDoubleString = false;
+      continue;
+    }
+
+    if (c === '"') {
+      inDoubleString = true;
+      out += c;
+      continue;
+    }
+
+    if (c === '/' && next === '/') {
+      let end = i + 2;
+      while (end < input.length && input[end] !== '\n' && input[end] !== '\r') end++;
+      if (end === input.length) {
+        out += input.slice(i);
+        break;
+      }
+      out += input.slice(i, end);
+      i = end - 1;
+      continue;
+    }
+
+    if (c === '/' && next === '*') {
+      const end = input.indexOf('*/', i + 2);
+      if (end < 0) {
+        out += input.slice(i);
+        break;
+      }
+      out += input.slice(i, end + 2);
+      i = end + 1;
+      continue;
+    }
+
+    if (c !== "'") {
+      out += c;
+      continue;
+    }
+
+    changed = true;
+    out += '"';
+    let closed = false;
+    for (i++; i < input.length; i++) {
+      const value = input[i];
+      if (value === "'") {
+        out += '"';
+        closed = true;
+        break;
+      }
+      if (value === '\n' || value === '\r') return input;
+      if (value === '"') {
+        out += '\\"';
+        continue;
+      }
+      if (value !== '\\') {
+        out += value;
+        continue;
+      }
+
+      const escaped = input[i + 1];
+      if (escaped == null) return input;
+      if (escaped === "'") {
+        out += "'";
+        i++;
+        continue;
+      }
+      if (escaped === '"') {
+        out += '\\"';
+        i++;
+        continue;
+      }
+      if (escaped === '\\') {
+        out += '\\\\';
+        i++;
+        continue;
+      }
+      if (escaped === 'u') {
+        const hex = input.slice(i + 2, i + 6);
+        if (!/^[\da-f]{4}$/i.test(hex)) return input;
+        out += `\\u${hex}`;
+        i += 5;
+        continue;
+      }
+      if (escaped === 'x') {
+        const hex = input.slice(i + 2, i + 4);
+        if (!/^[\da-f]{2}$/i.test(hex)) return input;
+        out += JSON.stringify(String.fromCharCode(Number.parseInt(hex, 16))).slice(1, -1);
+        i += 3;
+        continue;
+      }
+      if (escaped === 'v') {
+        out += '\\u000b';
+        i++;
+        continue;
+      }
+      if (escaped === '0') {
+        if (/\d/.test(input[i + 2] || '')) return input;
+        out += '\\u0000';
+        i++;
+        continue;
+      }
+      if ('bfnrt/'.includes(escaped)) {
+        out += `\\${escaped}`;
+        i++;
+        continue;
+      }
+      if (escaped === '\n') {
+        i++;
+        continue;
+      }
+      if (escaped === '\r') {
+        i++;
+        if (input[i + 1] === '\n') i++;
+        continue;
+      }
+
+      // JSON5 identity escapes discard the backslash before other characters.
+      out += escaped;
+      i++;
+    }
+    if (!closed) return input;
+  }
+
+  return changed ? out : input;
+}
+
+/** Escape literal control characters inside strings without changing their value. */
+function escapeJsonStringControls(input: string): string {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (const c of input) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') inString = false;
+      else if (c.charCodeAt(0) < 0x20) {
+        out += JSON.stringify(c).slice(1, -1);
+        continue;
+      }
+    } else if (c === '"') {
+      inString = true;
+    }
+    out += c;
+  }
+  return out;
+}
+
+/**
  * 解析订阅/配置 JSON 的**统一宽容入口**（对齐安卓 org.json 的容忍度）：
  * ① 剥 `//` 与块注释（字符串感知，见 stripJsonComments）→ 严格 `JSON.parse`（绝大多数走这条）；
  * ② 失败 → 去尾随逗号再 parse（见 stripTrailingCommas）；
@@ -171,7 +337,8 @@ export function quoteUnquotedKeys(input: string): string {
  * ④ 仍失败 → **先补键名再剥注释**（顺序很关键：实测肥猫的引号错位 `ext"` 会让
  *    `stripJsonComments` 的字符串状态错位 —— 它会把字符串里的 `https://…` 误当行注释吃掉，
  *    补键名后字符串状态恢复正确，注释剥离才不会误伤 URL）→ 去尾随逗号 → parse；
- * ⑤ 仍失败则抛**第一次**的错误（保持既有报错文案与位置，不掩盖真实语法错误）。
+ * ⑤ 单引号转换和字符串内控制字符转义后再尝试；不执行输入中的代码。
+ * ⑥ 仍失败则抛**第一次**的错误（保持既有报错文案与位置，不掩盖真实语法错误）。
  */
 export function parseJsonLenient(text: string): unknown {
   const cleaned = stripJsonComments(text);
@@ -194,7 +361,8 @@ export function parseJsonLenient(text: string): unknown {
         /* 继续尝试「先补键名再剥注释」 */
       }
     }
-    const reordered = stripTrailingCommas(stripJsonComments(quoteUnquotedKeys(text)));
+    const repaired = quoteUnquotedKeys(quoteSingleQuotedStrings(text));
+    const reordered = escapeJsonStringControls(stripTrailingCommas(quoteUnquotedKeys(stripJsonComments(repaired))));
     if (reordered !== cleaned) {
       try {
         return JSON.parse(reordered);

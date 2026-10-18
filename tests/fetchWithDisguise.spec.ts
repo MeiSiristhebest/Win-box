@@ -8,6 +8,7 @@ import {
   sniffBody,
   looksEncrypted,
   protocolAltUrl,
+  githubOriginUrl,
   siteRootOf,
   cookieFromHeaders,
   disguiseLadder,
@@ -254,4 +255,85 @@ describe('fetchWithDisguise — 阶梯行为（假 HttpClient）', () => {
     expect(r.tries[0].reason).toContain('停止后续尝试');
     expect(calls[0].totalTimeoutMs).toBeLessThanOrEqual(20);
   });
+});
+
+
+describe('known GitHub proxy origin recovery', () => {
+  const proxy = 'https://github.moeyy.xyz/https://raw.githubusercontent.com/owner/repo/main/config.json?x=1';
+  const origin = 'https://raw.githubusercontent.com/owner/repo/main/config.json?x=1';
+
+  it('extracts only explicit HTTPS GitHub origins from known proxy hosts', () => {
+    expect(githubOriginUrl(proxy)).toBe(origin);
+    for (const url of [
+      'https://unknown.example/' + origin,
+      'ftp://github.moeyy.xyz/' + origin,
+      'https://user:password@github.moeyy.xyz/' + origin,
+      'https://github.moeyy.xyz/https://user:password@raw.githubusercontent.com/owner/repo/file',
+      'https://github.moeyy.xyz/https://raw.githubusercontent.com:8443/owner/repo/file',
+      'https://github.moeyy.xyz/https://raw.githubusercontent.com.evil.example/owner/repo/file',
+      'https://github.moeyy.xyz/http://raw.githubusercontent.com/owner/repo/file',
+      'https://github.moeyy.xyz/https://127.0.0.1/config.json',
+    ]) expect(githubOriginUrl(url)).toBe('');
+  });
+
+  it('recovers the original file without forwarding proxy cookies or Referer', async () => {
+    const { http, calls } = fakeHttp([
+      { status: 403, content: Array.from(Buffer.from('<html>blocked</html>')), headers: { 'set-cookie': 'proxy_only=secret; Path=/' } },
+      {},
+    ]);
+    const result = await fetchWithDisguise(http, proxy, {
+      accept: acceptJson,
+      attempts: [{ label: 'proxy', cookie: 'explicit_proxy=secret', referer: 'https://github.moeyy.xyz/' }],
+      tryAltProtocol: false, tryGitHubOrigin: true,
+    });
+    expect(result.buf?.toString()).toBe(json);
+    expect(result.originUrl).toBe(origin);
+    expect(calls).toHaveLength(2);
+    expect(calls[1].url).toBe(origin);
+    expect(calls[1].headers?.Cookie).toBeUndefined();
+    expect(calls[1].headers?.Referer).toBe('https://raw.githubusercontent.com/');
+  });
+
+  it('does not recover the origin unless explicitly enabled', async () => {
+    const { http, calls } = fakeHttp([{ status: 403, content: [] }, {}]);
+    const result = await fetchWithDisguise(http, proxy, { accept: acceptJson, attempts: [{ label: 'proxy' }], tryAltProtocol: false });
+    expect(result.buf).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it('honors cancellation before starting an origin request', async () => {
+    const controller = new AbortController();
+    const { http, calls } = fakeHttp([{ status: 403, content: [] }]);
+    const request = http.request;
+    http.request = async req => { const result = await request(req); controller.abort(new Error('cancelled')); return result; };
+    await expect(fetchWithDisguise(http, proxy, {
+      accept: acceptJson, attempts: [{ label: 'proxy' }], tryAltProtocol: false, tryGitHubOrigin: true, signal: controller.signal,
+    })).rejects.toThrow('cancelled');
+    expect(calls).toHaveLength(1);
+  });
+
+  it('honors the total deadline before starting an origin request', async () => {
+    let calls = 0;
+    const http: HttpClient = { request: req => { calls++; return new Promise((_resolve, reject) => req.signal?.addEventListener('abort', () => reject(req.signal?.reason), { once: true })); } };
+    const result = await fetchWithDisguise(http, proxy, {
+      accept: acceptJson, attempts: [{ label: 'proxy' }], tryAltProtocol: false, tryGitHubOrigin: true, totalTimeoutMs: 10,
+    });
+    expect(result.buf).toBeNull();
+    expect(calls).toBe(1);
+  });
+});
+
+
+it('keeps the GitHub origin base for an encoded response that needs local decoding', async () => {
+  const proxy = 'https://github.moeyy.xyz/https://raw.githubusercontent.com/owner/repo/main/config.txt';
+  const encoded = Buffer.from(json).toString('base64');
+  const { http } = fakeHttp([
+    { status: 502, content: [] },
+    { content: Array.from(Buffer.from(encoded)) },
+    { content: Array.from(Buffer.from(encoded)) },
+  ]);
+  const result = await fetchWithDisguise(http, proxy, { accept: acceptJson, attempts: [{ label: 'proxy' }], tryAltProtocol: false, tryGitHubOrigin: true });
+  expect(result.buf).toBeNull();
+  expect(result.last?.toString()).toBe(encoded);
+  expect(result.originUrl).toBe('https://raw.githubusercontent.com/owner/repo/main/config.txt');
 });

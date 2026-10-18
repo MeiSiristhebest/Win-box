@@ -24,10 +24,10 @@ describe.skipIf(!runnable)('真实 JVM 私有蜘蛛类加载（设置 JAVA_HOME�
     runtime = join(dir, 'runtime'); fixture = join(dir, 'fixture');
     mkdirSync(runtime); mkdirSync(fixture);
     cp = [runtime, join(jvm, 'stubs/stubs.jar'), join(jvm, 'libs/*')].join(delimiter);
-    command(javac, ['-encoding', 'UTF-8', '-cp', cp, '-d', runtime,
+    command(javac, ['--release', '17', '-encoding', 'UTF-8', '-cp', cp, '-d', runtime,
       join(jvm, 'SpiderRunner.java'), join(jvm, 'stubs-src/android/content/Context.java'),
       join(jvm, 'stubs-src/shell-shim/com/github/catvod/spider/DexNative.java')]);
-    command(javac, ['-encoding', 'UTF-8', '-cp', cp, '-d', fixture,
+    command(javac, ['--release', '17', '-encoding', 'UTF-8', '-cp', cp, '-d', fixture,
       resolve('tests/fixtures/jvm-loader/com/github/catvod/spider/LoaderProbe.java'),
       resolve('tests/fixtures/jvm-loader/fixture/PrivateHelper.java')]);
     fullJar = join(dir, 'full.jar'); shellJar = join(dir, 'shell.jar'); helperJar = join(dir, 'helper.jar');

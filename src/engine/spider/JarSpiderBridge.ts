@@ -1,3 +1,4 @@
+import { NATIVE_RUNTIME_ARTIFACTS, NATIVE_RUNTIME_VERSION } from './nativeRuntimeAssets';
 // src/engine/spider/JarSpiderBridge.ts
 // ★ 等效 DexClassLoader 的 JVM 桥（Windows）。
 // 流程：jar(dex) URL → 下载 → 提取 classes.dex → dex2jar 转换 → JVM 子进程 SpiderRunner 反射调用。
@@ -1632,32 +1633,10 @@ export class JarSpiderBridge {
    *   但它是运行后端）、unidbg-dynarmic（2026-09-28 起为默认后端）、JNA 与 native-lib-loader（原生库加载）、
    *   slf4j（日志）。共 18 个包约 39MB。
    */
-  private static readonly NATIVE_VER = 'unidbg-0.9.9';
+  private static readonly NATIVE_VER = NATIVE_RUNTIME_VERSION;
   /** 运行期 jar 合计体积（MB，仅用于日志；18 个包实测 39MB） */
   private static readonly NATIVE_TOTAL_MB = 39;
-  private static readonly NATIVE_JARS: Array<{ file: string; path: string }> = [
-    { file: 'unidbg-android-0.9.9.jar', path: 'com/github/zhkl0228/unidbg-android/0.9.9/unidbg-android-0.9.9.jar' },
-    { file: 'unidbg-api-0.9.9.jar', path: 'com/github/zhkl0228/unidbg-api/0.9.9/unidbg-api-0.9.9.jar' },
-    { file: 'unidbg-unicorn2-0.9.9.jar', path: 'com/github/zhkl0228/unidbg-unicorn2/0.9.9/unidbg-unicorn2-0.9.9.jar' },
-    // ★ 2026-09-28 FishGuard 壳性能专项：Dynarmic 后端（A64/ARM32 的 JIT）比 Unicorn2 快 15~20 倍，
-    //   实测 FishGuard 壳 AES 单次 0.7~1.7s、NiuLai home 20~30s（Unicorn2 单次 12~30s、home 200s+）。
-    //   已定为桥的默认后端；保留 unicorn2（-Dtvbox.native.backend=unicorn2）逃生。
-    { file: 'unidbg-dynarmic-0.9.9.jar', path: 'com/github/zhkl0228/unidbg-dynarmic/0.9.9/unidbg-dynarmic-0.9.9.jar' },
-    { file: 'unicorn-1.0.15.jar', path: 'com/github/zhkl0228/unicorn/1.0.15/unicorn-1.0.15.jar' },
-    { file: 'capstone-3.1.8.jar', path: 'com/github/zhkl0228/capstone/3.1.8/capstone-3.1.8.jar' },
-    { file: 'keystone-0.9.7.jar', path: 'com/github/zhkl0228/keystone/0.9.7/keystone-0.9.7.jar' },
-    { file: 'demumble-1.0.4.jar', path: 'com/github/zhkl0228/demumble/1.0.4/demumble-1.0.4.jar' },
-    { file: 'commons-codec-1.21.0.jar', path: 'commons-codec/commons-codec/1.21.0/commons-codec-1.21.0.jar' },
-    { file: 'commons-collections4-4.5.0.jar', path: 'org/apache/commons/commons-collections4/4.5.0/commons-collections4-4.5.0.jar' },
-    { file: 'commons-io-2.21.0.jar', path: 'commons-io/commons-io/2.21.0/commons-io-2.21.0.jar' },
-    { file: 'fastjson-1.2.83.jar', path: 'com/alibaba/fastjson/1.2.83/fastjson-1.2.83.jar' },
-    { file: 'apk-parser-2.6.10.jar', path: 'net/dongliu/apk-parser/2.6.10/apk-parser-2.6.10.jar' },
-    { file: 'jna-5.19.1.jar', path: 'net/java/dev/jna/jna/5.19.1/jna-5.19.1.jar' },
-    { file: 'native-lib-loader-2.5.0.jar', path: 'org/scijava/native-lib-loader/2.5.0/native-lib-loader-2.5.0.jar' },
-    { file: 'slf4j-api-2.0.20.jar', path: 'org/slf4j/slf4j-api/2.0.20/slf4j-api-2.0.20.jar' },
-    { file: 'slf4j-simple-2.0.20.jar', path: 'org/slf4j/slf4j-simple/2.0.20/slf4j-simple-2.0.20.jar' },
-    { file: 'asm-9.11.jar', path: 'org/ow2/asm/asm/9.11/asm-9.11.jar' },
-  ];
+  private static readonly NATIVE_JARS = NATIVE_RUNTIME_ARTIFACTS;
   /** Maven 镜像（按序回退；国内优先，最后官方源） */
   private static readonly MAVEN_MIRRORS = [
     'https://maven.aliyun.com/repository/public/',

@@ -254,3 +254,20 @@ describe('fixContentPath — 相对路径按订阅目录展开（ApiConfig.java:
     expect(r.config.spider).toBe('https://a.com/b/shared/x.jar');
   });
 });
+
+
+describe('subscription response detection', () => {
+  it('recognizes a valid config after leading line or block comments', () => {
+    expect(looksLikeSubscribeJson('// collected config\n{"sites":[]}')).toBe(true);
+    expect(looksLikeSubscribeJson('/* notice */\n{"spider":"https://example.test/jar","sites":[]}')).toBe(true);
+  });
+  it('recognizes the single-quoted and bare keys accepted by the parser', () => {
+    expect(looksLikeSubscribeJson("{sites:[{key:'a',api:'https://example.test/api'}]} ")).toBe(true);
+    expect(looksLikeSubscribeJson("{'urls':[]}")).toBe(true);
+  });
+  it('rejects HTML, unrelated objects and text mentioning a config field', () => {
+    expect(looksLikeSubscribeJson('<html>{"sites":[]}</html>')).toBe(false);
+    expect(looksLikeSubscribeJson('{"description":"not a config"}')).toBe(false);
+    expect(looksLikeSubscribeJson('not a config: sites:[]')).toBe(false);
+  });
+});

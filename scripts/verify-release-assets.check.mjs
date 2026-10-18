@@ -262,3 +262,14 @@ test('verifies the checked-in aria2 executable against its x64 checksum pin', as
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.warnings, []);
 });
+
+
+test('requires the generated ARM bridge after the main build', async () => {
+  const checked = JSON.parse(await readFile(join(root, 'scripts/runtime-assets.json'), 'utf8'));
+  const bridge = checked.required.find(item => item.id === 'native-bridge');
+  assert(bridge);
+  assert.equal(bridge.phase, 'post-build-main');
+  assert(!checked.optional.some(item => item.id === 'native-bridge'));
+  const result = await inspectReleaseAssets(fixtureRoot, { manifest: manifest([bridge]), phase: 'post-build-main' });
+  assert(result.errors.includes('resources/jvm/native-bridge/native-bridge.jar (missing)'));
+});

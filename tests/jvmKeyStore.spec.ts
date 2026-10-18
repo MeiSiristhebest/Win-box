@@ -12,7 +12,7 @@ describe.skipIf(process.platform !== 'win32' || !bin || !existsSync(javac) || !e
     const dir = mkdtempSync(join(tmpdir(), 'winbox-keystore-'));
     try {
       const classes = join(dir, 'classes'); mkdirSync(classes);
-      const compile = spawnSync(javac, ['-encoding', 'UTF-8', '-d', classes,
+      const compile = spawnSync(javac, ['--release', '17', '-encoding', 'UTF-8', '-d', classes,
         resolve('resources/jvm/stubs-src/android/util/AtomicFile.java'),
         resolve('resources/jvm/stubs-src/android/security/keystore/KeyGenParameterSpec.java'),
         resolve('resources/jvm/stubs-src/android/security/keystore/DesktopKeyStoreProvider.java'),

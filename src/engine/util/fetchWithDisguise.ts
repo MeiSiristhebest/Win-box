@@ -89,6 +89,21 @@ export function protocolAltUrl(url: string): string {
   return `${m[1].toLowerCase() === 'http' ? 'https' : 'http'}://${m[2]}`;
 }
 
+/** Recover the explicit HTTPS GitHub origin embedded in a known proxy URL. */
+export function githubOriginUrl(rawUrl: string): string {
+  try {
+    const proxy = new URL(rawUrl);
+    if (!['http:', 'https:'].includes(proxy.protocol) || proxy.username || proxy.password) return '';
+    if (!['ghproxy.cn', 'github.moeyy.xyz', 'gh-proxy.com'].includes(proxy.hostname)) return '';
+    const target = new URL(proxy.pathname.slice(1) + proxy.search);
+    if (target.protocol !== 'https:' || target.username || target.password || target.port) return '';
+    if (!['raw.githubusercontent.com', 'github.com', 'gist.githubusercontent.com'].includes(target.hostname)) return '';
+    return target.href;
+  } catch {
+    return '';
+  }
+}
+
 /** 站根（Referer 用；纯函数）：`https://a.b/c/d.json?x=1` → `https://a.b/` */
 export function siteRootOf(url: string): string {
   try {
@@ -147,6 +162,8 @@ export interface DisguiseResult {
   used?: DisguiseAttempt;
   /** 换协议那次是否生效（生效时是另一个 URL） */
   altUrl?: string;
+  /** GitHub 原站响应的 URL，解码后的相对资源仍以此为基准。 */
+  originUrl?: string;
   /** 每次尝试的特征（含换协议那次），供日志/报错分档 */
   tries: TryInfo[];
   /** 本次会话捕获到的 Cookie（供后续请求复用） */
@@ -216,6 +233,8 @@ export async function fetchWithDisguise(
     buffer?: 0 | 1 | 2;
     /** 全失败后是否再试同路径另一种协议（默认 true） */
     tryAltProtocol?: boolean;
+    /** 已知 GitHub 代理失效后，尝试 URL 中明确给出的 HTTPS 原站。 */
+    tryGitHubOrigin?: boolean;
     /** 下载站点首次 403 种 Cookie：保持同一 UA，同址最多重试一次；默认关闭。 */
     retryWithCookie?: boolean;
     /** 取消正在执行的当前尝试，并阻止后续重试或协议回退。 */
@@ -233,6 +252,7 @@ export async function fetchWithDisguise(
   let capturedCookie = '';
   let last: Buffer | undefined;
   let stoppedByDeadline = false;
+  let originResponseUrl: string | undefined;
 
   const once = async (u: string, a: DisguiseAttempt, cookieRetry = false): Promise<{ buf: Buffer | null; retryCookie?: string; deadlineExceeded?: boolean }> => {
     if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
@@ -358,7 +378,26 @@ export async function fetchWithDisguise(
       }
     }
   }
-  return { buf: null, last, tries, cookie: capturedCookie || undefined };
+  if (!stoppedByDeadline && opts.tryGitHubOrigin) {
+    if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
+    const origin = githubOriginUrl(url);
+    if (origin) {
+      capturedCookie = '';
+      const originAttempts = disguiseLadder({ quick: true }).map(attempt => ({
+        ...attempt,
+        label: attempt.label + '（GitHub 原站）',
+        referer: siteRootOf(origin),
+      }));
+      for (const attempt of originAttempts) {
+        const previousBody = last;
+        const result = await once(origin, attempt);
+        if (last !== previousBody) originResponseUrl = origin;
+        if (result.buf) return { buf: result.buf, last, tries, used: attempt, originUrl: origin };
+        if (result.deadlineExceeded) break;
+      }
+    }
+  }
+  return { buf: null, last, tries, cookie: capturedCookie || undefined, ...(originResponseUrl ? { originUrl: originResponseUrl } : {}) };
 }
 
 /** 全失败时的一句人话诊断（给导入报错用；纯函数）。

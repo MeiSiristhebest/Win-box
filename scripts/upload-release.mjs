@@ -2,7 +2,7 @@
 // By default use the local HTTPS proxy commonly configured by Clash/Mihomo on Windows.
 // Override with GH_UPLOAD_PROXY, or set it to an empty string for direct access.
 // Usage: pnpm run release:upload [-- --dry-run] [--output-dir <path>]
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -43,7 +43,7 @@ if (unrecognized.length) {
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const tag = `release${pkg.version}`;
 const repo = 'MeiSiristhebest/Win-box';
-const output = resolve(root, outputDirArgument ?? 'release' + pkg.version);
+const output = resolve(root, outputDirArgument ?? pkg.build?.directories?.output ?? 'release' + pkg.version);
 const outputRelative = relative(root, output);
 if (outputRelative === '' || outputRelative === '..' || outputRelative.startsWith('..' + sep) || isAbsolute(outputRelative)) {
   console.error('Refusing to read installers outside the workspace: ' + output);
@@ -59,7 +59,7 @@ const installerNames = new Set(artifactVersions.flatMap(version => [
   `Win-Box Setup ${version}.exe`,
   `Win-Box ${version}.exe`,
 ]));
-const assets = readdirSync(output, { withFileTypes: true })
+const assets = (existsSync(output) ? readdirSync(output, { withFileTypes: true }) : [])
   .filter(e => e.isFile() && e.name.toLowerCase().endsWith('.exe') &&
     installerNames.has(e.name))
   .map(e => join(output, e.name));

@@ -179,6 +179,20 @@
       "sha256": null,
       "sha256Policy": "calculate-at-package-time",
       "purpose": "Persist SharedPreferences for Java spiders."
+    },
+    {
+      "id": "native-bridge",
+      "kind": "jar",
+      "paths": [
+        "resources/jvm/native-bridge/native-bridge.jar"
+      ],
+      "version": "project-built",
+      "source": "resources/jvm/native-bridge",
+      "architecture": "any",
+      "sha256": null,
+      "sha256Policy": "calculate-at-package-time",
+      "purpose": "Run ARM/AArch64 native spiders on Windows x64 using unidbg. Generated from project sources with Java 17 bytecode.",
+      "phase": "post-build-main"
     }
   ],
   "optional": [
@@ -206,19 +220,6 @@
       "sha256": null,
       "sha256Policy": "calculate-at-package-time",
       "purpose": "Add OkHttp 4 overloads used by some Wex spiders."
-    },
-    {
-      "id": "native-bridge",
-      "kind": "jar",
-      "paths": [
-        "resources/jvm/native-bridge/native-bridge.jar"
-      ],
-      "version": "project-built",
-      "source": "resources/jvm/native-bridge",
-      "architecture": "any",
-      "sha256": null,
-      "sha256Policy": "calculate-at-package-time",
-      "purpose": "Repair DEX constructors for some protected spiders."
     },
     {
       "id": "mpv",

@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-function dryRun(version: string, files: string[]) {
+function dryRun(version: string, files: string[], output = 'release') {
   const parent = resolve('.tmp');
   mkdirSync(parent, { recursive: true });
   const dir = mkdtempSync(join(parent, 'release-upload-test-'));
@@ -11,7 +11,7 @@ function dryRun(version: string, files: string[]) {
     mkdirSync(join(dir, 'scripts'));
     mkdirSync(join(dir, 'release'));
     copyFileSync(resolve('scripts/upload-release.mjs'), join(dir, 'scripts/upload-release.mjs'));
-    writeFileSync(join(dir, 'package.json'), JSON.stringify({ version, build: { directories: { output: 'release' } } }));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ version, build: { directories: { output } } }));
     for (const file of files) writeFileSync(join(dir, 'release', file), 'fixture');
     mkdirSync(join(dir, 'release', `Win-Box ${version}.exe`));
     const result = spawnSync(process.execPath, [join(dir, 'scripts/upload-release.mjs'), '--dry-run'], {
@@ -45,6 +45,13 @@ describe('Release installer selection', () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('Win-Box Setup 1.21.01.exe');
     expect(result.stdout.match(/Installer:/g)).toHaveLength(1);
+  });
+
+  it('reports missing configured output as a missing installer', () => {
+    const result = dryRun('1.21.9', [], 'missing-output');
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('No installers for 1.21.9 found');
+    expect(result.stderr).not.toContain('ENOENT');
   });
 
   it('fails when only stale installers or metadata exist', () => {

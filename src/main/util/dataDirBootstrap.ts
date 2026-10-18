@@ -8,14 +8,15 @@
 //
 // 决策与迁移逻辑（纯函数）在 dataDir.ts；本文件只做 electron 接线与结果上报。
 import { app } from 'electron';
+import { join, resolve } from 'node:path';
 import { ensureWritableDir, migrateLegacy, planDataDir, type MigrateOutcome } from './dataDir';
 
 export interface DataDirReport {
-  /** dev = 未启用（开发态）；activated = 已切到安装目录；fallback = 目标不可用，沿用系统默认位置 */
+  /** dev = 开发态隔离目录；activated = 已切到安装目录；fallback = 目标不可用，沿用系统默认位置 */
   mode: 'dev' | 'activated' | 'fallback';
   /** 本进程实际使用的 userData 目录 */
   target: string;
-  /** 计划目标目录（安装目录/data） */
+  /** 计划目标目录 */
   planned: string;
   /** 旧数据目录（%APPDATA%\win-box） */
   legacy: string;
@@ -25,15 +26,29 @@ export interface DataDirReport {
 
 function bootstrap(): DataDirReport {
   const legacyDefault = app.getPath('userData');
+  if (!app.isPackaged) {
+    const requestedDevDir = process.env.WINBOX_DEV_USER_DATA?.trim();
+    const devDir = requestedDevDir
+      ? resolve(requestedDevDir)
+      : join(app.getPath('appData'), 'win-box-dev');
+    if (!ensureWritableDir(devDir)) {
+      throw new Error(`开发数据目录不可写：${devDir}`);
+    }
+    try {
+      app.setPath('userData', devDir);
+    } catch (e) {
+      throw new Error(`无法设置开发数据目录 ${devDir}：${e instanceof Error ? e.message : String(e)}`);
+    }
+    return { mode: 'dev', target: devDir, planned: devDir, legacy: legacyDefault };
+  }
+
   const plan = planDataDir({
-    isPackaged: app.isPackaged,
+    isPackaged: true,
     exePath: app.getPath('exe'),
     portableExecutableDir: process.env.PORTABLE_EXECUTABLE_DIR,
     defaultUserData: legacyDefault,
   });
-  if (!plan.activate) {
-    return { mode: 'dev', target: plan.legacy, planned: plan.target, legacy: plan.legacy };
-  }
+  if (!plan.activate) return { mode: 'activated', target: plan.target, planned: plan.target, legacy: plan.legacy };
   if (!ensureWritableDir(plan.target)) {
     return {
       mode: 'fallback',

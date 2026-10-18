@@ -16,7 +16,7 @@ describe.skipIf(!ready)('真实 JVM SQLite cache', () => {
       const classes = join(dir, 'classes'); mkdirSync(classes);
       const cp = [classes, join(jvm, 'stubs/stubs.jar'), join(jvm, 'libs/*')].join(delimiter);
       const sources = readdirSync(join(jvm, 'stubs-src/android/database/sqlite')).filter(n => n.endsWith('.java')).map(n => join(jvm, 'stubs-src/android/database/sqlite', n));
-      const compile = spawnSync(javac, ['-encoding', 'UTF-8', '-cp', cp, '-d', classes,
+      const compile = spawnSync(javac, ['--release', '17', '-encoding', 'UTF-8', '-cp', cp, '-d', classes,
         ...sources, resolve('tests/fixtures/jvm-native/SQLiteProbe.java')], { encoding: 'utf8', timeout: 30000 });
       expect(compile.status, compile.stderr).toBe(0);
       const run = spawnSync(java, ['-Djava.io.tmpdir=' + dir, '-cp', cp, 'SQLiteProbe', join(dir, 'data')], { encoding: 'utf8', timeout: 30000 });

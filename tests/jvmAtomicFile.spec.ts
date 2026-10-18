@@ -14,7 +14,7 @@ describe.skipIf(!bin || !existsSync(javac) || !existsSync(java))('真实 JVM Ato
     const dir = mkdtempSync(join(tmpdir(), 'winbox-atomic-'));
     try {
       const classes = join(dir, 'classes'); mkdirSync(classes);
-      const compile = spawnSync(javac, ['-encoding', 'UTF-8', '-d', classes,
+      const compile = spawnSync(javac, ['--release', '17', '-encoding', 'UTF-8', '-d', classes,
         resolve('resources/jvm/stubs-src/android/util/AtomicFile.java'),
         resolve('resources/jvm/native-bridge/com/winbox/nativebridge/PosixFile.java'),
         resolve('tests/fixtures/jvm-native/AtomicFileProbe.java')], { encoding: 'utf8', timeout: 30000 });

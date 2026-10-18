@@ -14,7 +14,7 @@ describe.skipIf(!bin || !existsSync(javac) || !existsSync(java))('真实 JVM Uri
   it('正式 JAR 提供最后路径段 API，解码后保留加号和嵌入斜杠', () => {
     const dir = mkdtempSync(join(tmpdir(), 'winbox-uri-'));
     try {
-      const compile = spawnSync(javac, ['-encoding', 'UTF-8', '-cp', stubs, '-d', dir,
+      const compile = spawnSync(javac, ['--release', '17', '-encoding', 'UTF-8', '-cp', stubs, '-d', dir,
         resolve('tests/fixtures/jvm-native/UriProbe.java')], { encoding: 'utf8', timeout: 30000 });
       expect(compile.status, compile.stderr).toBe(0);
       const run = spawnSync(java, ['-cp', [dir, stubs].join(delimiter), 'UriProbe'], { encoding: 'utf8', timeout: 10000 });
@@ -32,9 +32,9 @@ describe.skipIf(!bin || !existsSync(javac) || !existsSync(java))('真实 JVM Uri
       mkdirSync(probe);
       const legacy = join(api, 'Uri.java');
       writeFileSync(legacy, 'package android.net; public class Uri { public static Uri parse(String s){return null;} public Uri buildUpon(){return null;} }');
-      const compileApi = spawnSync(javac, ['-d', join(dir, 'api'), legacy], { encoding: 'utf8', timeout: 30000 });
+      const compileApi = spawnSync(javac, ['--release', '17', '-d', join(dir, 'api'), legacy], { encoding: 'utf8', timeout: 30000 });
       expect(compileApi.status, compileApi.stderr).toBe(0);
-      const compileProbe = spawnSync(javac, ['-encoding', 'UTF-8', '-cp', join(dir, 'api'), '-d', probe,
+      const compileProbe = spawnSync(javac, ['--release', '17', '-encoding', 'UTF-8', '-cp', join(dir, 'api'), '-d', probe,
         resolve('tests/fixtures/jvm-native/UriLegacyProbe.java')], { encoding: 'utf8', timeout: 30000 });
       expect(compileProbe.status, compileProbe.stderr).toBe(0);
       const run = spawnSync(java, ['-cp', [probe, stubs].join(delimiter), 'UriLegacyProbe'], { encoding: 'utf8', timeout: 10000 });

@@ -33,7 +33,8 @@ if (-not $unidbg) { throw "unidbg-android jar not found under -Lib $Lib" }
 
 $cp = (@($asmCore) + $libJars) -join ";"
 
-$out = Join-Path $here "classes"
+$out = [IO.Path]::GetFullPath((Join-Path $here "classes"))
+if (-not $out.StartsWith([IO.Path]::GetFullPath($here) + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw "invalid classes output path: $out" }
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
@@ -41,7 +42,7 @@ $srcDir = Join-Path $here "com"
 $srcs = Get-ChildItem -Path $srcDir -Recurse -Filter *.java | ForEach-Object { $_.FullName }
 if ($srcs.Count -eq 0) { throw "no java sources under $srcDir" }
 
-& $javac -encoding UTF-8 -cp $cp -d $out $srcs
+& $javac --release 17 -encoding UTF-8 -cp $cp -d $out $srcs
 if ($LASTEXITCODE -ne 0) { throw "javac failed: $LASTEXITCODE" }
 
 $outJar = Join-Path $here "native-bridge.jar"
