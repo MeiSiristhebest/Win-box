@@ -1,9 +1,10 @@
 import type { RefObject } from 'react';
-import type { MpvAudioTrack } from '../../../shared/player';
+import { SPDIF_OPTIONS, spdifLabel, type MpvAudioTrack } from '../../../shared/player';
 import { usePlayerPanelPosition } from '../../lib/usePlayerPanelPosition';
 import { audioTrackLabel } from './usePlayerAudioTracks';
 
-export function PlayerAudioControl({ open, tracks, aid, isMpv, containerRef, onOpen, onClose, onSelect }: {
+export function PlayerAudioControl({ open, tracks, aid, isMpv, containerRef, onOpen, onClose, onSelect, spdif, effectiveSpdif, onSpdifChange }: {
+  spdif?: string; effectiveSpdif?: string; onSpdifChange?: (value: string) => void;
   open: boolean; tracks: MpvAudioTrack[]; aid: number | null; isMpv: boolean;
   containerRef: RefObject<HTMLDivElement | null>; onOpen(): void; onClose(): void; onSelect(track: MpvAudioTrack): void;
 }) {
@@ -19,6 +20,7 @@ export function PlayerAudioControl({ open, tracks, aid, isMpv, containerRef, onO
           <div className="vsp-row"><span className="muted">音轨（本会话内自动沿用）</span></div>
           {tracks.length ? <div className="vsp-fits">{tracks.map((track, index) => <button key={track.id} className={'vsp-btn' + (aid === track.id ? ' active' : '')} aria-pressed={aid === track.id} onClick={() => onSelect(track)}>{audioTrackLabel(track, index)}</button>)}</div>
             : <div className="vsp-row"><span className="muted">{isMpv ? '未检测到音轨' : '当前内核不支持切换音轨（可切到 MPV 内核）'}</span></div>}
+          {isMpv && onSpdifChange && <div><div className="vsp-row"><span className="muted">音频直通</span></div><div className="vsp-fits">{SPDIF_OPTIONS.map(option => <button type="button" key={option.value} className={'vsp-btn' + (spdif === option.value ? ' active' : '')} title={option.hint} aria-pressed={spdif === option.value} onClick={() => onSpdifChange(option.value)}>{option.label}</button>)}</div>{effectiveSpdif !== undefined && effectiveSpdif !== spdif && <div className="vsp-hint">内核实际生效：{spdifLabel(effectiveSpdif)}</div>}</div>}
         </div>
       </div>
     </div>

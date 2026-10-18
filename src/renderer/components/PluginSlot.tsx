@@ -1,3 +1,4 @@
+import { useAppDialog } from './AppDialog';
 // src/renderer/components/PluginSlot.tsx
 // ★ 受限 UI 槽位渲染器（渲染层）：把宿主装配好的 `UiSlotView` 组件树渲染进宿主页面的槽位。
 //
@@ -19,6 +20,7 @@ function relayImg(url: string): string {
 
 /** `link`：复用 §5.9 动作词表执行器（与按钮 / 快捷键同一套；缺 `action` → 不渲染） */
 function SlotLink({ it }: { it: UiSlotItemView }) {
+  const dialog = useAppDialog();
   if (!it.action) return null;
   return (
     <button
@@ -35,7 +37,7 @@ function SlotLink({ it }: { it: UiSlotItemView }) {
           ...(it.template != null ? { template: it.template } : {}),
           ...(it.theme != null ? { theme: it.theme } : {}),
           ...(it.confirm != null ? { confirm: it.confirm } : {}),
-        })
+        }, message => dialog.confirm(message, { title: String(it.label ?? '插件动作') }))
       }
     >
       {it.label}

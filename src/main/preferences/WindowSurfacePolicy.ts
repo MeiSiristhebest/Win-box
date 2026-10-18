@@ -1,4 +1,4 @@
-import { themes } from '../../shared/ui/themeTokens';
+import { themes, findSkin, skinBase } from '../../shared/ui/themeTokens';
 import type { UiThemeId } from '../../shared/uiPreferences';
 
 export type WindowSurfaceRole = 'application' | 'player';
@@ -10,7 +10,9 @@ export interface WindowSurfaceTarget {
 
 export function windowSurfaceColor(themeId: UiThemeId, role: WindowSurfaceRole): string | undefined {
   if (role === 'player') return undefined;
-  return themes[themeId].tokens.surface;
+  if (Object.hasOwn(themes, themeId)) return themes[themeId].tokens.surface;
+  const surface = findSkin(themeId)?.tokens?.['--surface-0'];
+  return surface && /^#[a-f0-9]{6}$/i.test(surface) ? surface : skinBase(themeId) === 'light' ? '#f5f5f7' : '#000000';
 }
 
 export function applyWindowSurfacePolicy(

@@ -1,0 +1,53 @@
+{
+  "manifestVersion": 1,
+  "id": "my-discover-source",
+  "name": "我的发现页数据源",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "asset",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "声明式发现页数据源：宿主按 URL 模板代发请求 + JSON 路径取数，不跑插件代码",
+  "permissions": [],
+  "contributes": [
+    {
+      "type": "discover.source",
+      "id": "my-discover",
+      "name": "我的榜单",
+      "sections": [
+        {
+          "id": "my-top-movie",
+          "title": "我的电影热榜",
+          "mediaType": "movie",
+          "url": "https://api.example.com/top?type={mediaType}&limit=20",
+          "headers": { "Referer": "https://api.example.com/" },
+          "list": "data.items",
+          "imageBase": "https://img.example.com/t/p/w342",
+          "map": {
+            "title": "name",
+            "year": "year",
+            "poster": "poster_path",
+            "backdrop": "wide_path",
+            "mediaType": "type",
+            "tmdbId": "tmdb_id"
+          }
+        },
+        {
+          "id": "my-top-tv",
+          "title": "我的剧集热榜",
+          "mediaType": "tv",
+          "url": "https://api.example.com/top?type={mediaType}&limit=20",
+          "list": "data.items",
+          "imageBase": "https://img.example.com/t/p/w342",
+          "map": {
+            "title": "name",
+            "year": "year",
+            "poster": "poster_path",
+            "mediaType": "type"
+          }
+        }
+      ]
+    }
+  ]
+}

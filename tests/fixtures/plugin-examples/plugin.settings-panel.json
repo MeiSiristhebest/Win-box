@@ -1,0 +1,59 @@
+{
+  "manifestVersion": 1,
+  "id": "my-settings-panel",
+  "name": "我的设置面板",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "asset",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "声明式插件设置面板：在配置页「插件」卡片内追加宿主样式的表单（4 类受限字段，值由宿主代持久化）",
+  "permissions": [],
+  "contributes": [
+    {
+      "type": "settings.panel",
+      "id": "general",
+      "label": "常规设置",
+      "title": "插件常规设置",
+      "fields": [
+        {
+          "key": "enhance",
+          "label": "启用增强",
+          "type": "toggle",
+          "default": true,
+          "hint": "关闭后使用宿主默认策略"
+        },
+        {
+          "key": "quality",
+          "label": "画质档",
+          "type": "select",
+          "default": "hd",
+          "options": [
+            { "value": "sd", "label": "标清" },
+            { "value": "hd", "label": "高清" },
+            { "value": "fhd", "label": "超清" }
+          ]
+        },
+        {
+          "key": "proxy",
+          "label": "代理地址",
+          "type": "text",
+          "default": "",
+          "maxLength": 100,
+          "placeholder": "http://127.0.0.1:7890"
+        },
+        {
+          "key": "threads",
+          "label": "并发线程数",
+          "type": "number",
+          "default": 4,
+          "min": 1,
+          "max": 16,
+          "step": 1,
+          "hint": "越大越快，越吃带宽"
+        }
+      ]
+    }
+  ]
+}

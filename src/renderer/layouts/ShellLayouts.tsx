@@ -4,6 +4,7 @@ import TitleBar from '../components/TitleBar';
 import AppAmbient from '../components/AppAmbient';
 import SearchPanel from '../components/SearchPanel';
 import SourcePicker from '../components/SourcePicker';
+import { ProfileSwitcher } from '../features/subscriptions/ProfileSwitcher';
 import type { Theme } from '../lib/themeTokens';
 import type { ShellPresentation } from '../lib/themeTokens';
 
@@ -125,6 +126,7 @@ function IntegratedNavHeader({ navItems }: ShellChromeProps) {
       ))}
       <span className="nf-spacer" />
       <SearchPanel />
+      <ProfileSwitcher />
       <SourcePicker />
       <TitleBar />
     </nav>
@@ -138,6 +140,7 @@ function BilibiliHeader({ navItems }: ShellChromeProps) {
         <span className="bb-brand" title="Win-Box"><span className="bb-brand-mark" aria-hidden="true">b</span>WIN-BOX</span>
         <SearchPanel bar />
         <span className="bb-spacer" />
+        <ProfileSwitcher />
         <SourcePicker />
         <TitleBar />
       </div>
@@ -160,6 +163,7 @@ function AppleToolbar({ pageTitle, onBack, backDisabled }: ShellChromeProps) {
       <span className="ap-toolbar-title">{pageTitle}</span>
       <span className="ap-spacer" />
       <SearchPanel />
+      <ProfileSwitcher />
       <SourcePicker />
     </header>
   );
@@ -200,6 +204,7 @@ function DoubanHeader({ navItems, appIcon, pageTitle }: ShellChromeProps) {
         <span className="db-title">{pageTitle}</span>
         <SearchPanel bar />
         <span className="db-spacer" />
+        <ProfileSwitcher />
         <SourcePicker />
         <TitleBar />
       </div>

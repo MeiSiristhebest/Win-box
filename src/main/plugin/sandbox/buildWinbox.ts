@@ -11,7 +11,7 @@
 // 事实源：docs/design/插件制作规范.md §6.1；docs/spec/R10-l4-sandbox-api/spec.md §4。
 
 import type { PermissionId } from '../../../shared/plugin';
-import type { HostCall, PluginHttpOpts, PlayerOp, SandboxCall } from './protocol';
+import type { PluginHttpOpts, PlayerOp, SandboxCall } from './protocol';
 
 /** 构建结果：`winbox` 对象 + vm 上下文全局 + 下载进度派发口 */
 export interface WinboxGlobals {

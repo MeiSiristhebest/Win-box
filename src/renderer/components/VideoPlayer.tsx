@@ -27,8 +27,8 @@ import AudioPlayer from './AudioPlayer';
 // ★ 2026-09-29 DLNA 投屏（SSDP 发现 + AVTransport 三动作；对位 CatClaw Dlna.cs）
 import { loadPlayerPrefs, savePlayerPrefs, type PlayerPrefs, type PlayerFit } from '../lib/playerPrefs';
 // ★ 2026-10-08（用户拍板「内置官方构建」）：MPV 高兼容播放内核 —— 双内核选择纯函数
-import { resolveKernel, type Kernel, type KernelPref } from '../lib/kernel';
-import { type MpvKernelState, type MpvStatus } from '../../shared/player';
+import { isEngineKernel, resolveKernel, type Kernel, type KernelPref } from '../lib/kernel';
+import { emptyMpvKernelState, normalizeSpdif, type MpvKernelState, type MpvStatus } from '../../shared/player';
 import DriveBindModal from './DriveBindModal';
 import { driveProviderFromUrl, driveProviderLabel } from '../../shared/driveProvider';
 import DanmakuOverlay from './DanmakuOverlay';
@@ -51,6 +51,14 @@ import { useSkipSegmentsController } from '../features/playback/useSkipSegmentsC
 import { usePlayerVolumeController } from '../features/playback/usePlayerVolumeController';
 import { useMpvPlaybackSession } from '../features/playback/useMpvPlaybackSession';
 import { useHtml5PlaybackSession } from '../features/playback/useHtml5PlaybackSession';
+import { usePluginKeymaps } from '../lib/pluginKeymaps';
+import { runPluginCommand } from '../lib/pluginCommands';
+import { useAppDialog } from './AppDialog';
+import { usePluginPlaybackEngines } from '../features/playback/usePluginPlaybackEngines';
+import { PlayerKernelControl } from '../features/playback/PlayerKernelControl';
+import { useMpvTechnicalState } from '../features/playback/useMpvTechnicalState';
+import { PlayerTechnicalPanels } from '../features/playback/PlayerTechnicalPanels';
+import { PlayerTechnicalBar } from '../features/playback/PlayerTechnicalBar';
 
 function fmt(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '--:--';
@@ -66,23 +74,6 @@ function fmtNet(kbs: number): string {
   if (!Number.isFinite(kbs) || kbs <= 0) return '';
   return kbs >= 1024 ? `${(kbs / 1024).toFixed(2).replace(/\.?0+$/, '')} M/S` : `${Math.round(kbs)} K/S`;
 }
-
-/**
- * ★ 2026-10-17（阶段3b，用户要求「中文快捷键一览」）：只读键位表。
- *   ★ 与实现一一对应（见本文件 onKeyDown/onKeyUp 与画面手势）：只列**现有**键位，不做重绑定。
- */
-const KEY_SHORTCUTS: ReadonlyArray<{ keys: string; desc: string }> = [
-  { keys: '空格', desc: '播放 / 暂停' },
-  { keys: '← / →', desc: '后退 / 前进 5 秒' },
-  { keys: '长按 ←', desc: '连续快退' },
-  { keys: '长按 →', desc: '临时 1.5 倍速（松开恢复）' },
-  { keys: '↑ / ↓', desc: '音量 +5% / −5%' },
-  { keys: 'Esc', desc: '退出全屏（原生全屏时）' },
-  { keys: '单击画面', desc: '播放 / 暂停' },
-  { keys: '双击画面', desc: '全屏 / 退出全屏' },
-  { keys: '长按画面', desc: '临时 1.5 倍速' },
-  { keys: '右键画面', desc: '播放器菜单（详情信息 / 复制地址）' },
-];
 
 // 可选换集导航：由外层（PlayPage）传入当前集可否切换与回调。
 // 不传 props 时（如直播/无集数源）不渲染换集按钮，保持播放器纯净。
@@ -145,6 +136,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
    *   不再喂给 `<video>`（此前图片必黑屏、音频只闻其声不见其形）。
    *   判定见 lib/mediaKind.ts（只认协议/扩展名，判不准仍回落视频，不臆造）。
    */
+  const dialog = useAppDialog();
+  const pluginKeys = usePluginKeymaps('player', command => { void runPluginCommand(command, message => dialog.confirm(message, { title: command.label })).then(result => showSkipToast(result.message)); });
   const mediaKind = detectMediaKind(url);
   const isImage = mediaKind === 'image';
   const isAudio = mediaKind === 'audio';
@@ -187,17 +180,13 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   //   HTML 控制条/弹幕仍绘制在 mpv 之上且点击归 HTML（PoC 实测；地址链路不变，mpv 直接吃既有 /play 中继）。
   const allowMpv = !!props.allowMpv && !isImage && !isAudio && mediaKind !== 'unsupported';
   const [mpvInfo, setMpvInfo] = useState<MpvStatus | null>(null);
-  /**
-   * ★ R11：插件播放内核（`engine:*`）。`engine:list` 的**插件项**（内置 2 由 HTML5 自身 / `mpvInfo` 表示）；
-   * 未就绪项也收下（列表里显示为不可选 + 原因）。
-   */
-  const [pluginEngines, setPluginEngines] = useState<PlayerEngineView[]>([]);
-  /** ★ R11：引擎启用开关（`playerSettings.engineEnabled`；默认关 → 前端据此收敛可选集合） */
-  const [engineEnabled, setEngineEnabled] = useState<Record<string, boolean>>({});
-  /** ★ R11：起播失败的引擎 id —— 剔除出可用集合，避免「失败回落 html5 → 偏好仍指向引擎」的死循环 */
-  const engineFailRef = useRef('');
   const [kernelPref, setKernelPref] = useState<KernelPref>(() => prefsRef.current!.kernel);
   const [kernel, setKernel] = useState<Kernel>('html5');
+  const [spdif, setSpdif] = useState(() => normalizeSpdif(prefsRef.current!.spdif));
+  const engines = usePluginPlaybackEngines(allowMpv, url, mpvInfo);
+  const technical = useMpvTechnicalState(url, kernel);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
   const kernelRef = useRef<Kernel>('html5');
   kernelRef.current = kernel;
   /** 防止连续点击在原生全屏退出完成前排入多个相反的内核切换。 */
@@ -274,38 +263,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     return () => { alive = false; controller.abort(); if (sessionUrl) void fetch(sessionUrl).catch(() => undefined); };
   }, [url, kernel, isAudio, isImage]);
   /** mpv 内核状态镜像（主进程 200ms 节流推送；进度条/弹幕/跳过片头片尾都读它） */
-  const mpvStateRef = useRef<MpvKernelState>({
-    time: null,
-    duration: null,
-    paused: false,
-    buffering: false,
-    eof: false,
-    loaded: false,
-    live: false,
-    playbackStarted: false,
-    error: null,
-    videoW: 0,
-    videoH: 0,
-    cacheKbps: 0,
-    cacheTime: null,
-    exited: false,
-    audioTracks: [],
-    aid: null,
-    // ★ 2026-10-17（阶段3）：能力面（与 mpvCore.initialKernelState 同口径）
-    subtitles: [],
-    sid: null,
-    video: null,
-    audio: null,
-    vCodec: '',
-    aCodec: '',
-    hwdec: '',
-    vBitrateKbps: 0,
-    aBitrateKbps: 0,
-    fps: 0,
-    dropped: 0,
-    cacheDuration: null,
-    spdif: '',
-  });
+  const mpvStateRef = useRef<MpvKernelState>(emptyMpvKernelState());
   const mpvTimeRef = useRef(0); // 弹幕时间源（number）
   const mpvSizeRef = useRef({ w: 0, h: 0 }); // 弹幕绘制区（画面物理像素）
   /** 内核切换时的续播位置（html5→mpv / mpv→html5 都不断点） */
@@ -321,6 +279,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       getVideo: () => ref.current,
       getMpvState: () => mpvStateRef.current,
       sendMpvCommand: (command) => client.mpvCmd(command),
+      sendEngineCommand: (command) => client.engineCmd(command),
       setCurrentTime: setCur,
       setVolume: setVol,
       setRate,
@@ -329,7 +288,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     [],
   );
   const {
-    isMpv: kIsMpv,
+    isManaged: kIsChild,
+    sendCommand: kCmd,
     getTime: kTime,
     getDuration: kDur,
     isPaused: kPaused,
@@ -342,22 +302,13 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   } = playbackKernel;
   const boost = usePlaybackBoost(rate, setTemporaryRate, mini, url);
 
-  // MPV 可用性 + ★ R11 插件内核列表/启用开关（仅播放器窗口需要；供切换按钮/自动选择/回落判定用）
+  // MPV 可用性（仅播放器窗口需要；一处探活供切换按钮/自动选择用）
   useEffect(() => {
     if (!allowMpv) return;
     void client
       .mpvStatus()
       .then((s) => setMpvInfo(s))
       .catch(() => setMpvInfo(null));
-    // ★ R11：插件内核（列表里的内置 2 由 HTML5 自身 / mpvInfo 表示 → 只留插件项）
-    void client
-      .engineList()
-      .then((l) => setPluginEngines(l.filter((e) => isEngineKernel(e.id))))
-      .catch(() => setPluginEngines([]));
-    void client
-      .playerPrefsGet()
-      .then((s) => setEngineEnabled(s.engineEnabled ?? {}))
-      .catch(() => undefined);
   }, [allowMpv]);
 
   // 本次生效内核（显式偏好优先；auto 按资源形态；mpv 不可用一律回落 html5）
@@ -366,9 +317,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       setKernel('html5');
       return;
     }
-    setKernel(resolveKernel(kernelPref, url, { mpvAvailable: !!mpvInfo?.available, engines: usableEngines }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowMpv, mpvInfo, kernelPref, url, usableEnginesSig]);
+    setKernel(resolveKernel(kernelPref, url, { mpvAvailable: !!mpvInfo?.available, engines: engines.usable }));
+  }, [allowMpv, mpvInfo, kernelPref, url, engines.usable]);
 
   // mpv 激活时给页面打标（global.css 据此把播放区整链透明化，让 mpv 子窗口透出）
   useEffect(() => {
@@ -380,11 +330,12 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     };
   }, [kernel]);
 
-  /** 手动切换内核（记住选择；进程型内核侧 / HTML5 侧都从当前位置续播） */
+  /** 手动切换内核（记住选择；mpv 侧/HTML5 侧都从当前位置续播） */
   const switchKernel = (k: Kernel, persist = true) => {
     if (kernelSwitchRef.current || k === kernelRef.current) return;
     kernelSwitchRef.current = k;
     boost.release();
+    if (isEngineKernel(k)) engines.retry();
     const t = kTime();
     handoffRef.current = { url, paused: kPaused() && !err && !mpvErr };
     if (!kIsChild() && ref.current) {
@@ -412,7 +363,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         savePlayerPrefs({ kernel: k });
       }
     };
-    if ((props.allowMpv && fullRef.current) || kernelRef.current === 'mpv') {
+    if ((props.allowMpv && fullRef.current) || kernelRef.current !== 'html5') {
       void client.playerSetFullscreen(false).then(finish).catch(finish);
     } else if (document.fullscreenElement) {
       void document.exitFullscreen().then(finish).catch(finish);
@@ -574,7 +525,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   const volOpen = volumeUi.isOpen(subPanel || dmPanel);
   const { visible: ui, reveal: poke, hideIfNoPanel } = usePlayerControlsVisibility({
     isPaused: kPaused,
-    panelOpen: subPanel || dmPanel || fitPanel || skipPanel || volOpen || audio.open || superResolution.open || epPanel,
+    panelOpen: subPanel || dmPanel || fitPanel || skipPanel || volOpen || audio.open || superResolution.open || epPanel || statsOpen || keysOpen,
   });
   controlsRevealRef.current = poke;
   useEffect(() => {
@@ -589,10 +540,10 @@ export default function VideoPlayer(props: VideoPlayerProps) {
 
   // ★ 2026-10-08 MPV 内核：外挂字幕改走 mpv（`sub-add` 读 SRT 文件；字号/位置换算见 shared/player.mpvFontSize/mpvSubPos）
 
-  // ★ 2026-10-08 MPV 内核 ／ ★ R11 插件内核：画面比例走进程内核属性（两内核命令词表一致）
+  // ★ 2026-10-08 MPV 内核：画面比例改走 mpv 属性（keepaspect / panscan / video-aspect-override）
   useEffect(() => {
     if (!allowMpv || kernel === 'html5') return;
-    kCmd({ type: 'fit', value: fit });
+    void kCmd({ type: 'fit', value: fit }).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowMpv, kernel, fit]);
 
@@ -605,8 +556,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     prefsRef.current = { vol, rate, subOffset, fit, kernel: kernelPrefRef.current, spdif };
     volRef.current = vol; // ★ 2026-10-08：适配层（kSetVol/键盘/老板键）读它
     if (bossActiveRef.current) return;
-    savePlayerPrefs({ vol, rate, subOffset, fit });
-  }, [vol, rate, subOffset, fit]);
+    savePlayerPrefs({ vol, rate, subOffset, fit, spdif });
+  }, [vol, rate, subOffset, fit, spdif]);
 
 
   /** 开/关跳过设置面板（与字幕/弹幕/比例面板互斥） */
@@ -685,6 +636,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
    */
   useMpvPlaybackSession({
     client,
+    spdif,
+    onState: technical.onState,
+    onEngineFailure: (failed, reason) => { engines.markFailure(failed, reason); switchKernel('html5', false); },
     onAudioTracks: audio.sync,
     allowMpv,
     kernel,
@@ -766,7 +720,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   //   用 window 级监听（video 元素不可聚焦）；输入框内不拦截；返回键(Backspace/Alt+←)仍在 App 全局处理。
   usePlayerKeyboardShortcuts({
     videoRef: ref,
-    isMpv: kIsMpv,
+    isMpv: kIsChild,
     isPaused: kPaused,
     play: kPlay,
     pause: kPause,
@@ -808,10 +762,10 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       offEnter();
       offExit();
     };
-  }, [kIsMpv, kPause, kPaused, kPlay, kSetVol]);
+  }, [kIsChild, kPause, kPaused, kPlay, kSetVol]);
 
   // ★ 2026-09-28（用户要求）：字幕/弹幕图标手势 —— 左键单击=开关，右键或长按=打开调整框（三者互斥）
-  const openPanel = (which: 'sub' | 'dm' | 'fit' | 'audio' | 'sr' | 'kernel') => {
+  const openPanel = (which: 'sub' | 'dm' | 'fit' | 'audio' | 'sr') => {
     subHover.cancel();
     dmHover.cancel();
     volumeHover.cancel();
@@ -932,8 +886,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           ★ 2026-10-08 MPV 内核：时间/画面尺寸由主进程事件驱动（mpv 子窗口在 Chromium 之下，覆盖层仍在其上） */}
       <DanmakuOverlay
         videoRef={ref}
-        // ★ R11：进程型内核（mpv / 插件引擎）都走主进程推送的时间/尺寸镜像
-        mpv={kernel !== 'html5' ? { time: mpvTimeRef, size: mpvSizeRef } : null}
+        mpv={kernel === 'mpv' ? { time: mpvTimeRef, size: mpvSizeRef } : null}
         items={dmItems}
         enabled={dmEnabled}
         fit={fit}
@@ -947,6 +900,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       {/* ★ 2026-10-08（用户要求）：跳过片头片尾的短暂提示（2.5s 淡出；不拦截鼠标） */}
       <PlayerContextMenu position={contextMenu.position} menuRef={contextMenu.menuRef} onInfo={() => { contextMenu.setInfoOpen(value => !value); contextMenu.setPosition(null); }} onCopy={() => { void contextMenu.copy(); contextMenu.setPosition(null); }} />
       {!mini && !!props.episodes?.length && <PlayerEpisodePanel episodes={props.episodes} current={props.epIndex ?? -1} open={epPanel} title={playTitle || resourceName || '选集'} onClose={() => setEpPanel(false)} onSelect={index => props.onPickEpisode?.(index)} />}
+      <PlayerTechnicalPanels audioTracks={audio.tracks} subtitles={technical.subtitles} pluginKeys={pluginKeys} active={kernel === 'mpv'} statsOpen={statsOpen} keysOpen={keysOpen} mini={mini} mpvTech={technical.tech} fmtNet={fmtNet} onStatsClose={() => setStatsOpen(false)} onKeysClose={() => setKeysOpen(false)} />
       <PlayerInfoOverlay open={contextMenu.infoOpen && !mini} title={playTitle} currentTime={cur} duration={dur} resolution={resText} formatTime={fmt} />
       {(skipToast || boost.tip > 0) && <div className="vp-toast">{skipToast || boost.tip + 'x'}</div>}
       {/* 加载 / 缓冲 */}
@@ -1020,8 +974,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           </div>
         </div>
       )}
-      {/* ★ 2026-10-08 MPV 内核 ／ ★ R11 插件内核自身的错误（启动失败/进程退出）→ 切回内置内核 */}
-      {mpvErr && kernel !== 'html5' && (
+      {/* ★ 2026-10-08 MPV 内核自身的错误（启动失败/进程退出）→ 切回内置内核 */}
+      {mpvErr && kernel === 'mpv' && (
         <div className="vp-err" onDoubleClick={(e) => e.stopPropagation()}>
           <div>{mpvErr}</div>
           <div className="row" style={{ gap: 10, justifyContent: 'center' }}>
@@ -1032,6 +986,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         </div>
       )}
       {endAll && <div className="vp-next"><span>已播完全部剧集</span></div>}
+      {kernel === 'mpv' && technical.badges.length > 0 && <div className="vp-fmtbadges">{technical.badges.map(badge => <span key={badge} className="vp-fmtbadge">{badge}</span>)}</div>}
+      {engines.notice && <output className="vp-kernel-notice">{engines.notice}</output>}
       {/* 控制条（小窗口：只保留 上/下集 + 播放暂停） */}
       <div className={`vp-controls${mini ? ' vp-mini' : ''}`} onDoubleClick={(e) => e.stopPropagation()}>
         {mini ? (
@@ -1040,40 +996,13 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           </div>
         ) : (
         <>
-        {/* ★ 2026-10-17（阶段3）：**MPV 内核专属**技术信息条（随控制条一起显隐；数据源 = MPV_STATE 推送）。
-            参照 Yaozhi「底栏信息密度」：解码方式 / 画面规格·标准 / 视频编码 / 音频编码·声道 / 码率 / 帧率·丢帧 / 网速。
-            ★ 只做「有值才显示」的项，拿不到的属性不占位（不猜、不造数据）。 */}
-        {kernel === 'mpv' && !mpvErr && mpvTech && (
-          <div className="vp-tech">
-            {mpvTech.hwdec ? (
-              <span className="vp-tech-chip">{mpvTech.hwdec === 'no' ? '软解' : `硬解·${mpvTech.hwdec}`}</span>
-            ) : null}
-            {mpvTech.w > 0 ? (
-              <span className="vp-tech-chip">{mpvTech.w}×{mpvTech.h}{mpvTech.standard !== 'SDR' ? ` · ${mpvTech.standard}` : ''}</span>
-            ) : null}
-            {mpvTech.vCodec ? <span className="vp-tech-chip">{mpvTech.vCodec.toUpperCase()}</span> : null}
-            {mpvTech.aCodec ? (
-              <span className="vp-tech-chip">{mpvTech.aCodec.toUpperCase()}{mpvTech.channels ? ` · ${mpvTech.channels}` : ''}</span>
-            ) : null}
-            {mpvTech.vKbps > 0 ? (
-              <span className="vp-tech-chip">{(mpvTech.vKbps / 1000).toFixed(2)} Mbps</span>
-            ) : mpvTech.aKbps > 0 ? (
-              <span className="vp-tech-chip">{(mpvTech.aKbps / 1000).toFixed(2)} Mbps</span>
-            ) : null}
-            {mpvTech.fps > 0 ? (
-              <span className="vp-tech-chip">
-                {mpvTech.fps.toFixed(2).replace(/\.?0+$/, '')} fps{mpvTech.dropped > 0 ? ` · 丢帧 ${mpvTech.dropped}` : ''}
-              </span>
-            ) : null}
-            {mpvTech.speedKbps > 0 ? <span className="vp-tech-chip">{fmtNet(mpvTech.speedKbps)}</span> : null}
-          </div>
-        )}
+        <PlayerTechnicalBar active={kernel === 'mpv'} error={mpvErr} mpvTech={technical.tech} fmtNet={fmtNet} />
         {!isLive && (
           <PlayerProgressBar
             currentTime={cur}
             duration={dur}
             buffered={buffered}
-            canSeek={() => !!ref.current || kIsMpv()}
+            canSeek={() => !!ref.current || kIsChild()}
             getCurrentTime={kTime}
             seekTo={kSeek}
             formatTime={fmt}
@@ -1157,6 +1086,9 @@ export default function VideoPlayer(props: VideoPlayerProps) {
           />
           <DlnaCastControl url={url} resourceName={resourceName} getCurrentTime={kTime} />
           <SubtitlePanel
+            embeddedTracks={technical.subtitles}
+            sid={technical.sid}
+            onSelectTrack={kernel !== 'html5' ? id => { void kCmd({ type: 'sid', value: id }).catch(() => undefined); } : undefined}
             enabled={subEnabled}
             open={subPanel}
             activeSubtitle={subActive}
@@ -1225,21 +1157,11 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             rate={rate}
             onRateChange={kSetRate}
           />
-          {/* ★ 2026-10-08（用户拍板「内置官方构建」）：MPV 高兼容内核一键切换（仅独立播放器窗口 + mpv 可用时显示；
-              单击切换并记住选择；4K / HEVC / MKV 等 Chromium 播不好的形态用得上）
-              ★ R11：可选内核 > 2（即另有已启用且就绪的插件内核）时**按钮变列表**（D5 口径）。 */}
-          {allowMpv && (kernelChoices.length > 2 ? (
-            <div
-              className="vp-vol"
-              onPointerEnter={() => { setSubPanel(false); setDmPanel(false); setFitPanel(false); setAudioPanel(false); setSrPanel(false); setKernelPanel(true); poke(); }}
-              onPointerLeave={() => setKernelPanel(false)}
-            >
-              <span className="vp-kernel-tag">MPV</span>
-            </button>
-          )}
+          {allowMpv && <PlayerKernelControl kernel={kernel} choices={engines.choices} containerRef={wrapRef} onSelect={switchKernel} onOpen={() => { setSubPanel(false); setDmPanel(false); setFitPanel(false); audio.setOpen(false); superResolution.setOpen(false); poke(); }} />}
+          {kernel === 'mpv' && <><button type="button" className={'vp-ctl' + (statsOpen ? ' vp-on' : '')} title="播放统计" aria-pressed={statsOpen} onClick={() => { setStatsOpen(value => !value); setKeysOpen(false); poke(); }}><span className="vp-kernel-tag">统计</span></button><button type="button" className={'vp-ctl' + (keysOpen ? ' vp-on' : '')} title="快捷键一览" aria-pressed={keysOpen} onClick={() => { setKeysOpen(value => !value); setStatsOpen(false); poke(); }}><span className="vp-kernel-tag">键位</span></button></>}
           <PlayerSuperResolutionControl active={kernel === 'mpv'} info={superResolution.info} mode={superResolution.mode} open={superResolution.open} containerRef={wrapRef} onOpen={() => openPanel('sr')} onClose={() => superResolution.setOpen(false)} onSelect={value => { superResolution.apply(value); poke(); }} />
           <div style={{ flex: 1 }} />
-          <PlayerAudioControl open={audio.open} tracks={audio.tracks} aid={audio.aid} isMpv={kernel === 'mpv'} containerRef={wrapRef} onOpen={() => openPanel('audio')} onClose={() => audio.setOpen(false)} onSelect={audio.apply} />
+          <PlayerAudioControl spdif={spdif} effectiveSpdif={technical.tech?.spdif} onSpdifChange={value => { const next = normalizeSpdif(value); setSpdif(next); savePlayerPrefs({ spdif: next }); if (kernel === 'mpv') void kCmd({ type: 'audio-spdif', value: next }).catch(() => undefined); }} open={audio.open} tracks={audio.tracks} aid={audio.aid} isMpv={kernel === 'mpv'} containerRef={wrapRef} onOpen={() => openPanel('audio')} onClose={() => audio.setOpen(false)} onSelect={audio.apply} />
           <PlayerFitControl
             fit={fit}
             open={fitPanel}

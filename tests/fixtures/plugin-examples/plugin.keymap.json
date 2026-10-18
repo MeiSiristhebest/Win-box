@@ -1,0 +1,53 @@
+{
+  "manifestVersion": 1,
+  "id": "my-keymap",
+  "name": "我的快捷键",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "asset",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "声明式追加快捷键：往主窗口 / 播放器追加宿主词表动作的快捷键（不跑插件代码）",
+  "permissions": [],
+  "contributes": [
+    {
+      "type": "keymap",
+      "id": "go-discover",
+      "label": "去发现页",
+      "title": "跳到宿主发现页",
+      "scope": ["app"],
+      "key": "Ctrl+Alt+F",
+      "action": "navigate",
+      "to": "discover"
+    },
+    {
+      "type": "keymap",
+      "id": "open-help",
+      "label": "打开帮助",
+      "scope": ["app"],
+      "key": "Ctrl+Alt+H",
+      "action": "open-url",
+      "url": "https://example.com/help"
+    },
+    {
+      "type": "keymap",
+      "id": "export-live-txt",
+      "label": "导出当前直播",
+      "scope": ["app"],
+      "key": "Ctrl+Alt+E",
+      "action": "export-live",
+      "template": "builtin:txt",
+      "confirm": true
+    },
+    {
+      "type": "keymap",
+      "id": "theme-netflix",
+      "label": "换回默认皮肤",
+      "scope": ["app", "player"],
+      "key": "Ctrl+Alt+T",
+      "action": "set-theme",
+      "theme": "netflix"
+    }
+  ]
+}

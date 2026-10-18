@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, type MutableRefObject } from 'react';
 import type { MpvAudioTrack, MpvCommand, MpvKernelState, MpvStartOptions, MpvStateEvent } from '../../../shared/player';
+import { emptyMpvKernelState, normalizeSpdif } from '../../../shared/player';
+import { isEngineKernel, type Kernel } from '../../lib/kernel';
 import type { PlaybackSourceRef } from '../../lib/playbackProgress';
 import { getPlayTime, setPlayTime } from '../../lib/uiMemory';
 import { shouldSkipIntro, shouldSkipOutro, type SkipSeg } from '../../lib/skipSegments';
@@ -11,12 +13,19 @@ export interface MpvPlaybackSessionClient {
   mpvStart(options: MpvStartOptions): Promise<{ session: number }>;
   mpvCmd(command: MpvCommand): Promise<unknown>;
   mpvStop(): Promise<unknown>;
+  engineOnState?: (callback: (state: MpvStateEvent) => void) => () => void;
+  engineStart?: (options: MpvStartOptions & { engineId: string }) => Promise<{ ok: boolean; session?: number; reason?: string }>;
+  engineCmd?: (command: MpvCommand) => Promise<unknown>;
+  engineStop?: () => Promise<unknown>;
 }
 
 export interface MpvPlaybackSessionOptions {
   client: MpvPlaybackSessionClient;
   allowMpv: boolean;
-  kernel: 'html5' | 'mpv';
+  kernel: Kernel;
+  spdif?: string;
+  onState?: (state: MpvKernelState) => void;
+  onEngineFailure?: (kernel: Kernel, reason: string) => void;
   url: string;
   progressKey: string;
   playbackSource?: PlaybackSourceRef;
@@ -95,16 +104,22 @@ export function useMpvPlaybackSession(options: MpvPlaybackSessionOptions): void 
   } = options;
   const audioTracksRef = useRef(options.onAudioTracks);
   useLayoutEffect(() => { audioTracksRef.current = options.onAudioTracks; }, [options.onAudioTracks]);
+  const latestOptions = useRef(options);
+  useLayoutEffect(() => { latestOptions.current = options; }, [options]);
   const sessionRef = useRef(0);
   const pushRef = useRef<((state: MpvStateEvent) => void) | null>(null);
 
   useEffect(() => {
     if (!allowMpv) return;
-    return client.mpvOnState((state) => pushRef.current?.(state));
-  }, [allowMpv, client]);
+    if (isEngineKernel(kernel)) return client.engineOnState?.((state) => pushRef.current?.(state));
+    if (kernel === 'mpv') return client.mpvOnState((state) => pushRef.current?.(state));
+  }, [allowMpv, client, kernel]);
 
   useEffect(() => {
-    if (!allowMpv || kernel !== 'mpv' || !url) return;
+    if (!allowMpv || kernel === 'html5' || !url) return;
+    const engine = isEngineKernel(kernel);
+    const label = engine ? '插件内核' : 'MPV 内核';
+    const command = (cmd: MpvCommand) => engine ? client.engineCmd?.(cmd) ?? Promise.resolve() : client.mpvCmd(cmd);
     let alive = true;
     const saved = resolveResumePosition({
       kernelPosition: resumeRef.current,
@@ -125,24 +140,7 @@ export function useMpvPlaybackSession(options: MpvPlaybackSessionOptions): void 
     setNetSpeed(null);
     setRelaySpeed(null);
     setBuffering(false);
-    stateRef.current = {
-      time: null,
-      duration: null,
-      paused: false,
-      buffering: false,
-      eof: false,
-      loaded: false,
-      live: liveHint,
-      playbackStarted: false,
-      error: null,
-      videoW: 0,
-      videoH: 0,
-      cacheKbps: 0,
-      cacheTime: null,
-      exited: false,
-      audioTracks: [],
-      aid: null,
-    };
+    stateRef.current = emptyMpvKernelState(liveHint);
     liveKindRef.current = liveHint;
     timeRef.current = startAt;
     sizeRef.current = { w: 0, h: 0 };
@@ -151,6 +149,7 @@ export function useMpvPlaybackSession(options: MpvPlaybackSessionOptions): void 
     let introFired = skipSegmentsRef.current.intro > 0.5 && startAt >= skipSegmentsRef.current.intro;
     let outroFired = false;
     let eofFired = false;
+    let pendingEvents: MpvStateEvent[] = [];
 
     const maybeSkip = (time: number, duration: number) => {
       if (liveKindRef.current) return;
@@ -173,11 +172,17 @@ export function useMpvPlaybackSession(options: MpvPlaybackSessionOptions): void 
 
     pushRef.current = (event) => {
       if (!alive || sessionRef.current === -1) return;
-      if (sessionRef.current === 0) sessionRef.current = event.session;
-      else if (event.session !== sessionRef.current) return;
+      if (sessionRef.current === 0) {
+        // Startup can publish state before its acknowledgement. Only the acknowledged session is authoritative.
+        if (pendingEvents.length >= 32) pendingEvents.shift();
+        pendingEvents.push(event);
+        return;
+      }
+      if (event.session !== sessionRef.current) return;
 
-      const state = event.state;
-      stateRef.current = { ...stateRef.current, ...state };
+      const state = { ...stateRef.current, ...event.state };
+      stateRef.current = state;
+      latestOptions.current.onState?.(state);
       audioTracksRef.current?.(state.audioTracks ?? [], state.aid ?? null);
       liveKindRef.current = state.live;
       setIsLive(state.live);
@@ -210,38 +215,43 @@ export function useMpvPlaybackSession(options: MpvPlaybackSessionOptions): void 
         }
       }
       if (state.exited) {
-        setMpvError('MPV 进程已退出（可切回内置内核重试）');
+        setMpvError(label + '进程已退出（可切回内置内核重试）');
         setLoading(false);
       }
     };
 
-    void client
-      .mpvStart({
-        url,
-        live: liveHint,
-        startTime: startAt,
-        volume: volumeRef.current,
-        rate,
-        fit,
-        paused: handoffRef.current?.url === url && handoffRef.current.paused,
-      })
-      .then(({ session }) => {
-        if (!alive) return;
-        sessionRef.current = session;
-        void client.mpvCmd({ type: 'volume', value: volumeRef.current }).catch(() => undefined);
-        void client.mpvCmd({ type: 'rate', value: rate }).catch(() => undefined);
-      })
-      .catch((error) => {
-        if (!alive) return;
-        setMpvError(`MPV 内核启动失败：${error instanceof Error ? error.message : String(error)}（可切回内置内核）`);
-        setLoading(false);
-      });
+    const common: MpvStartOptions = { url, live: liveHint, startTime: startAt, volume: volumeRef.current, rate, fit, paused: handoffRef.current?.url === url && handoffRef.current.paused };
+    const started = engine
+      ? client.engineStart?.({ ...common, engineId: kernel }) ?? Promise.reject(new Error('插件内核接口不可用'))
+      : client.mpvStart(common).then(result => ({ ok: true, session: result.session, reason: undefined }));
+    void started.then(result => {
+      if (!alive) return;
+      if (!result.ok || !result.session) throw new Error(result.reason || '该内核未能启动');
+      sessionRef.current = result.session;
+      const earlyEvents = pendingEvents;
+      pendingEvents = [];
+      for (const event of earlyEvents) pushRef.current?.(event);
+      void command({ type: 'volume', value: volumeRef.current }).catch(() => undefined);
+      void command({ type: 'rate', value: rate }).catch(() => undefined);
+      const spdif = normalizeSpdif(latestOptions.current.spdif);
+      if (spdif) void command({ type: 'audio-spdif', value: spdif }).catch(() => undefined);
+    }).catch(error => {
+      if (!alive) return;
+      sessionRef.current = -1;
+      pendingEvents = [];
+      const reason = error instanceof Error ? error.message : String(error);
+      setMpvError(label + '启动失败：' + reason + '（可切回内置内核）');
+      setLoading(false);
+      if (engine) latestOptions.current.onEngineFailure?.(kernel, reason);
+    });
 
     return () => {
       alive = false;
+      pendingEvents = [];
       pushRef.current = null;
       sessionRef.current = -1;
-      void client.mpvStop().catch(() => undefined);
+      if (engine) void client.engineStop?.().catch(() => undefined);
+      else void client.mpvStop().catch(() => undefined);
     };
     // Keep the existing session boundary: settings and callback changes do not restart a playing MPV process.
     // eslint-disable-next-line react-hooks/exhaustive-deps

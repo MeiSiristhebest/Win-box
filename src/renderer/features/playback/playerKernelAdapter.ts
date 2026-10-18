@@ -1,5 +1,5 @@
 import type { MpvCommand, MpvKernelState } from '../../../shared/player';
-import type { Kernel } from '../../lib/kernel';
+import { isEngineKernel, type Kernel } from '../../lib/kernel';
 
 interface HtmlVideoPort {
   currentTime: number;
@@ -16,6 +16,7 @@ export interface PlayerKernelAdapterOptions {
   getVideo: () => HtmlVideoPort | null;
   getMpvState: () => Pick<MpvKernelState, 'time' | 'duration' | 'paused'>;
   sendMpvCommand: (command: MpvCommand) => Promise<unknown>;
+  sendEngineCommand?: (command: MpvCommand) => Promise<unknown>;
   setCurrentTime: (seconds: number) => void;
   setVolume: (volume: number) => void;
   setRate: (rate: number) => void;
@@ -24,24 +25,28 @@ export interface PlayerKernelAdapterOptions {
 
 export function createPlayerKernelAdapter(options: PlayerKernelAdapterOptions) {
   const isMpv = () => options.getKernel() === 'mpv';
+  const isManaged = () => options.getKernel() !== 'html5';
+  const sendCommand = (command: MpvCommand): Promise<unknown> => isEngineKernel(options.getKernel()) ? options.sendEngineCommand?.(command) ?? Promise.resolve() : options.sendMpvCommand(command);
 
   return {
     isMpv,
-    getTime: () => (isMpv() ? options.getMpvState().time ?? 0 : options.getVideo()?.currentTime ?? 0),
+    isManaged,
+    sendCommand,
+    getTime: () => (isManaged() ? options.getMpvState().time ?? 0 : options.getVideo()?.currentTime ?? 0),
     getDuration: () => {
-      if (isMpv()) return options.getMpvState().duration ?? 0;
+      if (isManaged()) return options.getMpvState().duration ?? 0;
 
       const duration = options.getVideo()?.duration;
       return duration != null && Number.isFinite(duration) ? duration : 0;
     },
-    isPaused: () => (isMpv() ? options.getMpvState().paused : !!options.getVideo()?.paused),
+    isPaused: () => (isManaged() ? options.getMpvState().paused : !!options.getVideo()?.paused),
     play: () => {
-      if (isMpv()) void options.sendMpvCommand({ type: 'play' }).catch(() => undefined);
+      if (isManaged()) void sendCommand({ type: 'play' }).catch(() => undefined);
       else void options.getVideo()?.play().catch(() => undefined);
     },
     pause: () => {
-      if (isMpv()) {
-        void options.sendMpvCommand({ type: 'pause' }).catch(() => undefined);
+      if (isManaged()) {
+        void sendCommand({ type: 'pause' }).catch(() => undefined);
         return;
       }
 
@@ -53,7 +58,7 @@ export function createPlayerKernelAdapter(options: PlayerKernelAdapterOptions) {
     },
     seek: (seconds: number) => {
       const target = Math.max(0, seconds);
-      if (isMpv()) void options.sendMpvCommand({ type: 'seek', value: target }).catch(() => undefined);
+      if (isManaged()) void sendCommand({ type: 'seek', value: target }).catch(() => undefined);
       else {
         const video = options.getVideo();
         if (video) {
@@ -68,7 +73,7 @@ export function createPlayerKernelAdapter(options: PlayerKernelAdapterOptions) {
     },
     setVolume: (volume: number) => {
       const target = Math.max(0, Math.min(1, volume));
-      if (isMpv()) void options.sendMpvCommand({ type: 'volume', value: target }).catch(() => undefined);
+      if (isManaged()) void sendCommand({ type: 'volume', value: target }).catch(() => undefined);
       else {
         const video = options.getVideo();
         if (video) video.volume = target;
@@ -77,11 +82,11 @@ export function createPlayerKernelAdapter(options: PlayerKernelAdapterOptions) {
       options.volumeRef.current = target;
     },
     setTemporaryRate: (rate: number) => {
-      if (isMpv()) void options.sendMpvCommand({ type: 'rate', value: rate }).catch(() => undefined);
+      if (isManaged()) void sendCommand({ type: 'rate', value: rate }).catch(() => undefined);
       else { const video = options.getVideo(); if (video) video.playbackRate = rate; }
     },
     setRate: (rate: number) => {
-      if (isMpv()) void options.sendMpvCommand({ type: 'rate', value: rate }).catch(() => undefined);
+      if (isManaged()) void sendCommand({ type: 'rate', value: rate }).catch(() => undefined);
       else {
         const video = options.getVideo();
         if (video) video.playbackRate = rate;

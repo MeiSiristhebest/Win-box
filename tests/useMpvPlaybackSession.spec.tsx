@@ -2,31 +2,14 @@
 import { useRef, useState } from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { MpvKernelState, MpvStartOptions, MpvStateEvent } from '../src/shared/player';
+import { emptyMpvKernelState, type MpvKernelState, type MpvStartOptions, type MpvStateEvent } from '../src/shared/player';
 import type { PlaybackSourceRef } from '../src/renderer/lib/playbackProgress';
 import { getPlayTime } from '../src/renderer/lib/uiMemory';
 import { useMpvPlaybackSession, type MpvPlaybackSessionClient } from '../src/renderer/features/playback/useMpvPlaybackSession';
+import type { Kernel } from '../src/renderer/lib/kernel';
 
 function state(overrides: Partial<MpvKernelState> = {}): MpvKernelState {
-  return {
-    time: null,
-    duration: null,
-    paused: false,
-    buffering: false,
-    eof: false,
-    loaded: false,
-    live: false,
-    playbackStarted: false,
-    error: null,
-    videoW: 0,
-    videoH: 0,
-    cacheKbps: 0,
-    cacheTime: null,
-    exited: false,
-    audioTracks: [],
-    aid: null,
-    ...overrides,
-  };
+  return { ...emptyMpvKernelState(), ...overrides };
 }
 
 function makeClient() {
@@ -50,10 +33,16 @@ function Harness({
   client,
   startTime = 45,
   onEnded = () => undefined,
+  kernel = 'mpv',
+  spdif,
+  onEngineFailure,
 }: {
   client: MpvPlaybackSessionClient;
   startTime?: number;
   onEnded?: () => void;
+  kernel?: Kernel;
+  spdif?: string;
+  onEngineFailure?: (kernel: Kernel, reason: string) => void;
 }) {
   const stateRef = useRef(state());
   const liveKindRef = useRef(false);
@@ -80,7 +69,9 @@ function Harness({
   useMpvPlaybackSession({
     client,
     allowMpv: true,
-    kernel: 'mpv',
+    kernel,
+    spdif,
+    onEngineFailure,
     url: 'https://media.example/video.mp4',
     progressKey: 'profile-a-source-a',
     playbackSource: { profileId: 'profile-a', key: 'source-a' } satisfies PlaybackSourceRef,
@@ -186,5 +177,52 @@ describe('useMpvPlaybackSession', () => {
     });
 
     expect(onEnded).toHaveBeenCalledOnce();
+  });
+
+  it('waits for the start acknowledgement before accepting early session events', async () => {
+    const { client, listeners } = makeClient();
+    const onEnded = vi.fn();
+    let acknowledge!: (value: { session: number }) => void;
+    vi.mocked(client.mpvStart).mockImplementationOnce(() => new Promise(resolve => { acknowledge = resolve; }));
+    render(<Harness client={client} startTime={5} onEnded={onEnded} />);
+    act(() => {
+      listeners[0]?.({ session: 6, state: state({ time: 99, eof: true, playbackStarted: true }) });
+      listeners[0]?.({ session: 7, state: state({ time: 61, loaded: true }) });
+    });
+    expect(screen.getByTestId('time').textContent).toBe('5');
+    expect(onEnded).not.toHaveBeenCalled();
+    await act(async () => { acknowledge({ session: 7 }); });
+    expect(screen.getByTestId('time').textContent).toBe('61');
+    expect(onEnded).not.toHaveBeenCalled();
+  });
+
+  it('uses the selected plugin engine channel and preserves audio passthrough', async () => {
+    const { client, listeners } = makeClient();
+    const engineListeners: Array<(event: MpvStateEvent) => void> = [];
+    client.engineOnState = callback => { engineListeners.push(callback); return () => { engineListeners.splice(engineListeners.indexOf(callback), 1); }; };
+    client.engineStart = vi.fn(async () => ({ ok: true, session: 41 }));
+    client.engineCmd = vi.fn(async () => undefined);
+    client.engineStop = vi.fn(async () => undefined);
+    const view = render(<Harness client={client} kernel="engine:test" spdif="ac3,eac3,truehd" />);
+    await waitFor(() => expect(client.engineCmd).toHaveBeenCalledWith({ type: 'audio-spdif', value: 'ac3,eac3,truehd' }));
+    expect(client.engineStart).toHaveBeenCalledWith(expect.objectContaining({ engineId: 'engine:test' }));
+    expect(client.mpvStart).not.toHaveBeenCalled();
+    expect(listeners).toHaveLength(0);
+    act(() => engineListeners[0]?.({ session: 41, state: state({ time: 72, loaded: true }) }));
+    expect(screen.getByTestId('time').textContent).toBe('72');
+    view.unmount();
+    expect(client.engineStop).toHaveBeenCalledOnce();
+    expect(client.mpvStop).not.toHaveBeenCalled();
+    expect(engineListeners).toHaveLength(0);
+  });
+
+  it('reports a selected plugin engine startup failure to the fallback handler', async () => {
+    const { client } = makeClient();
+    const onEngineFailure = vi.fn();
+    client.engineStart = vi.fn(async () => ({ ok: false, reason: 'not ready' }));
+    render(<Harness client={client} kernel="engine:test" onEngineFailure={onEngineFailure} />);
+    await waitFor(() => expect(onEngineFailure).toHaveBeenCalledWith('engine:test', 'not ready'));
+    expect(screen.getByTestId('error').textContent).toContain('not ready');
+    expect(screen.getByTestId('loading').textContent).toBe('false');
   });
 });

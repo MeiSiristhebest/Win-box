@@ -1,0 +1,33 @@
+{
+  "manifestVersion": 1,
+  "id": "my-live-template",
+  "name": "我的直播输出模板",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "asset",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "声明式直播输出模板：把宿主已解析的直播频道按你的格式串导出为 TXT / M3U（不取数、不解析）",
+  "permissions": [],
+  "contributes": [
+    {
+      "type": "live.template",
+      "id": "my-live-txt",
+      "label": "标准 TXT",
+      "format": "txt",
+      "group": "{group},#genre#",
+      "line": "{name},{url}",
+      "ext": "txt"
+    },
+    {
+      "type": "live.template",
+      "id": "my-live-m3u",
+      "label": "M3U 播放列表",
+      "format": "m3u",
+      "header": ["#EXTM3U"],
+      "line": "#EXTINF:-1 tvg-id=\"{tvgId}\" tvg-name=\"{tvgName}\" tvg-logo=\"{logo}\" group-title=\"{group}\",{name}\n{url}",
+      "ext": "m3u"
+    }
+  ]
+}

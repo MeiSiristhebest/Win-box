@@ -1,3 +1,4 @@
+import { PlayerEngineSettings } from './PlayerEngineSettings';
 import { useEffect, useState } from 'react';
 import { client } from '../../api/client';
 import { DEFAULT_PLAYER_SETTINGS, type MpvStatus, type PlayerSettings } from '../../../shared/player';
@@ -131,6 +132,7 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
 
   return (
     <>
+      <PlayerEngineSettings active={active} />
       <div className="card" id="cfg-m3u8-purify" style={{ padding: 12, marginBottom: 16 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>

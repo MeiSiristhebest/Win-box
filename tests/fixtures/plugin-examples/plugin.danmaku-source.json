@@ -1,0 +1,44 @@
+{
+  "manifestVersion": 1,
+  "id": "my-danmaku-source",
+  "name": "我的弹幕源",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "asset",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "声明式弹幕源：宿主按三步模板（搜番剧 → 剧集 → 弹幕 XML）代发请求，不跑插件代码",
+  "permissions": [],
+  "contributes": [
+    {
+      "type": "danmaku.source",
+      "id": "my-danmaku",
+      "name": "我的弹幕站",
+      "search": {
+        "url": "https://dm.example.com/api/search?keyword={keyword}&season={season}",
+        "headers": { "Referer": "https://dm.example.com/" },
+        "list": "animes",
+        "map": {
+          "animeId": "animeId",
+          "title": "animeTitle",
+          "bangumiId": "bangumiId",
+          "episodeCount": "episodeCount",
+          "kind": "type"
+        }
+      },
+      "episodes": {
+        "url": "https://dm.example.com/api/bangumi/{animeId}",
+        "list": "bangumi.episodes",
+        "map": {
+          "episodeId": "episodeId",
+          "episodeTitle": "episodeTitle",
+          "episodeNumber": "episodeNumber"
+        }
+      },
+      "comments": {
+        "url": "https://dm.example.com/api/comment/{episodeId}?format=xml"
+      }
+    }
+  ]
+}

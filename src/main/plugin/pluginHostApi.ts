@@ -30,8 +30,8 @@ export interface PluginSandboxApiDeps {
   /** player.control 转发（main/index.ts 发给播放器窗口；未开返回 ok:false） */
   playerRelay: (op: PlayerOp, value?: unknown) => { ok: boolean; reason?: string };
   notify: (title: string, body: string) => void | Promise<void>;
-  clipboardRead: () => string;
-  clipboardWrite: (text: string) => void;
+  clipboardRead: () => string | Promise<string>;
+  clipboardWrite: (text: string) => void | Promise<void>;
   dialogBox: (op: 'alert' | 'confirm', message: string, title?: string) => Promise<boolean | void>;
   openExternal: (url: string) => void | Promise<void>;
 }
@@ -146,9 +146,9 @@ export function createPluginSandboxApi(deps: PluginSandboxApiDeps): PluginSandbo
       await deps.notify(title, body);
     },
 
-    clipboard(_pluginId: string, op: 'read' | 'write', text?: string): string {
+    async clipboard(_pluginId: string, op: 'read' | 'write', text?: string): Promise<string> {
       if (op === 'read') return deps.clipboardRead();
-      deps.clipboardWrite(text ?? '');
+      await deps.clipboardWrite(text ?? '');
       return '';
     },
 

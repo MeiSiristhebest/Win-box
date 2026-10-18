@@ -33,7 +33,7 @@ import { setImageFreezeActive } from './lib/freezeImages';
 import { presentationFor } from './lib/themeTokens';
 import { isNativeModalOpen } from './lib/modalScope';
 import { client } from './api/client';
-import { AppModal } from './components/AppDialog';
+import { AppModal, useAppDialog } from './components/AppDialog';
 import { APP_NAV_GROUPS, NAV, SHELL_PRESENTATIONS, ShellFrame } from './layouts/ShellLayouts';
 // ★ 2026-10-18 插件快捷键（contributes.keymap）：app 作用域分发（动作复用 ui.command 词表）
 import { usePluginKeymaps } from './lib/pluginKeymaps';
@@ -78,6 +78,7 @@ export default function App() {
 }
 
 function AppShell() {
+  const dialog = useAppDialog();
   const nav = useNavigate();
   const loc = useLocation();
   // ★ 2026-10-15：把本窗口的导航函数交给搜索入口 —— 「单页内」模式下搜索在**本窗口内**跳转（伪墓碑）。
@@ -159,7 +160,7 @@ function AppShell() {
 
   // ★ 2026-10-18 插件快捷键（`contributes.keymap`，scope=app）：命中即交给宿主受控动作词表执行
   //   （插件不跑代码；键位在校验期已保证含 Ctrl/Alt/Meta，与宿主裸键不重叠）
-  usePluginKeymaps('app', (km) => { void runPluginCommand(km); });
+  usePluginKeymaps('app', (km) => { void runPluginCommand(km, message => dialog.confirm(message, { title: km.label })); });
 
   // 初始化加载历史记录
   useEffect(() => {

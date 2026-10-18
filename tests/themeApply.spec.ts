@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { applyTheme } from '../src/renderer/lib/theme';
+import { act, cleanup, renderHook } from '@testing-library/react';
+import { applyTheme, useTheme, useSkinLayout } from '../src/renderer/lib/theme';
 import { SEMANTIC_TOKEN_NAMES, themes, type Theme } from '../src/renderer/lib/themeTokens';
 
 describe('theme application', () => {
@@ -20,6 +21,7 @@ describe('theme application', () => {
   });
 
   afterEach(() => {
+    cleanup();
     localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
     document.documentElement.removeAttribute('style');
@@ -38,5 +40,18 @@ describe('theme application', () => {
 
     expect(updateUiPreferences).toHaveBeenCalledTimes(themeIds.length);
     themeIds.forEach((themeId, index) => expect(updateUiPreferences).toHaveBeenNthCalledWith(index + 1, { themeId }));
+  });
+
+  it('publishes the selected theme and layout from the same subscribed snapshot', () => {
+    applyTheme('netflix');
+    const { result } = renderHook(() => ({ theme: useTheme(), layout: useSkinLayout() }));
+    expect(result.current.theme).toBe('netflix');
+    expect(result.current.layout.shell).toBe('topbar');
+    act(() => applyTheme('apple'));
+    expect(result.current.theme).toBe('apple');
+    expect(result.current.layout.shell).toBe('sidebar');
+    act(() => applyTheme('bilibili'));
+    expect(result.current.theme).toBe('bilibili');
+    expect(result.current.layout.shell).toBe('dualbar');
   });
 });

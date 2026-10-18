@@ -131,6 +131,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     wfSentinelRef,
     listGen,
     loadHome,
+    clearBrowse,
     loadCategory,
     chooseCategory,
     chooseFilter,
@@ -298,20 +299,24 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     filtersRef.current = filtersActive;
   }, [filtersActive]);
 
+  const configReadGen = useRef(makeStaleGuard());
+
   // 首载：优先用持久化的 ui.activeSourceKey（存在且可用则用），否则回退第一个可用源
   useEffect(() => {
     let cancelled = false;
+    const configRead = configReadGen.current.next();
+    const isCurrent = () => !cancelled && configReadGen.current.isCurrent(configRead);
     setProfileReady(false);
     client
       .cfgGet()
       .then(async (cfg) => {
-        if (cancelled) return;
+        if (!isCurrent()) return;
         let selectedProfileId = requestedProfileId || cfg.activeProfileId;
         let s = cfg.sources;
         if (requestedProfileId && requestedProfileId !== cfg.activeProfileId) {
           s = await client.cfgProfileSources(requestedProfileId);
         }
-        if (cancelled) return;
+        if (!isCurrent()) return;
         profileIdRef.current = selectedProfileId;
         setSites(s);
         setProfiles(cfg.profiles.map(({ id, name }) => ({ id, name })));
@@ -361,7 +366,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
           return;
         }
         if (s.length === 0) {
-          setErr('尚未导入站源，请先到「配置」页导入');
+          clearBrowse('尚未导入站源，请先到「配置」页导入');
           return;
         }
         const pick = pickSource();
@@ -376,7 +381,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
             // 分类列表独立拉取（恢复分类页时不被 loadHome 清空 tid）
             client
               .home(pick, selectedProfileId)
-              .then((h) => { if (!cancelled) { setClasses(h.sortClasses); setFallback(!!h.homeFallback); } })
+              .then((h) => { if (isCurrent()) { setClasses(h.sortClasses); setFallback(!!h.homeFallback); } })
               .catch(() => undefined);
             setTid(mem.tid);
             setFiltersActive(mem.filters || {});
@@ -388,7 +393,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
         }
       })
       .catch((e) => {
-        if (!cancelled) {
+        if (isCurrent()) {
           setErr((e as Error).message);
           setProfileReady(true);
         }
@@ -399,102 +404,85 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedProfileId]);
 
-  /**
-   * ★ 2026-10-15（伪墓碑）：本页是否可见 —— 隐藏的实例**不做换源/换档案这类重活**
-   *   （否则「切源」会让每个缓存页都跟着重载一遍）；等本页重新可见时再按全局状态对齐一次（见下方 align effect）。
-   *   监听器只注册一次 → 事件里必须读 ref 里的**最新可见态**，不能捕获首轮的值。
-   */
   const pageActive = usePageActive();
-  const pageActiveRef = useRef(pageActive);
-  /** 隐藏期间发生过的「档案切换」：它换的可能是**同名 key**（靠对齐当前源查不出来），必须补做一次 */
   const pendingProfileRef = useRef(false);
-  /** 首次可见 = 首次挂载，交给首载 effect；对齐只处理「从隐藏变回可见」 */
+  const preferredSourceRef = useRef('');
   const everActiveRef = useRef(false);
 
   useEffect(() => {
-    pageActiveRef.current = pageActive;
-    if (!pageActive) return;
-    if (!everActiveRef.current) { everActiveRef.current = true; return; }
-    if (requestedProfileId) return;
     let alive = true;
-    const changedWhileHidden = pendingProfileRef.current;
-    pendingProfileRef.current = false;
-    void client.cfgGet().then((cfg) => {
-      if (!alive) return;
-      const profileChanged = profileIdRef.current !== cfg.activeProfileId;
-      profileIdRef.current = cfg.activeProfileId;
-      setSites(cfg.sources);
-      setProfiles(cfg.profiles.map(({ id, name }) => ({ id, name })));
-      const current = cfg.ui.activeSourceKey;
-      if (changedWhileHidden || profileChanged) {
-        setKey(current);
-        keyRef.current = current;
-        if (current) void loadHome(current);
-      } else if (current && current !== keyRef.current) chooseSource(current);
-    }).catch(() => undefined);
-    return () => { alive = false; };
-    // Source loading uses current refs and the existing request generation guards.
+    const configGeneration = configReadGen.current;
+    const refresh = (force = false): void => {
+      if (requestedProfileId) return;
+      if (!pageActive) {
+        pendingProfileRef.current = true;
+        configReadGen.current.next();
+        return;
+      }
+      const request = configReadGen.current.next();
+      const reload = force || pendingProfileRef.current;
+      const preferred = preferredSourceRef.current;
+      void client.cfgGet().then((cfg) => {
+        if (!alive || !configReadGen.current.isCurrent(request)) return;
+        const profileChanged = profileIdRef.current !== cfg.activeProfileId;
+        profileIdRef.current = cfg.activeProfileId;
+        setSites(cfg.sources);
+        setProfiles(cfg.profiles.map(({ id, name }) => ({ id, name })));
+        setProfileReady(true);
+        const desired = preferred || cfg.ui.activeSourceKey || (!profileChanged ? keyRef.current : '');
+        const source = cfg.sources.find(item => item.key === desired && sourceAvailability(item).usable)
+          ?? cfg.sources.find(item => sourceAvailability(item).usable)
+          ?? cfg.sources[0];
+        pendingProfileRef.current = false;
+        preferredSourceRef.current = '';
+        if (!source) {
+          clearBrowse('尚未导入站源，请先到「配置」页导入');
+          return;
+        }
+        if (reload || profileChanged || source.key !== keyRef.current) {
+          setKey(source.key);
+          void loadHome(source.key);
+        }
+      }).catch((cause: unknown) => {
+        if (alive && configReadGen.current.isCurrent(request)) {
+          setProfileReady(true);
+          setErr(cause instanceof Error ? cause.message : String(cause));
+        }
+      });
+    };
+    const onProfile = (event: Event): void => {
+      if (requestedProfileId) return;
+      pendingProfileRef.current = true;
+      const detail: unknown = (event as CustomEvent).detail;
+      preferredSourceRef.current = typeof detail === 'string' ? detail : '';
+      listGen.current.next();
+      searchGen.current.next();
+      refresh(true);
+    };
+    const onSources = (): void => refresh();
+    const onSource = (event: Event): void => {
+      const key: unknown = (event as CustomEvent).detail;
+      if (pageActive && !requestedProfileId && typeof key === 'string' && key) chooseSource(key);
+    };
+    if (pageActive) {
+      if (everActiveRef.current || pendingProfileRef.current) refresh();
+      everActiveRef.current = true;
+    }
+    window.addEventListener('winbox:profile-changed', onProfile);
+    window.addEventListener('winbox:sources-changed', onSources);
+    window.addEventListener('winbox:source-changed', onSource);
+    window.addEventListener('focus', onSources);
+    return () => {
+      alive = false;
+      configGeneration.next();
+      window.removeEventListener('winbox:profile-changed', onProfile);
+      window.removeEventListener('winbox:sources-changed', onSources);
+      window.removeEventListener('winbox:source-changed', onSource);
+      window.removeEventListener('focus', onSources);
+    };
+    // Loading actions read the current source/profile refs and invalidate older requests.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageActive, requestedProfileId]);
-
-  // ★ 2026-09-24：侧栏/顶栏的 SourcePicker 换源后广播事件 → 本页同步切换（避免「源名已换、列表还是旧源」）
-  useEffect(() => {
-    const onChanged = (e: Event): void => {
-      const k = (e as CustomEvent<string>).detail;
-      if (typeof k === 'string' && k && pageActiveRef.current) chooseSource(k);
-    };
-    window.addEventListener('winbox:source-changed', onChanged);
-    return () => window.removeEventListener('winbox:source-changed', onChanged);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ★ 2026-09-30（用户要求：换源弹层「左订阅 → 右源」跨订阅点选）：
-  //   档案切换后**即使源 key 与当前同名**（两个订阅里都有同名 key）也必须按新档案重取列表与主页 ——
-  //   只靠 source-changed 会被 chooseSource 的「同名即忽略」守卫挡掉，界面会停在旧档案的数据上。
-  useEffect(() => {
-    const onProfile = (e: Event): void => {
-      if (!pageActiveRef.current) { pendingProfileRef.current = true; return; }
-      const k = (e as CustomEvent<string>).detail;
-      void client
-        .cfgGet()
-        .then((cfg) => {
-          profileIdRef.current = cfg.activeProfileId;
-          setSites(cfg.sources);
-          setProfiles(cfg.profiles.map(({ id, name }) => ({ id, name })));
-          const next = k && cfg.sources.some((x) => x.key === k) ? k : cfg.ui.activeSourceKey;
-          if (!next) return;
-          setKey(next);
-          void loadHome(next);
-        })
-        .catch(() => undefined);
-    };
-    window.addEventListener('winbox:profile-changed', onProfile);
-    return () => window.removeEventListener('winbox:profile-changed', onProfile);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ★ 2026-09-26：源列表本身变了（配置页导入/删源/切档案后广播 winbox:sources-changed）→ 重取源列表；
-  //   当前源已不存在（导入换了一批源）时自动落到第一个可用源并加载，无需重启应用。
-  //   ★ 注意：keyRef 为空时**不切源** —— 挂载瞬间还没选源，此时"自动落到第一个可用源"会把
-  //     首载 effect 即将选中的源抢走（实测会跳到列表里第一个可用源）。
-  useEffect(() => {
-    const onSources = (): void => {
-      if (!pageActiveRef.current) return; // 隐藏时不重取；重新可见时由 align effect 刷新源列表
-      void client.cfgGet().then((cfg) => {
-        const s = cfg.sources;
-        profileIdRef.current = cfg.activeProfileId;
-        setSites(s);
-        setProfiles(cfg.profiles.map(({ id, name }) => ({ id, name })));
-        if (!keyRef.current || s.some((x) => x.key === keyRef.current)) return;
-        const first = s.find((x) => sourceAvailability(x).usable) ?? s[0];
-        setErr(first ? '' : '尚未导入站源，请先到「配置」页导入');
-        if (first) chooseSource(first.key);
-      }).catch(() => undefined);
-    };
-    window.addEventListener('winbox:sources-changed', onSources);
-    return () => window.removeEventListener('winbox:sources-changed', onSources);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   /**
    * 搜索。

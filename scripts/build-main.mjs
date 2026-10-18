@@ -18,7 +18,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 const src = resolve(root, '..');
 const watch = process.argv.includes('--watch');
 const devReadyFile = resolve(src, '.tmp', 'dev-main-build-ready');
-const devReady = { main: false, worker: false };
+const devReady = { main: false, worker: false, plugin: false };
 let devBuildSerial = 0;
 
 function devReadyPlugin(target) {
@@ -31,7 +31,7 @@ function devReadyPlugin(target) {
       });
       buildContext.onEnd((result) => {
         devReady[target] = result.errors.length === 0;
-        if (devReady.main && devReady.worker) {
+        if (Object.values(devReady).every(Boolean)) {
           writeFileSync(devReadyFile, JSON.stringify({ pid: process.pid, serial: ++devBuildSerial }), 'utf8');
         }
       });
@@ -133,6 +133,7 @@ if (watch) {
   // ★ R10：L4 插件沙箱 worker 也进 watch
   const pctx = await context({
     ...workerOpts,
+    plugins: [...(workerOpts.plugins || []), devReadyPlugin('plugin')],
     entryPoints: [resolve(src, 'src/main/plugin/sandbox/pluginWorkerEntry.ts')],
     outfile: pluginWorkerFile,
   });

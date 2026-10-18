@@ -3,7 +3,7 @@ import { cuesToSrt, shiftCues } from '../../../engine/subtitle/parseSubtitle';
 import type { SubtitleSettings } from '../../../shared/subtitle';
 import { mpvSubPos } from '../../../shared/player';
 import { client } from '../../api/client';
-import type { Kernel } from '../../lib/kernel';
+import { isEngineKernel, type Kernel } from '../../lib/kernel';
 import { useSubtitleSearch } from './useSubtitleSearch';
 
 export interface SubtitleCue {
@@ -126,17 +126,18 @@ export function useSubtitlePlayback({
   }, [videoRef, enabled, cues, offset]);
 
   useEffect(() => {
-    if (!(allowMpv && kernel === 'mpv')) return;
+    if (!allowMpv || kernel === 'html5') return;
+    const send = isEngineKernel(kernel) ? client.engineCmd : client.mpvCmd;
     if (!enabled || !cues.length) {
-      void client.mpvCmd({ type: 'sub-clear' }).catch(() => undefined);
+      void send({ type: 'sub-clear' }).catch(() => undefined);
       return;
     }
 
     const srt = cuesToSrt(shiftCues(cues, offset));
     if (!srt.trim()) return;
-    void client.mpvCmd({ type: 'sub-add', text: srt, fileName: search.activeSubtitle || 'subtitle.srt' }).catch(() => undefined);
-    void client.mpvCmd({ type: 'sub-font', value: fontSize }).catch(() => undefined);
-    void client.mpvCmd({ type: 'sub-pos', value: mpvSubPos(bottom, window.innerHeight) }).catch(() => undefined);
+    void send({ type: 'sub-add', text: srt, fileName: search.activeSubtitle || 'subtitle.srt' }).catch(() => undefined);
+    void send({ type: 'sub-font', value: fontSize }).catch(() => undefined);
+    void send({ type: 'sub-pos', value: mpvSubPos(bottom, window.innerHeight) }).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowMpv, kernel, enabled, cues, offset, fontSize, bottom, search.activeSubtitle]);
 

@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { client } from '../../api/client';
 import { UI_SCALE_OPTIONS, type UiScaleState } from '../../../shared/uiScale';
-import { applyTheme, useTheme } from '../../lib/theme';
+import { applyTheme, useTheme, useSkins } from '../../lib/theme';
 import { setShowDiscover, setMotionPref, useShowDiscover, useMotionPref, setNavMode, useNavMode, setWaterfall, useWaterfall, type MotionPref } from '../../lib/uiPrefs';
-import { THEME_LABELS, type Theme } from '../../lib/themeTokens';
 import styles from './AppearanceSection.module.css';
 
 const MOTION_OPTIONS: Array<[MotionPref, string]> = [
@@ -14,6 +13,7 @@ const MOTION_OPTIONS: Array<[MotionPref, string]> = [
 
 export function AppearanceSection() {
   const theme = useTheme();
+  const skins = useSkins();
   const showDiscover = useShowDiscover();
   const motion = useMotionPref();
   const navMode = useNavMode();
@@ -30,7 +30,7 @@ export function AppearanceSection() {
       <section className={`card ${styles.card}`} id="cfg-appearance">
         <h2 className={styles.heading}>外观主题</h2>
         <div className={styles.options} role="radiogroup" aria-label="外观主题">
-          {(Object.entries(THEME_LABELS) as [Theme, string][]).map(([id, label]) => (
+          {skins.map(({ id, label }) => (
             <label key={id} className={`tag ${styles.radioOption} ${theme === id ? 'active' : ''}`}>
               <input
                 className={styles.radioInput}

@@ -1,0 +1,39 @@
+{
+  "manifestVersion": 1,
+  "id": "my-ui-slot",
+  "name": "我的界面槽位",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "asset",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "声明式受限 UI 槽位：往宿主页面（发现/点播/详情/直播/历史/收藏）的内容区顶部追加一段受限组件树",
+  "permissions": [],
+  "contributes": [
+    {
+      "type": "ui.slot",
+      "id": "discover-tip",
+      "slot": ["discover", "home"],
+      "label": "插件推荐位",
+      "title": "由插件提供的推荐位",
+      "items": [
+        { "type": "heading", "text": "本周精选" },
+        { "type": "text", "text": "由插件提供的自定义说明文字（可换行）。" },
+        { "type": "image", "url": "https://example.com/banner.png", "alt": "示例横幅" },
+        { "type": "divider" },
+        { "type": "kv", "items": [ { "label": "来源", "value": "示例插件" }, { "label": "条数", "value": "12" } ] },
+        { "type": "link", "label": "打开帮助", "action": "open-url", "url": "https://example.com/help" }
+      ]
+    },
+    {
+      "type": "ui.slot",
+      "id": "live-tip",
+      "slot": ["live"],
+      "items": [
+        { "type": "text", "text": "直播页的插件提示。" },
+        { "type": "link", "label": "去插件设置", "action": "navigate", "to": "config", "section": "plugins" }
+      ]
+    }
+  ]
+}

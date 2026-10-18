@@ -1,9 +1,13 @@
+import type { MpvSubtitleTrack } from '../../../shared/player';
 import type { Dispatch, Ref, SetStateAction } from 'react';
 import { buildSearchQuery } from '../../../engine/subtitle/normalizeQuery';
 import type { SubtitleCandidate } from '../../../shared/subtitle';
 import { subtitleSourceLabel } from '../../lib/subtitleText';
 
 interface SubtitlePanelProps {
+  embeddedTracks?: MpvSubtitleTrack[];
+  sid?: number | null;
+  onSelectTrack?: (id: number) => void;
   enabled: boolean;
   open: boolean;
   activeSubtitle: string;
@@ -31,6 +35,7 @@ interface SubtitlePanelProps {
 }
 
 export function SubtitlePanel({
+  embeddedTracks = [], sid = null, onSelectTrack,
   enabled,
   open,
   activeSubtitle,
@@ -73,6 +78,7 @@ export function SubtitlePanel({
       {open && (
         <div ref={panelRef} className="vp-panelhost" onPointerEnter={onPanelPointerEnter} onPointerLeave={onPanelPointerLeave}>
           <div className="vp-subpanel">
+            {onSelectTrack && <div><div className="vsp-row"><span className="muted">内置字幕轨</span></div><div className="vsp-fits"><button type="button" className="vsp-btn" onClick={() => onSelectTrack(-1)}>关闭内置字幕</button>{embeddedTracks.map((track, index) => <button type="button" key={track.id} className={'vsp-btn' + (sid === track.id ? ' active' : '')} aria-pressed={sid === track.id} onClick={() => onSelectTrack(track.id)}>{[track.lang, track.title, track.codec].filter(Boolean).join(' · ') || '字幕轨 ' + (index + 1)}</button>)}</div></div>}
             <div className="vsp-row">
               <button className={`tag ${enabled ? 'active' : ''}`} onClick={onToggle}>字幕：{enabled ? '开' : '关'}</button>
               <span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }}>

@@ -46,7 +46,7 @@ export function validateUiPreferencesPatch(value: unknown): UiPreferencesPatch {
     }
   }
   if (Object.hasOwn(patch, 'themeId')) {
-    if (typeof patch.themeId !== 'string' || !THEME_IDS.has(patch.themeId)) {
+    if (typeof patch.themeId !== 'string' || (!THEME_IDS.has(patch.themeId) && !/^plugin:[a-z0-9-]{3,40}$/.test(patch.themeId))) {
       throw new TypeError('无效的主题 ID');
     }
     next.themeId = patch.themeId as UiThemeId;

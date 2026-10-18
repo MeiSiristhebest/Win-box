@@ -1,0 +1,34 @@
+{
+  "manifestVersion": 1,
+  "id": "my-meta-source",
+  "name": "我的元数据源",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "asset",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "声明式元数据源：宿主按 URL 模板代发请求 + JSON 路径取数，不跑插件代码",
+  "permissions": [],
+  "contributes": [
+    {
+      "type": "meta.provider",
+      "id": "my-meta",
+      "name": "我的元数据站",
+      "imageBase": "https://img.example.com/t/p/w342",
+      "search": {
+        "url": "https://api.example.com/search?q={keyword}&year={year}",
+        "headers": { "Referer": "https://api.example.com/" },
+        "list": "data.results",
+        "map": {
+          "title": "name",
+          "year": "year",
+          "poster": "image_path",
+          "backdrop": "wide_path",
+          "overview": "overview",
+          "mediaType": "type"
+        }
+      }
+    }
+  ]
+}

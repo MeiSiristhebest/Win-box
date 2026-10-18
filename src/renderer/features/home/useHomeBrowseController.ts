@@ -52,6 +52,25 @@ export function useHomeBrowseController({
   const onBrowseStartRef = useRef(onBrowseStart);
   onBrowseStartRef.current = onBrowseStart;
 
+  function clearBrowse(message = '') {
+    if (prepRetryTimer.current) clearTimeout(prepRetryTimer.current);
+    prepRetryTimer.current = null;
+    prepRetryCount.current = 0;
+    listGen.current.next();
+    onBrowseStartRef.current();
+    keyRef.current = '';
+    setKey('');
+    setClasses([]);
+    setTid('');
+    setFiltersActive({});
+    setItems([]);
+    setPageInfo({ page: 0, pagecount: 0, total: 0 });
+    setPg(1);
+    setFallback(false);
+    setLoading(false);
+    setErr(message);
+  }
+
   async function loadHome(k: string, retry = false) {
     onBrowseStartRef.current();
     if (prepRetryTimer.current) {
@@ -221,6 +240,7 @@ export function useHomeBrowseController({
     wfNoMore,
     listGen,
     loadHome,
+    clearBrowse,
     loadCategory,
     chooseCategory,
     chooseFilter,

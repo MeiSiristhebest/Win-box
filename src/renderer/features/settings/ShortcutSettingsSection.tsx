@@ -1,3 +1,4 @@
+import { PluginKeymapList } from './PluginKeymapList';
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { client } from '../../api/client';
 import type { BossKeySettings } from '../../../shared/types';
@@ -53,6 +54,8 @@ export function ShortcutSettingsSection({ active }: { active: boolean }) {
   if (!active) return null;
 
   return (
+    <>
+      <PluginKeymapList active={active} />
     <div className="card" id="cfg-shortcut" style={{ padding: 12, marginBottom: 16 }}>
       {bossKey ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -108,5 +111,6 @@ export function ShortcutSettingsSection({ active }: { active: boolean }) {
         <div className="empty"><span className="spinner" aria-hidden="true" />加载中…</div>
       )}
     </div>
+    </>
   );
 }

@@ -87,7 +87,7 @@ export interface PluginSandboxApi {
   fs(pluginId: string, op: FsOp, rel: string, data?: string): unknown;
   log(pluginId: string, level: 'i' | 'w' | 'e', msg: string): void;
   notify(pluginId: string, title: string, body: string): Promise<void>;
-  clipboard(pluginId: string, op: 'read' | 'write', text?: string): string;
+  clipboard(pluginId: string, op: 'read' | 'write', text?: string): string | Promise<string>;
   dialog(pluginId: string, op: 'alert' | 'confirm', message: string, title?: string): Promise<boolean | void>;
   player(pluginId: string, op: PlayerOp, value?: unknown): Promise<{ ok: boolean; reason?: string }>;
   openExternal(pluginId: string, url: string): Promise<void>;

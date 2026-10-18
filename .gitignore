@@ -13,6 +13,7 @@ Thumbs.db
 .workbuddy/
 .trae/
 .tmp/
+.playwright-cli/
 # 分发版 EULA（与开源 MIT LICENSE 冲突，不入源码仓库）
 LICENSE.txt
 

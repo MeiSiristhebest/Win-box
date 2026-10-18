@@ -1,3 +1,4 @@
+import { isNativeModalOpen } from './modalScope';
 // src/renderer/lib/pluginKeymaps.ts
 // 插件快捷键的**渲染层分发器**（唯一的键盘匹配 + 触发实现处）。
 //
@@ -7,7 +8,7 @@
 //   故与宿主裸键（空格 / 方向键 / Esc / Backspace）**天然不重叠**；这里再补一条「输入框中不触发」。
 // 事实源：docs/design/插件制作规范.md §5.10；机器契约见 src/shared/plugin.ts。
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { client } from '../api/client';
 import { parseKeyCombo, type KeymapScope, type KeymapView } from '../../shared/plugin';
 
@@ -45,11 +46,10 @@ export function usePluginKeymaps(scope: KeymapScope, run: (km: KeymapView) => vo
   const [list, setList] = useState<KeymapView[]>([]);
   const listRef = useRef<KeymapView[]>([]);
   const runRef = useRef(run);
-  runRef.current = run;
+  useLayoutEffect(() => { runRef.current = run; }, [run]);
   useEffect(() => {
     let cancelled = false;
-    client
-      .pluginKeymaps()
+    Promise.resolve().then(() => client.pluginKeymaps())
       .then((all) => {
         if (cancelled) return;
         const inScope = keymapsFor(all, scope);
@@ -58,6 +58,7 @@ export function usePluginKeymaps(scope: KeymapScope, run: (km: KeymapView) => vo
       })
       .catch(() => undefined);
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isNativeModalOpen()) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
       const hit = listRef.current.find((k) => keymapEventMatches(k.key, e));

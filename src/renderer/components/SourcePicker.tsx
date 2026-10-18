@@ -16,6 +16,7 @@
 //   （IPC `cfg:moveSource` / `cfg:deleteSource` 未动）。
 import { useEffect, useRef, useState } from 'react';
 import { client } from '../api/client';
+import { notifyProfileChanged } from '../lib/configEvents';
 import { isNativeModalOpen } from '../lib/modalScope';
 import type { ProfileSitesView, SourceBean } from '../../shared/types';
 
@@ -46,6 +47,10 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   const [ownSites, setOwnSites] = useState<SourceBean[]>([]);
   const [ownKey, setOwnKey] = useState('');
   const [open, setOpen] = useState(false);
+  const [error, setError] = useState('');
+  const [switching, setSwitching] = useState(false);
+  const switchingRef = useRef(false);
+  const ownSequence = useRef(0);
   /** 换源弹层「左订阅 / 右源」数据（打开时拉取；跨订阅点选后由事件驱动刷新） */
   const [views, setViews] = useState<ProfileSitesView | null>(null);
   /** 左栏选中的订阅（默认 = 当前生效订阅） */
@@ -71,9 +76,11 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   const selfLoad = sites === undefined || current === undefined;
   const loadOwn = (): void => {
     if (!selfLoad) return;
+    const request = ++ownSequence.current;
     client
       .cfgGet()
       .then((c) => {
+        if (request !== ownSequence.current) return;
         setOwnSites(c.sources || []);
         setOwnKey(c.ui?.activeSourceKey || '');
       })
@@ -97,8 +104,9 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
         setViews(v);
         setPaneId((cur) => (alignActive || !(cur && v.profiles.some((p) => p.id === cur)) ? v.activeId : cur));
       })
-      .catch(() => {
+      .catch((cause: unknown) => {
         if (seq !== viewSeqRef.current) return;
+        setError(cause instanceof Error ? cause.message : String(cause));
         setViews(null);
       });
   };
@@ -115,6 +123,7 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
     window.addEventListener('winbox:source-changed', onChanged);
     window.addEventListener('winbox:sources-changed', onSources);
     return () => {
+      ownSequence.current += 1;
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('winbox:source-changed', onChanged);
       window.removeEventListener('winbox:sources-changed', onSources);
@@ -248,8 +257,9 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
 
   /** 左键单击开关弹层（原「长按 ≥500ms / 右键」已移除） */
   const toggleOpen = (): void => {
-    if (disabled || !list.length) return;
+    if (disabled) return;
     cancelLeave();
+    setError('');
     setOpen((v) => !v);
   };
 
@@ -262,8 +272,10 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
     }
     try {
       await client.cfgSetActiveSource(k);
-    } catch {
-      /* 失败静默：刷新时会回退到原源 */
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      setOpen(true);
+      return;
     }
     setOwnKey(k);
     window.dispatchEvent(new CustomEvent('winbox:source-changed', { detail: k }));
@@ -277,18 +289,21 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
    *   该订阅无可恢复内容（早期迁移档案 json 为空）→ 仅浏览，不改生效档案。
    */
   const selectPane = (id: string): void => {
-    if (!id) return;
-    setPaneId(id);
-    if (id === (views?.activeId || '')) return;
+    if (!id || switchingRef.current || id === views?.activeId) return;
+    switchingRef.current = true;
+    setSwitching(true);
+    setError('');
     void (async () => {
       try {
         await client.cfgActivateProfile(id);
-      } catch {
-        return;
+        setPaneId(id);
+        notifyProfileChanged();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        switchingRef.current = false;
+        setSwitching(false);
       }
-      // 生效档案已切换：detail 传 '' → 点播页回落到新档案的 activeSourceKey
-      window.dispatchEvent(new CustomEvent('winbox:profile-changed', { detail: '' }));
-      window.dispatchEvent(new CustomEvent('winbox:sources-changed'));
     })();
   };
 
@@ -297,6 +312,8 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
    * 否则先切换档案再选中源（一步完成），并广播两类变更事件让各页同步。
    */
   const pickSource = async (k: string): Promise<void> => {
+    if (switchingRef.current) return;
+    setError('');
     const targetProfile = pane && multi ? pane.id : '';
     const activeId = views?.activeId || '';
     if (!targetProfile || targetProfile === activeId) {
@@ -306,14 +323,15 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
     setOpen(false);
     try {
       await client.cfgSwitchProfileSource(targetProfile, k);
-    } catch {
-      return; // 失败静默：下次打开弹层仍是原状态
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      setOpen(true);
+      return;
     }
     setOwnKey(k);
     // 档案已切换：先广播 profile-changed（点播页强制按新档案重载目标源，含「两订阅同名 key」的情况），
     // 再广播 sources-changed 让各列表（换源入口/历史页）重取
-    window.dispatchEvent(new CustomEvent('winbox:profile-changed', { detail: k }));
-    window.dispatchEvent(new CustomEvent('winbox:sources-changed'));
+    notifyProfileChanged(k);
   };
 
   const isSidebar = variant === 'sidebar';
@@ -343,6 +361,7 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
           className={`srcpick-pop${pane && multi ? ' srcpick-pop-wide' : ''}${popRight ? ' srcpick-pop-right' : ''}${closing ? ' srcpick-closing' : ''}`}
           aria-label="订阅和来源"
         >
+          {error && <div className="err" role="alert">{error}</div>}
           <div className="srcpick-pop-tip">
             {views
               ? `点击源名切换 · 共 ${filtered.length} 个${multi ? ` · ${views.profiles.length} 份订阅` : ''}`
@@ -370,6 +389,7 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
                     aria-pressed={p.id === pane.id}
                     className={`srcpick-item ui-action srcpick-sub${p.id === pane.id ? ' active' : ''}${p.id === views!.activeId ? ' cur' : ''}`}
                     title={`${p.name}（${p.sites.length} 个源）${p.id === views!.activeId ? ' · 当前订阅' : ''}`}
+                    disabled={switching}
                     onClick={() => selectPane(p.id)}
                   >
                     {p.name}
@@ -389,6 +409,7 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
                   className={`srcpick-item ui-action${paneIsActive && s.key === cur ? ' active' : ''}`}
                   ref={paneIsActive && s.key === cur ? activeRef : undefined}
                   title={`${s.name || s.key}（${s.key}）`}
+                  disabled={switching}
                   onClick={() => void pickSource(s.key)}
                 >
                   <span className="srcpick-sname">{s.name || s.key}</span>

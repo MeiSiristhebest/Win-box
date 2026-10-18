@@ -42,8 +42,11 @@ export interface CommandOutcome {
  * 执行一条插件命令。
  * ★ 全部走**宿主既有能力**（不新造网络 / 不注入组件）；目标不存在时**明确失败**，不静默"成功"。
  */
-export async function runPluginCommand(cmd: PluginActionSpec): Promise<CommandOutcome> {
-  if (cmd.confirm && !window.confirm(`${cmd.title || cmd.label}？`)) return { ok: true, message: '已取消' };
+export async function runPluginCommand(cmd: PluginActionSpec, confirm?: (message: string) => Promise<boolean>): Promise<CommandOutcome> {
+  if (cmd.confirm) {
+    if (!confirm) return { ok: false, message: '该命令需要界面确认' };
+    if (!(await confirm((cmd.title || cmd.label) + '？'))) return { ok: true, message: '已取消' };
+  }
   switch (cmd.action) {
     case 'open-url': {
       const url = String(cmd.url || '').trim();

@@ -536,9 +536,9 @@ describe('plugin 契约 — 示例清单校验', () => {
       .toEqual(['efficiency', 'quality', 'general', 'high']);
   });
 
-  it('★ 2026-10-18：skill 里的皮肤骨架必须通过校验（词表 / 布局枚举 / base 全对口径）', () => {
+  it('★ 2026-10-18：固定的皮肤样例必须通过校验（词表 / 布局枚举 / base 全对口径）', () => {
     const p = fileURLToPath(
-      new URL('../../.trae/skills/winbox-plugin/assets/plugin.theme.json', import.meta.url),
+      new URL('./fixtures/plugin-examples/plugin.theme.json', import.meta.url),
     );
     const m = JSON.parse(readFileSync(p, 'utf-8')) as PluginManifest;
     expect(validatePluginManifest(m)).toEqual({ ok: true });
@@ -551,9 +551,9 @@ describe('plugin 契约 — 示例清单校验', () => {
     expect(t!.layout?.shell).toBe('topbar');
   });
 
-  it('★ 2026-10-18：skill 归档的示例皮肤包（.winbox）必须是「可安装的发布产物」', async () => {
+  it('★ 2026-10-18：固定的示例皮肤包（.winbox）必须是「可安装的发布产物」', async () => {
     const p = fileURLToPath(
-      new URL('../../.trae/skills/winbox-plugin/assets/theme-sakura.winbox', import.meta.url),
+      new URL('./fixtures/plugin-examples/theme-sakura.winbox', import.meta.url),
     );
     const entries = await extractArchiveEntries(readFileSync(p));
     const names = entries.map((e) => e.name);
@@ -568,8 +568,8 @@ describe('plugin 契约 — 示例清单校验', () => {
     expect(validateThemeContribute(themeContributeOf(m.contributes))).toEqual({ ok: true });
   });
 
-  it('★ 2026-10-18：skill 的 assets/*.json 骨架全部必须过宿主校验（防骨架写错）', () => {
-    const dir = fileURLToPath(new URL('../../.trae/skills/winbox-plugin/assets', import.meta.url));
+  it('★ 2026-10-18：固定的 JSON 样例全部必须过宿主校验（防骨架写错）', () => {
+    const dir = fileURLToPath(new URL('./fixtures/plugin-examples', import.meta.url));
     const files = readdirSync(dir).filter((n) => n.endsWith('.json'));
     expect(files.length).toBeGreaterThanOrEqual(4);
     for (const n of files) {
@@ -915,7 +915,7 @@ describe('plugin 契约 — settings.panel（L3 插件设置面板；受限词�
 
   it('select 的 options 边界 → SETTINGS_PANEL_INVALID（非数组/空/超 50/重复 value/value 非法/label 非法/未知字段）', () => {
     const withOpts = (options: unknown) => panel({ fields: [{ key: 's', label: 'A', type: 'select', default: 'a', options }] });
-    for (const options of ['a', [], new Array(51).fill({ value: 'a' })]) {
+    for (const options of ['a', [], Array.from({ length: 51 }, () => ({ value: 'a' }))]) {
       expect(validateSettingsPanelContribute(withOpts(options))).toMatchObject({ ok: false, reasonCode: 'SETTINGS_PANEL_INVALID' });
     }
     expect(validateSettingsPanelContribute(withOpts([{ value: 'a' }, { value: 'a' }]))).toMatchObject({ ok: false, reasonCode: 'SETTINGS_PANEL_INVALID' });
@@ -1044,7 +1044,7 @@ describe('plugin 契约 — ui.slot（L3 受限 UI 槽位；6 类受限组件，
 
   it('kv 行边界：非数组 / 空 / 超 12 / label·value 边界 / 行内未知字段 → UI_SLOT_INVALID', () => {
     const kv = (items: unknown) => slot({ items: [{ type: 'kv', items }] });
-    for (const items of ['a', [], new Array(13).fill({ label: 'a', value: 'b' })]) {
+    for (const items of ['a', [], Array.from({ length: 13 }, () => ({ label: 'a', value: 'b' }))]) {
       expect(validateUiSlotContribute(kv(items))).toMatchObject({ ok: false, reasonCode: 'UI_SLOT_INVALID' });
     }
     expect(validateUiSlotContribute(kv([{ label: '  ', value: 'b' }]))).toMatchObject({ ok: false, reasonCode: 'UI_SLOT_INVALID' });
@@ -1199,9 +1199,9 @@ describe('plugin 契约 — player.engine（L2 描述符：宿主托管进程，
     expect(playerEngineContributeOf(base().contributes)).toBeUndefined();
   });
 
-  it('★ skill 的 player-engine 骨架必须通过校验（skill ↔ 宿主契约一致）', () => {
+  it('★ 固定的 player-engine 样例必须通过校验（skill ↔ 宿主契约一致）', () => {
     const p = fileURLToPath(
-      new URL('../../.trae/skills/winbox-plugin/assets/plugin.player-engine.json', import.meta.url),
+      new URL('./fixtures/plugin-examples/plugin.player-engine.json', import.meta.url),
     );
     const m = JSON.parse(readFileSync(p, 'utf-8')) as PluginManifest;
     expect(validatePluginManifest(m)).toEqual({ ok: true });

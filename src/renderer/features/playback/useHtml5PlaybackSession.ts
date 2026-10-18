@@ -233,6 +233,10 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
             return;
           }
           const hls = new Hls({
+          maxBufferLength: 20,
+          maxMaxBufferLength: 60,
+          maxBufferSize: 30 * 1000 * 1000,
+          backBufferLength: 30,
             enableWorker: true,
             manifestLoadingTimeOut: 180000,
             levelLoadingTimeOut: 180000,

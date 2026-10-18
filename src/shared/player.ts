@@ -423,3 +423,8 @@ export function mpvSubPos(bottomPx: number, winHeight: number): number {
   const pct = 100 - (Math.max(0, Number.isFinite(b) ? b : 0) / h) * 100;
   return Math.max(0, Math.min(100, Math.round(pct)));
 }
+
+/** Shared initial state for built-in and plugin-managed playback sessions. */
+export function emptyMpvKernelState(live = false): MpvKernelState {
+  return { time: null, duration: null, paused: false, buffering: false, eof: false, loaded: false, live, playbackStarted: false, error: null, videoW: 0, videoH: 0, cacheKbps: 0, cacheTime: null, exited: false, audioTracks: [], aid: null, subtitles: [], sid: null, video: null, audio: null, vCodec: '', aCodec: '', hwdec: '', vBitrateKbps: 0, aBitrateKbps: 0, fps: 0, dropped: 0, cacheDuration: null, spdif: '' };
+}

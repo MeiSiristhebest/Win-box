@@ -55,7 +55,7 @@ export class PluginSandboxManager {
         this.opts.logger.e(`插件沙箱启动异常（${e.id}）`, err);
       }
     }
-    for (const [id, box] of [...this.boxes]) {
+    for (const [id, box] of this.boxes) {
       if (want.has(id)) continue;
       box.dispose();
       this.boxes.delete(id);

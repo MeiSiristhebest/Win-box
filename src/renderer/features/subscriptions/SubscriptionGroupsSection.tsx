@@ -58,7 +58,7 @@ export function SubscriptionGroupsSection({
                         {member.error ? <span className="muted"> — {member.error}</span> : null}
                         {profile ? <span className="muted"> — {profile.sourceCount} 个源</span> : null}
                       </span>
-                      {profile && profile.id !== activeProfileId && <button className="linkbtn" onClick={() => onActivate(profile.id)}>切换到此子仓</button>}
+                      {profile && profile.id !== activeProfileId && <button className="linkbtn" disabled={busy || importRunning} onClick={() => onActivate(profile.id)}>切换到此子仓</button>}
                       {member.status === 'pending-removal' && <button className="linkbtn danger" onClick={() => onRemoveMember(group.id, member.id, member.name)}>从组中移除</button>}
                     </div>
                     {refreshDiff ? (

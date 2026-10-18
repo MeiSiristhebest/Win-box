@@ -116,7 +116,7 @@ export class PluginSandbox implements SandboxLike {
       });
       w.on('error', (e) => {
         this.opts.logger.e(`插件沙箱进程错误（${this.opts.pluginId}）`, e);
-        finish(false, `沙箱进程错误：${e.message}`);
+        finish(false, `沙箱进程错误：${e instanceof Error ? e.message : String(e)}`);
         if (this.worker === w) this.worker = null;
       });
       w.on('exit', (c) => {
@@ -176,7 +176,7 @@ export class PluginSandbox implements SandboxLike {
           reply(true);
           return;
         case 'clipboard':
-          reply(true, api.clipboard(pid, msg.op, msg.text));
+          reply(true, await api.clipboard(pid, msg.op, msg.text));
           return;
         case 'dialog':
           reply(true, await api.dialog(pid, msg.op, msg.message, msg.title));

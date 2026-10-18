@@ -2048,7 +2048,7 @@ export function validatePluginManifest(m: unknown): ValidateResult {
     }
   }
 
-  if (p.updateCheckUrl != null && p.updateCheckUrl !== '' && !/^https:\/\//.test(p.updateCheckUrl)) {
+  if (p.updateCheckUrl != null && p.updateCheckUrl !== '' && (typeof p.updateCheckUrl !== 'string' || !p.updateCheckUrl.startsWith('https://'))) {
     return { ok: false, reasonCode: 'BAD_UPDATE_URL', reason: 'updateCheckUrl 必须是 https://' };
   }
   return { ok: true };

@@ -336,7 +336,9 @@ export class JsWorkerPool {
   private reclaimIdle(): void {
     if (this.disposed) return;
     const now = Date.now();
-    for (const w of [...this.workers]) {
+    // onDown removes entries from the live array; retain a snapshot for this pass.
+    const candidates = this.workers.slice();
+    for (const w of candidates) {
       if (this.workers.filter((x) => !x.down).length <= 1) break; // 至少留 1 台热 worker
       if (w.down || w.pending.size > 0 || w.queue.length > 0 || now - w.lastUsed <= IDLE_RECLAIM_MS) continue;
       this.host.logger.i(`js-worker 池：空闲回收 worker（>${Math.round(IDLE_RECLAIM_MS / 60_000)} 分钟无任务），下次调用自动重建`);

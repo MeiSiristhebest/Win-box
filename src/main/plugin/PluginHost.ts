@@ -1,3 +1,4 @@
+import { registerPluginSkins } from '../../shared/ui/themeTokens';
 // src/main/plugin/PluginHost.ts
 // 插件宿主（主进程侧聚合层）：登记 / 物化 / 安装 / 卸载 / 启停 + **超分着色器链解析**。
 //
@@ -23,7 +24,7 @@ import {
   validateUiCommandContribute, validateUiSlotContribute,
   settingsEffectiveValue, settingsValueError,
   type KeymapContribute, type KeymapView,
-  type LiveTemplateContribute, type PlayerEngineContribute, type PlayerEngineView, type PluginInspectResult, type PluginKind, type PluginView, type SettingsPanelContribute, type SettingsPanelView, type SettingsValue,
+  type LiveTemplateContribute, type PlayerEngineContribute, type PlayerEngineView, type PluginInspectResult, type PluginView, type SettingsPanelContribute, type SettingsPanelView, type SettingsValue,
   type SrState, type ThemeSkinView, type UiCommandContribute, type UiCommandView, type UiSlotContribute, type UiSlotView,
 } from '../../shared/plugin';
 import { playerEngineFromContribute } from './pluginPlayerEngine';
@@ -150,6 +151,7 @@ export class PluginHost {
     await this.ensureLoaded();
     // ★ R10：启停直接影响 L4 沙箱生命周期 → 立刻与登记表对齐（启 → 起沙箱 / 停 → 释放）
     await this.syncSandboxes();
+    await this.themeSkins();
     return { ok: true, items: await this.list() };
   }
 
@@ -204,6 +206,7 @@ export class PluginHost {
         layout: c.layout ?? {},
       });
     }
+    registerPluginSkins(out);
     return out;
   }
 
@@ -411,7 +414,7 @@ export class PluginHost {
     const err = settingsValueError(field, a.value);
     if (err) return { ok: false, reason: `${field.label}：${err}` };
     const all = this.settings.getObject<Record<string, Record<string, unknown>>>(e.id, {});
-    const bucket = { ...(all[panelId] ?? {}), [key]: a.value as SettingsValue };
+    const bucket = { ...all[panelId], [key]: a.value as SettingsValue };
     this.settings.setObject(e.id, { ...all, [panelId]: bucket });
     this.settings.flush();
     return { ok: true, panels: await this.settingsPanels() };
@@ -555,7 +558,7 @@ export class PluginHost {
         const err = settingsValueError(found.field, value);
         if (err) throw new Error(`${found.field.label}：${err}`);
         const all = this.settings.getObject<Record<string, Record<string, unknown>>>(id, {});
-        const bucket = { ...(all[found.panelId] ?? {}), [key]: value as SettingsValue };
+        const bucket = { ...all[found.panelId], [key]: value as SettingsValue };
         this.settings.setObject(id, { ...all, [found.panelId]: bucket });
         this.settings.flush();
       },
@@ -641,6 +644,7 @@ export class PluginHost {
   private async refresh(): Promise<void> {
     this.entries = await this.registry.list();
     this.loaded = true;
+    await this.themeSkins();
     // ★ R10：登记表每次刷新后与 L4 沙箱**幂等对齐**（该跑的在跑、不该跑的释放）
     await this.syncSandboxes();
   }

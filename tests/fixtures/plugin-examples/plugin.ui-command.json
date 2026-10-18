@@ -1,0 +1,58 @@
+{
+  "manifestVersion": 1,
+  "id": "my-ui-command",
+  "name": "我的命令按钮",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "asset",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "声明式受限动作按钮：往配置页 / 播放器追加宿主样式的按钮（动作走宿主预定义词表，不跑插件代码）",
+  "permissions": [],
+  "contributes": [
+    {
+      "type": "ui.command",
+      "id": "open-help",
+      "label": "打开帮助",
+      "title": "在系统浏览器里打开帮助页",
+      "placement": ["config"],
+      "action": "open-url",
+      "url": "https://example.com/help"
+    },
+    {
+      "type": "ui.command",
+      "id": "go-live",
+      "label": "去直播",
+      "placement": ["config", "player"],
+      "action": "navigate",
+      "to": "live"
+    },
+    {
+      "type": "ui.command",
+      "id": "to-plugin-config",
+      "label": "插件设置",
+      "placement": ["config"],
+      "action": "navigate",
+      "to": "config",
+      "section": "plugins"
+    },
+    {
+      "type": "ui.command",
+      "id": "export-live-txt",
+      "label": "导出当前直播",
+      "placement": ["config"],
+      "action": "export-live",
+      "template": "builtin:txt",
+      "confirm": true
+    },
+    {
+      "type": "ui.command",
+      "id": "theme-netflix",
+      "label": "换回默认皮肤",
+      "placement": ["config"],
+      "action": "set-theme",
+      "theme": "netflix"
+    }
+  ]
+}

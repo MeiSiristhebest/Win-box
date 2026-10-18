@@ -1,0 +1,41 @@
+{
+  "manifestVersion": 1,
+  "id": "my-player-engine",
+  "name": "我的播放内核",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "code",
+  "main": "main.js",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "第三方播放内核：插件只声明「引擎描述符」（协议 / 程序来源 / 参数模板），由宿主代为启动与通信（插件本身不拉进程）",
+  "permissions": ["log"],
+  "permissionNotes": {
+    "log": "写运行日志，便于排障"
+  },
+  "contributes": [
+    {
+      "type": "player.engine",
+      "id": "my-mpv",
+      "label": "我的 MPV",
+      "protocol": "mpv-ipc",
+      "binary": { "source": "plugin-file", "file": "files/mpv.exe" },
+      "args": [
+        "--no-config",
+        "--force-window=yes",
+        "--keep-open=yes",
+        "--hwdec=auto-safe",
+        "--osc=no",
+        "--input-default-bindings=no",
+        "--wid={wid}",
+        "--input-ipc-server={pipe}",
+        "{url}",
+        "--start={start}",
+        "--volume={volume}",
+        "--speed={rate}"
+      ],
+      "capabilities": ["seek", "rate", "tracks", "subtitle", "fit"]
+    }
+  ]
+}

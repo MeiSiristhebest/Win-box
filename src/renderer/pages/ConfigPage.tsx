@@ -20,6 +20,7 @@ import { SubscriptionImportSection } from '../features/subscriptions/Subscriptio
 import { useSubscriptionImport } from '../features/subscriptions/useSubscriptionImport';
 import { Tabs } from '../components/ui/Tabs';
 import { PluginSettingsSection } from '../features/settings/PluginSettingsSection';
+import { notifyProfileChanged } from '../lib/configEvents';
 
 type TabId = 'sources' | 'health' | 'profiles' | 'account' | 'storage' | 'appearance' | 'play' | 'shortcut' | 'network' | 'backup' | 'plugins';
 
@@ -108,9 +109,12 @@ export default function ConfigPage() {
   const activeKey = cfg?.ui.activeSourceKey ?? '';
 
   async function activateProfile(id: string) {
+    if (busy || importRunning) return;
     setErr('');
-    try { await client.cfgActivateProfile(id); await refresh(); }
+    setBusy(true);
+    try { await client.cfgActivateProfile(id); notifyProfileChanged(); await refresh(); }
     catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
   }
   /** 一键删除体检"失败"（error）的源 —— 仅删除当前管理列表中的源，不触碰任何原始/档案 JSON */
   async function deleteFailedSources() {
@@ -221,6 +225,7 @@ export default function ConfigPage() {
       </div>
 
       <div className="cfg-panel" id="config-panel" role="tabpanel" aria-labelledby={`config-tab-${tab}`} tabIndex={0}>
+        {err && tab !== 'sources' && <div className="err" role="alert">{err}</div>}
         <SubscriptionImportSection active={tab === 'sources'} flow={importFlow} error={err} notice={lastOk} onErrorClear={() => setErr('')} />
 
       {/* ===== 一、订阅与源 ===== */}

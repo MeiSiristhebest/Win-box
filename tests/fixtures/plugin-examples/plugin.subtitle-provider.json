@@ -1,0 +1,37 @@
+{
+  "manifestVersion": 1,
+  "id": "my-subtitle-source",
+  "name": "我的字幕源",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "asset",
+  "author": "your-name",
+  "license": "MIT",
+  "homepage": "https://github.com/you/repo",
+  "description": "声明式字幕源：宿主按 URL 模板代发请求 + JSON 路径取数，不跑插件代码",
+  "permissions": [],
+  "contributes": [
+    {
+      "type": "subtitle.provider",
+      "id": "my-subs",
+      "name": "我的字幕站",
+      "search": {
+        "url": "https://sub.example.com/api/search?q={keyword}&ep={ep}",
+        "headers": { "Referer": "https://sub.example.com/" },
+        "list": "data.list",
+        "map": {
+          "file": "id",
+          "subname": "filename",
+          "title": "video_title",
+          "lang": "language",
+          "format": "ext",
+          "detail": "note"
+        }
+      },
+      "fetch": {
+        "url": "https://sub.example.com/api/download/{file}",
+        "headers": { "Referer": "https://sub.example.com/" }
+      }
+    }
+  ]
+}

@@ -20,7 +20,7 @@ function Harness({
   clearAuto?: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const prefsRef = useRef<PlayerPrefs>({ vol: 0.6, rate: 1.5, subOffset: 0, fit: 'contain', kernel: 'auto' });
+  const prefsRef = useRef<PlayerPrefs>({ vol: 0.6, rate: 1.5, subOffset: 0, fit: 'contain', kernel: 'auto', spdif: '' });
   const bossActiveRef = useRef(false);
   const liveKindRef = useRef(false);
   const resumeRef = useRef(0);

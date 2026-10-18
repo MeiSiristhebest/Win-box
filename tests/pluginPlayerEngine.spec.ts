@@ -111,7 +111,7 @@ describe('player.engine 契约 — 结构边界', () => {
   });
 
   it('args 结构性：非数组 / 空 / 超 24 / 含换行 / 空串 / 非字符串 / 占位符越界 → BAD_ENGINE_ARGS', () => {
-    for (const args of [undefined, null, 'x', [], new Array(25).fill('--a')]) {
+    for (const args of [undefined, null, 'x', [], Array.from({ length: 25 }, () => '--a')]) {
       expect(validatePlayerEngineContribute(mpv({ args }))).toMatchObject({ ok: false, reasonCode: 'BAD_ENGINE_ARGS' });
     }
     for (const args of [

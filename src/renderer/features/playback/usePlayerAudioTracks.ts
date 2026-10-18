@@ -1,7 +1,7 @@
 import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type Hls from 'hls.js';
 import type { MpvAudioTrack } from '../../../shared/player';
-import type { Kernel } from '../../lib/kernel';
+import { isEngineKernel, type Kernel } from '../../lib/kernel';
 import { getSessionAudioPref, setSessionAudioPref } from '../../lib/playerPrefs';
 import { client } from '../../api/client';
 
@@ -28,7 +28,8 @@ export function usePlayerAudioTracks(url: string, kernel: Kernel, hlsRef: RefObj
     retries.current = { key: '', id: -1, count: 0 };
   }, [url, kernel]);
   const apply = useCallback((track: MpvAudioTrack) => {
-    if (context.current.kernel === 'mpv') void client.mpvCmd({ type: 'aid', value: track.id }).catch(() => undefined);
+    if (isEngineKernel(context.current.kernel)) void client.engineCmd({ type: 'aid', value: track.id }).catch(() => undefined);
+    else if (context.current.kernel === 'mpv') void client.mpvCmd({ type: 'aid', value: track.id }).catch(() => undefined);
     else if (hlsRef.current) hlsRef.current.audioTrack = track.id;
     setSessionAudioPref(audioTrackKey(track));
   }, [hlsRef]);
