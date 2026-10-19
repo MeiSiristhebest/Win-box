@@ -227,12 +227,13 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
           titleId={`app-dialog-title-${active.id}`}
           descriptionId={`app-dialog-message-${active.id}`}
           role={active.kind === 'confirm' ? 'alertdialog' : 'dialog'}
+          className={`app-dialog card modal-in${active.kind === 'confirm' && active.tone === 'danger' ? ' app-dialog-danger' : ''}`}
           closeOnBackdrop
           initialFocusRef={active.kind === 'confirm' && active.tone === 'danger' ? cancelRef : acceptRef}
           onClose={() => settle(false)}
         >
           <div className="app-dialog-heading">
-            <span className="app-dialog-mark" aria-hidden="true">{active.kind === 'confirm' ? '?' : 'i'}</span>
+            <span className="app-dialog-mark" aria-hidden="true">{active.kind === 'confirm' ? (active.tone === 'danger' ? '!' : '?') : 'i'}</span>
             <h2 id={`app-dialog-title-${active.id}`}>{active.title}</h2>
           </div>
           <div className="app-dialog-message" id={`app-dialog-message-${active.id}`}>{active.message}</div>

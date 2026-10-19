@@ -352,6 +352,18 @@ function createWindow(): void {
     },
   };
   mainWindow = new BrowserWindow(winOpts);
+  const showMainWindowIfUnexpectedlyHidden = (reason: string) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed() || bossKey.isActive || win.isVisible()) return;
+    fileLogger.w(`主窗口在 ${reason} 后仍被隐藏，Boss Key 未激活，重新显示`);
+    win.show();
+  };
+  mainWindow.on('hide', () => {
+    fileLogger.w(`主窗口收到隐藏事件（Boss Key active=${bossKey.isActive}, enabled=${bossKey.settings.enabled}）`);
+    setTimeout(() => showMainWindowIfUnexpectedlyHidden('hide event'), 0);
+  });
+  mainWindow.once('ready-to-show', () => showMainWindowIfUnexpectedlyHidden('ready-to-show'));
+  fileLogger.i(`主窗口已创建（visible=${mainWindow.isVisible()}, bounds=${JSON.stringify(mainWindow.getBounds())}）`);
   // ★ 2026-10-16：登记为主窗口（界面缩放要按倍率重排它的尺寸）+ 立刻套用当前倍率
   registerUiWindow(mainWindow);
   setMainWindowProvider(() => mainWindow);
@@ -379,6 +391,7 @@ function createWindow(): void {
   if (isDev()) {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools({ mode: 'detach' });
+    setTimeout(() => showMainWindowIfUnexpectedlyHidden('openDevTools'), 0);
   } else {
     mainWindow.loadFile(join(__dirname, 'renderer', 'index.html'));
   }

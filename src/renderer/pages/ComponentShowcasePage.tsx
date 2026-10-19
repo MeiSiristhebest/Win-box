@@ -97,9 +97,11 @@ export default function ComponentShowcasePage() {
         closeOnBackdrop
         onClose={() => setModalOpen(false)}
       >
-        <h2 id="showcase-modal-title">主题弹窗</h2>
-        <p id="showcase-modal-description">此弹窗继承当前主题，并使用浏览器的模态焦点行为。</p>
-        <div className={styles.actions}>
+        <div className="app-dialog-heading">
+          <h2 id="showcase-modal-title">主题弹窗</h2>
+        </div>
+        <p className="app-dialog-message" id="showcase-modal-description">此弹窗继承当前主题，并使用浏览器的模态焦点行为。</p>
+        <div className={`${styles.actions} app-dialog-actions`}>
           <Button onClick={() => setModalOpen(false)}>关闭</Button>
         </div>
       </AppModal>

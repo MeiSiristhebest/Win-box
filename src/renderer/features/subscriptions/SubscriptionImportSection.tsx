@@ -150,7 +150,7 @@ export function SubscriptionImportSection({ active, flow, error, notice, onError
           />
           {error && <div role='alert' className='err app-dialog-error'>{error}</div>}
           <div className='app-dialog-actions'>
-            <button disabled={busy} onClick={() => flow.setPackageNamePrompt(null)}>取消</button>
+            <button className='app-dialog-action-secondary' disabled={busy} onClick={() => flow.setPackageNamePrompt(null)}>取消</button>
             <button className='primary' disabled={busy || !flow.packageNamePrompt.name.trim()} onClick={() => void flow.confirmPackageName()}>
               {busy ? '导入中…' : '确认导入'}
             </button>
@@ -187,7 +187,7 @@ export function SubscriptionImportSection({ active, flow, error, notice, onError
           />
           {error && <div role='alert' className='err app-dialog-error'>{error}</div>}
           <div className='app-dialog-actions'>
-            <button disabled={busy} onClick={() => flow.setLiveNamePrompt(null)}>取消</button>
+            <button className='app-dialog-action-secondary' disabled={busy} onClick={() => flow.setLiveNamePrompt(null)}>取消</button>
             <button className='primary' disabled={busy || !flow.liveNamePrompt.name.trim()} onClick={() => void flow.confirmLiveName()}>
               {busy ? '导入中…' : '确认导入'}
             </button>
