@@ -32,8 +32,7 @@ export class MetaSettingsStore {
   set settings(v: MetaSettings) {
     const out = { ...v };
     if (out.tmdbApiKey && this.codec) out.tmdbApiKey = this.codec.encode(out.tmdbApiKey);
-    this.store.setObject('settings', out);
-    this.store.flush();
+    this.store.setObjectStrict('settings', out);
   }
 
   update(patch: Partial<MetaSettings>): MetaSettings {

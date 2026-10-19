@@ -48,6 +48,101 @@ function fullConfig(sources: SourceBean[]): SiteConfig {
   };
 }
 
+describe('source deletions belong to one child profile', () => {
+  it('global blocks preserve snapshots and apply to existing and future profiles until explicitly removed', () => {
+    const directory = tmpDir();
+    const manager = newManager(directory);
+    manager.replaceFromImport(fullConfig([bean('shared'), bean('a')]), 'https://a.test/config');
+    const first = manager.activeProfileId();
+    const second = manager.saveAsProfile('B', { parsed: fullConfig([bean('shared'), bean('b')]), apiUrl: 'https://b.test/config' });
+    manager.setGlobalSourceBlock(['shared'], true);
+    expect(manager.sources().map(item => item.key)).toEqual(['b']);
+    expect(manager.snapshot().sources.map(item => item.key)).toContain('shared');
+    expect(manager.profileSitesView().profiles.every(profile => !profile.sites.some(source => source.key === 'shared'))).toBe(true);
+    expect(manager.profileConfig(first)?.sites.map(item => item.key)).toEqual(['a']);
+    manager.activateProfile(first);
+    expect(manager.sources().map(item => item.key)).toEqual(['a']);
+    manager.saveAsProfile('C', { parsed: fullConfig([bean('shared'), bean('c')]), apiUrl: 'https://c.test/config' });
+    expect(manager.sources().map(item => item.key)).toEqual(['c']);
+    const restarted = newManager(directory);
+    restarted.load();
+    expect(restarted.sources().map(item => item.key)).toEqual(['c']);
+    restarted.setGlobalSourceBlock(['shared'], false);
+    expect(restarted.sources().map(item => item.key)).toEqual(['shared', 'c']);
+    restarted.activateProfile(second.id);
+    expect(restarted.sources().map(item => item.key)).toEqual(['shared', 'b']);
+    expect(restarted.snapshot().deletedSourceKeys).toEqual([]);
+  });
+
+  it('unblocking does not restore a source deleted only from the active profile', () => {
+    const manager = newManager(tmpDir());
+    manager.replaceFromImport(fullConfig([bean('shared')]), 'https://a.test/config');
+    const first = manager.activeProfileId();
+    manager.saveAsProfile('B', { parsed: fullConfig([bean('shared')]), apiUrl: 'https://b.test/config' });
+    manager.deleteSource('shared');
+    manager.setGlobalSourceBlock(['shared'], true);
+    manager.setGlobalSourceBlock(['shared'], false);
+    expect(manager.sources()).toEqual([]);
+    manager.activateProfile(first);
+    expect(manager.sources().map(item => item.key)).toEqual(['shared']);
+  });
+
+  it('deleting a shared key in B preserves A across switching and restart', () => {
+    const directory = tmpDir();
+    const manager = newManager(directory);
+    manager.replaceFromImport(fullConfig([bean('shared'), bean('a')]), 'https://a.test/config');
+    const first = manager.activeProfileId();
+    const second = manager.saveAsProfile('B', { parsed: fullConfig([bean('shared'), bean('b')]), apiUrl: 'https://b.test/config' });
+    manager.deleteSource('shared');
+    expect(manager.snapshot().deletedSourceKeys).toEqual(['shared']);
+    manager.activateProfile(first);
+    expect(manager.sources().map(item => item.key)).toEqual(['shared', 'a']);
+    expect(manager.snapshot().deletedSourceKeys).toEqual([]);
+    const restarted = newManager(directory);
+    restarted.load();
+    restarted.activateProfile(second.id);
+    expect(restarted.sources().map(item => item.key)).toEqual(['b']);
+    expect(restarted.snapshot().deletedSourceKeys).toEqual(['shared']);
+    restarted.activateProfile(first);
+    expect(restarted.sources().map(item => item.key)).toContain('shared');
+  });
+
+  it('legacy global records migrate only to the saved active profile', () => {
+    const directory = tmpDir();
+    const manager = newManager(directory);
+    manager.replaceFromImport(fullConfig([bean('shared'), bean('a')]), 'https://a.test/config');
+    const first = manager.activeProfileId();
+    manager.saveAsProfile('B', { parsed: fullConfig([bean('shared'), bean('b')]), apiUrl: 'https://b.test/config' });
+    const legacy = manager.snapshot();
+    legacy.version = 3;
+    legacy.deletedSourceKeys = ['shared'];
+    delete legacy.deletedSourceKeysByProfile;
+    const store = new JsonStore(join(directory, 'legacy.json'));
+    store.setObject(USER_CONFIG_KEY, legacy);
+    store.flushStrict();
+    const restored = new UserConfigManager(store, NullLogger);
+    restored.load();
+    expect(restored.snapshot().deletedSourceKeys).toEqual(['shared']);
+    restored.activateProfile(first);
+    expect(restored.sources().map(item => item.key)).toContain('shared');
+    expect(restored.snapshot().deletedSourceKeys).toEqual([]);
+  });
+
+  it('clearing or manually adding the same key in another profile cannot clear B deletion', () => {
+    const manager = newManager(tmpDir());
+    manager.replaceFromImport(fullConfig([bean('shared')]), 'https://a.test/config');
+    const first = manager.activeProfileId();
+    const second = manager.saveAsProfile('B', { parsed: fullConfig([bean('shared'), bean('b')]) });
+    manager.deleteSource('shared');
+    manager.activateProfile(first);
+    manager.clearDeletedSourceKeys(['shared']);
+    manager.activateProfile(second.id);
+    expect(manager.snapshot().deletedSourceKeys).toEqual(['shared']);
+    manager.addSource(bean('shared'));
+    expect(manager.snapshot().deletedSourceKeys).toEqual([]);
+  });
+});
+
 afterEach(() => {
   for (const d of dirs) {
     try { rmSync(d, { recursive: true, force: true }); } catch { /* ignore */ }

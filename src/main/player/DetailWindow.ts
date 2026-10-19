@@ -19,6 +19,7 @@ import { IPC } from '../../shared/ipc-channels';
 import { detailWindowRoute } from '../../shared/detailWin';
 
 let detailWin: BrowserWindow | null = null;
+export function detailWindow(): BrowserWindow | null { return detailWin; }
 let pendingRoute = '';
 let ready = false;
 

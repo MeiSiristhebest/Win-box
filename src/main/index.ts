@@ -5,7 +5,7 @@
 import { dataDirReport } from './util/dataDirBootstrap';
 import { registerAppQuitCleanup } from './util/appQuit';
 import { createConnection } from 'node:net';
-import { app, BrowserWindow, clipboard, dialog, nativeTheme, Notification, shell, webContents } from 'electron';
+import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, Notification, shell, webContents } from 'electron';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { registerIpc } from './ipc';
@@ -32,6 +32,8 @@ import { UiPreferencesService } from './store/UiPreferencesService';
 import { applyWindowSurfacePolicy, windowSurfaceColor } from './preferences/WindowSurfacePolicy';
 import { colorSchemeFor } from '../shared/ui/themeTokens';
 import { PluginHost } from './plugin/PluginHost';
+import { PluginDialogService } from './plugin/PluginDialogService';
+import type { PluginDialogReply } from '../shared/pluginDialog';
 import { PlayerEngineController } from './player/PlayerEngineController';
 import { PluginKv } from './plugin/PluginKv';
 import { createPluginSandboxApi } from './plugin/pluginHostApi';
@@ -52,6 +54,10 @@ import {
 declare const __dirname: string;
 
 let mainWindow: BrowserWindow | null = null;
+const pluginDialogs = new PluginDialogService(() => mainWindow?.webContents ?? null);
+ipcMain.on(IPC.PLUGIN_DIALOG_READY, event => pluginDialogs.markReady(event.sender.id));
+ipcMain.on(IPC.PLUGIN_DIALOG_REPLY, (event, reply: PluginDialogReply) => pluginDialogs.reply(event.sender.id, reply));
+app.on('will-quit', () => pluginDialogs.dispose());
 const host = new SpiderHost();
 /**
  * ★ 2026-09-29：磁力（BT）引擎（用户选定方案 B）—— aria2c sidecar + 本机中继 `/bt` + 外部播放器接力。
@@ -146,18 +152,7 @@ plugins.attachSandbox({
     },
     clipboardRead: () => clipboard.readText(),
     clipboardWrite: (text) => clipboard.writeText(String(text)),
-    dialogBox: async (op, message, title) => {
-      const w = mainWindow;
-      const r = await dialog.showMessageBox(w ?? undefined!, {
-        type: 'info',
-        title: title || '插件',
-        message: String(message),
-        buttons: op === 'confirm' ? ['取消', '确定'] : ['确定'],
-        cancelId: 0,
-        defaultId: op === 'confirm' ? 1 : 0,
-      });
-      return op === 'confirm' ? r.response === 1 : undefined;
-    },
+    dialogBox: (op, message, title, pluginId) => pluginDialogs.request(pluginId || '插件', op, message, title),
     openExternal: (url) => shell.openExternal(url),
   }),
 });

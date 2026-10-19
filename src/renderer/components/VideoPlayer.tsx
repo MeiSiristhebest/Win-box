@@ -331,8 +331,12 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   }, [kernel]);
 
   /** 手动切换内核（记住选择；mpv 侧/HTML5 侧都从当前位置续播） */
-  const switchKernel = (k: Kernel, persist = true) => {
-    if (kernelSwitchRef.current || k === kernelRef.current) return;
+  const switchKernel = (k: Kernel, persist = true, preference: KernelPref = k) => {
+    if (kernelSwitchRef.current) return;
+    if (k === kernelRef.current) {
+      if (persist) { setKernelPref(preference); savePlayerPrefs({ kernel: preference }); }
+      return;
+    }
     kernelSwitchRef.current = k;
     boost.release();
     if (isEngineKernel(k)) engines.retry();
@@ -359,8 +363,8 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       // Update the preference only after the fullscreen transition has
       // completed; otherwise the kernel effect can race bounds restoration.
       if (persist) {
-        setKernelPref(k);
-        savePlayerPrefs({ kernel: k });
+        setKernelPref(preference);
+        savePlayerPrefs({ kernel: preference });
       }
     };
     if ((props.allowMpv && fullRef.current) || kernelRef.current !== 'html5') {
@@ -1157,7 +1161,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             rate={rate}
             onRateChange={kSetRate}
           />
-          {allowMpv && <PlayerKernelControl kernel={kernel} choices={engines.choices} containerRef={wrapRef} onSelect={switchKernel} onOpen={() => { setSubPanel(false); setDmPanel(false); setFitPanel(false); audio.setOpen(false); superResolution.setOpen(false); poke(); }} />}
+          {allowMpv && <PlayerKernelControl kernel={kernel} preference={kernelPref} choices={engines.choices} containerRef={wrapRef} onSelect={preference => switchKernel(resolveKernel(preference, url, { mpvAvailable: !!mpvInfo?.available, engines: engines.usable }), true, preference)} onOpen={() => { setSubPanel(false); setDmPanel(false); setFitPanel(false); audio.setOpen(false); superResolution.setOpen(false); poke(); }} />}
           {kernel === 'mpv' && <><button type="button" className={'vp-ctl' + (statsOpen ? ' vp-on' : '')} title="播放统计" aria-pressed={statsOpen} onClick={() => { setStatsOpen(value => !value); setKeysOpen(false); poke(); }}><span className="vp-kernel-tag">统计</span></button><button type="button" className={'vp-ctl' + (keysOpen ? ' vp-on' : '')} title="快捷键一览" aria-pressed={keysOpen} onClick={() => { setKeysOpen(value => !value); setStatsOpen(false); poke(); }}><span className="vp-kernel-tag">键位</span></button></>}
           <PlayerSuperResolutionControl active={kernel === 'mpv'} info={superResolution.info} mode={superResolution.mode} open={superResolution.open} containerRef={wrapRef} onOpen={() => openPanel('sr')} onClose={() => superResolution.setOpen(false)} onSelect={value => { superResolution.apply(value); poke(); }} />
           <div style={{ flex: 1 }} />

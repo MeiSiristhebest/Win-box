@@ -41,6 +41,7 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
         setError(p.error || '下载失败');
         setBusy(false);
       }
+      if (p.phase === 'canceled') { setBusy(false); setError(''); }
       setProgress(p);
     });
   }, [skip]);
@@ -54,6 +55,7 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
     try {
       const dl = await client.updateDownload();
       if (!dl.ok) {
+        if (dl.canceled) { setBusy(false); setProgress(null); return; }
         setError(dl.error || '下载失败');
         setBusy(false);
         return;
@@ -91,11 +93,12 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
   const launching = progress?.phase === 'launching';
   /** ★ 2026-09-30：下载前会先给各代理线路测速（挑最快的），此阶段不显示字节进度 */
   const speedtest = progress?.phase === 'speedtest';
+  const verifying = progress?.phase === 'verifying';
   const statusText = error
     ? '下载失败'
     : launching
       ? '安装程序已启动，即将退出本程序…'
-      : speedtest
+      : verifying ? '正在校验安装包…' : speedtest
         ? progress?.message || '正在测速选择最快的下载线路…'
         : `正在下载 ${info?.asset?.name || ''}`;
 
@@ -161,6 +164,7 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
           {/* ★ 2026-10-14：`flex: 0`（= `0 1 0%`）会把按钮压到 min-content（中文 1 字宽）并把文字
               折成两行，看起来像竖排按钮；与本仓其它按钮统一改为 `0 0 auto`（按内容取宽、不收缩）。 */}
           <div className="row upd-actions">
+            {busy && !launching && <button style={{ flex: '0 0 auto' }} onClick={() => { void client.updateCancel().catch(error => setError(error instanceof Error ? error.message : String(error))); }}>取消下载</button>}
             {!busy && !error && (
               <>
                 <button style={{ flex: '0 0 auto' }} onClick={() => setDismissed(true)}>

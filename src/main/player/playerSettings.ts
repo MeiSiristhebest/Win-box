@@ -18,8 +18,7 @@ export class PlayerSettingsStore {
   }
 
   set settings(v: PlayerSettings) {
-    this.store.setObject('settings', normalizePlayerSettings(v));
-    this.store.flush();
+    this.store.setObjectStrict('settings', normalizePlayerSettings(v));
   }
 
   update(patch: Partial<PlayerSettings>): PlayerSettings {

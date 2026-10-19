@@ -66,6 +66,7 @@ export const IPC = {
   CFG_UPDATE_SOURCE: 'cfg:updateSource',
   CFG_DELETE_SOURCE: 'cfg:deleteSource',
   CFG_DELETE_SOURCES: 'cfg:deleteSources',
+  CFG_GLOBAL_SOURCE_BLOCK: 'cfg:globalSourceBlock',
   CFG_MOVE_SOURCE: 'cfg:moveSource',
   CFG_SET_ACTIVE_SOURCE: 'cfg:setActiveSource',
   CFG_SET_ACTIVE_LIVE: 'cfg:setActiveLive',
@@ -136,6 +137,12 @@ export const IPC = {
   BACKUP_EXPORT: 'backup:export',
   /** ★ 2026-09-29 设置备份：从 JSON 文件还原（主进程各 store + 返回给渲染层写回的 localStorage） */
   BACKUP_IMPORT: 'backup:import',
+  BACKUP_COMMIT: 'backup:commit',
+  BACKUP_CANCEL: 'backup:cancel',
+  PLUGIN_DIALOG_REQUEST: 'plugin:dialog-request',
+  PLUGIN_DIALOG_REPLY: 'plugin:dialog-reply',
+  PLUGIN_DIALOG_READY: 'plugin:dialog-ready',
+  PLUGIN_DIALOG_CANCEL: 'plugin:dialog-cancel',
   // ★ 2026-09-29 WebDAV 存储（只读）：服务器管理 + 目录浏览；播放走 /play?dav=<id> 取流
   DAV_LIST: 'dav:list',
   DAV_SET: 'dav:set',
@@ -280,6 +287,7 @@ export const IPC = {
   // ★ 2026-09-29 启动更新：查 GitHub 最新 Release / 代理加速下载 Setup / 拉起安装程序
   UPDATE_CHECK: 'update:check',
   UPDATE_DOWNLOAD: 'update:download',
+  UPDATE_CANCEL: 'update:cancel',
   UPDATE_INSTALL: 'update:install',
   /** 主进程 → 渲染层：下载进度（bytes / 百分比 / 速度） */
   UPDATE_PROGRESS: 'update:progress',

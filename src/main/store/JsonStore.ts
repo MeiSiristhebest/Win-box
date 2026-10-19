@@ -98,4 +98,17 @@ export class JsonStore implements KVStore {
     this.data[k] = JSON.stringify(v);
     this.schedule();
   }
+
+  /** Publish a settings value only when its atomic file replacement succeeds. */
+  setObjectStrict<T>(k: string, value: T): void {
+    const hadKey = Object.hasOwn(this.data, k);
+    const previous = this.data[k];
+    const hadTimer = this.timer !== null;
+    this.data[k] = JSON.stringify(value);
+    try { this.flushStrict(); } catch (error) {
+      if (hadKey) this.data[k] = previous; else delete this.data[k];
+      if (hadTimer) this.schedule();
+      throw error;
+    }
+  }
 }

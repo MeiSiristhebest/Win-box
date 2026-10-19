@@ -35,8 +35,7 @@ export class SubtitleStore {
     const out = { ...v };
     // 写盘：仅 assrtToken 加密；其余偏好字段明文即可
     if (out.assrtToken && this.codec) out.assrtToken = this.codec.encode(out.assrtToken);
-    this.store.setObject('settings', out);
-    this.store.flush();
+    this.store.setObjectStrict('settings', out);
   }
   update(patch: Partial<SubtitleSettings>): SubtitleSettings {
     const next = { ...this.settings, ...patch };

@@ -7,6 +7,7 @@ import type { SubtitleFetchResult } from '../shared/subtitle';
 import type { MetaSettings, MetaSettingsView, MetaSuggestion } from '../shared/meta';
 import type { UiPreferencesPatch, UiPreferencesSnapshot } from '../shared/uiPreferences';
 import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../shared/discover';
+import type { PluginDialogReply, PluginDialogRequest } from '../shared/pluginDialog';
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<IpcResult<T>> =>
   ipcRenderer.invoke(channel, ...args);
@@ -36,6 +37,7 @@ const api = {
     updateSource: (key: string, patch: SourceUpdatePatch) => invoke<SourceBean>(IPC.CFG_UPDATE_SOURCE, { key, patch }),
     deleteSource: (key: string) => invoke<void>(IPC.CFG_DELETE_SOURCE, key),
     deleteSources: (keys: string[]) => invoke<void>(IPC.CFG_DELETE_SOURCES, keys),
+    setGlobalSourceBlock: (keys: string[], blocked: boolean) => invoke<void>(IPC.CFG_GLOBAL_SOURCE_BLOCK, { keys, blocked }),
     moveSource: (key: string, direction: SourceMoveDirection) => invoke<void>(IPC.CFG_MOVE_SOURCE, { key, direction }),
     setActiveSource: (key: string) => invoke<void>(IPC.CFG_SET_ACTIVE_SOURCE, key),
     setActiveLive: (index: number) => invoke<void>(IPC.CFG_SET_ACTIVE_LIVE, index),
@@ -177,6 +179,8 @@ const api = {
   backup: {
     export: (renderer: unknown) => invoke(IPC.BACKUP_EXPORT, renderer),
     import: () => invoke(IPC.BACKUP_IMPORT),
+    commit: (restoreId: string) => invoke<void>(IPC.BACKUP_COMMIT, restoreId),
+    cancel: (restoreId: string) => invoke<void>(IPC.BACKUP_CANCEL, restoreId),
   },
   /** ★ 2026-09-29 WebDAV 存储（只读）：服务器管理 + 目录浏览 + 外部播放器接力 */
   dav: {
@@ -381,6 +385,18 @@ const api = {
   },
   // ★ 2026-10-16 插件系统（M1）：列表 / 安装（两段式）/ 卸载 / 启停 / 超分状态
   plugins: {
+    dialogReady: () => ipcRenderer.send(IPC.PLUGIN_DIALOG_READY),
+    replyDialog: (reply: PluginDialogReply) => ipcRenderer.send(IPC.PLUGIN_DIALOG_REPLY, reply),
+    onDialog: (callback: (request: PluginDialogRequest) => void) => {
+      const listener = (_event: unknown, request: PluginDialogRequest) => callback(request);
+      ipcRenderer.on(IPC.PLUGIN_DIALOG_REQUEST, listener);
+      return () => ipcRenderer.removeListener(IPC.PLUGIN_DIALOG_REQUEST, listener);
+    },
+    onDialogCancel: (callback: (id: string) => void) => {
+      const listener = (_event: unknown, id: string) => callback(id);
+      ipcRenderer.on(IPC.PLUGIN_DIALOG_CANCEL, listener);
+      return () => ipcRenderer.removeListener(IPC.PLUGIN_DIALOG_CANCEL, listener);
+    },
     list: () => invoke(IPC.PLUGIN_LIST),
     /** ★ 2026-10-18（R10）安装第 ① 段：弹框 + 干跑校验，返回权限清单供确认 */
     inspect: () => invoke(IPC.PLUGIN_INSPECT),
@@ -408,6 +424,7 @@ const api = {
   update: {
     check: () => invoke(IPC.UPDATE_CHECK),
     download: () => invoke(IPC.UPDATE_DOWNLOAD),
+    cancel: () => invoke<boolean>(IPC.UPDATE_CANCEL),
     install: () => invoke(IPC.UPDATE_INSTALL),
     onProgress: (cb: (p: unknown) => void) => {
       const l = (_e: unknown, p: unknown) => cb(p);

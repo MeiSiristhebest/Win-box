@@ -131,11 +131,10 @@ export function setProxySettings(patch: Partial<ProxySettings>): ProxySettings {
     url: patch.url !== undefined ? String(patch.url).trim() : cur.url,
   });
   next.url = normalizeProxyUrl(next.url) || next.url;
-  cache = next;
   if (store) {
-    store.setObject('settings', next);
-    store.flush();
+    store.setObjectStrict('settings', next);
   }
+  cache = next;
   return next;
 }
 

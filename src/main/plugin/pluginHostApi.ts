@@ -32,7 +32,7 @@ export interface PluginSandboxApiDeps {
   notify: (title: string, body: string) => void | Promise<void>;
   clipboardRead: () => string | Promise<string>;
   clipboardWrite: (text: string) => void | Promise<void>;
-  dialogBox: (op: 'alert' | 'confirm', message: string, title?: string) => Promise<boolean | void>;
+  dialogBox: (op: 'alert' | 'confirm', message: string, title?: string, pluginId?: string) => Promise<boolean | void>;
   openExternal: (url: string) => void | Promise<void>;
 }
 
@@ -152,8 +152,8 @@ export function createPluginSandboxApi(deps: PluginSandboxApiDeps): PluginSandbo
       return '';
     },
 
-    async dialog(_pluginId: string, op: 'alert' | 'confirm', message: string, title?: string): Promise<boolean | void> {
-      return deps.dialogBox(op, message, title);
+    async dialog(pluginId: string, op: 'alert' | 'confirm', message: string, title?: string): Promise<boolean | void> {
+      return deps.dialogBox(op, message, title, pluginId);
     },
 
     async player(_pluginId: string, op: PlayerOp, value?: unknown): Promise<{ ok: boolean; reason?: string }> {

@@ -1,3 +1,4 @@
+import { fetchSubscriptionConfig } from '../subscriptions/SubscriptionConfigFetcher';
 // src/main/spider/SpiderHost.ts — 引擎宿主：装配 EngineHost + 持有 SourceViewModel + 配置导入 + 直播加载 + 用户配置持久化
 import { HttpClient } from '../net/HttpClient';
 import { request as undiciRequest } from 'undici';
@@ -8,7 +9,6 @@ import { DriveStore } from '../store/DriveStore';
 import { UcTvStore } from '../store/UcTvStore';
 import { ucTvAuthorize, ucTvDeviceId, ucTvExchange, ucTvPollCode } from '../net/ucTvToken';
 import type { LocalPkgAccess } from '../store/LocalPkgStore';
-import { parsePkgUrl } from '../../engine/config/localPkg';
 import { getAdapter } from '../net/qr';
 import { runDriveWebLogin } from '../net/webLogin';
 import { quarkTransfer, isQuarkSharePlay, quarkFileDelete, extractEpisodeFid, extractEpisodeName, extractQuarkShare, refreshQuarkCookieSession } from '../net/quarkTransfer';
@@ -20,7 +20,7 @@ import { baiduResolveShare, baiduResolveSharedFile, baiduFileDelete, isBaiduShar
 // ★ 2026-10-14：嵌套信封（`base64(JSON{a:<商>,b:<内层>})`，实测 wex 立播）——解出暂不支持的网盘商时给出明确提示
 import { unsupportedNestedProvider } from '../net/driveDescriptor';
 import { fileLogger } from '../util/logger';
-import { parseSiteConfig, parseSiteConfigWithBase, looksLikeSubscribeJson, fixContentPath, type ParseResult } from '../../engine/config/ApiConfigParser';
+import { parseSiteConfig, parseSiteConfigWithBase, type ParseResult } from '../../engine/config/ApiConfigParser';
 import { parseMultiRepo, isFetchedRepoUrl, repoDisplayName, pickRepoLine, splitRepoLine, type MultiRepo } from '../../engine/config/multiRepo';
 import { SourceViewModel } from '../../engine/vod/SourceViewModel';
 import { parseToJsonArray, toLiveGroups } from '../../engine/live/TxtSubscribe';
@@ -101,18 +101,6 @@ import { SearchCache } from '../../engine/vod/searchCache';
 import { classifyHealth } from '../../engine/vod/sourceHealth';
 import { buildMergedSubscription, type MergeInput } from '../../engine/config/mergeSubscriptions';
 import type { AuditItem, SearchAllReport, SearchAllProgressEvent } from '../../shared/types';
-import {
-  describeFailures,
-  disguiseLadder,
-  fetchWithDisguise,
-  looksEncrypted,
-  siteRootOf,
-  sniffBody,
-} from '../../engine/util/fetchWithDisguise';
-import { tryDecryptConfig } from '../net/configDecrypt';
-import { extractStegoConfig, looksLikeImage } from '../../engine/util/imageStego';
-// ★ 2026-10-15：订阅「伪装体」（十六进制 dump 外壳 + 尾部标记后 base64 载荷）提取，见模块头注释
-import { extractDisguiseConfig } from '../../engine/config/disguiseConfig';
 import { classifyPlayLink } from '../../engine/vod/playLink';
 import type { TorrentPlay } from '../torrent/torrentPlay';
 import { SubtitleStore } from '../subtitle/SubtitleStore';
@@ -598,7 +586,7 @@ export class SpiderHost {
 
   /** cfg:get —— 渲染层拿到的完整快照（含选中源/选中直播线路） */
   cfgSnapshot(): UserConfig {
-    return this.manager.snapshot();
+    return { ...this.manager.snapshot(), sources: this.manager.sources() };
   }
 
   initializeLocalImports(): void {
@@ -633,6 +621,10 @@ export class SpiderHost {
     const before = this.manager.snapshot();
     this.manager.deleteSources(keys);
     this.cleanupLocalImports(before);
+  }
+
+  cfgSetGlobalSourceBlock(keys: readonly string[], blocked: boolean): void {
+    this.manager.setGlobalSourceBlock(keys, blocked);
   }
 
   cfgMoveSource(key: string, direction: SourceMoveDirection): void {
@@ -1955,82 +1947,8 @@ export class SpiderHost {
     return result.text;
   }
 
-  private async fetchConfigWithDiagnostics(url: string, quick = false, signal?: AbortSignal): Promise<{ text: string; hint: string }> {
-    if (signal?.aborted) throw signal.reason ?? new Error('导入已取消');
-    // ★ 2026-09-29（用户要求）本地包：`pkg://<i>/<rel>` —— 不联网，直接读包内订阅文本。
-    //   文本已由 LocalPkgStore.readSubscription 用 rewritePkgPaths 展开相对路径（"/pkg" 或 file://），
-    //   因此后续 parseSiteConfigWithBase 不需要（也不应）再做 http 相对展开。
-    //   包被移动/删除时给出可执行提示（重新导入该包）。
-    const pkgRef = parsePkgUrl(url);
-    if (pkgRef) {
-      const got = this.localPkgs?.readSubscription(pkgRef.index, pkgRef.rel);
-      if (!got) {
-        return { text: '', hint: '本地包未登记或包内订阅文件已不存在（包目录被移动/删除？）—— 请在配置页重新「导入本地包」。' };
-      }
-      for (const w of got.warnings) this.logger.w(`本地包：${w}`);
-      this.logger.i(`本地包订阅读取：${url} → ${got.text.length}B`);
-      return { text: got.text, hint: '' };
-    }
-    const timeoutMs = quick
-      ? SUBSCRIPTION_IMPORT_POLICY.requestTimeoutMs.quick
-      : SUBSCRIPTION_IMPORT_POLICY.requestTimeoutMs.standard;
-    const attempts = disguiseLadder({ quick, referer: siteRootOf(url) });
-    const isSubJson = (b: Buffer): boolean => looksLikeSubscribeJson(b.toString('utf-8'));
-    const res = await fetchWithDisguise(this.http, url, {
-      accept: isSubJson,
-      tryGitHubOrigin: true,
-      attempts: quick ? attempts.slice(0, SUBSCRIPTION_IMPORT_POLICY.maxQuickAttempts) : attempts,
-      timeoutMs,
-      signal,
-      onTry: (t) => {
-        const feat = [t.status ? `HTTP ${t.status}` : '', t.sniff ? `${t.sniff.kind} ${t.sniff.size}B` : '', t.reason || '']
-          .filter(Boolean)
-          .join(' · ');
-        this.logger.i(`订阅尝试「${t.label}」${t.ok ? '命中' : '未命中'}：${feat} ← ${t.url}`);
-      },
-    });
-    const normalizeOriginPaths = (text: string): string => res.originUrl ? fixContentPath(res.originUrl, text) : text;
-    if (res.buf) {
-      if (res.used && res.used.label !== '默认 UA') this.logger.i(`订阅按「${res.used.label}」取到内容：${url}`);
-      if (res.altUrl) this.logger.i(`订阅换协议后取到内容（${res.altUrl}）：${url}`);
-      const text = res.buf.toString('utf-8');
-      if (res.originUrl) this.logger.i(`订阅代理未命中，已从 GitHub 原站读取：${res.originUrl}`);
-      return { text: normalizeOriginPaths(text), hint: '' };
-    }
-    // ★ 2026-09-29：图片尾部隐写（饭太硬防直连；参照 CatClawVideo TvBoxSubscriptionManager.cs:548）。
-    //   必须拿**原始字节**试 —— 先转 utf-8 字符串会把二进制毁成替换字符，载荷就找不回来了。
-    const stego = res.last ? extractStegoConfig(res.last) : null;
-    if (stego) {
-      this.logger.i(`订阅图片尾部隐写：已提取配置（${stego.kind}，尾段 ${stego.offset} 起，${stego.text.length}B）：${url}`);
-      return { text: normalizeOriginPaths(stego.text), hint: '' };
-    }
-    const raw = res.last ? res.last.toString('utf-8') : '';
-    // ★ 2026-10-15：**伪装体**兜底（例 `https://yc.wya6.cn/wykj.php`）—— 真体整段是一个 jar 的
-    //   十六进制 dump，真配置藏在末行 ASCII 列的 `=XXX**` 标记之后（base64）。属「本地可解释」手段，
-    //   故排在图片隐写之后、第三方解密服务之前（见 disguiseConfig.ts 头注释）。
-    const disguise = extractDisguiseConfig(raw);
-    if (disguise) {
-      this.logger.i(
-        `订阅伪装体：已提取配置（${disguise.how}${disguise.marker ? `，marker=${disguise.marker}` : ''}，` +
-          `载荷起于 ${disguise.offset}，${disguise.text.length}B）：${url}`,
-      );
-      return { text: normalizeOriginPaths(disguise.text), hint: '' };
-    }
-    // ★ 解密兜底：本地编码优先，其次第三方解密服务（仅此处、且仅在所有伪装手段失败后）
-    const dec = await tryDecryptConfig(this.http, url, raw, this.logger, signal);
-    if (dec) return { text: normalizeOriginPaths(dec.text), hint: '' };
-    const encrypted = res.last ? looksEncrypted(res.last) : false;
-    const image = res.last ? looksLikeImage(res.last) : false;
-    const sn = res.last ? sniffBody(res.last) : null;
-    const hint =
-      (encrypted ? '该地址返回的内容疑似**加密配置**（普通客户端无法直接使用）。' : '') +
-      (image ? '该地址返回的是**图片**（疑似图片尾部隐写，但未从中提取到配置）。' : '') +
-      (sn?.kind === 'dump'
-        ? '该地址返回的是**十六进制 dump 伪装体**（真配置通常藏在尾部 `=XXX**` 标记之后，但本次未能提取）。'
-        : '') +
-      (sn ? `最后响应为 ${sn.kind}（${sn.size}B）${sn.head ? `，开头是「${sn.head.slice(0, 60)}」` : ''}。` : '所有尝试都没有拿到响应体。') +
-      `已尝试：${describeFailures(res.tries)}`;
-    return { text: normalizeOriginPaths(raw), hint };
+  private fetchConfigWithDiagnostics(url: string, quick = false, signal?: AbortSignal): Promise<{ text: string; hint: string }> {
+    return fetchSubscriptionConfig({ http: this.http, logger: this.logger, localPkgs: this.localPkgs }, url, quick, signal);
   }
 
   /**
@@ -3602,7 +3520,7 @@ export class SpiderHost {
     //   以档案 apiUrl 为基准展开 `./xxx.jar`。已是绝对 URL 的值不受影响。
     const base = snap.apiUrl || '';
     const cfg: SiteConfig = {
-      sites: base ? snap.sources.map((s) => normalizeBeanPaths(s, base)) : snap.sources,
+      sites: (base ? snap.sources.map((s) => normalizeBeanPaths(s, base)) : snap.sources).filter(source => !snap.globallyBlockedSourceKeys?.includes(source.key)),
       // ★ 2026-09-24 修复：此前恒为 []，订阅的解析接口（parses）根本没进运行时 →
       //   parse===1 的播放地址只能报「暂不支持」。现由 UserConfig 透传（见 UserConfig.parses）。
       parses: snap.parses || [],

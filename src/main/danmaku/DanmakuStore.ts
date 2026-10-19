@@ -45,8 +45,7 @@ export class DanmakuStore {
     return { ...merged, endpoints: stored };
   }
   set settings(v: DanmakuSettings) {
-    this.store.setObject('settings', { ...v, endpointsRev: DANMAKU_ENDPOINTS_REV });
-    this.store.flush(); // 即时落盘（与其它设置存储一致，避免退出前丢开关）
+    this.store.setObjectStrict('settings', { ...v, endpointsRev: DANMAKU_ENDPOINTS_REV });
   }
   update(patch: Partial<DanmakuSettings>): DanmakuSettings {
     const next = { ...this.settings, ...patch };

@@ -7,19 +7,16 @@
 //   `cacheDir()/update/` 落盘（应用私有目录，不与 Chromium 缓存冲突）。
 import { Agent, request } from 'undici';
 import { app, shell } from 'electron';
-import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
-import { pipeline } from 'node:stream/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  ACCEL_CHECK_LIMIT,
   ACCEL_FINALISTS,
   ACCEL_PROBE_BYTES,
   ACCEL_PROBE_CONCURRENCY,
   ACCEL_PROBE_LIMIT,
   ACCEL_PROBE_MS,
-  GH_ACCEL_PREFIXES,
   UPDATE_RELEASES_API,
-  buildAccelUrls,
+  trustedUpdateAsset,
   isUpdateAvailable,
   parseLatestRelease,
   pickSetupAsset,
@@ -34,24 +31,10 @@ import {
 import { cacheDir } from '../util/paths';
 import { dispatchChain } from '../net/proxy';
 import type { Logger } from '../../shared/types';
+import { discardUpdateBody, downloadVerifiedUpdate, verifyUpdateFile } from './updateTransfer';
 
 const agent = new Agent({ connect: { timeout: 20000 } });
 const UA = 'Win-Box-Updater';
-
-/**
- * ★ 2026-09-30（用户要求「优先走代理链路，别连上 GitHub 就走直连」）：
- *   检查接口候选 = **代理加速前 ACCEL_CHECK_LIMIT 条（池内已按实测速率排序）+ 直连垫底**，
- *   且**全部并发抢首响**。池子有 80 条 —— 全放出去等于 80 个并发请求，必须限量。
- */
-function checkUrls(): string[] {
-  const out: string[] = [];
-  for (const p of GH_ACCEL_PREFIXES.slice(0, ACCEL_CHECK_LIMIT)) {
-    const pre = p.endsWith('/') ? p : p + '/';
-    out.push(pre + UPDATE_RELEASES_API);
-  }
-  out.push(UPDATE_RELEASES_API);
-  return out;
-}
 
 /** 小样本测速窗口（筛出前列）/ 大样本复测窗口（定胜负） */
 const PROBE_SMALL = { bytes: ACCEL_PROBE_BYTES, ms: ACCEL_PROBE_MS, headersTimeout: 2500 };
@@ -61,7 +44,9 @@ const SPEED_MIN_BYTES = 64 * 1024;
 
 export class UpdateService {
   private lastAsset: UpdateAsset | null = null;
-  private lastPath = '';
+  private verified: { path: string; asset: UpdateAsset } | null = null;
+  private downloadController: AbortController | null = null;
+  private userCanceled = false;
 
   constructor(private readonly log: Logger) {}
 
@@ -79,6 +64,8 @@ export class UpdateService {
     const localVersion = app.getVersion();
     const base: UpdateCheckResult = { localVersion, remoteVersion: '', tag: '', updateAvailable: false };
 
+    this.lastAsset = null;
+    this.verified = null;
     const { json, lastErr } = await this.fetchLatestRelease();
     if (!json) {
       this.log.w(`更新检查失败（按「无更新」放行）：${lastErr}`);
@@ -86,16 +73,14 @@ export class UpdateService {
     }
 
     const rel = parseLatestRelease(json);
-    const newer = isUpdateAvailable(localVersion, rel.version);
+    const newer = !json.draft && !json.prerelease && isUpdateAvailable(localVersion, rel.version);
     const chosen = newer ? pickSetupAsset(rel.assets, rel.version) : null;
-    const asset: UpdateAsset | undefined = chosen
-      ? {
-          name: chosen.name,
-          url: chosen.browser_download_url,
-          size: Number(chosen.size) || 0,
-          accelUrls: buildAccelUrls(chosen.browser_download_url),
-        }
-      : undefined;
+    let asset: UpdateAsset | undefined;
+    try { if (chosen) asset = trustedUpdateAsset(chosen, rel.tag); } catch (error) {
+      this.lastAsset = null;
+      this.verified = null;
+      return { ...base, remoteVersion: rel.version, tag: rel.tag, error: (error as Error).message };
+    }
     if (newer && !asset) this.log.w(`更新检查：远端 ${rel.version} 更高，但未找到 .exe 安装包，跳过更新提示`);
     if (newer && asset) this.log.i(`更新检查：本地 ${localVersion} < 远端 ${rel.version}，提示用户更新（${asset.name}）`);
 
@@ -114,13 +99,7 @@ export class UpdateService {
 
   /** 已下载完成的安装包绝对路径（未下载 → ''） */
   downloadedPath(): string {
-    if (this.lastPath && existsSync(this.lastPath)) return this.lastPath;
-    const a = this.lastAsset;
-    if (a) {
-      const p = join(this.updateDir(), a.name);
-      if (existsSync(p)) return p;
-    }
-    return '';
+    return this.verified && existsSync(this.verified.path) ? this.verified.path : '';
   }
 
   /**
@@ -129,46 +108,22 @@ export class UpdateService {
    * 又不会因为某条线路不可达白等（串行时每条 8s，最坏 40s+）。
    */
   private async fetchLatestRelease(): Promise<{ json: ReleaseJson | null; lastErr: string }> {
-    const urls = checkUrls();
-    const errors: string[] = [];
-    let settled = false;
-    return new Promise((resolve) => {
-      const finish = (json: ReleaseJson | null, err: string): void => {
-        if (settled) return;
-        settled = true;
-        resolve({ json, lastErr: err });
-      };
-      let pending = urls.length;
-      for (const url of urls) {
-        const host = url.replace(/^https?:\/\//, '').split('/')[0];
-        void (async () => {
-          try {
-            const res = await request(url, {
-              method: 'GET',
-              headers: { 'User-Agent': UA, Accept: 'application/vnd.github+json' },
-              headersTimeout: 8000,
-              bodyTimeout: 8000,
-              dispatcher: dispatchChain(url, agent)[0],
-            });
-            if (res.statusCode !== 200) {
-              await res.body.dump();
-              errors.push(`${host}: HTTP ${res.statusCode}`);
-              return;
-            }
-            const text = await res.body.text();
-            if (settled) return; // 别的线路已经赢了
-            const json = JSON.parse(text) as ReleaseJson;
-            this.log.i(`更新检查：命中 ${host}`);
-            finish(json, '');
-          } catch (e) {
-            errors.push(`${host}: ${e instanceof Error ? e.message : String(e)}`);
-          } finally {
-            pending--;
-            if (pending === 0 && !settled) finish(null, errors.join('；') || '网络不可达');
-          }
-        })();
-      }
-    });
+    let lastErr = '无法连接 GitHub 官方接口';
+    for (const dispatcher of dispatchChain(UPDATE_RELEASES_API, agent)) {
+      try {
+        const response = await request(UPDATE_RELEASES_API, {
+          method: 'GET', headers: { 'User-Agent': UA, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2026-03-10' },
+          headersTimeout: 8000, bodyTimeout: 8000, signal: AbortSignal.timeout(12_000), dispatcher,
+        });
+        if (response.statusCode !== 200) { discardUpdateBody(response.body); throw new Error('GitHub HTTP ' + response.statusCode); }
+        const text = await response.body.text();
+        if (text.length > 2_000_000) throw new Error('发布信息过大');
+        const json: unknown = JSON.parse(text);
+        if (!json || typeof json !== 'object' || Array.isArray(json)) throw new Error('发布信息格式无效');
+        return { json: json as ReleaseJson, lastErr: '' };
+      } catch (error) { lastErr = error instanceof Error ? error.message : String(error); }
+    }
+    return { json: null, lastErr };
   }
 
   /**
@@ -179,7 +134,7 @@ export class UpdateService {
    *   ② 大样本复测：小样本前 `ACCEL_FINALISTS` 名再各拉 ≤1.5MB/3s，用真实持续速率定胜负。
    *   返回 = 下载候选顺序（复测冠军打头 → 其余入围者 → 其余存活线路 → 直连垫底）。
    */
-  private async speedTest(urls: string[], onProgress: (p: UpdateProgress) => void): Promise<string[]> {
+  private async speedTest(urls: string[], onProgress: (p: UpdateProgress) => void, signal: AbortSignal): Promise<string[]> {
     if (urls.length <= 1) return urls;
     const pool = urls.slice(0, ACCEL_PROBE_LIMIT);
     const rest = urls.slice(ACCEL_PROBE_LIMIT);
@@ -191,7 +146,8 @@ export class UpdateService {
       speed: 0,
       message: `正在为 ${pool.length} 条下载线路测速…`,
     });
-    const small = await this.collectSamples(pool, PROBE_SMALL, ACCEL_PROBE_CONCURRENCY);
+    const small = await this.collectSamples(pool, PROBE_SMALL, ACCEL_PROBE_CONCURRENCY, signal);
+    signal.throwIfAborted();
     const alive = small.filter((s) => s.ok && s.bytes >= SPEED_MIN_BYTES).sort((a, b) => sampleBps(b) - sampleBps(a));
     for (const s of alive.slice(0, 8)) this.log.i(`更新测速(小样本)：${this.hostOf(s.url)} ${Math.round(sampleBps(s) / 1024)} KB/s（${Math.round((s.ms - (s.ttfb || 0)))}ms）`);
     if (!alive.length) {
@@ -200,7 +156,8 @@ export class UpdateService {
     }
 
     const finalists = alive.slice(0, ACCEL_FINALISTS);
-    const big = await this.collectSamples(finalists.map((s) => s.url), PROBE_BIG, finalists.length);
+    const big = await this.collectSamples(finalists.map((s) => s.url), PROBE_BIG, finalists.length, signal);
+    signal.throwIfAborted();
     for (const s of big) this.log.i(`更新测速(复测)：${this.hostOf(s.url)} ${Math.round(sampleBps(s) / 1024)} KB/s（${s.bytes}B/${s.ms}ms）`);
     const ranked = [
       ...rankBySpeed(big, SPEED_MIN_BYTES),
@@ -233,23 +190,25 @@ export class UpdateService {
     urls: string[],
     opts: { bytes: number; ms: number; headersTimeout: number },
     concurrency: number,
+    signal: AbortSignal,
   ): Promise<SpeedSample[]> {
+    const controller = new AbortController();
+    const combined = AbortSignal.any([signal, controller.signal]);
+    const deadline = setTimeout(() => controller.abort(), opts.ms + 800);
     const got: Array<SpeedSample | null> = urls.map(() => null);
     let cursor = 0;
     const worker = async (): Promise<void> => {
-      while (cursor < urls.length) {
+      while (cursor < urls.length && !combined.aborted) {
         const i = cursor++;
         try {
-          got[i] = await this.probeSpeed(urls[i], opts);
+          got[i] = await this.probeSpeed(urls[i], opts, combined);
         } catch {
           got[i] = { url: urls[i], bytes: 0, ms: 0, ok: false };
         }
       }
     };
-    await Promise.race([
-      Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, urls.length)) }, worker)),
-      new Promise((r) => setTimeout(r, opts.ms + 800)),
-    ]);
+    try { await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, urls.length)) }, worker)); }
+    finally { clearTimeout(deadline); controller.abort(); }
     return urls.map((u, i) => got[i] ?? { url: u, bytes: 0, ms: 0, ok: false });
   }
 
@@ -257,7 +216,7 @@ export class UpdateService {
    * 单线路限时测速：带 Range 只取头部，收满 `bytes` 或到 `ms` 即断（记 TTFB）。
    * 加速站不支持 Range 时也能用（收到窗口上限就主动 abort，不整包下载）。
    */
-  private async probeSpeed(url: string, opts: { bytes: number; ms: number; headersTimeout: number }): Promise<SpeedSample> {
+  private async probeSpeed(url: string, opts: { bytes: number; ms: number; headersTimeout: number }, signal: AbortSignal): Promise<SpeedSample> {
     const ac = new AbortController();
     const t0 = Date.now();
     let first = 0;
@@ -269,7 +228,7 @@ export class UpdateService {
         headers: { 'User-Agent': UA, Range: `bytes=0-${opts.bytes - 1}` },
         headersTimeout: opts.headersTimeout,
         bodyTimeout: opts.ms + 500,
-        signal: ac.signal,
+        signal: AbortSignal.any([signal, ac.signal]),
         dispatcher: dispatchChain(url, agent)[0],
       });
       if (res.statusCode !== 200 && res.statusCode !== 206) {
@@ -298,114 +257,45 @@ export class UpdateService {
     return { url, bytes, ms: Date.now() - t0, ok, ttfb: first ? first - t0 : 0 };
   }
 
-  /**
-   * 下载上次 check() 选中的安装包到 `cacheDir()/update/<name>`（带进度回调）。
-   * 已存在且大小一致 → 直接复用（避免每次启动重下 150MB）。
-   * 逐个尝试加速地址，全部失败才报错。
-   */
-  async download(onProgress: (p: UpdateProgress) => void): Promise<{ ok: boolean; path?: string; error?: string }> {
+  cancel(): boolean {
+    if (!this.downloadController) return false;
+    this.userCanceled = true;
+    this.downloadController.abort(new Error('已取消更新下载'));
+    return true;
+  }
+
+  async download(onProgress: (p: UpdateProgress) => void): Promise<{ ok: boolean; path?: string; error?: string; canceled?: boolean }> {
+    if (this.downloadController) return { ok: false, error: '更新下载正在进行中' };
     const asset = this.lastAsset;
-    if (!asset) return { ok: false, error: '没有可下载的安装包（请先检查更新）' };
-    mkdirSync(this.updateDir(), { recursive: true });
-    const dest = join(this.updateDir(), asset.name);
-
-    if (existsSync(dest) && asset.size > 0 && statSync(dest).size === asset.size) {
-      this.lastPath = dest;
-      onProgress({ phase: 'done', received: asset.size, total: asset.size, percent: 100, speed: 0, message: '已下载完成' });
-      this.log.i(`更新下载：复用已下载安装包 ${dest}`);
-      return { ok: true, path: dest };
-    }
-
-    const part = dest + '.part';
-    let lastErr = '下载失败';
-    // ★ 2026-09-30：先并发测速，按实测速率排序后再下载（最快的那条打头，其余仍作回退）
-    let urls = asset.accelUrls;
+    if (!asset) return { ok: false, error: '没有可校验的安装包，请重新检查更新' };
+    const controller = new AbortController();
+    this.downloadController = controller;
+    this.userCanceled = false;
+    this.verified = null;
+    const deadline = setTimeout(() => controller.abort(new Error('更新下载超时，请重试')), 30 * 60_000);
     try {
-      urls = await this.speedTest(asset.accelUrls, onProgress);
-    } catch (e) {
-      this.log.w(`更新测速失败（改按原顺序下载）：${(e as Error).message}`);
-    }
-    for (const url of urls) {
-      const host = url.replace(/^https?:\/\//, '').split('/')[0];
-      try {
-        this.log.i(`更新下载：尝试 ${host}`);
-        await this.downloadOne(url, part, asset.size, onProgress, 0);
-        rmSync(dest, { force: true });
-        renameSync(part, dest);
-        this.lastPath = dest;
-        onProgress({ phase: 'done', received: asset.size, total: asset.size, percent: 100, speed: 0, message: '已下载完成' });
-        this.log.i(`更新下载：完成 ${dest}（${statSync(dest).size} B，源 ${host}）`);
-        return { ok: true, path: dest };
-      } catch (e) {
-        lastErr = e instanceof Error ? e.message : String(e);
-        this.log.w(`更新下载失败（${host}）：${lastErr}`);
-        rmSync(part, { force: true });
-      }
-    }
-    onProgress({ phase: 'error', received: 0, total: asset.size, percent: 0, speed: 0, error: lastErr });
-    return { ok: false, error: lastErr };
+      let urls = asset.accelUrls;
+      try { urls = await this.speedTest(urls, onProgress, controller.signal); } catch { controller.signal.throwIfAborted(); }
+      const path = await downloadVerifiedUpdate(asset, this.updateDir(), urls, controller.signal, onProgress);
+      this.verified = { path, asset };
+      onProgress({ phase: 'done', received: asset.size, total: asset.size, percent: 100, speed: 0, message: '安装包校验通过' });
+      return { ok: true, path };
+    } catch (error) {
+      const message = controller.signal.aborted && controller.signal.reason instanceof Error ? controller.signal.reason.message : error instanceof Error ? error.message : String(error);
+      const canceled = this.userCanceled;
+      onProgress({ phase: canceled ? 'canceled' : 'error', received: 0, total: asset.size, percent: 0, speed: 0, error: canceled ? undefined : message, message });
+      return { ok: false, error: message, canceled };
+    } finally { clearTimeout(deadline); this.downloadController = null; }
   }
 
-  /** 单地址流式下载（自行跟随 302；写 `<dest>.part`，成功后由调用方改名） */
-  private async downloadOne(
-    url: string,
-    partPath: string,
-    expectSize: number,
-    onProgress: (p: UpdateProgress) => void,
-    depth: number,
-  ): Promise<void> {
-    const res = await request(url, {
-      method: 'GET',
-      headers: { 'User-Agent': UA },
-      headersTimeout: 20000,
-      // 大文件慢速下载：关闭 body 超时（连接阶段仍有时限）
-      bodyTimeout: 0,
-      dispatcher: dispatchChain(url, agent)[0],
-    });
-    const loc = res.headers['location'];
-    if (res.statusCode >= 300 && res.statusCode < 400 && loc) {
-      await res.body.dump();
-      if (depth >= 8) throw new Error('重定向次数过多');
-      const next = new URL(String(loc), url).toString();
-      return this.downloadOne(next, partPath, expectSize, onProgress, depth + 1);
-    }
-    if (res.statusCode !== 200) {
-      await res.body.dump();
-      throw new Error(`HTTP ${res.statusCode}`);
-    }
-
-    const total = Number(res.headers['content-length']) || expectSize || 0;
-    let received = 0;
-    let lastT = Date.now();
-    let lastB = 0;
-    let speed = 0;
-    res.body.on('data', (chunk: Buffer) => {
-      received += chunk.length;
-      const now = Date.now();
-      if (now - lastT >= 300) {
-        speed = Math.round(((received - lastB) * 1000) / (now - lastT));
-        lastT = now;
-        lastB = received;
-        const percent = total ? Math.min(99, Math.floor((received * 100) / total)) : 0;
-        onProgress({ phase: 'downloading', received, total, percent, speed });
-      }
-    });
-
-    // 有明确大小但服务端没给 content-length 时，用 API 的 size 兜底校正
-    const ws = createWriteStream(partPath);
-    await pipeline(res.body, ws);
-    if (total && received !== total) {
-      // 不强制失败：部分加速站 content-length 与实际略有出入；以文件落盘为准
-      this.log.w(`更新下载：字节数不符（收到 ${received} / 预期 ${total}）`);
-    }
-    onProgress({ phase: 'downloading', received, total: total || received, percent: 100, speed });
-  }
-
-  /** 启动安装包（EXE 直接后台拉起）；返回的错误串为空即成功 */
   async launch(path: string): Promise<{ ok: boolean; error?: string }> {
-    const err = await shell.openPath(path);
-    if (err) return { ok: false, error: err };
-    this.log.i(`更新安装：已拉起安装程序 ${path}`);
-    return { ok: true };
+    const verified = this.verified;
+    if (!verified || verified.path !== path) return { ok: false, error: '安装包尚未校验，请重新下载' };
+    try {
+      await verifyUpdateFile(path, verified.asset);
+      const error = await shell.openPath(path);
+      if (error) return { ok: false, error };
+      return { ok: true };
+    } catch (error) { this.verified = null; return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
   }
 }

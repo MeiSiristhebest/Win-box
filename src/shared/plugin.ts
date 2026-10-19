@@ -56,7 +56,7 @@ export const PERMISSION_LABELS: Record<PermissionId, string> = {
   notify: '弹系统通知',
   'clipboard.read': '读系统剪贴板',
   'clipboard.write': '写系统剪贴板',
-  dialog: '弹原生消息框（仅展示）',
+  dialog: '显示应用内提示与确认',
   'player.control': '控制播放（播放 / 暂停 / 进度 / 音轨 / 字幕 / 音量）',
   openExternal: '用系统程序打开链接',
 };

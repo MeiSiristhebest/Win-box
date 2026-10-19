@@ -74,12 +74,12 @@ export class DriveStore {
     if (!k) throw new Error('provider 不能为空');
     if (!token.trim()) throw new Error('token 不能为空');
     const plain = token.trim();
-    this.data[k] = this.codec ? this.codec.encode(plain) : plain;
-    this.persist();
+    this.persist({ ...this.data, [k]: this.codec ? this.codec.encode(plain) : plain });
   }
   remove(provider: string): void {
-    delete this.data[this.canonicalProvider(provider)];
-    this.persist();
+    const next = { ...this.data };
+    delete next[this.canonicalProvider(provider)];
+    this.persist(next);
   }
   private decodeValue(v: string | undefined): string | null {
     if (v == null) return null;
@@ -90,9 +90,9 @@ export class DriveStore {
     const k = provider.trim().toLowerCase();
     return k === 'alipan' ? 'ali' : k;
   }
-  private persist(): void {
+  private persist(next: DriveTokens): void {
+    this.store.setObjectStrict(DRIVE_KEY, next);
+    this.data = next;
     this.decoded = null; // 数据变了 → 解码缓存失效（下次 list() 重新解码）
-    this.store.setObject(DRIVE_KEY, this.data);
-    this.store.flush();
   }
 }

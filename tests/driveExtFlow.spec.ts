@@ -61,6 +61,7 @@ function fakeJsonStore(): JsonStore {
       try { return JSON.parse(raw) as T; } catch { return fallback; }
     },
     setObject: (k: string, v: unknown) => void mem.set(k, JSON.stringify(v)),
+    setObjectStrict: (k: string, v: unknown) => void mem.set(k, JSON.stringify(v)),
     flush: () => { /* 内存桩无需落盘 */ },
   } as unknown as JsonStore;
 }

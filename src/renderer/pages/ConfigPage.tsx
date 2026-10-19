@@ -232,6 +232,7 @@ export default function ConfigPage() {
       <SourceManagementSection
         active={tab === 'sources'}
         sources={sources}
+        globallyBlockedKeys={cfg?.globallyBlockedSourceKeys}
         activeSourceKey={activeKey}
         profileId={cfg?.activeProfileId ?? ''}
         busy={busy}

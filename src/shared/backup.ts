@@ -52,4 +52,6 @@ export interface BackupImportResult {
   path?: string;
   /** 需由渲染层写回 localStorage 的内容 */
   renderer?: Record<string, string>;
+  /** Staged import owned by the requesting window; no main settings change before commit. */
+  restoreId?: string;
 }

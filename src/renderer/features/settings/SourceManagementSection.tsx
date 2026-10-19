@@ -24,6 +24,7 @@ interface SourceManagementSectionProps {
   sources: SourceBean[];
   activeSourceKey: string;
   profileId: string;
+  globallyBlockedKeys?: string[];
   busy: boolean;
   onRefresh: () => Promise<void>;
   onError: (message: string) => void;
@@ -70,6 +71,7 @@ export function SourceManagementSection({
   sources,
   activeSourceKey: activeKey,
   profileId,
+  globallyBlockedKeys = [],
   busy,
   onRefresh: refresh,
   onError: setErr,
@@ -157,6 +159,20 @@ export function SourceManagementSection({
     }
   }
 
+  async function setGlobalBlock(keys: string[], blocked: boolean) {
+    if (!keys.length || sourceDeleteBusy || busy) return;
+    if (blocked && !(await dialog.confirm('将在所有子仓中隐藏这些 key 的源，之后可在全局屏蔽列表中解除。' + '\n' + keys.slice(0, 6).join('、'), { title: '全局屏蔽所选源', confirmLabel: '全局屏蔽', tone: 'danger' }))) return;
+    setSourceDeleteBusy(true);
+    setErr('');
+    try {
+      await client.cfgSetGlobalSourceBlock(keys, blocked);
+      setSourcePick(new Set());
+      setLastOk(blocked ? '已全局屏蔽 ' + keys.length + ' 个源' : '已解除全局屏蔽');
+      await refresh();
+    } catch (error) { setErr((error as Error).message); }
+    finally { setSourceDeleteBusy(false); }
+  }
+
   function toggleSourcePick(key: string) {
     setSourcePick((previous) => {
       const next = new Set(previous);
@@ -224,9 +240,12 @@ export function SourceManagementSection({
           我的源列表（{sources.length}）
         </summary>
         <div style={{ marginTop: 10 }}>
+        <p className="muted">删除仅作用于当前子仓。全局屏蔽会隐藏所有子仓中相同 key 的源，可随时解除。</p>
+        {globallyBlockedKeys.length > 0 && <details className="card" style={{ padding: 10, marginBottom: 10 }}><summary>全局屏蔽列表（{globallyBlockedKeys.length}）</summary><div className="row" style={{ marginTop: 8 }}>{globallyBlockedKeys.map(key => <span key={key}><code>{key}</code> <button disabled={busy || sourceDeleteBusy} onClick={() => void setGlobalBlock([key], false)} aria-label={'解除全局屏蔽 ' + key}>解除屏蔽</button></span>)}</div></details>}
         {sources.length > 0 && (
           <div className="row" style={{ marginBottom: 10 }}>
             <span className="muted">已选 {selectedSourceCount} / {sources.length} 个源</span>
+            <button disabled={busy || sourceDeleteBusy || !selectedSourceCount} onClick={() => void setGlobalBlock(sources.filter(source => sourcePick.has(source.key)).map(source => source.key), true)}>全局屏蔽所选</button>
             <button disabled={sourceDeleteBusy || !selectedSourceCount} onClick={() => setSourcePick(new Set())}>清空选择</button>
             <button disabled={busy || sourceDeleteBusy || !selectedSourceCount} onClick={() => void deleteSelectedSources()} style={{ color: 'var(--danger)' }}>
               {sourceDeleteBusy ? '删除中…' : `删除所选（${selectedSourceCount}）`}

@@ -37,7 +37,11 @@
     "release:upload": "node scripts/upload-release.mjs",
     "test:dev": "node --test scripts/dev-electron.check.mjs",
     "build:native-bridge": "node scripts/gen-native-bridge.mjs",
-    "test:native-bridge": "node --test scripts/verify-native-bridge.check.mjs"
+    "test:native-bridge": "node --test scripts/verify-native-bridge.check.mjs",
+    "test:installer": "node --test scripts/installer-script.check.mjs",
+    "acceptance:install": "node scripts/verify-installation.mjs",
+    "acceptance:playback": "node scripts/verify-playback.mjs",
+    "test:acceptance-tools": "node --test scripts/webm-fixture.check.mjs scripts/source-acceptance.check.mjs"
   },
   "author": "Win-Box",
   "license": "MIT",
@@ -61,6 +65,7 @@
     "esbuild": "^0.28.2",
     "happy-dom": "21.0.3",
     "oxlint": "^1.88.0",
+    "playwright-core": "1.64.1",
     "resedit": "^3.1.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",

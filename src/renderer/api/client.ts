@@ -40,6 +40,7 @@ import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../../shared/
 import type { PlayerSettings, MpvStatus, MpvStartOptions, MpvCommand, MpvStateEvent, MediaStateEvent } from '../../shared/player';
 import type { PluginView, PluginInspectResult, SrState, ThemeSkinView, LiveTemplateView, UiCommandView, KeymapView, SettingsPanelView, UiSlotView, PlayerEngineView } from '../../shared/plugin';
 import type { BackupExportResult, BackupImportResult } from '../../shared/backup';
+import type { PluginDialogReply, PluginDialogRequest } from '../../shared/pluginDialog';
 import type { DavBrowseResult, DavServer } from '../../shared/webdav';
 import type { DlnaCastResult, DlnaCastTarget, DlnaDevice } from '../../shared/dlna';
 import type { UpdateCheckResult, UpdateProgress } from '../../shared/update';
@@ -87,6 +88,7 @@ declare global {
         updateSource: (key: string, patch: SourceUpdatePatch) => Promise<IpcResult<SourceBean>>;
         deleteSource: (key: string) => Promise<IpcResult<void>>;
         deleteSources: (keys: string[]) => Promise<IpcResult<void>>;
+        setGlobalSourceBlock: (keys: string[], blocked: boolean) => Promise<IpcResult<void>>;
         moveSource: (key: string, direction: SourceMoveDirection) => Promise<IpcResult<void>>;
         setActiveSource: (key: string) => Promise<IpcResult<void>>;
         setActiveLive: (index: number) => Promise<IpcResult<void>>;
@@ -173,6 +175,8 @@ declare global {
       backup: {
         export: (renderer: Record<string, string>) => Promise<IpcResult<BackupExportResult>>;
         import: () => Promise<IpcResult<BackupImportResult>>;
+        commit: (restoreId: string) => Promise<IpcResult<void>>;
+        cancel: (restoreId: string) => Promise<IpcResult<void>>;
       };
       /** ★ 2026-09-29 WebDAV 存储（只读） */
       dav: {
@@ -332,6 +336,10 @@ declare global {
       };
       // ★ 2026-10-16 插件系统（M1）：列表 / 安装（两段式）/ 卸载 / 启停 / 超分状态
       plugins: {
+        dialogReady: () => void;
+        replyDialog: (reply: PluginDialogReply) => void;
+        onDialog: (callback: (request: PluginDialogRequest) => void) => () => void;
+        onDialogCancel: (callback: (id: string) => void) => () => void;
         list: () => Promise<IpcResult<PluginView[]>>;
         /** ★ 2026-10-18（R10）第 ① 段：干跑校验，返回权限清单供确认（不落盘） */
         inspect: () => Promise<IpcResult<PluginInspectResult>>;
@@ -359,7 +367,8 @@ declare global {
       /** 启动可选更新 */
       update: {
         check: () => Promise<IpcResult<UpdateCheckResult>>;
-        download: () => Promise<IpcResult<{ ok: boolean; path?: string; error?: string }>>;
+        download: () => Promise<IpcResult<{ ok: boolean; path?: string; error?: string; canceled?: boolean }>>;
+        cancel: () => Promise<IpcResult<boolean>>;
         install: () => Promise<IpcResult<{ ok: boolean; path: string }>>;
         onProgress: (cb: (p: UpdateProgress) => void) => () => void;
       };
@@ -393,6 +402,7 @@ export const client = {
   cfgUpdateSource: (key: string, patch: SourceUpdatePatch) => unwrap(window.api.config.updateSource(key, patch)),
   cfgDeleteSource: (key: string) => unwrap(window.api.config.deleteSource(key)),
   cfgDeleteSources: (keys: string[]) => unwrap(window.api.config.deleteSources(keys)),
+  cfgSetGlobalSourceBlock: (keys: string[], blocked: boolean) => unwrap(window.api.config.setGlobalSourceBlock(keys, blocked)),
   cfgMoveSource: (key: string, direction: SourceMoveDirection) => unwrap(window.api.config.moveSource(key, direction)),
   cfgSetActiveSource: (key: string) => unwrap(window.api.config.setActiveSource(key)),
   cfgSetActiveLive: (index: number) => unwrap(window.api.config.setActiveLive(index)),
@@ -527,6 +537,8 @@ export const client = {
   /** ★ 2026-09-29 设置备份 */
   backupExport: (renderer: Record<string, string>) => unwrap(window.api.backup.export(renderer)),
   backupImport: () => unwrap(window.api.backup.import()),
+  backupCommit: (restoreId: string) => unwrap<void>(window.api.backup.commit(restoreId)),
+  backupCancel: (restoreId: string) => unwrap<void>(window.api.backup.cancel(restoreId)),
   /** ★ 2026-09-29 WebDAV 存储（只读） */
   davList: () => unwrap(window.api.dav.list()),
   davSet: (s: DavServer) => unwrap(window.api.dav.set(s)),
@@ -627,6 +639,7 @@ export const client = {
   /** ★ 2026-09-29 启动更新：检查 / 下载 / 拉起安装程序（进度走 onUpdateProgress） */
   updateCheck: () => unwrap(window.api.update.check()),
   updateDownload: () => unwrap(window.api.update.download()),
+  updateCancel: () => unwrap(window.api.update.cancel()),
   updateInstall: () => unwrap(window.api.update.install()),
   onUpdateProgress: (cb: (p: UpdateProgress) => void) => window.api.update.onProgress(cb),
   /** ★ 2026-10-16（用户要求「自适应屏幕分辨率调节窗口大小与字体大小」）：界面缩放读/写 */

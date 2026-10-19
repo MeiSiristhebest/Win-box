@@ -11,6 +11,7 @@
 //   墓碑复用 uiMemory 的带符号语义（`+ts`=删除、`-ts`=撤销），所以辅助窗口删掉的条目
 //   不会被主窗口的旧快照复活（与 `mergeHistoryViews` 同构）。
 import { historyGroupKey, tombstoneActive, unionTombstones } from './uiMemory';
+import { canWriteRendererStorage } from './storageEpoch';
 
 /** 收藏变更广播（同窗口 UI 即时同步；跨窗口由 App 的 focus/恢复可见重读兜底） */
 export const FAVORITES_EVENT = 'winbox:favorites-changed';
@@ -151,6 +152,7 @@ export function mergeFavoriteViews(
 }
 
 function persist(): void {
+  if (!canWriteRendererStorage()) return;
   const disk = readDisk();
   tombs = unionTombstones(tombs, disk?.deleted);
   items = mergeFavoriteViews(items, disk?.favorites, tombs);

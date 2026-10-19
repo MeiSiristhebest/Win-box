@@ -1,3 +1,4 @@
+import { canWriteRendererStorage } from './storageEpoch';
 // src/renderer/lib/uiMemory.ts
 // ★ 页面切换（含系统返回/前进）后保留关键状态的模块级内存：
 //   同一渲染进程内页面卸载再挂载时共享，覆盖"播放进度/资源列表定位"。
@@ -465,6 +466,7 @@ export function schedulePersist(): void {
 
 /** 立即写盘（退出/切页等确定时机调用；内部做了容量异常兜底）。 */
 export function saveUiMemory() {
+  if (!canWriteRendererStorage()) return;
   if (persistTimer) {
     clearTimeout(persistTimer);
     persistTimer = null;

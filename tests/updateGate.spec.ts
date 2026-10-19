@@ -21,7 +21,7 @@ const appModal = Symbol('AppModal');
 const available: UpdateCheckResult = {
   localVersion: '1.21.1', remoteVersion: '1.21.2', tag: 'release1.21.2', updateAvailable: true,
   releaseNotes: '详细更新说明\n- 支持纯 Python 包', publishedAt: '2026-10-13T08:00:00Z',
-  asset: { name: 'Win-Box Setup 1.21.2.exe', size: 1000, url: 'https://example.test/setup.exe', accelUrls: [] },
+  asset: { id: 1, sha256: 'a'.repeat(64), name: 'Win-Box Setup 1.21.2.exe', size: 1000, url: 'https://example.test/setup.exe', accelUrls: [] },
 };
 
 function host(hash = '#/', search = false) {
@@ -33,6 +33,7 @@ function host(hash = '#/', search = false) {
   const client = {
     updateCheck: vi.fn().mockResolvedValue(available),
     updateDownload: vi.fn().mockResolvedValue({ ok: true }),
+    updateCancel: vi.fn().mockResolvedValue(true),
     updateInstall: vi.fn().mockResolvedValue({ ok: true }),
     onUpdateProgress: vi.fn((cb: typeof onProgress) => { onProgress = cb; return vi.fn(); }),
   };
@@ -153,6 +154,21 @@ describe('启动更新提示（真实 TSX 组件行为）', () => {
     expect(text(h.render())).toContain('无法启动安装程序');
     button(h.render(), '暂不更新').props.onClick();
     expect(nodes(h.render()).some(n => n.type === appModal)).toBe(false);
+  });
+
+  it('supports cancellation during verification without installing or dismissing the update choice', async () => {
+    const h = host();
+    let finish!: (value: { ok: boolean; canceled: boolean }) => void;
+    h.client.updateDownload.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    h.render(); await settle(); button(h.render(), '立即更新').props.onClick();
+    h.progress({ phase: 'verifying', received: 1000, total: 1000, percent: 99, speed: 0 });
+    expect(text(h.render())).toContain('正在校验');
+    button(h.render(), '取消下载').props.onClick();
+    expect(h.client.updateCancel).toHaveBeenCalledTimes(1);
+    finish({ ok: false, canceled: true }); await settle();
+    button(h.render(), '立即更新');
+    button(h.render(), '暂不更新');
+    expect(h.client.updateInstall).not.toHaveBeenCalled();
   });
 
   it.each(['reject', 'current', 'no-asset'])('检查异常/无更新/无安装包正常放行：%s', async mode => {

@@ -459,6 +459,10 @@ export interface UserConfig {
    *   用户手动**重新添加**同一 key（addSource）时自动清除对应墓碑，所以"删了想要回来"有明确路径。
    */
   deletedSourceKeys: string[];
+  /** v4: deletion records owned by each profile. deletedSourceKeys is the active profile's compatibility view. */
+  deletedSourceKeysByProfile?: Record<string, string[]>;
+  /** Explicit global blocklist; stored sources remain available for unblocking. */
+  globallyBlockedSourceKeys?: string[];
 }
 
 /** 多配置档案：保存"一份订阅"的原始 JSON（解析后可重建 sources/lives/global），用于多 JSON 源切换 */

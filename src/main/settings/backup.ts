@@ -7,6 +7,20 @@ import {
   type BackupFile,
   type BackupSettingsState,
 } from '../../shared/backup';
+import { DEFAULT_UI_PREFERENCES, UI_THEME_IDS, validateUiPreferencesPatch, type UiPreferencesPatch } from '../../shared/uiPreferences';
+
+export function backupUiPreferences(renderer: Record<string, string>): UiPreferencesPatch {
+  const theme = renderer['winbox-theme'];
+  const motion = renderer['winbox-motion'];
+  return validateUiPreferencesPatch({
+    themeId: theme && (UI_THEME_IDS.includes(theme) || /^plugin:[a-z0-9-]{3,40}$/.test(theme)) ? theme : DEFAULT_UI_PREFERENCES.themeId,
+    motion: motion === 'on' || motion === 'off' ? motion : 'auto',
+    showDiscover: renderer['winbox-show-discover'] !== '0',
+    waterfall: renderer['winbox-waterfall'] === '1',
+    homeFilters: renderer['winbox-home-filters'] === '1',
+    navMode: renderer['winbox-nav-mode'] === 'window' ? 'window' : 'inline',
+  });
+}
 
 export interface BackupMeta {
   exportedAt: string;
@@ -65,8 +79,12 @@ export function parseBackupFile(text: string): BackupParseResult {
     return { ok: false, error: `备份版本 ${version} 高于当前支持的 ${BACKUP_VERSION}，请升级软件后再导入` };
   }
   const settings = o.settings as BackupSettingsState | undefined;
-  if (!settings || typeof settings !== 'object' || !settings.userConfig || typeof settings.userConfig !== 'object') {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings) || !settings.userConfig || typeof settings.userConfig !== 'object' || Array.isArray(settings.userConfig)) {
     return { ok: false, error: '备份里缺少设置内容（settings.userConfig）' };
+  }
+  for (const field of ['driveTokens', 'subtitle', 'metaSettings', 'danmaku', 'player', 'proxy', 'bossKey'] as const) {
+    const value = settings[field];
+    if (value !== undefined && (!value || typeof value !== 'object' || Array.isArray(value))) return { ok: false, error: `备份设置 ${field} 格式无效` };
   }
   return {
     ok: true,

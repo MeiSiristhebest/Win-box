@@ -1,3 +1,4 @@
+import { EmbeddedPythonRuntime, PYTHON_RUNTIME_VERSION } from './EmbeddedPythonRuntime';
 import { NATIVE_RUNTIME_ARTIFACTS, NATIVE_RUNTIME_VERSION } from './nativeRuntimeAssets';
 // src/engine/spider/JarSpiderBridge.ts
 // ★ 等效 DexClassLoader 的 JVM 桥（Windows）。
@@ -5,13 +6,12 @@ import { NATIVE_RUNTIME_ARTIFACTS, NATIVE_RUNTIME_VERSION } from './nativeRuntim
 // 运行时资产（resources/jvm/）：jre/（jlink 裁剪）、d2j/（dex2jar 20M）、stubs/（安卓 stub + Spider 基类 + SpiderRunner）、libs/（okhttp/gson/jsoup）。
 // 引擎层契约：所有宿主能力经 EngineHost 注入；本文件只做进程编排，不 import electron。
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import {
   mkdirSync, existsSync, readFileSync, writeFileSync, statSync,
   renameSync, openSync, closeSync, readSync, rmSync, copyFileSync,
 } from 'node:fs';
 import { totalmem } from 'node:os';
-import { join, basename, dirname, resolve } from 'node:path';
+import { join, basename, resolve } from 'node:path';
 import type { EngineHost } from '../ports';
 import { md5Hex } from '../util/md5';
 import { contentHashOf, recordContentKey, tryCloneByContent } from './jarContentIndex';
@@ -50,8 +50,7 @@ import { LOCAL_PROXY_BASE } from '../../shared/constants';
 export const CONVERTED_CACHE_VERSION = 5;
 
 /** The Python archive is checked against the digest published by Python.org. */
-export const PYTHON_RUNTIME_VERSION = '3.15.0';
-export const PYTHON_RUNTIME_EMBED_SHA256 = 'a6999bcbcbe56f937159ef79c2630260eca99f65f7860bc5cd20430324079a44';
+export { PYTHON_RUNTIME_VERSION, PYTHON_RUNTIME_EMBED_SHA256 } from './EmbeddedPythonRuntime';
 
 export interface JarBridgeOptions {
   /** resources/jvm 目录（含 jre/d2j/stubs/libs） */
@@ -257,7 +256,7 @@ export class JarSpiderBridge {
   private readonly callTimeoutMs: number;
   private readonly shellShimClasses?: string;
   private readonly pyRuntimeDir?: string;
-  private readonly pythonEmbedArchiveSha256: string;
+  private readonly pythonRuntime: EmbeddedPythonRuntime;
   /** ★ ARM 原生桥运行时目录（见 JarBridgeOptions.nativeRuntimeDir） */
   private readonly nativeRuntimeDir?: string;
   /** ★ 网络代理注入点（宿主提供；空 = 不走代理） */
@@ -311,12 +310,6 @@ export class JarSpiderBridge {
   /** ★ 子进程常驻复用池（--serve/-serve；进程复用加速首页/搜索；单测与显式关闭时禁用） */
   private readonly pool: SpiderProcPool | null;
   private readonly poolReclaimTimer?: ReturnType<typeof setInterval>;
-  /**
-   * ★ 2026-09-24：嵌入式 Python 运行时的**在途准备任务**（下载/解压/装依赖/放 runner）。
-   * 作用有二：① 后台预热与首次调用共享同一份工作，绝不并发下载两份；
-   *          ② 预热在用户进源前完成时，首次使用只需 spawn + init（去掉 11MB 下载与装包）。
-   */
-  private pyRuntimeTask: Promise<string> | null = null;
   /** ★ 原生运行时（unidbg）在途准备任务：与 python 运行时同款「共享在途 + 幂等」 */
   private nativeRuntimeTask: Promise<string[]> | null = null;
   /**
@@ -337,7 +330,7 @@ export class JarSpiderBridge {
     this.callTimeoutMs = opts.callTimeoutMs ?? 20000;
     this.shellShimClasses = opts.shellShimClasses;
     this.pyRuntimeDir = opts.pyRuntimeDir;
-    this.pythonEmbedArchiveSha256 = opts.pythonEmbedArchiveSha256 ?? PYTHON_RUNTIME_EMBED_SHA256;
+    this.pythonRuntime = new EmbeddedPythonRuntime({ runtimeDir: opts.pyRuntimeDir, jvmDir: opts.jvmDir, archiveSha256: opts.pythonEmbedArchiveSha256 }, () => this.host);
     this.nativeRuntimeDir = opts.nativeRuntimeDir;
     this.proxyProvider = opts.proxyProvider;
     this.totalMemBytes = opts.totalMemBytes ?? totalmem();
@@ -1254,7 +1247,7 @@ export class JarSpiderBridge {
     const runner = join(dir, 'runner.py');
     if (!existsSync(pyPath) || !existsSync(pyExe) || !existsSync(runner)) return 0;
     if (!this.pyRuntimeReady()) return 0;
-    this.placeRunnerFiles(dir);
+    this.pythonRuntime.placeRunnerFiles(dir);
     const serveArgv = [runner, '-serve', pyPath, clsName];
     const env = { PYTHONIOENCODING: 'utf-8', ...this.proxyProvider?.().env,
       ...(siteKey ? { WINBOX_PY_PROXY: `${LOCAL_PROXY_BASE}/proxy?do=py&key=${encodeURIComponent(siteKey)}` } : {}) };
@@ -1280,13 +1273,7 @@ export class JarSpiderBridge {
   }
 
   /** ★ 嵌入式 Python 运行时是否已落盘（同步判定，全源搜索就绪闸门用；**绝不触发下载**） */
-  pyRuntimeReady(): boolean {
-    if (!this.pyRuntimeDir) return false;
-    const dir = join(this.pyRuntimeDir, JarSpiderBridge.PY_VER);
-    return existsSync(join(dir, 'python.exe')) && existsSync(join(dir, 'runner.py')) &&
-      existsSync(join(dir, 'Lib', 'site-packages', '.certifi-2026.7.22')) &&
-      JarSpiderBridge.PY_WHEELS.every(w => !w.required || this.dirNonEmpty(join(dir, 'Lib', 'site-packages', w.name)));
-  }
+  pyRuntimeReady(): boolean { return this.pythonRuntime.ready(); }
 
   /**
    * ★ 正在进行的转换/下载（未完成时返回 promise；已就绪或从未启动返回 null）。
@@ -1649,54 +1636,6 @@ export class JarSpiderBridge {
     'https://repo1.maven.org/maven2/',
   ];
 
-  /** 嵌入包（embed）下载源：华为云 → npmmirror → python.org，依次尝试（python.org 被墙概率高留最后） */
-  private static readonly PYTHON_EMBED_URLS = [
-    `https://mirrors.huaweicloud.com/python/${JarSpiderBridge.PY_VER}/python-${JarSpiderBridge.PY_VER}-embed-amd64.zip`,
-    `https://registry.npmmirror.com/-/binary/python/${JarSpiderBridge.PY_VER}/python-${JarSpiderBridge.PY_VER}-embed-amd64.zip`,
-    `https://www.python.org/ftp/python/${JarSpiderBridge.PY_VER}/python-${JarSpiderBridge.PY_VER}-embed-amd64.zip`,
-  ];
-  /**
-   * Third-party wheels pinned for CPython 3.15 on Windows x64.
-   *
-   * ★ 2026-09-30（用户报「部分 py 蜘蛛报 ImportError 第三方库缺失」）：按**实测**补齐 —— 扫描用户
-   *   本地包 211 个 py 蜘蛛的 import，缺失最多的是 Crypto(51)/bs4(47)/pyquery(26)，其后
-   *   cryptography、PIL、chardet、cloudscraper、curl_cffi。
-   *   `name` = **导入名**（也是 wheel 解压后的顶层目录名，用于「是否已装」判定）；
-   *   `pkg` = PyPI 项目名（simple 索引按它取），两者不同者必须都写
-   *   （beautifulsoup4→bs4 / pycryptodome→Crypto / Pillow→PIL / requests-toolbelt→requests_toolbelt）。
-   *   `platform` = 平台/ABI 标签，仅用于「首选版本不在镜像上」时的兜底匹配 —— 二进制包绝不能
-   *   退化成别的平台（会解压出一堆用不了的 .pyd）。
-   *   新增项一律 required:false：单库失败不影响纯 py 源，只在日志留痕。
-   */
-  private static readonly PY_WHEELS: Array<{ name: string; pkg?: string; file: string; platform?: string; required: boolean }> = [
-    { name: 'requests', file: 'requests-2.34.2-py3-none-any.whl', platform: 'py3-none-any', required: true },
-    { name: 'urllib3', file: 'urllib3-2.8.0-py3-none-any.whl', platform: 'py3-none-any', required: true },
-    { name: 'certifi', file: 'certifi-2026.7.22-py3-none-any.whl', platform: 'py3-none-any', required: true },
-    { name: 'charset_normalizer', file: 'charset_normalizer-3.5.2-py3-none-any.whl', platform: 'py3-none-any', required: true },
-    { name: 'idna', file: 'idna-3.20-py3-none-any.whl', platform: 'py3-none-any', required: true },
-    { name: 'lxml', file: 'lxml-6.1.3-cp315-cp315-win_amd64.whl', platform: 'cp315-cp315-win_amd64', required: false },
-    // ---- ★ 2026-09-30 新增（实测缺得最多的几族）----
-    { name: 'Crypto', pkg: 'pycryptodome', file: 'pycryptodome-4.0.0-cp39-abi3-win_amd64.whl', platform: 'cp39-abi3-win_amd64', required: false },
-    { name: 'bs4', pkg: 'beautifulsoup4', file: 'beautifulsoup4-4.15.0-py3-none-any.whl', platform: 'py3-none-any', required: false },
-    { name: 'soupsieve', file: 'soupsieve-3.0.3-py3-none-any.whl', platform: 'py3-none-any', required: false },
-    { name: 'pyquery', file: 'pyquery-2.1.0-py3-none-any.whl', platform: 'py3-none-any', required: false },
-    { name: 'cssselect', file: 'cssselect-1.6.0-py3-none-any.whl', platform: 'py3-none-any', required: false },
-    { name: 'PIL', pkg: 'Pillow', file: 'pillow-12.3.0-cp315-cp315-win_amd64.whl', platform: 'cp315-cp315-win_amd64', required: false },
-    { name: 'cryptography', file: 'cryptography-50.0.2-cp39-abi3-win_amd64.whl', platform: 'cp39-abi3-win_amd64', required: false },
-    { name: 'chardet', file: 'chardet-7.6.0-py3-none-any.whl', platform: 'py3-none-any', required: false },
-    { name: 'cloudscraper', file: 'cloudscraper-1.2.71-py2.py3-none-any.whl', platform: 'py2.py3-none-any', required: false },
-    { name: 'requests_toolbelt', pkg: 'requests-toolbelt', file: 'requests_toolbelt-1.0.0-py2.py3-none-any.whl', platform: 'py2.py3-none-any', required: false },
-    { name: 'pyparsing', file: 'pyparsing-3.3.3-py3-none-any.whl', platform: 'py3-none-any', required: false },
-    { name: 'curl_cffi', file: 'curl_cffi-0.16.3-cp310-abi3-win_amd64.whl', platform: 'cp310-abi3-win_amd64', required: false },
-    { name: 'cffi', file: 'cffi-2.1.1-cp315-cp315-win_amd64.whl', platform: 'cp315-cp315-win_amd64', required: false },
-    { name: 'pycparser', file: 'pycparser-3.11-py3-none-any.whl', platform: 'py3-none-any', required: false },
-  ];
-  /** PyPI simple 镜像根（回退到带 `simple/` 的路径，由其索引解析 wheel 真实地址） */
-  private static readonly PY_WHEEL_SIMPLE = [
-    'https://pypi.tuna.tsinghua.edu.cn/simple/',
-    'https://mirrors.huaweicloud.com/repository/pypi/simple/',
-  ];
-
   /**
    * ★ 2026-09-24 后台预热嵌入式 Python 运行时（不阻塞、幂等）：
     * 由 SpiderHost 在配置就绪/清缓存后调用 —— 把「13MB embed 下载 + 解压 + wheel 安装」提前到
@@ -1707,59 +1646,7 @@ export class JarSpiderBridge {
     return this.ensurePythonRuntime().catch(() => '');
   }
 
-  private async ensurePythonRuntime(): Promise<string> {
-    // ★ 在途任务共享：预热与调用并发时不再下载两份运行时
-    if (this.pyRuntimeTask) {
-      const d = await this.pyRuntimeTask;
-      if (d && existsSync(join(d, 'python.exe'))) return d;
-    }
-    const task = this.preparePythonRuntime();
-    this.pyRuntimeTask = task
-      .catch(() => '')
-      .finally(() => { this.pyRuntimeTask = null; });
-    return task;
-  }
-
-  private async preparePythonRuntime(): Promise<string> {
-    if (!this.pyRuntimeDir) throw new Error('python 源需要嵌入式 Python 运行时，但未配置下载目录');
-    const dir = join(this.pyRuntimeDir, JarSpiderBridge.PY_VER);
-    const pyExe = join(dir, 'python.exe');
-    if (existsSync(pyExe)) {
-      // 运行时已就绪但第三方库/runner 可能缺失 → 幂等补齐（首次下载中断后重试自愈）
-      await this.ensureRuntimeLibs(dir);
-      this.placeRunnerFiles(dir);
-      return dir;
-    }
-    const logger = this.host?.logger;
-    let lastErr = '';
-    for (const url of JarSpiderBridge.PYTHON_EMBED_URLS) {
-      try {
-        logger?.i?.(`python: 正在准备嵌入式 Python 运行时（${JarSpiderBridge.PY_VER} embed 约 13MB + 依赖安装；配置就绪后会后台预热）…`);
-        const res = await this.host!.http.request({ url, method: 'get', timeoutMs: 180000, buffer: 2 });
-        const buf = Buffer.from(Array.isArray(res.content) ? res.content as unknown as number[] : Buffer.from(String(res.content), 'base64'));
-        if (buf.length < 1024 * 1024) { lastErr = `下载内容过小(${buf.length}B)`; continue; }
-        const digest = createHash('sha256').update(buf).digest('hex');
-        if (digest !== this.pythonEmbedArchiveSha256.toLowerCase()) {
-          lastErr = `Python embed SHA-256 校验失败（${digest}）`;
-          continue;
-        }
-        mkdirSync(dir, { recursive: true });
-        this.unpackZipTo(buf, dir); // embed zip 标准 deflate，readZipEntries 解压（跳过目录条目）
-        if (!existsSync(pyExe)) { lastErr = '下载内容缺少 python.exe（镜像可能返回错误页）'; continue; }
-        await this.ensureRuntimeLibs(dir); // 第三方库失败直接抛（requests 缺失会让 base.spider 全灭）
-        this.placeRunnerFiles(dir);
-        logger?.i?.('python: 嵌入式 Python 运行时已就绪 ' + dir);
-        return dir;
-      } catch (e) {
-        lastErr = e instanceof Error ? e.message : String(e);
-      }
-    }
-    throw new Error(
-      `python 源需要嵌入式 Python 运行时，自动下载失败（${lastErr}）。` +
-      `可手动下载 python-${JarSpiderBridge.PY_VER}-embed-amd64.zip 解压到 ${dir}，` +
-      `并把 lxml/requests/urllib3 的 wheel 解压进 ${join(dir, 'Lib', 'site-packages')} 后重试`,
-    );
-  }
+  private ensurePythonRuntime(): Promise<string> { return this.pythonRuntime.ensure(); }
 
   /**
    * ★ 2026-09-26：**是否需要原生桥**（同步判定，避免在普通路径上引入 await —— 
@@ -1875,137 +1762,6 @@ export class JarSpiderBridge {
     } catch {
       return false;
     }
-  }
-
-  /** 解压 zip 字节到 dir（目录条目跳过；坏条目跳过不抛）。 */
-  private unpackZipTo(buf: Buffer, dir: string): void {
-    const fs = require('node:fs') as typeof import('node:fs');
-    for (const e of readZipEntries(buf)) {
-      if (e.name.endsWith('/')) continue;
-      // 路径穿越防护：拒绝 ../ 与绝对路径（镜像内容不可信）
-      const rel = e.name.replace(/\\/g, '/').split('/').filter((s) => s !== '..' && s !== '.' && s !== '').join('/');
-      const clean = join(dir, rel);
-      if (!clean.startsWith(dir)) continue;
-      try { fs.mkdirSync(dirname(clean), { recursive: true }); } catch { /* ignore */ }
-      fs.writeFileSync(clean, e.bytes);
-    }
-  }
-
-  /** 解压各 wheel 到 site-packages；lxml 失败仅警告，requests 族失败抛错。
-   *  ★ 2026-09-24：**分波并行**（每波 3 个）—— wheel 之间互不依赖，此前 6 个串行
-   *  （每包「索引页 + 包体」两次往返）是首次加载时间的大头之一。 */
-  private async ensureRuntimeLibs(dir: string): Promise<void> {
-    const sp = join(dir, 'Lib', 'site-packages');
-    const pending = JarSpiderBridge.PY_WHEELS.filter((w) => !this.dirNonEmpty(join(sp, w.name)) ||
-      (w.name === 'certifi' && !existsSync(join(sp, '.certifi-2026.7.22'))));
-    const WAVE = 3;
-    for (let i = 0; i < pending.length; i += WAVE) {
-      await Promise.all(
-        pending.slice(i, i + WAVE).map(async (w) => {
-          const pkgDir = join(sp, w.name);
-          const ok = await this.downloadWheel(dir, w).catch((e) => {
-            if (w.required) throw e;
-            this.host?.logger?.w?.(`python: 可选依赖 ${w.name} 下载失败（不影响纯 py 源）: ${(e as Error).message}`);
-            return false;
-          });
-          if (!ok && w.required) throw new Error(`python: ${w.name} 下载失败`);
-          if (ok && w.name === 'certifi') writeFileSync(join(sp, '.certifi-2026.7.22'), '');
-          if (ok && !this.dirNonEmpty(pkgDir)) {
-            if (w.required) throw new Error(`python: ${w.name} 解压后为空`);
-            this.host?.logger?.w?.(`python: 可选依赖 ${w.name} 解压后为空（跳过）`);
-          }
-        }),
-      );
-    }
-  }
-
-  private dirNonEmpty(p: string): boolean {
-    try {
-      const fs = require('node:fs') as typeof import('node:fs');
-      return existsSync(p) && fs.readdirSync(p).length > 0;
-    } catch { return false; }
-  }
-
-  /**
-   * 下载单个 wheel 并解压到 site-packages。
-   * wheel URL 不做假设：先从 PyPI simple 索引页（PEP 503）读取该文件名的 href，
-   * 由 href（形如 `../../packages/<hash>/<file>`）按 simple 页基址解析出真实地址；
-   * 依次尝试各镜像，全部失败抛错（保底提示）。
-   * ★ 2026-09-30：索引页按 **PyPI 项目名**（`pkg`，缺省取 `name`）访问；首选文件名缺失时
-   *   只接受**同平台标签**的 wheel（`platform`）—— 否则二进制包会退化成别的平台（解压出用不了的 .pyd）。
-   */
-  private async downloadWheel(dir: string, w: { name: string; pkg?: string; file: string; platform?: string }): Promise<boolean> {
-    const sp = join(dir, 'Lib', 'site-packages');
-    mkdirSync(sp, { recursive: true });
-    const fs = require('node:fs') as typeof import('node:fs');
-    const pushEntries = (buf: Buffer): void => {
-      for (const e of readZipEntries(buf)) {
-        if (e.name.endsWith('/')) continue;
-        const rel = e.name.replace(/\\/g, '/').split('/').filter((s) => s !== '..' && s !== '.' && s !== '').join('/');
-        const clean = join(sp, rel);
-        try { fs.mkdirSync(dirname(clean), { recursive: true }); } catch { /* ignore */ }
-        fs.writeFileSync(clean, e.bytes);
-      }
-    };
-    const project = w.pkg || w.name;
-    for (const simpleBase of JarSpiderBridge.PY_WHEEL_SIMPLE) {
-      try {
-        // 1) 索引页 → 找目标文件 href（HttpClient buffer:2 返回 base64 字符串，先解码）
-        const idx = await this.host!.http.request({ url: `${simpleBase}${project}/`, method: 'get', timeoutMs: 60000, buffer: 2 });
-        const idxBuf = Buffer.from(Array.isArray(idx.content) ? idx.content as unknown as number[] : Buffer.from(String(idx.content), 'base64'));
-        const html = idxBuf.toString('utf8');
-        // 精确文件名优先（首选版本）；镜像清理旧版时退化为**同平台标签**的任一 wheel（版本无关）
-        let href = html.match(new RegExp(`href="([^"]*${escapeRegExp(w.file)}[^"]*)"`))?.[1];
-        if (!href && w.platform) {
-          const tag = w.platform;
-          const all = [...html.matchAll(/href="([^"]+\.whl[^"]*)"/g)].map((m) => m[1]);
-          href = all.find((h) => h.includes(tag));
-        }
-        if (!href) continue;
-        // href 形如 `../../packages/<hash>/<file>` → 相对 simpleBase 解析
-        const real = new URL(href.replace(/&amp;/g, '&'), `${simpleBase}${project}/`).href;
-        const res = await this.host!.http.request({ url: real, method: 'get', timeoutMs: 120000, buffer: 2 });
-        const buf = Buffer.from(Array.isArray(res.content) ? res.content as unknown as number[] : Buffer.from(String(res.content), 'base64'));
-        if (buf.length < 1024) continue; // 404/HTML 错误页
-        if (!looksLikeZip(buf)) continue;
-        pushEntries(buf);
-        if (!this.dirNonEmpty(join(sp, w.name))) continue;
-        return true;
-      } catch { /* 换下一个镜像 */ }
-    }
-    throw new Error(`python: wheel ${w.file} 全部镜像下载失败`);
-  }
-
-  /** 把随包的 runner.py + base/ 拷贝进运行时目录（幂等）。
-   *  ★ 2026-09-24：**内容未变则跳过**——此前每次 callPython 都会递归复制一遍 base/，
-   *  属于「已就绪」路径上的无谓 IO（预热后每次调用都会走这里）。 */
-  private placeRunnerFiles(dir: string): void {
-    try {
-      const fs = require('node:fs') as typeof import('node:fs');
-      const src = join(this.jvmDir, 'python-runner');
-      const srcRunner = join(src, 'runner.py');
-      if (!existsSync(srcRunner)) {
-        this.host?.logger?.w?.('python: 随包 runner 缺失（resources/jvm/python-runner），py 源将无法运行');
-        return;
-      }
-      const dstRunner = join(dir, 'runner.py');
-      const dstBase = join(dir, 'base');
-      // 随包文件不比已落盘的更新（且 base/ 存在）→ 无需重拷
-      if (existsSync(dstBase) && this.mtimeMs(srcRunner) <= this.mtimeMs(dstRunner)) return;
-      fs.cpSync(srcRunner, dstRunner, { force: true });
-      const bSrc = join(src, 'base');
-      if (existsSync(bSrc)) fs.cpSync(bSrc, dstBase, { recursive: true, force: true });
-    } catch (e) {
-      this.host?.logger?.w?.(`python: runner 落盘失败: ${(e as Error).message}`);
-    }
-  }
-
-  /** 文件 mtime（毫秒）；不存在/读不到 → 0（按「需要拷贝」处理） */
-  private mtimeMs(p: string): number {
-    try {
-      const fs = require('node:fs') as typeof import('node:fs');
-      return fs.statSync(p).mtimeMs;
-    } catch { return 0; }
   }
 
   /** 生成 JVM 子进程的公共前置参数（旗标 + classpath），jar/python 模式共用。 */
@@ -2384,7 +2140,7 @@ export function translateSpiderLog(log: string): string {
     [/SyntaxError|invalid syntax|f-string|EOL while scanning|unexpected EOF|IndentationError/i,
       'python 蜘蛛脚本本身有语法/编码错误（Python3 解析失败），请检查源脚本'],
     // ★ 2026-09-30：报错必须**点出缺哪个库**（此前一律给同一句泛泛的说明，用户无法判断该不该反馈）。
-    //   内置库清单见 JarSpiderBridge.PY_WHEELS（首次用到会自动从 PyPI 镜像补齐）。
+    //   内置库清单见 EmbeddedPythonRuntime（首次用到会自动从 PyPI 镜像补齐）。
     [/No module named\s+'?"?([A-Za-z_][\w.]*)/i,
       (m) => `该 python 蜘蛛缺少第三方库「${m[1]}」—— 常用库（requests/urllib3/lxml/bs4/pyquery/Crypto/PIL…）会在首次使用时自动补齐，若持续报此错请反馈该库名`],
     [/ImportError/i, '该 python 蜘蛛导入依赖失败（库名未在报错里给出，请反馈该源）'],
@@ -2458,9 +2214,7 @@ export function isGuardInnerSpiderNull(reason: string): boolean {
 }
 
 /** 转义正则特殊字符（文件名用于 RegExp 构造时防误解析） */
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+
 
 /**
  * 规范化 jar URL：剥离 `;md5;xxxx` 等后缀，只保留真正的 URL 段。

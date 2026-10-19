@@ -27,7 +27,7 @@ export class BossKeyManager {
   }
 
   set settings(v: BossKeySettings) {
-    this.store.setObject('bosskey', { enabled: !!v.enabled, accel: (v.accel || '').trim() || BOSS_DEFAULT_ACCEL });
+    this.store.setObjectStrict('bosskey', { enabled: !!v.enabled, accel: (v.accel || '').trim() || BOSS_DEFAULT_ACCEL });
   }
 
   get isActive(): boolean {

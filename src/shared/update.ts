@@ -138,6 +138,8 @@ export const ACCEL_FINALISTS = 3;
 
 /** GitHub Release 资产（原始字段，仅取需要的） */
 export interface ReleaseAssetInput {
+  id?: number;
+  digest?: string | null;
   name: string;
   browser_download_url: string;
   size: number;
@@ -166,6 +168,8 @@ export interface ParsedRelease {
 
 /** 选中待下载的安装包（含加速地址列表，末项为直连原始地址） */
 export interface UpdateAsset {
+  id: number;
+  sha256: string;
   name: string;
   /** 原始 GitHub 下载地址 */
   url: string;
@@ -195,7 +199,7 @@ export interface UpdateCheckResult {
 
 /** 更新进度（主进程 → 渲染层推送） */
 export interface UpdateProgress {
-  phase: 'checking' | 'speedtest' | 'downloading' | 'done' | 'launching' | 'error';
+  phase: 'checking' | 'speedtest' | 'downloading' | 'verifying' | 'done' | 'launching' | 'error' | 'canceled';
   received: number;
   total: number;
   percent: number;
@@ -318,6 +322,19 @@ export function pickSetupAsset(assets: ReleaseAssetInput[], version?: string): R
     if (exact) return exact;
   }
   return pool[0];
+}
+
+/** Called only with metadata fetched over the fixed GitHub API origin. Mirrors never supply trust data. */
+export function trustedUpdateAsset(asset: ReleaseAssetInput, tag: string): UpdateAsset {
+  const digest = /^sha256:([a-f0-9]{64})$/i.exec(asset.digest || '');
+  if (!digest) throw new Error('发布资产缺少有效的 SHA-256 摘要，无法自动安装');
+  if (!Number.isSafeInteger(asset.id) || Number(asset.id) <= 0 || !Number.isSafeInteger(asset.size) || asset.size <= 0) throw new Error('发布资产标识或大小无效');
+  const name = asset.name;
+  if (!name || name !== name.trim() || /[<>:"/\\|?*]/.test(name) || Array.from(name).some(character => character.charCodeAt(0) < 32) || !/\.exe$/i.test(name) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)) throw new Error('发布安装包文件名无效');
+  const url = new URL(asset.browser_download_url);
+  const expectedPath = `/${UPDATE_REPO}/releases/download/${tag}/${name}`;
+  if (url.protocol !== 'https:' || url.hostname !== 'github.com' || url.port || url.username || url.password || url.search || url.hash || decodeURIComponent(url.pathname) !== expectedPath) throw new Error('发布安装包地址不属于当前仓库');
+  return { id: Number(asset.id), sha256: digest[1].toLowerCase(), name, url: url.href, size: asset.size, accelUrls: buildAccelUrls(url.href) };
 }
 
 /** GitHub Release JSON → 解析结果（容错：字段缺失一律给默认值） */

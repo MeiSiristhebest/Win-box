@@ -12,6 +12,7 @@ import { parseSite } from '../../engine/config/SiteParser';
 import { parseSiteConfig } from '../../engine/config/ApiConfigParser';
 import { parseLives } from '../../engine/config/LiveConfigParser';
 import { isLocalLiveUrl } from '../../engine/live/localLive';
+import { normalizeSourceDeletionScopes, sourceDeletionKeys, withSourceDeletionKeys } from './sourceDeletionScopes';
 import type {
   LiveBean,
   Logger,
@@ -35,7 +36,7 @@ import {
 } from './subscriptionProfileMerge';
 
 export const USER_CONFIG_KEY = 'user-config';
-export const USER_CONFIG_VERSION = 3;
+export const USER_CONFIG_VERSION = 4;
 
 /** 允许 UI 修改的字段白名单（与 MutableSourceField 一致） */
 const MUTABLE_FIELDS: ReadonlySet<string> = new Set([
@@ -66,6 +67,7 @@ export function emptyUserConfig(): UserConfig {
     activeProfileId: '',
     subscriptionGroups: [],
     deletedSourceKeys: [],
+    deletedSourceKeysByProfile: {},
   };
 }
 
@@ -228,12 +230,24 @@ export class UserConfigManager {
     const restored = this.normalizeLoaded(raw);
     // ★ 2026-10-15：备份还原同样把「本机导入的本地直播线路」并回来（见 withLocalLives），
     //   并按**备份自带的**「已删除源」墓碑过滤（备份里若同时有该源与墓碑，以墓碑为准）。
-    const merged = this.withLocalLives({ ...restored, sources: this.withoutDeletedSources(restored.sources, '备份还原', restored.deletedSourceKeys) });
+    const merged = this.withLocalLives({ ...restored, sources: this.withoutDeletedSources(restored.sources, '备份还原', restored.activeProfileId, restored) });
     this.apply(merged);
   }
 
   sources(): SourceBean[] {
-    return this.snap.sources.map((s) => ({ ...s }));
+    const blocked = new Set(this.snap.globallyBlockedSourceKeys);
+    return this.snap.sources.filter(source => !blocked.has(source.key)).map((s) => ({ ...s }));
+  }
+
+  setGlobalSourceBlock(keys: readonly string[], blocked: boolean): void {
+    const next = new Set(this.snap.globallyBlockedSourceKeys);
+    for (const key of keys) {
+      if (typeof key !== 'string' || !key.trim()) continue;
+      if (blocked) next.add(key.trim()); else next.delete(key.trim());
+    }
+    const value = [...next];
+    if (JSON.stringify(value) === JSON.stringify(this.snap.globallyBlockedSourceKeys ?? [])) return;
+    this.apply({ ...this.snap, globallyBlockedSourceKeys: value });
   }
 
   lives(): UserConfig['lives'] {
@@ -285,6 +299,7 @@ export class UserConfigManager {
       };
       next.profiles = [first];
       next.activeProfileId = first.id;
+      next.deletedSourceKeysByProfile = withSourceDeletionKeys(next, sourceDeletionKeys(this.snap), first.id).deletedSourceKeysByProfile;
     }
     if (!next.sources.some((s) => s.key === next.ui.activeSourceKey)) {
       next.ui.activeSourceKey = '';
@@ -327,14 +342,14 @@ export class UserConfigManager {
             apiUrl,
             global: { spider: parsed.spider || '', flags: Array.isArray(parsed.flags) ? [...parsed.flags] : [] },
             // ★ 2026-10-15：同样按「已删除源」墓碑过滤（否则另存为新档案会把删掉的源带回来）
-            sources: this.withoutDeletedSources(parsed.sites.map((s) => ({ ...s })), '另存档案'),
+            sources: this.withoutDeletedSources(parsed.sites.map((s) => ({ ...s })), '另存档案', p.id),
             lives: parsed.lives.map((l) => ({ ...l })),
             parses: realParses(parsed.parses),
           }
         : {}),
     };
     if (!next.sources.some((s) => s.key === next.ui.activeSourceKey)) next.ui.activeSourceKey = '';
-    this.apply(this.withLocalLives(next));
+    this.apply(this.withLocalLives(source?.parsed ? next : withSourceDeletionKeys(next, sourceDeletionKeys(this.snap))));
     return { ...p };
   }
 
@@ -359,18 +374,18 @@ export class UserConfigManager {
       profilesById.set(profile.id, { ...profile });
     }
     const profiles = [...profilesById.values()];
-    const restoredKeys = new Set<string>();
+    let deletionState = this.snap;
     if (restoreDeletedSources) {
       for (const profile of importedProfiles) {
         if (!profile.id || !profile.json || profile.groupId !== group.id) continue;
-        for (const source of parseSiteConfig(profile.json).config.sites) restoredKeys.add(source.key);
+        const restoredKeys = new Set(parseSiteConfig(profile.json).config.sites.map(source => source.key));
+        deletionState = withSourceDeletionKeys(deletionState, sourceDeletionKeys(deletionState, profile.id).filter(key => !restoredKeys.has(key)), profile.id);
       }
     }
-    const deletedSourceKeys = this.snap.deletedSourceKeys.filter(key => !restoredKeys.has(key));
     let next: UserConfig = {
       ...this.snap,
       profiles,
-      deletedSourceKeys,
+      deletedSourceKeysByProfile: deletionState.deletedSourceKeysByProfile,
       subscriptionGroups: [
         ...this.snap.subscriptionGroups.filter((existing) => existing.id !== group.id),
         { ...group, members: group.members.map((member) => ({ ...member })) },
@@ -390,7 +405,7 @@ export class UserConfigManager {
         activeProfileId: profile.id,
         apiUrl: profile.apiUrl,
         global: { spider: parsed.spider || '', flags: [...(parsed.flags || [])] },
-        sources: parsed.sites.filter(site => !deletedSourceKeys.includes(site.key)).map((site) => ({ ...site })),
+        sources: this.withoutDeletedSources(parsed.sites.map(site => ({ ...site })), '多仓提交', profile.id, next),
         lives: parsed.lives.map((live) => ({ ...live, header: live.header ? { ...live.header } : undefined })),
         parses: realParses(parsed.parses),
       };
@@ -423,7 +438,7 @@ export class UserConfigManager {
       apiUrl: p.apiUrl || this.snap.apiUrl,
       global: { spider: parsed.spider || '', flags: Array.isArray(parsed.flags) ? [...parsed.flags] : [] },
       // ★ 2026-10-15：切换档案也从存档 json 全量重建 sources —— 同样按「已删除源」墓碑过滤
-      sources: this.withoutDeletedSources(parsed.sites.map((s) => ({ ...s })), '档案切换'),
+      sources: this.withoutDeletedSources(parsed.sites.map((s) => ({ ...s })), '档案切换', id),
       lives: parsed.lives.map((l) => ({ ...l })),
       parses: realParses(parsed.parses),
     };
@@ -442,11 +457,12 @@ export class UserConfigManager {
    *   无变化则不写盘。
    */
   clearDeletedSourceKeys(keys: readonly string[]): void {
-    if (!keys.length || !this.snap.deletedSourceKeys.length) return;
+    const current = sourceDeletionKeys(this.snap);
+    if (!keys.length || !current.length) return;
     const drop = new Set(keys.map((k) => String(k)));
-    const next = this.snap.deletedSourceKeys.filter((k) => !drop.has(k));
-    if (next.length === this.snap.deletedSourceKeys.length) return;
-    this.apply({ ...this.snap, deletedSourceKeys: next });
+    const next = current.filter((k) => !drop.has(k));
+    if (next.length === current.length) return;
+    this.apply(withSourceDeletionKeys(this.snap, next));
   }
 
   /**
@@ -510,7 +526,7 @@ export class UserConfigManager {
         activeProfileId: nextProfile.id,
         apiUrl: nextProfile.apiUrl || '',
         global: { spider: parsed.spider || '', flags: Array.isArray(parsed.flags) ? [...parsed.flags] : [] },
-        sources: this.withoutDeletedSources(parsed.sites.map((s) => ({ ...s })), '删除生效档案'),
+        sources: this.withoutDeletedSources(parsed.sites.map((s) => ({ ...s })), '删除生效档案', nextProfile.id),
         lives: parsed.lives.map((l) => ({ ...l })),
         parses: realParses(parsed.parses),
       };
@@ -673,12 +689,12 @@ export class UserConfigManager {
       activeId,
       profiles: this.snap.profiles.map((p) => {
         if (p.id === activeId) {
-          return { id: p.id, name: p.name, sites: this.snap.sources.map(pick) };
+          return { id: p.id, name: p.name, sites: this.sources().map(pick) };
         }
         let sites: Array<{ key: string; name: string }> = [];
         if (p.json) {
           try {
-            sites = parseSiteConfig(p.json).config.sites.map(pick);
+            sites = this.profileConfig(p.id)?.sites.map(pick) ?? [];
           } catch {
             sites = [];
           }
@@ -698,7 +714,9 @@ export class UserConfigManager {
     const profile = this.snap.profiles.find((candidate) => candidate.id === id);
     if (!profile) return null;
     if (!profile.json) throw new Error(`档案「${profile.name}」没有可恢复的订阅快照`);
-    return parseSiteConfig(profile.json).config;
+    const parsed = parseSiteConfig(profile.json).config;
+    const blocked = new Set(this.snap.globallyBlockedSourceKeys);
+    return { ...parsed, sites: this.withoutDeletedSources(parsed.sites, '档案视图', id).filter(source => !blocked.has(source.key)) };
   }
 
   activeProfileId(): string {
@@ -721,8 +739,7 @@ export class UserConfigManager {
     }
     // ★ 2026-10-15：手动**重新添加**同一 key = 用户明确要它回来 → 清掉对应墓碑
     //   （否则订阅往返时会再被过滤掉，用户会觉得"加了又没了"）
-    const deletedSourceKeys = this.snap.deletedSourceKeys.filter((k) => k !== parsed.bean!.key);
-    const next: UserConfig = { ...this.snap, sources: [...this.snap.sources, parsed.bean], deletedSourceKeys };
+    const next = withSourceDeletionKeys({ ...this.snap, sources: [...this.snap.sources, parsed.bean] }, sourceDeletionKeys(this.snap).filter((k) => k !== parsed.bean!.key));
     this.apply(next);
     return { ...parsed.bean };
   }
@@ -767,7 +784,7 @@ export class UserConfigManager {
       sources: this.snap.sources.filter((s) => !removing.has(s.key)),
       // ★ 2026-10-15（用户报「配置里删掉的源，换源下拉里还在」）：把删掉的 key 记成墓碑 ——
       //   否则下一次订阅往返（导入 / 启动 7 天自动刷新 / 档案切换）会把它们原样带回来。
-      deletedSourceKeys: Array.from(new Set([...this.snap.deletedSourceKeys, ...removing])),
+      deletedSourceKeysByProfile: withSourceDeletionKeys(this.snap, [...sourceDeletionKeys(this.snap), ...this.snap.sources.filter(source => removing.has(source.key)).map(source => source.key)]).deletedSourceKeysByProfile,
     };
     if (removing.has(next.ui.activeSourceKey)) next.ui = { ...next.ui, activeSourceKey: '' };
     this.apply(next);
@@ -793,7 +810,7 @@ export class UserConfigManager {
   /** 选中源（key 不存在则忽略——符合"选中源重启恢复"语义） */
   setActiveSource(key: string): void {
     if (!key) return;
-    if (!this.snap.sources.some((s) => s.key === key)) return;
+    if (!this.sources().some((s) => s.key === key)) return;
     if (this.snap.ui.activeSourceKey === key) return;
     // ★ 'ui'：只动了 ui.activeSourceKey → 运行期配置未变（见 ConfigChangeKind）
     this.apply({ ...this.snap, ui: { ...this.snap.ui, activeSourceKey: key } }, 'ui');
@@ -866,6 +883,11 @@ export class UserConfigManager {
 
   // ---------------------------------------------------------------
   private apply(next: UserConfig, kind: ConfigChangeKind = 'content'): void {
+    const scopes = normalizeSourceDeletionScopes(next.deletedSourceKeysByProfile, new Set(next.profiles.map(profile => profile.id)), next.activeProfileId, next.deletedSourceKeys);
+    next = { ...next, deletedSourceKeysByProfile: scopes };
+    next.deletedSourceKeys = [...sourceDeletionKeys(next)];
+    next.globallyBlockedSourceKeys = [...new Set((next.globallyBlockedSourceKeys ?? []).filter(key => typeof key === 'string').map(key => key.trim()).filter(Boolean))];
+    if (next.globallyBlockedSourceKeys.includes(next.ui.activeSourceKey)) next = { ...next, ui: { ...next.ui, activeSourceKey: '' } };
     // ★ 2026-09-30：内容型变更必须把「当前生效档案」的存档 json 一起对齐（见 withActiveProfileSynced）
     const previous = this.snap;
     const previousLoaded = this.loaded;
@@ -1032,6 +1054,7 @@ export class UserConfigManager {
     if (activeProfileId && !profiles.some((p) => p.id === activeProfileId)) activeProfileId = '';
     if (profiles.length === 0) activeProfileId = '';
     const profileIds = new Set(profiles.map((profile) => profile.id));
+    const deletedSourceKeysByProfile = normalizeSourceDeletionScopes(raw.deletedSourceKeysByProfile, profileIds, activeProfileId, raw.deletedSourceKeys);
     const rawGroups = Array.isArray((raw as { subscriptionGroups?: unknown })?.subscriptionGroups)
       ? (raw as { subscriptionGroups: unknown[] }).subscriptionGroups
       : [];
@@ -1092,13 +1115,9 @@ export class UserConfigManager {
       activeProfileId,
       subscriptionGroups,
       // ★ 2026-10-15：用户删除过的源 key 墓碑（见 UserConfig.deletedSourceKeys）
-      deletedSourceKeys: Array.from(
-        new Set((Array.isArray((raw as { deletedSourceKeys?: unknown })?.deletedSourceKeys)
-          ? ((raw as { deletedSourceKeys: unknown[] }).deletedSourceKeys)
-          : [])
-          .map((k) => (typeof k === 'string' ? k.trim() : ''))
-          .filter((k) => k.length > 0)),
-      ),
+      deletedSourceKeysByProfile,
+      globallyBlockedSourceKeys: Array.isArray(raw?.globallyBlockedSourceKeys) ? [...new Set(raw.globallyBlockedSourceKeys.filter(key => typeof key === 'string').map(key => key.trim()).filter(Boolean))] : [],
+      deletedSourceKeys: Object.hasOwn(deletedSourceKeysByProfile, activeProfileId) ? deletedSourceKeysByProfile[activeProfileId] : [],
     };
     // active 源若已被剔除/失效 → 清空
     if (next.ui.activeSourceKey && !sources.some((s) => s.key === next.ui.activeSourceKey)) {
@@ -1113,7 +1132,8 @@ export class UserConfigManager {
    *   若不过滤，用户删掉的源会在任何一次订阅往返后复活 —— 与「本地直播线路要留住」同一口径。
    *   仅过滤「墓碑里有」的 key；订阅新增的源照常进列表（被删过的 key 需用户手动添加才会回来）。
    */
-  private withoutDeletedSources(sources: SourceBean[], where: string, tombs: readonly string[] = this.snap.deletedSourceKeys): SourceBean[] {
+  private withoutDeletedSources(sources: SourceBean[], where: string, profileId = this.snap.activeProfileId, config = this.snap): SourceBean[] {
+    const tombs = sourceDeletionKeys(config, profileId);
     if (!tombs || tombs.length === 0) return sources;
     const dead = new Set(tombs);
     const kept = sources.filter((s) => !dead.has(s.key));

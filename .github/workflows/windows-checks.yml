@@ -1,0 +1,50 @@
+name: Windows checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: windows-checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  checks:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26.12.0'
+          cache: pnpm
+      - name: Install pinned dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Types and lint
+        run: |
+          pnpm run typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm run lint
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm run lint:ui
+      - name: Regression tests
+        run: |
+          pnpm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm run test:subscription-import
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm run test:dev
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm run test:release-assets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm run test:installer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          pnpm run test:acceptance-tools
+      - name: Build application and Java bridge
+        run: |
+          if (-not $env:JAVA_HOME_17_X64) { throw 'Runner JDK 17 is unavailable' }
+          $env:JAVA_HOME = $env:JAVA_HOME_17_X64
+          pnpm run build
+      - name: Real HTML5 and MPV acceptance
+        run: pnpm run acceptance:playback

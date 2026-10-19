@@ -10,6 +10,7 @@ import { applyUiScale, registerUiWindow, scaledWindowFor } from '../ui/uiScale';
 
 declare const __dirname: string;
 let searchWin: BrowserWindow | null = null;
+export function searchWindow(): BrowserWindow | null { return searchWin; }
 let pendingRoute = '';
 let ready = false;
 

@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sanitizePackagedApp } from './after-pack.mjs';
 import { compileNsis } from './nsis-tool.mjs';
+import { buildInstallerScript } from './installer-script.mjs';
 import { assertReleaseAssets } from './verify-release-assets.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -101,62 +102,9 @@ await rename(expectedStage, appDir);
 console.log(`Windows app staged at ${appDir}`);
 
 if (process.argv.includes('--installer')) {
-  const versionParts = version.split('-')[0].split('.').map(Number);
-  if (versionParts.length > 4 || versionParts.some((part) => !Number.isInteger(part) || part < 0 || part > 65535)) {
-    throw new Error(`Version cannot be represented in a Windows version resource: ${version}`);
-  }
-  while (versionParts.length < 4) versionParts.push(0);
-  const version4 = versionParts.join('.');
   const outFile = join(outputDir, `Win-Box Setup ${version}.exe`);
-  const license = join(ROOT, 'LICENSE');
   const nsiPath = join(stagingDir, 'win-box-installer.nsi');
-  const q = (value) => value.replaceAll('"', '""');
-  const nsi = `Unicode True
-!include "MUI2.nsh"
-!define MUI_ABORTWARNING
-!define MUI_FINISHPAGE_RUN "$INSTDIR\\Win-Box.exe"
-
-Name "Win-Box ${version}"
-OutFile "${q(outFile)}"
-InstallDir "$LOCALAPPDATA\\Programs\\Win-Box"
-InstallDirRegKey HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Win-Box" "InstallLocation"
-RequestExecutionLevel user
-Icon "${q(join(ROOT, 'build', 'icon.ico'))}"
-VIProductVersion "${version4}"
-VIAddVersionKey "ProductName" "Win-Box"
-VIAddVersionKey "ProductVersion" "${version}"
-VIAddVersionKey "FileVersion" "${version}"
-VIAddVersionKey "FileDescription" "Win-Box installer"
-VIAddVersionKey "LegalCopyright" "Win-Box"
-
-!insertmacro MUI_PAGE_LICENSE "${q(license)}"
-!insertmacro MUI_PAGE_DIRECTORY
-!insertmacro MUI_PAGE_INSTFILES
-!insertmacro MUI_PAGE_FINISH
-!insertmacro MUI_UNPAGE_CONFIRM
-!insertmacro MUI_UNPAGE_INSTFILES
-!insertmacro MUI_LANGUAGE "SimpChinese"
-
-Section "Win-Box"
-  nsExec::ExecToLog 'taskkill /f /im Win-Box.exe'
-  Pop $0
-  SetOutPath "$INSTDIR"
-  File /r "${q(appDir)}\\*"
-  WriteUninstaller "$INSTDIR\\Uninstall.exe"
-  CreateShortcut "$DESKTOP\\Win-Box.lnk" "$INSTDIR\\Win-Box.exe"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Win-Box" "DisplayName" "Win-Box"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Win-Box" "DisplayVersion" "${version}"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Win-Box" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Win-Box" "DisplayIcon" "$INSTDIR\\Win-Box.exe"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Win-Box" "UninstallString" '"$INSTDIR\\Uninstall.exe"'
-SectionEnd
-
-Section "Uninstall"
-  Delete "$DESKTOP\\Win-Box.lnk"
-  DeleteRegKey HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Win-Box"
-  RMDir /r "$INSTDIR"
-SectionEnd
-`;
+  const nsi = await buildInstallerScript({ appDir, outFile, version, license: join(ROOT, 'LICENSE'), icon: join(ROOT, 'build', 'icon.ico') });
   await mkdir(dirname(nsiPath), { recursive: true });
   await writeFile(nsiPath, `\uFEFF${nsi}`, 'utf8');
   await compileNsis(nsiPath, { cwd: ROOT });

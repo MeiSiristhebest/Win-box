@@ -39,6 +39,7 @@ import { APP_NAV_GROUPS, NAV, SHELL_PRESENTATIONS, ShellFrame } from './layouts/
 import { usePluginKeymaps } from './lib/pluginKeymaps';
 import { runPluginCommand } from './lib/pluginCommands';
 import type { Episode } from '../shared/types';
+import { PluginDialogBridge } from './features/plugins/PluginDialogBridge';
 
 /**
  * ★ 2026-10-08（用户要求「详情页独立窗口」）：详情窗口与主窗口共享同一份 localStorage 的 uiMem，
@@ -72,6 +73,7 @@ function RouteLoading() {
 export default function App() {
   return (
     <UpdateGate>
+      <PluginDialogBridge />
       <AppShell />
     </UpdateGate>
   );

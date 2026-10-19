@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { client } from '../../api/client';
 import { useAppDialog } from '../../components/AppDialog';
-import { syncUiPreferencesToMain } from '../../lib/preferenceStore';
+import { prepareRendererBackupRestore, STORAGE_EPOCH_KEY } from '../../lib/storageEpoch';
 
 export function BackupSettingsSection({ active }: { active: boolean }) {
   const dialog = useAppDialog();
@@ -13,7 +13,7 @@ export function BackupSettingsSection({ active }: { active: boolean }) {
     try {
       for (let index = 0; index < localStorage.length; index++) {
         const key = localStorage.key(index);
-        if (!key) continue;
+        if (!key || key === STORAGE_EPOCH_KEY) continue;
         const value = localStorage.getItem(key);
         if (typeof value === 'string') out[key] = value;
       }
@@ -37,7 +37,7 @@ export function BackupSettingsSection({ active }: { active: boolean }) {
   }
 
   async function importBackup() {
-    if (!(await dialog.confirm('导入备份会覆盖当前的设置、凭据与观看历史，确定继续？', { title: '导入设置备份', confirmLabel: '继续导入', tone: 'danger' }))) return;
+    if (!(await dialog.confirm('导入备份会覆盖当前的设置、凭据、收藏与观看历史，并关闭播放、详情和搜索窗口。确定继续？', { title: '导入设置备份', confirmLabel: '继续导入', tone: 'danger' }))) return;
     setBusy(true);
     setMessage(null);
     try {
@@ -50,14 +50,17 @@ export function BackupSettingsSection({ active }: { active: boolean }) {
         setMessage({ text: result.error || '导入失败', kind: 'err' });
         return;
       }
+      if (!result.restoreId) throw new Error('备份恢复会话缺失，请重新选择文件');
+      let transaction: ReturnType<typeof prepareRendererBackupRestore> | undefined;
       try {
-        for (const [key, value] of Object.entries(result.renderer || {})) localStorage.setItem(key, value);
-      } catch {
-        // Main-process settings have already been restored.
+        transaction = prepareRendererBackupRestore(result.renderer || {});
+        await client.backupCommit(result.restoreId);
+      } catch (error) {
+        transaction?.rollback();
+        await client.backupCancel(result.restoreId).catch(() => undefined);
+        throw error;
       }
-      await syncUiPreferencesToMain();
-      setMessage({ text: '已还原，正在刷新界面…（部分设置需重启应用完全生效）', kind: 'ok' });
-      window.setTimeout(() => window.location.reload(), 900);
+      window.location.reload();
     } catch (error) {
       setMessage({ text: (error as Error).message, kind: 'err' });
     } finally {

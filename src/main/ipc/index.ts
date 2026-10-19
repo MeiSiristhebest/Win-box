@@ -28,9 +28,8 @@ import { parseLive } from '../../engine/config/LiveConfigParser';
 import { localLiveUrl, looksLikeLiveSourceText, sanitizeLiveFileName } from '../../engine/live/localLive';
 import { dataDirReport } from '../util/dataDirBootstrap';
 import * as iconv from 'iconv-lite';
-import { proxySettingsView, setProxySettings, getProxySettings, type ProxySettings } from '../net/proxy';
-import { buildBackupFile, parseBackupFile } from '../settings/backup';
-import type { BackupExportResult, BackupImportResult, BackupSettingsState } from '../../shared/backup';
+import { proxySettingsView, setProxySettings, type ProxySettings } from '../net/proxy';
+import { registerBackupIpc } from '../settings/backupIpc';
 import type { DavServer } from '../../shared/webdav';
 import type { DavService } from '../webdav/DavService';
 import type { DlnaCastTarget, DlnaDevice } from '../../shared/dlna';
@@ -189,6 +188,10 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
     host.cfgUpdateSource(a.key, a.patch || {}), log);
   registerHandler(IPC.CFG_DELETE_SOURCE, (_e: any, key: string) => host.cfgDeleteSource(key), log);
   registerHandler(IPC.CFG_DELETE_SOURCES, (_e: any, keys: string[]) => host.cfgDeleteSources(Array.isArray(keys) ? keys : []), log);
+  registerHandler(IPC.CFG_GLOBAL_SOURCE_BLOCK, (_e: any, value: { keys: string[]; blocked: boolean }) => {
+    if (!value || !Array.isArray(value.keys) || value.keys.length > 1000 || typeof value.blocked !== 'boolean' || value.keys.some(key => typeof key !== 'string' || key.length > 256)) throw new Error('全局屏蔽参数无效');
+    host.cfgSetGlobalSourceBlock(value.keys, value.blocked);
+  }, log);
   registerHandler(IPC.CFG_MOVE_SOURCE, (_e: any, a: { key: string; direction: SourceMoveDirection }) =>
     host.cfgMoveSource(a.key, a.direction), log);
   registerHandler(IPC.CFG_SET_ACTIVE_SOURCE, (_e: any, key: string) => host.cfgSetActiveSource(key), log);
@@ -311,68 +314,7 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
     writeFileSync(r.filePath, a.content, 'utf-8'); // 只写新文件，绝不改动任何原始文件
     return { saved: true, path: r.filePath };
   }, log);
-  /**
-   * ★ 2026-09-29 设置备份（导出）：宿主设置与凭据 + 播放偏好 + 代理 + 老板键 + 渲染层 localStorage → 单个 JSON。
-   * ★ 凭据为**明文**（口径见 shared/backup.ts）：换机/重装后也能还原；文件由用户自行保管。
-   */
-  registerHandler(IPC.BACKUP_EXPORT, async (_e: any, renderer: Record<string, string>): Promise<BackupExportResult> => {
-    const w = winOf(_e as IpcMainInvokeEvent);
-    const settings: BackupSettingsState = {
-      ...host.settingsSnapshot(),
-      player: playerSettings.settings,
-      proxy: getProxySettings(),
-      bossKey: bossKey.settings,
-    };
-    const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-    const file = buildBackupFile(settings, renderer || {}, {
-      exportedAt: new Date().toISOString(),
-      appVersion: app.getVersion(),
-    });
-    const r = await dialog.showSaveDialog(w ?? undefined!, {
-      title: '导出设置备份',
-      defaultPath: `win-box-backup-${stamp}.json`,
-      filters: [{ name: 'Win-Box 备份', extensions: ['json'] }],
-    });
-    if (r.canceled || !r.filePath) return { saved: false, path: '' };
-    writeFileSync(r.filePath, JSON.stringify(file, null, 2), 'utf-8');
-    log.i(`设置备份：已导出（源 ${settings.userConfig.sources.length} / 网盘凭据 ${Object.keys(settings.driveTokens).length} / localStorage ${Object.keys(file.renderer).length} 项）→ ${r.filePath}`);
-    return { saved: true, path: r.filePath };
-  }, log);
-  /** ★ 2026-09-29 设置备份（导入）：校验 → 覆盖各 store → 返回 localStorage 给渲染层写回并刷新 */
-  registerHandler(IPC.BACKUP_IMPORT, async (_e: any): Promise<BackupImportResult> => {
-    const w = winOf(_e as IpcMainInvokeEvent);
-    const picked = await dialog.showOpenDialog(w ?? undefined!, {
-      title: '导入设置备份',
-      properties: ['openFile'],
-      filters: [{ name: 'Win-Box 备份', extensions: ['json'] }],
-    });
-    if (picked.canceled || !picked.filePaths?.[0]) return { ok: false, canceled: true };
-    const path = picked.filePaths[0];
-    let text = '';
-    try {
-      text = readFileSync(path, 'utf-8');
-    } catch (e) {
-      return { ok: false, error: `读取文件失败：${(e as Error).message}` };
-    }
-    const parsed = parseBackupFile(text);
-    if (!parsed.ok) {
-      log.w(`设置备份：导入失败 — ${parsed.error}`);
-      return { ok: false, error: parsed.error };
-    }
-    const s = parsed.file.settings;
-    host.restoreSettings(s);
-    if (s.player) playerSettings.settings = s.player;
-    if (s.proxy) {
-      setProxySettings(s.proxy);
-      host.resetSpidersForProxyChange();
-    }
-    if (s.bossKey) {
-      bossKey.settings = s.bossKey;
-      bossKey.apply();
-    }
-    log.i(`设置备份：已还原（源 ${s.userConfig?.sources?.length ?? 0} / 网盘凭据 ${Object.keys(s.driveTokens || {}).length} / localStorage ${Object.keys(parsed.file.renderer).length} 项）← ${path}`);
-    return { ok: true, path, renderer: parsed.file.renderer };
-  }, log);
+  registerBackupIpc(host, uiPreferences);
   // ★ 播放网盘资源未绑定 cookie → 从任意窗口请求主窗口跳到「点播页」
   //   （网盘绑定入口已统一到源内：点播页 → 该源 → 「网盘绑定」按钮；配置页不再放网盘配置）
   registerHandler(IPC.UI_GOTO_DRIVE_BIND, () => {
@@ -918,6 +860,8 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
     };
     return updater.download(push);
   }, log);
+  registerHandler(IPC.UPDATE_CANCEL, () => updater.cancel(), log);
+  app.on('before-quit', () => updater.cancel());
   registerHandler(IPC.UPDATE_INSTALL, async () => {
     const path = updater.downloadedPath();
     if (!path) throw new Error('安装包不存在，请重新下载');
