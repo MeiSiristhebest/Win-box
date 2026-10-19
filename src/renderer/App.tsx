@@ -277,7 +277,9 @@ function AppShell() {
       className="app-dialog card modal-in disclaimer-dialog"
       onClose={() => undefined}
     >
-      <h2 id="disclaimer-title">Win-Box 使用声明</h2>
+      <div className="app-dialog-heading">
+        <h2 id="disclaimer-title">Win-Box 使用声明</h2>
+      </div>
       <div className="muted disclaimer-lead" id="disclaimer-description">请在使用前阅读以下内容：</div>
       <div className="disclaimer-copy">
         <p>
@@ -297,8 +299,8 @@ function AppShell() {
         </p>
         <p>{MODIFIED_BUILD_DISCLAIMER}</p>
       </div>
-      <div className="row disclaimer-actions">
-        <button onClick={() => void client.appQuit()}>拒绝</button>
+      <div className="row disclaimer-actions app-dialog-actions">
+        <button className="app-dialog-action-secondary" onClick={() => void client.appQuit()}>拒绝</button>
         <button className="primary" onClick={agreeDisclaim}>同意</button>
       </div>
     </AppModal>

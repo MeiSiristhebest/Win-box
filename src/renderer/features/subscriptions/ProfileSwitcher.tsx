@@ -69,7 +69,7 @@ export function ProfileSwitcher() {
       <span className={styles.triggerLabel}>子仓</span><span className={styles.current}>{active?.name || (config?.sources.length || config?.lives.length ? '当前配置' : '未导入')}</span><span aria-hidden="true">▾</span>
     </button>
     <AppModal open={open} titleId={titleId} descriptionId={descriptionId} initialFocusRef={input} className={'app-dialog card modal-in ' + styles.dialog} canClose={!switching} onClose={() => setOpen(false)}>
-      <div className={styles.heading}><h2 id={titleId}>切换子仓</h2><button type="button" disabled={switching} onClick={() => setOpen(false)}>关闭</button></div>
+      <div className={`${styles.heading} app-dialog-heading`}><h2 id={titleId}>切换子仓</h2><button className="app-dialog-close" type="button" disabled={switching} onClick={() => setOpen(false)}>关闭</button></div>
       <p id={descriptionId} className="muted">切换后，点播站点和直播线路使用该子仓的已保存配置。</p>
       <input ref={input} aria-label="筛选子仓" placeholder="输入子仓或订阅组名称" value={query} onChange={event => setQuery(event.target.value)} />
       {error && <p className="err" role="alert">{error}</p>}
@@ -84,7 +84,7 @@ export function ProfileSwitcher() {
         })}
         {!filtered.length && <p className="muted">{choices.length ? '没有匹配的子仓' : '尚未保存子仓配置，请先导入多仓订阅。'}</p>}
       </div>
-      <div className={styles.footer}><span className="muted">{switching ? '正在切换…' : choices.filter(item => item.restorable).length + ' 个可切换'}</span><button type="button" disabled={switching} onClick={() => { setOpen(false); try { localStorage.setItem('winbox-cfg-tab', 'profiles'); } catch { /* Storage may be disabled. */ } navigate('/config'); }}>管理配置档案</button></div>
+      <div className={`${styles.footer} app-dialog-actions`}><span className="muted">{switching ? '正在切换…' : choices.filter(item => item.restorable).length + ' 个可切换'}</span><button className="app-dialog-action-secondary" type="button" disabled={switching} onClick={() => { setOpen(false); try { localStorage.setItem('winbox-cfg-tab', 'profiles'); } catch { /* Storage may be disabled. */ } navigate('/config'); }}>管理配置档案</button></div>
     </AppModal>
   </>);
 }

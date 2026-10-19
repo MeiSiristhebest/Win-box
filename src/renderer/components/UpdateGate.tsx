@@ -121,7 +121,9 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
         canClose={!busy}
         onClose={() => setDismissed(true)}
       >
-          <h3 id="update-title" style={{ margin: '0 0 4px' }}>发现新版本</h3>
+          <div className="app-dialog-heading">
+            <h3 id="update-title">发现新版本</h3>
+          </div>
           <div className="muted upd-vers">
             <b>{info.localVersion}</b> → <b>{info.remoteVersion}</b>
             {publishedAt ? ` · 发布于 ${publishedAt}` : ''}
@@ -163,18 +165,18 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
 
           {/* ★ 2026-10-14：`flex: 0`（= `0 1 0%`）会把按钮压到 min-content（中文 1 字宽）并把文字
               折成两行，看起来像竖排按钮；与本仓其它按钮统一改为 `0 0 auto`（按内容取宽、不收缩）。 */}
-          <div className="row upd-actions">
-            {busy && !launching && <button style={{ flex: '0 0 auto' }} onClick={() => { void client.updateCancel().catch(error => setError(error instanceof Error ? error.message : String(error))); }}>取消下载</button>}
+          <div className="row upd-actions app-dialog-actions">
+            {busy && !launching && <button className="app-dialog-action-secondary" style={{ flex: '0 0 auto' }} onClick={() => { void client.updateCancel().catch(error => setError(error instanceof Error ? error.message : String(error))); }}>取消下载</button>}
             {!busy && !error && (
               <>
-                <button style={{ flex: '0 0 auto' }} onClick={() => setDismissed(true)}>
+                <button className="app-dialog-action-secondary" style={{ flex: '0 0 auto' }} onClick={() => setDismissed(true)}>
                   暂不更新
                 </button>
                 {/* ★ 2026-10-16（用户要求）：网盘备用下载 —— 点击用**系统浏览器**打开网盘分享页，用户自行下载。
                     走 `window.open` 即可：主窗口的 `setWindowOpenHandler` 已把它交给 `shell.openExternal`
                     （见 main/index.ts），与说明页的 GitHub 链接同款口径，不必新增 IPC。
                     点它**不关弹窗**：用户下载完可能还要回来点「暂不更新」。 */}
-                <button style={{ flex: '0 0 auto' }} onClick={() => window.open(DISK_UPDATE_URL, '_blank', 'noopener,noreferrer')}>
+                <button className="app-dialog-action-secondary" style={{ flex: '0 0 auto' }} onClick={() => window.open(DISK_UPDATE_URL, '_blank', 'noopener,noreferrer')}>
                   网盘更新
                 </button>
                 <button className="primary" style={{ flex: '0 0 auto' }} onClick={() => void downloadAndInstall()}>
@@ -184,7 +186,7 @@ export default function UpdateGate({ children }: { children: ReactNode }) {
             )}
             {error && (
               <>
-                <button style={{ flex: '0 0 auto' }} onClick={() => setDismissed(true)}>
+                <button className="app-dialog-action-secondary" style={{ flex: '0 0 auto' }} onClick={() => setDismissed(true)}>
                   暂不更新
                 </button>
                 <button className="primary" style={{ flex: '0 0 auto' }} disabled={busy} onClick={() => void downloadAndInstall()}>

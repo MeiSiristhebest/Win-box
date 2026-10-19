@@ -99,9 +99,9 @@ export default function DriveBindModal({ siteName, initialProvider, reason, onCl
       closeOnBackdrop
       onClose={onClose}
     >
-        <div className="row" style={{ marginBottom: 10 }}>
-          <h2 id="drive-bind-title" style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>网盘绑定 · {siteName}</h2>
-          <button className="linkbtn" style={{ marginLeft: 'auto' }} onClick={onClose}>关闭</button>
+        <div className="app-dialog-heading">
+          <h2 id="drive-bind-title">网盘绑定 · {siteName}</h2>
+          <button className="app-dialog-close" onClick={onClose}>关闭</button>
         </div>
 
         <div className="muted" style={{ fontSize: 12, lineHeight: 1.7, marginBottom: 10 }}>

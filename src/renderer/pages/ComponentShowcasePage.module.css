@@ -71,7 +71,7 @@
 .row + .row { margin-top: 0.875rem; }
 .fields { align-items: stretch; flex-direction: column; }
 .fields > * { max-width: 420px; }
-.actions { justify-content: end; margin-top: 1.25rem; }
+.actions { gap: 8px; justify-content: end; margin-top: 20px; }
 
 .checkRow {
   align-items: center;
