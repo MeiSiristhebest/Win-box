@@ -255,7 +255,7 @@ export function useHomeSearchController({
           if (ev.wd !== term || !searchedProfileIds.has(ev.profileId ?? '')) return;
           if (!searchGen.current.isCurrent(gen)) return;
           if (ev.source) {
-            acc.add(ev.source);
+            acc.add(ev.source, { profileOrder: ev.profileOrder ?? 0, sourceOrder: ev.sourceOrder });
             resultsChanged = true;
           }
           progressed = { done: ev.done, total: ev.total, pending: ev.pending ?? Math.max(0, ev.total - ev.done) };

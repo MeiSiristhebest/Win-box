@@ -34,7 +34,7 @@ export function htmlMediaPlan(probe: any): { duration: number; compatible: boole
   return { duration, compatible: mp4 && video?.codec_name === 'h264' && ['yuv420p', 'yuvj420p'].includes(video.pix_fmt) && (!audio || ['aac', 'mp3'].includes(audio.codec_name)) };
 }
 
-export function htmlMediaToolsAvailable(ffprobe: string, ffmpeg: string, exists = existsSync): boolean {
+export function htmlMediaToolsAvailable(ffprobe: string, ffmpeg: string, exists: (path: string) => boolean = path => existsSync(path)): boolean {
   return exists(ffprobe) && exists(ffmpeg);
 }
 

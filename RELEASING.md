@@ -16,7 +16,7 @@
 
 ## Release 命名
 
-- Tag 使用 `release<版本号>`，例如 `release1.27.0`。`scripts/upload-release.mjs` 从 `package.json` 读取版本并生成该 tag。
+- Tag 使用 `release<版本号>`，例如 `release1.27.0`。创建 Tag 与 GitHub Release 后，`scripts/upload-release.mjs` 从 `package.json` 读取对应 tag，并把安装包上传到已存在的 Release；它不会创建 Tag 或 Release，也不会修改发布说明。
 - GitHub Release 标题使用 `Win-Box <版本号>`，例如 `Win-Box 1.27.0`。
 - Windows 安装包统一命名为 `Win-Box.Setup.<版本号>.exe`，与更新器识别规则一致。
 - Release 正文使用中文。更新项按用户能感知的新增、改进和修复分组；删除空分组，避免空标题。
@@ -28,7 +28,7 @@
 1. 确认本次属于计划中的正式发布；日常修复不单独发布 PATCH。再按 SemVer 在 `package.json` 中设置新版本号。
 2. 运行项目规定的类型检查、测试和发布资源预检；构建 Windows 安装包。
 3. 核对安装包内的应用版本、文件名和大小；计算最终安装包的 SHA-256。
-4. 创建或更新对应的 `release<版本号>` Release，确认标题、正文、tag 和源提交一致。稳定版标记为 Latest；预发布版标记为 Pre-release。
+4. 推送 `release<版本号>` Tag，并创建或更新对应的 GitHub Release；确认标题、正文、tag 和源提交一致。稳定版标记为 Latest；预发布版标记为 Pre-release。随后运行 `pnpm run release:upload` 上传安装包；该命令要求 Release 已存在。
 5. 发布后再次核对 GitHub 页面上的附件名、大小、SHA-256、tag 指向的提交和 Latest 状态。
 
 ## Release 正文模板

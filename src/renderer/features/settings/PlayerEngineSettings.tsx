@@ -10,6 +10,7 @@ export function PlayerEngineSettings({ active }: { active: boolean }) {
   const [settings, setSettings] = useState<PlayerSettings>(DEFAULT_PLAYER_SETTINGS);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const load = useCallback(async () => {
     const [engines, values] = await Promise.all([client.engineList(), client.playerPrefsGet()]);
@@ -22,7 +23,7 @@ export function PlayerEngineSettings({ active }: { active: boolean }) {
     void Promise.all([client.engineList(), client.playerPrefsGet()]).then(([engines, values]) => {
       if (!alive) return;
       setItems(engines.filter(item => item.pluginId !== 'builtin')); setSettings(values);
-    }).catch(cause => { if (alive) setError(cause instanceof Error ? cause.message : String(cause)); });
+    }).catch(cause => { if (alive) setError(cause instanceof Error ? cause.message : String(cause)); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [active]);
   async function toggle(item: PlayerEngineView, enabled: boolean) {
@@ -41,6 +42,6 @@ export function PlayerEngineSettings({ active }: { active: boolean }) {
       await load(); window.dispatchEvent(new Event('winbox:engines-changed'));
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); }
   }
-  if (!active || !items.length) return null;
-  return <section className="card" id="cfg-plugin-engines"><h3>插件播放内核</h3><p className="muted">启用后可在播放器的内核列表中选用。</p>{items.map(item => <div key={item.id}><label className="row"><input type="checkbox" checked={settings.engineEnabled[item.id] === true} disabled={busy} onChange={event => { void toggle(item, event.target.checked); }} /><span>{item.label}</span></label><p className="muted">{item.pluginName} · {item.ready ? '就绪' : item.note || '未就绪'}</p>{item.source === 'local-path' && <div className="row"><input aria-label={item.label + '程序路径'} placeholder="本机程序路径" value={drafts[item.id] ?? settings.enginePaths[item.id] ?? ''} onChange={event => setDrafts(value => ({ ...value, [item.id]: event.target.value }))} /><button type="button" disabled={busy} onClick={() => { void savePath(item); }}>保存路径</button></div>}</div>)}{error && <p className="err" role="alert">{error}</p>}</section>;
+  if (!active) return null;
+  return <section className="card" id="cfg-plugin-engines"><h3>插件播放内核</h3><p className="muted">启用后可在播放器的内核列表中选用。</p>{loading ? <p className="muted">正在检查可用的插件播放内核…</p> : !items.length ? <p className="muted">没有可用的插件播放内核。安装提供播放内核的插件后，它们会显示在这里。</p> : items.map(item => <div key={item.id}><label className="row"><input type="checkbox" checked={settings.engineEnabled[item.id] === true} disabled={busy} onChange={event => { void toggle(item, event.target.checked); }} /><span>{item.label}</span></label><p className="muted">{item.pluginName} · {item.ready ? '就绪' : item.note || '未就绪'}</p>{item.source === 'local-path' && <div className="row"><input aria-label={item.label + '程序路径'} placeholder="本机程序路径" value={drafts[item.id] ?? settings.enginePaths[item.id] ?? ''} onChange={event => setDrafts(value => ({ ...value, [item.id]: event.target.value }))} /><button type="button" disabled={busy} onClick={() => { void savePath(item); }}>保存路径</button></div>}</div>)}{error && <p className="err" role="alert">{error}</p>}</section>;
 }

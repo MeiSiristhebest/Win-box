@@ -98,6 +98,9 @@ export class SearchCache<T> {
   set(wd: string, value: T, now = Date.now()): void {
     const k = searchCacheKey(wd);
     if (!k) return;
+    for (const [existingKey, entry] of this.map) {
+      if (now - entry.at > this.ttlMs) this.remove(existingKey);
+    }
     let weight: number;
     try {
       weight = estimateWeight(value, this.maxBytes) + k.length * 2 + 64;
@@ -108,9 +111,6 @@ export class SearchCache<T> {
     this.remove(k);
     if (weight > this.maxBytes) return;
 
-    for (const [existingKey, entry] of this.map) {
-      if (now - entry.at > this.ttlMs) this.remove(existingKey);
-    }
     this.map.set(k, { at: now, value, weight });
     this.bytes += weight;
     while (this.map.size > this.max || this.bytes > this.maxBytes) {

@@ -256,9 +256,21 @@ export default function ConfigPage() {
   }, [requestedTab]);
   useEffect(() => {
     if (!requestedSection || requestedTab !== tab) return;
-    const element = document.getElementById(`cfg-${requestedSection}`);
-    if (element instanceof HTMLDetailsElement) element.open = true;
-    element?.scrollIntoView({ block: 'start' });
+    const revealAndScroll = (): boolean => {
+      const element = document.getElementById(`cfg-${requestedSection}`);
+      if (!element) return false;
+      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+        if (parent instanceof HTMLDetailsElement) parent.open = true;
+      }
+      element.scrollIntoView({ block: 'start' });
+      return true;
+    };
+    if (revealAndScroll()) return;
+    const panel = document.getElementById('config-panel');
+    if (!panel) return;
+    const observer = new MutationObserver(() => { if (revealAndScroll()) observer.disconnect(); });
+    observer.observe(panel, { childList: true, subtree: true });
+    return () => observer.disconnect();
   }, [requestedSection, requestedTab, tab]);
 
   return (
@@ -396,7 +408,7 @@ export default function ConfigPage() {
       {tab === 'appearance' && <AppearanceSection />}
 
       {/* ===== 六、播放（去广告） ===== */}
-      <PlaybackSettingsSection active={tab === 'play'} />
+      {tab === 'play' && <PlaybackSettingsSection active requestedSection={requestedTab === 'play' ? requestedSection : ''} key={requestedTab === 'play' ? requestedSection : 'play'} />}
 
       {/* ===== 七、快捷键（老板键） ===== */}
       <PluginSettingsSection active={tab === 'plugins'} />

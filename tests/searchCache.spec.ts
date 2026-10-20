@@ -39,17 +39,27 @@ describe('SearchCache', () => {
     expect(c.getEntry('kw20', T0 + 100)?.value).toBe(20);
   });
 
-  it('总缓存字节超限时按 LRU 淘汰，并跳过单份过大的报告', () => {
-    const c = new SearchCache<string>(SEARCH_CACHE_TTL_MS, 20, 200);
+  it('按命中顺序淘汰 LRU，拒绝大报告时保留有效项并清理过期项', () => {
+    const c = new SearchCache<string>(SEARCH_CACHE_TTL_MS, 2, 1000);
     c.set('first', 'a'.repeat(30), T0);
     c.set('second', 'b'.repeat(30), T0 + 1);
-    expect(c.getEntry('first', T0 + 2)).toBeNull();
-    expect(c.getEntry('second', T0 + 2)?.value).toBe('b'.repeat(30));
-    expect(c.estimatedBytes).toBeLessThanOrEqual(200);
+    expect(c.getEntry('first', T0 + 2)?.value).toBe('a'.repeat(30)); // 命中后移至 LRU 尾部
 
-    c.set('oversized', 'x'.repeat(100), T0 + 3);
-    expect(c.getEntry('oversized', T0 + 4)).toBeNull();
-    expect(c.estimatedBytes).toBeLessThanOrEqual(200);
+    c.set('third', 'c'.repeat(30), T0 + 3);
+    expect(c.getEntry('second', T0 + 4)).toBeNull();
+    expect(c.getEntry('first', T0 + 4)?.value).toBe('a'.repeat(30));
+    expect(c.getEntry('third', T0 + 4)?.value).toBe('c'.repeat(30));
+
+    c.set('oversized', 'x'.repeat(1000), T0 + 5);
+    expect(c.getEntry('oversized', T0 + 6)).toBeNull();
+    expect(c.getEntry('first', T0 + 6)?.value).toBe('a'.repeat(30));
+    expect(c.getEntry('third', T0 + 6)?.value).toBe('c'.repeat(30));
+
+    const expiring = new SearchCache<string>(10, 20, 1000);
+    expiring.set('stale', 'kept only until TTL', T0);
+    expiring.set('oversized', 'z'.repeat(1000), T0 + 11);
+    expect(expiring.size).toBe(0);
+    expect(expiring.estimatedBytes).toBe(0);
   });
 
   it('delete/clear：强制刷新（重新搜索）与配置变更时作废', () => {

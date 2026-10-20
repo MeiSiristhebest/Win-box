@@ -3,9 +3,11 @@ vi.mock('electron', () => ({ app: { isPackaged: false, getPath: () => '' } }));
 import { htmlMediaPlan, htmlMediaToolsAvailable, htmlPlaylist, HTML_MEDIA_MAX_CACHED_SEGMENT_BYTES } from '../src/main/player/HtmlMedia';
 import { HtmlMedia } from '../src/main/player/HtmlMedia';
 import { createServer } from 'node:http';
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
-vi.mock('node:fs', async importOriginal => ({ ...await importOriginal<typeof import('node:fs')>(), existsSync: () => true }));
+const fsMocks = vi.hoisted(() => ({ existsSync: vi.fn((_path: unknown) => true) }));
+vi.mock('node:fs', async importOriginal => ({ ...await importOriginal<typeof import('node:fs')>(), existsSync: fsMocks.existsSync }));
+beforeEach(() => fsMocks.existsSync.mockReturnValue(true));
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 describe('HTML media codec compatibility', () => {
   const video = { codec_type: 'video', codec_name: 'h264', pix_fmt: 'yuv420p' };
@@ -21,6 +23,25 @@ describe('HTML media codec compatibility', () => {
     expect(htmlMediaToolsAvailable('ffprobe.exe', 'ffmpeg.exe', () => true)).toBe(true);
     expect(htmlMediaToolsAvailable('ffprobe.exe', 'ffmpeg.exe', path => path === 'ffprobe.exe')).toBe(false);
     expect(HTML_MEDIA_MAX_CACHED_SEGMENT_BYTES).toBe(64 * 1024 * 1024);
+  });
+  it('returns the original playback URL when one FFmpeg tool is missing', async () => {
+    fsMocks.existsSync.mockImplementation(path => !String(path).endsWith('ffmpeg.exe'));
+    const media = new HtmlMedia({ i: vi.fn(), w: vi.fn(), e: vi.fn() });
+    const server = createServer((req, res) => { void media.handle(new URL(req.url!, 'http://localhost'), req, res); });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+    const source = `http://127.0.0.1:${port}/play?url=${encodeURIComponent('https://media.test/movie.mkv')}`;
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/html/prepare?url=${encodeURIComponent(source)}`);
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ url: source });
+      expect(fsMocks.existsSync).toHaveBeenCalledWith(expect.stringMatching(/[\\/]ffmpeg[\\/]ffmpeg\.exe$/i));
+      expect((media as any).inputs.size).toBe(0);
+    } finally {
+      media.stop();
+      server.closeAllConnections();
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
   });
   it('playlist covers exact duration and isolates independent timestamps for seeking', () => {
     const list = htmlPlaylist(14.25);

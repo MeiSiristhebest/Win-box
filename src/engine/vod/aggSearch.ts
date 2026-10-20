@@ -92,10 +92,18 @@ export function mergeSearchResults(inputs: AggSearchInput[]): SearchAllReport {
 
 /** Normalize only the changed source; keep existing cards stable between progress batches. */
 export class SearchResultsAccumulator {
-  private sources = new Map<string, SearchAllReport>();
+  private sources = new Map<string, { report: SearchAllReport; profileOrder: number; sourceOrder: number; sequence: number }>();
+  private nextSequence = 0;
 
-  add(input: AggSearchInput): void {
-    this.sources.set(sourceIdentityKey(input.profileId, input.key), mergeSearchResults([input]));
+  add(input: AggSearchInput, order?: { profileOrder?: number; sourceOrder?: number }): void {
+    const identity = sourceIdentityKey(input.profileId, input.key);
+    const previous = this.sources.get(identity);
+    this.sources.set(identity, {
+      report: mergeSearchResults([input]),
+      profileOrder: order?.profileOrder ?? previous?.profileOrder ?? Number.MAX_SAFE_INTEGER,
+      sourceOrder: order?.sourceOrder ?? previous?.sourceOrder ?? Number.MAX_SAFE_INTEGER,
+      sequence: previous?.sequence ?? this.nextSequence++,
+    });
   }
 
   snapshot(): SearchAllReport {
@@ -104,7 +112,10 @@ export class SearchResultsAccumulator {
     let hitSources = 0;
     let failedSources = 0;
     let totalRaw = 0;
-    for (const report of this.sources.values()) {
+    const orderedSources = [...this.sources.values()].sort((a, b) =>
+      a.profileOrder - b.profileOrder || a.sourceOrder - b.sourceOrder || a.sequence - b.sequence,
+    );
+    for (const { report } of orderedSources) {
       for (const item of report.items) items.push(item);
       for (const source of report.perSource) perSource.push(source);
       hitSources += report.hitSources;

@@ -5,20 +5,22 @@ import { DEFAULT_PLAYER_SETTINGS, type MpvStatus, type PlayerSettings } from '..
 import { loadPlayerPrefs, savePlayerPrefs } from '../../lib/playerPrefs';
 import { isEngineKernel, type KernelPref } from '../../lib/kernel';
 
-export function PlaybackSettingsSection({ active }: { active: boolean }) {
+export function PlaybackSettingsSection({ active, requestedSection = '' }: { active: boolean; requestedSection?: string }) {
   const [playPrefs, setPlayPrefs] = useState<PlayerSettings>({ ...DEFAULT_PLAYER_SETTINGS });
   const [playMsg, setPlayMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
   const [internalMode, setInternalMode] = useState<KernelPref>(() => loadPlayerPrefs().kernel);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(() => ['mpv-kernel', 'bt-player', 'plugin-engines'].includes(requestedSection));
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
   const selectInternalMode = (mode: KernelPref) => {
+    if (!prefsLoaded) return;
     savePlayerPrefs({ kernel: mode });
     setInternalMode(mode);
     setPlayMsg({ text: '已保存，下次打开应用内播放器时生效', kind: 'ok' });
   };
 
   const toggleM3u8Purify = async (enabled: boolean) => {
+    if (!prefsLoaded) return;
     try {
       const settings = await client.playerPrefsSet({ m3u8Purify: enabled });
       setPlayPrefs(settings);
@@ -34,6 +36,7 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
   const btPlayerValue = btPlayerDraft ?? playPrefs.btExternalPlayer;
 
   const detectBtPlayers = async () => {
+    if (!prefsLoaded) return;
     try {
       const list = await client.btDetectPlayers();
       setBtPlayers(list);
@@ -46,6 +49,7 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
   };
 
   const saveBtPlayer = async (path = btPlayerValue) => {
+    if (!prefsLoaded) return;
     try {
       const settings = await client.playerPrefsSet({ btExternalPlayer: path.trim() });
       setPlayPrefs(settings);
@@ -68,6 +72,7 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
   const vodPlayerValue = vodPlayerDraft ?? playPrefs.vodExternalPlayer;
 
   const toggleVodPlayerEnabled = async (enabled: boolean) => {
+    if (!prefsLoaded) return;
     setVodBusy(true);
     try {
       let path = (vodPlayerDraft ?? playPrefs.vodExternalPlayer).trim();
@@ -92,6 +97,7 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
   };
 
   const detectVodPlayers = async () => {
+    if (!prefsLoaded) return;
     setVodBusy(true);
     try {
       const list = await client.vodDetectPlayers();
@@ -107,6 +113,7 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
   };
 
   const saveVodPlayer = async (path = vodPlayerValue) => {
+    if (!prefsLoaded) return;
     setVodBusy(true);
     try {
       const settings = await client.playerPrefsSet({ vodExternalPlayer: path.trim() });
@@ -152,6 +159,7 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
   }, [active]);
 
   const saveMpvPath = async () => {
+    if (!prefsLoaded) return;
     try {
       const settings = await client.playerPrefsSet({ mpvPath: (mpvDraft ?? playPrefs.mpvPath).trim() });
       setPlayPrefs(settings);
@@ -176,7 +184,7 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
         <p className="muted">不确定时保持“自动选择”，直接打开影片即可。应用会根据资源选用标准或兼容播放。</p>
         <label className="row" style={{ gap: 12 }}>
           <span>应用内播放</span>
-          <select aria-label="应用内播放方式" value={internalMode} onChange={event => selectInternalMode(event.target.value as KernelPref)}>
+          <select aria-label="应用内播放方式" value={internalMode} disabled={!prefsLoaded} onChange={event => selectInternalMode(event.target.value as KernelPref)}>
             <option value="auto">自动选择（推荐）</option>
             <option value="html5">标准播放</option>
             <option value="mpv" disabled={mpvStatus?.available === false}>兼容播放{mpvStatus?.available === false ? '（暂不可用）' : ''}</option>
@@ -205,7 +213,7 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <button type="button" disabled={vodBusy || !prefsLoaded} onClick={() => void detectVodPlayers()}>{vodBusy ? '正在处理…' : '检测已安装的播放器'}</button>
           {vodPlayers.map(player => (
-            <button type="button" disabled={vodBusy} key={player.path} className="tag ui-action" title={player.path} aria-pressed={vodPlayerValue === player.path} onClick={() => void saveVodPlayer(player.path)}>
+            <button type="button" disabled={vodBusy || !prefsLoaded} key={player.path} className="tag ui-action" title={player.path} aria-pressed={vodPlayerValue === player.path} onClick={() => void saveVodPlayer(player.path)}>
               {player.name}{vodPlayerValue === player.path ? ' ✓' : ''}
             </button>
           ))}
@@ -217,8 +225,8 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
         <details>
           <summary>手动指定播放器路径</summary>
           <div className="row" style={{ gap: 8, marginTop: 8 }}>
-            <input aria-label="点播外部播放器路径" placeholder="选择未被检测到的播放器时，填写 exe 路径" value={vodPlayerValue} style={{ flex: 1, minWidth: 0 }} onChange={event => setVodPlayerDraft(event.target.value)} />
-            <button type="button" disabled={vodBusy} onClick={() => void saveVodPlayer()}>保存路径</button>
+            <input aria-label="点播外部播放器路径" placeholder="选择未被检测到的播放器时，填写 exe 路径" value={vodPlayerValue} disabled={!prefsLoaded} style={{ flex: 1, minWidth: 0 }} onChange={event => setVodPlayerDraft(event.target.value)} />
+            <button type="button" disabled={vodBusy || !prefsLoaded} onClick={() => void saveVodPlayer()}>保存路径</button>
           </div>
         </details>
         {vodMsg && <output className={vodMsg.kind === 'err' ? 'err' : 'status'} style={{ display: 'block', marginTop: 8 }}>{vodMsg.text}</output>}
@@ -232,7 +240,7 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
         <p className="muted">只对部分分段视频有效。识别可能不准确，默认关闭。</p>
       </section>
 
-      <details className="card" open={advancedOpen} onToggle={event => setAdvancedOpen(event.currentTarget.open)} style={{ padding: 16, marginBottom: 16 }}>
+      <details id="cfg-player-advanced" className="card" open={advancedOpen} onToggle={event => setAdvancedOpen(event.currentTarget.open)} style={{ padding: 16, marginBottom: 16 }}>
         <summary>高级：播放组件与磁力播放</summary>
         <dl>
           <dt>PotPlayer 等外部播放器</dt>
@@ -249,8 +257,8 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
             {mpvStatus ? (mpvStatus.available ? '已就绪：' : '暂不可用：') + mpvStatus.note : '正在检查…'}
           </p>
           <div className="row" style={{ gap: 8 }}>
-            <input aria-label="兼容播放组件路径" placeholder="自定义 mpv.exe 路径（留空使用随包版本）" value={mpvDraft ?? playPrefs.mpvPath} style={{ flex: 1, minWidth: 0 }} onChange={event => setMpvDraft(event.target.value)} />
-            <button type="button" onClick={() => void saveMpvPath()}>保存路径</button>
+            <input aria-label="兼容播放组件路径" placeholder="自定义 mpv.exe 路径（留空使用随包版本）" value={mpvDraft ?? playPrefs.mpvPath} disabled={!prefsLoaded} style={{ flex: 1, minWidth: 0 }} onChange={event => setMpvDraft(event.target.value)} />
+            <button type="button" disabled={!prefsLoaded} onClick={() => void saveMpvPath()}>保存路径</button>
           </div>
           {mpvMsg && <output className={mpvMsg.kind === 'err' ? 'err' : 'status'} style={{ display: 'block', marginTop: 8 }}>{mpvMsg.text}</output>}
         </section>
@@ -259,12 +267,12 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
           <h4>磁力视频的外部播放器</h4>
           <p className="muted">内置播放无法处理磁力视频的格式时，交给这里的播放器。留空时自动检测，优先使用 PotPlayer；与点播设置分别保存。</p>
           <div className="row" style={{ gap: 8 }}>
-            <input aria-label="磁力外部播放器路径" placeholder="播放器 exe 路径（留空自动检测）" value={btPlayerValue} style={{ flex: 1, minWidth: 0 }} onChange={event => setBtPlayerDraft(event.target.value)} />
-            <button type="button" onClick={() => void saveBtPlayer()}>保存路径</button>
-            <button type="button" onClick={() => void detectBtPlayers()}>检测</button>
+            <input aria-label="磁力外部播放器路径" placeholder="播放器 exe 路径（留空自动检测）" value={btPlayerValue} disabled={!prefsLoaded} style={{ flex: 1, minWidth: 0 }} onChange={event => setBtPlayerDraft(event.target.value)} />
+            <button type="button" disabled={!prefsLoaded} onClick={() => void saveBtPlayer()}>保存路径</button>
+            <button type="button" disabled={!prefsLoaded} onClick={() => void detectBtPlayers()}>检测</button>
           </div>
           {btPlayers.length > 0 && <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-            {btPlayers.map(player => <button type="button" key={player.path} className="tag ui-action" title={player.path} aria-pressed={btPlayerValue === player.path} onClick={() => void saveBtPlayer(player.path)}>{player.name}</button>)}
+            {btPlayers.map(player => <button type="button" disabled={!prefsLoaded} key={player.path} className="tag ui-action" title={player.path} aria-pressed={btPlayerValue === player.path} onClick={() => void saveBtPlayer(player.path)}>{player.name}</button>)}
           </div>}
           {btMsg && <output className={btMsg.kind === 'err' ? 'err' : 'status'} style={{ display: 'block', marginTop: 8 }}>{btMsg.text}</output>}
         </section>

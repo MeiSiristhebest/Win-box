@@ -46,9 +46,10 @@ pnpm run build
 
 开发版的数据目录默认为 `%APPDATA%\win-box-dev`。可在启动前用 `WINBOX_DEV_USER_DATA` 指定其他开发目录。
 
-播放内存诊断默认关闭，避免后台周期性采样影响日常使用。需要采样时，在启动开发版前设置 `WINBOX_MEMORY_PROBE=1`。
+播放内存诊断默认关闭，避免后台周期性采样影响日常使用。需要采样时，在启动开发版前执行：
 
 ```powershell
+$env:WINBOX_MEMORY_PROBE = '1'
 $env:WINBOX_DEV_USER_DATA = 'D:\win-box-dev-data'
 pnpm run dev
 ```

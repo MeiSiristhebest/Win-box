@@ -279,7 +279,12 @@ export default function VideoPlayer(props: VideoPlayerProps) {
         }
       }
       setHtmlSource({ source: url, url: result.url, width: result.width, height: result.height });
-    }).catch(e => { if (alive) { setLoading(false); if (!tryMpvFallbackRef.current()) setErr(`播放准备失败：${e.message}`); } });
+    }).catch(e => {
+      if (!alive) return;
+      setLoading(false);
+      if (tryMpvFallbackRef.current()) handoffRef.current = { url, paused: false };
+      else setErr(`播放准备失败：${e.message}`);
+    });
     return () => { alive = false; controller.abort(); releaseSession(); };
   }, [url, kernel, htmlKernelReady, isAudio, isImage, allowMpv]);
   /** mpv 内核状态镜像（主进程 200ms 节流推送；进度条/弹幕/跳过片头片尾都读它） */

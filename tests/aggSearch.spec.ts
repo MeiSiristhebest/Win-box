@@ -8,6 +8,15 @@ function v(id: string, name: string, src: string): VodItem {
 }
 
 describe('incremental search reports', () => {
+  it('orders streamed sources by requested profile and source order, not completion time', () => {
+    const accumulator = new SearchResultsAccumulator();
+    accumulator.add({ profileId: 'profile-b', key: 'b-late', name: 'B late', status: 'ok', items: [v('b-late', 'B late', 'b-late')] }, { profileOrder: 1, sourceOrder: 1 });
+    accumulator.add({ profileId: 'profile-a', key: 'a-late', name: 'A late', status: 'ok', items: [v('a-late', 'A late', 'a-late')] }, { profileOrder: 0, sourceOrder: 1 });
+    accumulator.add({ profileId: 'profile-a', key: 'a-first', name: 'A first', status: 'ok', items: [v('a-first', 'A first', 'a-first')] }, { profileOrder: 0, sourceOrder: 0 });
+
+    expect(accumulator.snapshot().items.map((item) => item.id)).toEqual(['a-first', 'a-late', 'b-late']);
+  });
+
   it('reuses unchanged source items, replaces updates, and preserves previous snapshots', () => {
     const first: AggSearchInput = { profileId: 'a', key: 'same', name: 'A', status: 'ok', items: [v('1', 'First', 'same')] };
     const second: AggSearchInput = { profileId: 'b', key: 'same', name: 'B', status: 'ok', items: [v('2', 'Second', 'same')] };

@@ -202,6 +202,85 @@ const UNSUPPORTED_ERR = /UNSUPPORTED_|SCRIPT_ERROR|PY_UNSUPPORTED|桌面版无�
  */
 const SEARCH_ALL_PREPARE_MS = 12_000;
 
+type SearchWorkerRelease = () => void;
+type SearchWorkerWaiter = {
+  resolve: (release: SearchWorkerRelease | null) => void;
+  signal: AbortSignal;
+  onAbort: () => void;
+};
+
+/** Fair shared source-worker budget for cross-profile search. */
+class SharedSearchWorkerBudget {
+  private active = 0;
+  private cursor = 0;
+  private readonly waiting = new Map<string, SearchWorkerWaiter[]>();
+
+  constructor(private readonly limit: number, private readonly profileIds: string[]) {}
+
+  acquire(profileId: string, signal: AbortSignal): Promise<SearchWorkerRelease | null> {
+    if (signal.aborted) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const waiter: SearchWorkerWaiter = {
+        resolve,
+        signal,
+        onAbort: () => {
+          const queue = this.waiting.get(profileId);
+          const index = queue?.indexOf(waiter) ?? -1;
+          if (index < 0) return;
+          queue!.splice(index, 1);
+          if (queue!.length === 0) this.waiting.delete(profileId);
+          signal.removeEventListener('abort', waiter.onAbort);
+          resolve(null);
+          this.dispatch();
+        },
+      };
+      const queue = this.waiting.get(profileId) ?? [];
+      queue.push(waiter);
+      this.waiting.set(profileId, queue);
+      signal.addEventListener('abort', waiter.onAbort, { once: true });
+      this.dispatch();
+    });
+  }
+
+  private dispatch(): void {
+    while (this.active < this.limit) {
+      const waiter = this.takeNext();
+      if (!waiter) return;
+      waiter.signal.removeEventListener('abort', waiter.onAbort);
+      if (waiter.signal.aborted) {
+        waiter.resolve(null);
+        continue;
+      }
+      this.active++;
+      let released = false;
+      waiter.resolve(() => {
+        if (released) return;
+        released = true;
+        this.active--;
+        this.dispatch();
+      });
+    }
+  }
+
+  private takeNext(): SearchWorkerWaiter | null {
+    if (this.profileIds.length === 0) return null;
+    for (let i = 0; i < this.profileIds.length; i++) {
+      const profileId = this.profileIds[this.cursor];
+      this.cursor = (this.cursor + 1) % this.profileIds.length;
+      const queue = this.waiting.get(profileId);
+      const waiter = queue?.shift();
+      if (!waiter) continue;
+      if (queue && queue.length === 0) this.waiting.delete(profileId);
+      return waiter;
+    }
+    return null;
+  }
+}
+
+function throwIfSearchAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw signal.reason instanceof Error ? signal.reason : new Error('跨档案搜索已取消');
+}
+
 /** Promise 竞速超时（超时即拒；落地后清掉计时器，避免残留定时器） */
 function raceTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -2283,12 +2362,13 @@ export class SpiderHost {
     const profileIds = [...new Set(opts.profileIds.map((id) => String(id || '').trim()).filter(Boolean))];
     if (profileIds.length === 0) throw new Error('请选择至少一个订阅档案');
     const knownProfiles = new Map(this.manager.rawProfiles().map((profile) => [profile.id, profile]));
-    const contexts = profileIds.map((profileId) => {
+    const contexts = profileIds.map((profileId, profileOrder) => {
       const profile = knownProfiles.get(profileId);
       if (!profile) throw new Error(`订阅档案不存在：${profileId}`);
       const context = this.profileExecutionConfig(profileId);
       return {
         profileId,
+        profileOrder,
         profileName: profile.name || profileId,
         context,
         total: this.searchableSites(profileId, context.config).length,
@@ -2324,6 +2404,8 @@ export class SpiderHost {
           wd: term,
           profileId: entry.profileId,
           profileName: entry.profileName,
+          profileOrder: entry.profileOrder,
+          sourceOrder: event?.sourceOrder,
           ...(source ? { source } : {}),
           done,
           total,
@@ -2332,31 +2414,42 @@ export class SpiderHost {
       } catch { /* Progress failure must not fail search. */ }
     };
 
-    // Search several profiles together, while splitting one shared source-worker budget
-    // across them. Each run uses a captured profile config and profile-scoped runtime/cache
-    // keys; activeProfileId is never changed.
+    // Search up to three profiles together with one fair source-worker budget. Each profile
+    // uses a captured config and profile-scoped runtime/cache keys; activeProfileId is unchanged.
     const profileWorkerCount = Math.min(SEARCH_ALL_PROFILE_WORKERS, contexts.length);
-    const workersPerProfile = Math.max(1, Math.floor(SEARCH_ALL_WORKERS_MAX / profileWorkerCount));
+    const cancellation = new AbortController();
+    const workerBudget = new SharedSearchWorkerBudget(SEARCH_ALL_WORKERS_MAX, contexts.map((entry) => entry.profileId));
     let nextProfile = 0;
     const runProfileWorker = async (): Promise<void> => {
       for (;;) {
+        if (cancellation.signal.aborted) return;
         const index = nextProfile++;
         const entry = contexts[index];
         if (!entry) return;
-        const report = await this.searchAllSingle(
-          term,
-          { refresh: opts.refresh, profileId: entry.profileId },
-          (event) => forwardProgress(entry, event),
-          entry.context,
-          entry.profileName,
-          workersPerProfile,
-        );
-        mergedReports[index] = { profileId: entry.profileId, profileName: entry.profileName, report };
-        doneByProfile.set(entry.profileId, entry.total);
-        forwardProgress(entry);
+        try {
+          const report = await this.searchAllSingle(
+            term,
+            { refresh: opts.refresh, profileId: entry.profileId },
+            (event) => { if (!cancellation.signal.aborted) forwardProgress(entry, event); },
+            entry.context,
+            entry.profileName,
+            SEARCH_ALL_WORKERS_MAX,
+            workerBudget,
+            cancellation.signal,
+          );
+          if (cancellation.signal.aborted) return;
+          mergedReports[index] = { profileId: entry.profileId, profileName: entry.profileName, report };
+          doneByProfile.set(entry.profileId, entry.total);
+          forwardProgress(entry);
+        } catch (error) {
+          if (!cancellation.signal.aborted) cancellation.abort(error);
+          throw cancellation.signal.reason ?? error;
+        }
       }
     };
-    await Promise.all(Array.from({ length: profileWorkerCount }, () => runProfileWorker()));
+    const outcomes = await Promise.allSettled(Array.from({ length: profileWorkerCount }, () => runProfileWorker()));
+    const failed = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected');
+    if (failed) throw failed.reason;
     return mergeSearchReports(mergedReports.filter((entry): entry is NonNullable<typeof entry> => entry !== null));
   }
 
@@ -2367,7 +2460,10 @@ export class SpiderHost {
     capturedContext?: { profileId: string; config: SiteConfig | null },
     profileNameOverride?: string,
     workerLimit = SEARCH_ALL_WORKERS_MAX,
+    workerBudget?: SharedSearchWorkerBudget,
+    signal?: AbortSignal,
   ): Promise<SearchAllReport> {
+    throwIfSearchAborted(signal);
     const term = (wd || '').trim();
     if (!term) throw new Error('请输入搜索关键词');
     const context = capturedContext ?? this.profileExecutionConfig(opts?.profileId);
@@ -2439,15 +2535,23 @@ export class SpiderHost {
       } catch { /* 忽略 */ }
       if (prepWaiters.length > 0) {
         let timer: ReturnType<typeof setTimeout> | undefined;
+        let onAbort: (() => void) | undefined;
         try {
+          const aborted = signal ? new Promise<void>((resolve) => {
+            onAbort = resolve;
+            signal.addEventListener('abort', onAbort, { once: true });
+          }) : new Promise<void>(() => undefined);
           await Promise.race([
             Promise.all(prepWaiters),
             new Promise((res) => { timer = setTimeout(res, SEARCH_ALL_PREPARE_MS); }),
+            aborted,
           ]);
         } finally {
           if (timer) clearTimeout(timer);
+          if (onAbort && signal) signal.removeEventListener('abort', onAbort);
         }
       }
+      throwIfSearchAborted(signal);
     }
     for (let i = 0; i < pool.length; i++) {
       const b = pool[i];
@@ -2524,19 +2628,21 @@ export class SpiderHost {
       const cb = progress;
       if (cb) {
         try {
-          cb({ wd: term, profileId, profileName, source: scopedInput, done, total, pending: Math.max(0, total - done) });
+          cb({ wd: term, profileId, profileName, sourceOrder: i, source: scopedInput, done, total, pending: Math.max(0, total - done) });
           pushed++;
         } catch { /* 进度推送失败不影响搜索本身 */ }
       }
     };
     // ★ 快速窗口：3s 后推一条「不带 source」的进度 → UI 明确显示「已出 X 个 · 其余 N 个仍在补搜」
     const quickTimer = setTimeout(() => {
+      if (signal?.aborted) return;
       try {
         progress?.({ wd: term, profileId, profileName, done, total, pending: Math.max(0, total - done) });
       } catch { /* 忽略 */ }
     }, SEARCH_ALL_QUICK_MS);
     const run = async (): Promise<void> => {
       for (;;) {
+        if (signal?.aborted) return;
         const i = order[cursor++];
         if (i === undefined) return;
         const b = pool[i];
@@ -2555,6 +2661,11 @@ export class SpiderHost {
         const maxMs = /\.js(\?|$)/i.test(b.api || '') ? SEARCH_ALL_JS_MAX_MS : SEARCH_ALL_SOURCE_MAX_MS;
         const sourceScope = b.runtimeScope || b.key;
         const toMs = Math.min(sourceBudgetMs(this.sourceHealth.get(sourceScope), sourceTimeoutMs(b), maxMs), budget);
+        const release = workerBudget && signal ? await workerBudget.acquire(profileId, signal) : undefined;
+        if (signal?.aborted || (workerBudget && !release)) {
+          release?.();
+          return;
+        }
         try {
           const items = await raceTimeout(this.vm.search(b, term, false, toMs), toMs + 500, `单源搜索超时（>${Math.round(toMs / 1000)}s）`);
           const ms = Date.now() - t0;
@@ -2579,11 +2690,17 @@ export class SpiderHost {
           }
           noteSourceFail(this.statOf(b.runtimeScope || b.key)); // 失败 → 后续搜索降权到队尾 + 短预算
           finish(i, { key: b.key, name: b.name || b.key, status: 'error', error: msg, ms });
+        } finally {
+          release?.();
         }
       }
     };
-    await Promise.all(Array.from({ length: workerCount }, () => run()));
-    clearTimeout(quickTimer);
+    try {
+      await Promise.all(Array.from({ length: workerCount }, () => run()));
+    } finally {
+      clearTimeout(quickTimer);
+    }
+    throwIfSearchAborted(signal);
     const all = pool.map((_, i) => results[i] ?? skipped[i]).filter((r): r is AggSearchInput => r !== null);
     const report = mergeSearchResults(all);
     // ★ 仍有源在「准备运行时」→ 报告里带计数，UI 据此显示横幅并自动重搜（不让用户面对空屏）
