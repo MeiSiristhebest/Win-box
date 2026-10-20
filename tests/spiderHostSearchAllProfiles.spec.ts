@@ -129,10 +129,10 @@ describe('SpiderHost.searchAll across profiles', () => {
 
   it('keeps permits occupied until timed-out VM requests actually settle', async () => {
     vi.useFakeTimers();
-    const profileIds = ['slow-profile-a', 'slow-profile-b'];
+    const profileIds = ['slow-profile-a', 'slow-profile-b', 'slow-profile-c'];
     const sitesByProfile = new Map(profileIds.map(id => [
       id,
-      profileSources(id, 24).map(bean => ({ ...bean, timeout: 5 })),
+      profileSources(id, 9).map(bean => ({ ...bean, timeout: 5 })),
     ]));
     let active = 0;
     let peak = 0;
@@ -160,7 +160,7 @@ describe('SpiderHost.searchAll across profiles', () => {
 
       await vi.advanceTimersByTimeAsync(20_000);
       await expect(search).resolves.toMatchObject({ perSource: expect.any(Array) });
-      expect(started).toBe(48);
+      expect(started).toBe(27);
       expect(active).toBe(0);
       expect(peak).toBe(24);
     } finally {
