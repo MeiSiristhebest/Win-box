@@ -26,24 +26,25 @@ function dryRun(version: string, files: string[], output = 'release') {
 describe('Release installer selection', () => {
   it('accepts electron-builder normalized names without changing the release tag', () => {
     const result = dryRun('1.21.01', [
-      'Win-Box Setup 1.21.1.exe', 'Win-Box 1.21.1.exe',
-      'Win-Box Setup 1.21.0.exe', 'Win-Box Setup 1.21.1.exe.blockmap', 'latest.yml', 'other.exe',
+      'Win-Box.Setup.1.21.1.exe', 'Win-Box Setup 1.21.1.exe', 'Win-Box 1.21.1.exe',
+      'Win-Box.Setup.1.21.0.exe', 'Win-Box.Setup.1.21.1.exe.blockmap', 'latest.yml', 'other.exe',
     ]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('release1.21.01');
-    expect(result.stdout).toContain('Win-Box Setup 1.21.1.exe');
-    expect(result.stdout).toContain('Win-Box 1.21.1.exe');
+    expect(result.stdout).toContain('Win-Box.Setup.1.21.1.exe');
+    expect(result.stdout).not.toContain('Win-Box Setup 1.21.1.exe');
+    expect(result.stdout).not.toContain('Win-Box 1.21.1.exe');
     expect(result.stdout).not.toContain('1.21.0.exe');
     expect(result.stdout).not.toContain('blockmap');
     expect(result.stdout).not.toContain('latest.yml');
     expect(result.stdout).not.toContain('other.exe');
-    expect(result.stdout.match(/Installer:/g)).toHaveLength(2);
+    expect(result.stdout.match(/Installer:/g)).toHaveLength(1);
   });
 
   it('still accepts installer names that preserve the package version', () => {
-    const result = dryRun('1.21.01', ['Win-Box Setup 1.21.01.exe']);
+    const result = dryRun('1.21.01', ['Win-Box.Setup.1.21.01.exe']);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain('Win-Box Setup 1.21.01.exe');
+    expect(result.stdout).toContain('Win-Box.Setup.1.21.01.exe');
     expect(result.stdout.match(/Installer:/g)).toHaveLength(1);
   });
 
@@ -55,7 +56,7 @@ describe('Release installer selection', () => {
   });
 
   it('fails when only stale installers or metadata exist', () => {
-    const result = dryRun('1.21.01', ['Win-Box Setup 1.21.0.exe', 'latest.yml']);
+    const result = dryRun('1.21.01', ['Win-Box.Setup.1.21.0.exe', 'latest.yml']);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('No installers for 1.21.01 found');
   });

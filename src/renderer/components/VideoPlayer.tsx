@@ -180,10 +180,15 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   //   HTML 控制条/弹幕仍绘制在 mpv 之上且点击归 HTML（PoC 实测；地址链路不变，mpv 直接吃既有 /play 中继）。
   const allowMpv = !!props.allowMpv && !isImage && !isAudio && mediaKind !== 'unsupported';
   const [mpvInfo, setMpvInfo] = useState<MpvStatus | null>(null);
+  const [compatibilitySource, setCompatibilitySource] = useState('');
   const [kernelPref, setKernelPref] = useState<KernelPref>(() => prefsRef.current!.kernel);
   const [kernel, setKernel] = useState<Kernel>('html5');
   const [spdif, setSpdif] = useState(() => normalizeSpdif(prefsRef.current!.spdif));
   const engines = usePluginPlaybackEngines(allowMpv, url, mpvInfo);
+  const requiresCompatibility = !!url && compatibilitySource === url;
+  const desiredKernel = allowMpv ? resolveKernel(kernelPref, url, { mpvAvailable: !!mpvInfo?.available, engines: engines.usable, requiresCompatibility }) : 'html5';
+  // Wait for automatic selection before probing/transcoding a source that MPV will play directly.
+  const htmlKernelReady = !allowMpv || ((mpvInfo !== null || kernelPref === 'html5') && desiredKernel === 'html5');
   const technical = useMpvTechnicalState(url, kernel);
   const [statsOpen, setStatsOpen] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
@@ -207,6 +212,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     revealControls,
   });
   const [htmlSource, setHtmlSource] = useState<{ source: string; url: string; width?: number; height?: number } | null>(null);
+  const tryMpvFallbackRef = useRef<() => boolean>(() => false);
   const htmlUrl = htmlSource?.source === url ? htmlSource.url : '';
   const resolutionCallbackRef = useRef(props.onResolutionChange);
   resolutionCallbackRef.current = props.onResolutionChange;
@@ -242,10 +248,15 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     };
   }, [url, htmlUrl, htmlSource, sourceResolution, kernel, isImage, isAudio, reportResolution]);
   useEffect(() => {
-    if (kernel !== 'html5' || !url || isAudio || isImage) return;
+    if (kernel !== 'html5' || !htmlKernelReady || !url || isAudio || isImage) return;
     setHtmlSource(null);
     let alive = true;
     let sessionUrl = '';
+    const releaseSession = () => {
+      const target = sessionUrl;
+      sessionUrl = '';
+      if (target) void fetch(target, { keepalive: true }).catch(() => undefined);
+    };
     const controller = new AbortController();
     const target = resolvePlayTarget(url);
     const needsProbe = /^http:\/\/127\.0\.0\.1:\d+\/play\?/.test(url) && /(?:baidu\.com|baidupcs\.com|quark\.cn|pds\.uc\.cn)/i.test(target) && !/\.m3u8(?:[?#]|$)/i.test(target);
@@ -257,11 +268,25 @@ export default function VideoPlayer(props: VideoPlayerProps) {
       const result = await r.json();
       if (!r.ok || !result.url) throw new Error(result.error || '媒体兼容处理失败');
       if (result.session) sessionUrl = new URL(`/html/${result.session}/release`, url).href;
-      if (alive) setHtmlSource({ source: url, url: result.url, width: result.width, height: result.height });
-      else if (sessionUrl) void fetch(sessionUrl).catch(() => undefined);
-    }).catch(e => { if (alive) { setLoading(false); setErr(`HTML 播放准备失败：${e.message}`); } });
-    return () => { alive = false; controller.abort(); if (sessionUrl) void fetch(sessionUrl).catch(() => undefined); };
-  }, [url, kernel, isAudio, isImage]);
+      if (!alive) { releaseSession(); return; }
+      if (result.session) {
+        setCompatibilitySource(url);
+        if (allowMpv && kernelPrefRef.current === 'auto' && mpvAvailRef.current) {
+          // Decode the original media natively instead of transcoding every segment for HTML5.
+          handoffRef.current = { url, paused: false };
+          releaseSession();
+          return;
+        }
+      }
+      setHtmlSource({ source: url, url: result.url, width: result.width, height: result.height });
+    }).catch(e => {
+      if (!alive) return;
+      setLoading(false);
+      if (tryMpvFallbackRef.current()) handoffRef.current = { url, paused: false };
+      else setErr(`播放准备失败：${e.message}`);
+    });
+    return () => { alive = false; controller.abort(); releaseSession(); };
+  }, [url, kernel, htmlKernelReady, isAudio, isImage, allowMpv]);
   /** mpv 内核状态镜像（主进程 200ms 节流推送；进度条/弹幕/跳过片头片尾都读它） */
   const mpvStateRef = useRef<MpvKernelState>(emptyMpvKernelState());
   const mpvTimeRef = useRef(0); // 弹幕时间源（number）
@@ -305,20 +330,18 @@ export default function VideoPlayer(props: VideoPlayerProps) {
   // MPV 可用性（仅播放器窗口需要；一处探活供切换按钮/自动选择用）
   useEffect(() => {
     if (!allowMpv) return;
+    let alive = true;
     void client
       .mpvStatus()
-      .then((s) => setMpvInfo(s))
-      .catch(() => setMpvInfo(null));
+      .then((s) => { if (alive) setMpvInfo(s); })
+      .catch(() => { if (alive) setMpvInfo({ available: false, path: '', source: 'none', note: '兼容播放组件检测失败' }); });
+    return () => { alive = false; };
   }, [allowMpv]);
 
   // 本次生效内核（显式偏好优先；auto 按资源形态；mpv 不可用一律回落 html5）
   useEffect(() => {
-    if (!allowMpv) {
-      setKernel('html5');
-      return;
-    }
-    setKernel(resolveKernel(kernelPref, url, { mpvAvailable: !!mpvInfo?.available, engines: engines.usable }));
-  }, [allowMpv, mpvInfo, kernelPref, url, engines.usable]);
+    setKernel(desiredKernel);
+  }, [desiredKernel, url]);
 
   // mpv 激活时给页面打标（global.css 据此把播放区整链透明化，让 mpv 子窗口透出）
   useEffect(() => {
@@ -391,6 +414,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
     switchKernel('mpv', false);
     return true;
   };
+  useLayoutEffect(() => { tryMpvFallbackRef.current = tryMpvFallback; });
 
   const {
     segments: skipSeg,
@@ -1163,7 +1187,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             rate={rate}
             onRateChange={kSetRate}
           />
-          {allowMpv && <PlayerKernelControl kernel={kernel} preference={kernelPref} choices={engines.choices} containerRef={wrapRef} onSelect={preference => switchKernel(resolveKernel(preference, url, { mpvAvailable: !!mpvInfo?.available, engines: engines.usable }), true, preference)} onOpen={() => { setSubPanel(false); setDmPanel(false); setFitPanel(false); audio.setOpen(false); superResolution.setOpen(false); poke(); }} />}
+          {allowMpv && <PlayerKernelControl kernel={kernel} preference={kernelPref} choices={engines.choices} containerRef={wrapRef} onSelect={preference => switchKernel(resolveKernel(preference, url, { mpvAvailable: !!mpvInfo?.available, engines: engines.usable, requiresCompatibility }), true, preference)} onOpen={() => { setSubPanel(false); setDmPanel(false); setFitPanel(false); audio.setOpen(false); superResolution.setOpen(false); poke(); }} />}
           {kernel === 'mpv' && <><button type="button" className={'vp-ctl' + (statsOpen ? ' vp-on' : '')} title="播放统计" aria-pressed={statsOpen} onClick={() => { setStatsOpen(value => !value); setKeysOpen(false); poke(); }}><span className="vp-kernel-tag">统计</span></button><button type="button" className={'vp-ctl' + (keysOpen ? ' vp-on' : '')} title="快捷键一览" aria-pressed={keysOpen} onClick={() => { setKeysOpen(value => !value); setStatsOpen(false); poke(); }}><span className="vp-kernel-tag">键位</span></button></>}
           <PlayerSuperResolutionControl active={kernel === 'mpv'} info={superResolution.info} mode={superResolution.mode} open={superResolution.open} containerRef={wrapRef} onOpen={() => openPanel('sr')} onClose={() => superResolution.setOpen(false)} onSelect={value => { superResolution.apply(value); poke(); }} />
           <div style={{ flex: 1 }} />

@@ -147,7 +147,7 @@ export async function verifyPlayback() {
     const html5 = await player.locator('video').evaluate(video => ({ time: video.currentTime, width: video.videoWidth, height: video.videoHeight, paused: video.paused }));
     record('html5-real-video-and-pause', html5);
     await player.evaluate(() => { window.__acceptanceMpvEvents = []; window.api.mpv.onState(event => { window.__acceptanceMpvState = event; window.__acceptanceMpvEvents.push(event); if (window.__acceptanceMpvEvents.length > 200) window.__acceptanceMpvEvents.shift(); }); });
-    await selectKernel(player, 'MPV（自定义）');
+    await selectKernel(player, '兼容播放');
     await player.waitForFunction(() => { const state = window.__acceptanceMpvState?.state; return state?.loaded && state.videoW === 320 && state.paused; }, null, { timeout: 30_000 });
     await call(player, 'mpv', 'cmd', { type: 'seek', value: 2 });
     await player.waitForFunction(() => window.__acceptanceMpvState?.state.time >= 1.8);
@@ -159,7 +159,7 @@ export async function verifyPlayback() {
     assert.ok(mpv.state.videoW === 320 && mpv.state.videoH === 180 && mpv.state.time > 3);
     await player.screenshot({ path: join(ROOT, '.tmp/playback-acceptance-mpv.png') });
     record('mpv-real-decode-seek-play-pause', { session: mpv.session, time: mpv.state.time, width: mpv.state.videoW, height: mpv.state.videoH, paused: mpv.state.paused });
-    await selectKernel(player, '自动选择');
+    await selectKernel(player, '自动选择（推荐）');
     await player.waitForFunction(() => JSON.parse(localStorage.getItem('winbox-player-prefs') || '{}').kernel === 'auto');
     await player.waitForFunction(() => { const video = document.querySelector('video'); return video?.videoWidth === 320 && video.paused && video.currentTime > 2; });
     record('restore-auto-and-preserve-paused-position', await player.locator('video').evaluate(video => ({ time: video.currentTime, paused: video.paused })));

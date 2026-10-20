@@ -90,6 +90,42 @@ export function mergeSearchResults(inputs: AggSearchInput[]): SearchAllReport {
   return { items, perSource, hitSources, failedSources, totalRaw };
 }
 
+/** Normalize only the changed source; keep existing cards stable between progress batches. */
+export class SearchResultsAccumulator {
+  private sources = new Map<string, { report: SearchAllReport; profileOrder: number; sourceOrder: number; sequence: number }>();
+  private nextSequence = 0;
+
+  add(input: AggSearchInput, order?: { profileOrder?: number; sourceOrder?: number }): void {
+    const identity = sourceIdentityKey(input.profileId, input.key);
+    const previous = this.sources.get(identity);
+    this.sources.set(identity, {
+      report: mergeSearchResults([input]),
+      profileOrder: order?.profileOrder ?? previous?.profileOrder ?? Number.MAX_SAFE_INTEGER,
+      sourceOrder: order?.sourceOrder ?? previous?.sourceOrder ?? Number.MAX_SAFE_INTEGER,
+      sequence: previous?.sequence ?? this.nextSequence++,
+    });
+  }
+
+  snapshot(): SearchAllReport {
+    const items: AggVodItem[] = [];
+    const perSource: SearchPerSource[] = [];
+    let hitSources = 0;
+    let failedSources = 0;
+    let totalRaw = 0;
+    const orderedSources = [...this.sources.values()].sort((a, b) =>
+      a.profileOrder - b.profileOrder || a.sourceOrder - b.sourceOrder || a.sequence - b.sequence,
+    );
+    for (const { report } of orderedSources) {
+      for (const item of report.items) items.push(item);
+      for (const source of report.perSource) perSource.push(source);
+      hitSources += report.hitSources;
+      failedSources += report.failedSources;
+      totalRaw += report.totalRaw;
+    }
+    return { items, perSource, hitSources, failedSources, totalRaw };
+  }
+}
+
 /** Merge independently cached profile reports without collapsing identical source keys. */
 export function mergeSearchReports(
   reports: Array<{ profileId: string; profileName: string; report: SearchAllReport }>,

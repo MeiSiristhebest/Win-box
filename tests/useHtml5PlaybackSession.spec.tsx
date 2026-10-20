@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlaybackSourceRef } from '../src/renderer/lib/playbackProgress';
+import type { Kernel } from '../src/renderer/lib/kernel';
 import type { PlayerPrefs } from '../src/renderer/lib/playerPrefs';
 import { getPlayTime } from '../src/renderer/lib/uiMemory';
 import { useHtml5PlaybackSession } from '../src/renderer/features/playback/useHtml5PlaybackSession';
@@ -14,10 +15,12 @@ function Harness({
   pausedHandoff = false,
   onEnded = () => undefined,
   clearAuto = () => undefined,
+  kernel = 'html5',
 }: {
   pausedHandoff?: boolean;
   onEnded?: () => void;
   clearAuto?: () => void;
+  kernel?: Kernel;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const prefsRef = useRef<PlayerPrefs>({ vol: 0.6, rate: 1.5, subOffset: 0, fit: 'contain', kernel: 'auto', spdif: '' });
@@ -61,7 +64,7 @@ function Harness({
     url: playbackUrl,
     htmlUrl: playbackUrl,
     progressKey: 'profile-a-source-a',
-    kernel: 'html5',
+    kernel,
     isImage: false,
     isAudio: false,
     liveHint: false,
@@ -110,6 +113,18 @@ afterEach(() => {
 });
 
 describe('useHtml5PlaybackSession', () => {
+  it('stops HTML playback when a plugin takes over and does not start a second stream', async () => {
+    const { rerender } = render(<Harness />);
+    const video = screen.getByTestId('video') as HTMLVideoElement;
+    await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+    rerender(<Harness kernel="engine:test-player" />);
+    expect(video.pause).toHaveBeenCalledOnce();
+    expect(video.hasAttribute('src')).toBe(false);
+    expect(video.play).toHaveBeenCalledOnce();
+    act(() => video.dispatchEvent(new Event('play')));
+    expect(video.hasAttribute('src')).toBe(false);
+  });
+
   it('restores and saves profile-scoped progress, updates media state, and cleans up', async () => {
     const onEnded = vi.fn();
     const clearAuto = vi.fn();

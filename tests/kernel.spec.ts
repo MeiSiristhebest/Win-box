@@ -55,6 +55,16 @@ describe('resolveKernel · 偏好 × 可用性 × 资源形态', () => {
     expect(resolveKernel('auto', mp4, withMpv)).toBe('html5');
   });
 
+  it('uses probe results for opaque cloud links and avoids transcoding when native playback is available', () => {
+    const opaque = 'https://cloud.example/download?file=123';
+    const options = { ...withMpv, requiresCompatibility: true };
+    expect(resolveKernel('auto', opaque, withMpv)).toBe('html5');
+    expect(resolveKernel('auto', opaque, options)).toBe('mpv');
+    expect(resolveKernel('auto', mp4, options)).toBe('mpv');
+    expect(resolveKernel('html5', opaque, options)).toBe('html5');
+    expect(resolveKernel('auto', opaque, { ...options, mpvAvailable: false })).toBe('html5');
+  });
+
   // ★ 2026-10-18（R11）：内核从「双选」扩为「内置 2 + 插件 N」
   describe('插件内核（`engine:<id>`）', () => {
     const opts = { mpvAvailable: true, engines: ['engine:a'] };

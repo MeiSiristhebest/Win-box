@@ -10,6 +10,14 @@ Win-Box 是 Windows 桌面媒体源管理与播放工具。你可以导入多份
 
 只有直播、没有点播站点的子仓也能切换。导入失败且没有已保存配置的成员不可选择；刷新失败但仍有已保存配置的成员可以继续使用。需要刷新订阅或管理子仓时，进入“配置 → 配置档案”。
 
+## 看视频时怎么选
+
+通常保持“自动选择（推荐）”。Win-Box 会先用应用内的标准播放；遇到浏览器不支持的格式时，如果兼容播放组件可用，就切换到应用内 MPV 播放。也可以在“设置 → 播放”里固定选择“标准播放”或“兼容播放”。
+
+习惯 PotPlayer、VLC 等软件时，在“设置 → 播放”中启用“点播外部播放器”，再选择已安装的软件。它会在独立窗口接管点播；为了让需要来源请求头的地址继续播放，请保持 Win-Box 打开。外部播放器的实时进度目前不会同步到观看历史。
+
+MPV 是应用内的兼容播放器；FFmpeg/ffprobe 是后台的格式检查与转换组件，不是让用户选择的播放器。应用仅在标准播放需要兼容格式转换时使用 FFmpeg。选择外部播放器时由该播放器解码，不需要再把 MPV 或 FFmpeg 当作播放器切换。
+
 ## 免责声明（请务必阅读）
 
 1. **软件性质**：Win-Box 是开源学习项目，提供通用影片播放工具（播放器外壳）；不含盈利行为，不提供内容服务，不存储或推送影视资源与内容。
@@ -38,7 +46,10 @@ pnpm run build
 
 开发版的数据目录默认为 `%APPDATA%\win-box-dev`。可在启动前用 `WINBOX_DEV_USER_DATA` 指定其他开发目录。
 
+播放内存诊断默认关闭，避免后台周期性采样影响日常使用。需要采样时，在启动开发版前执行：
+
 ```powershell
+$env:WINBOX_MEMORY_PROBE = '1'
 $env:WINBOX_DEV_USER_DATA = 'D:\win-box-dev-data'
 pnpm run dev
 ```
@@ -59,6 +70,8 @@ pnpm run dev
 运行时依赖不随源码仓库分发。`pnpm run build` 构建主进程、ARM 桥接和界面；首次桥接编译需要 JDK，应用随附的 Java 运行时在打包前准备。运行 `pnpm run pack` 或 `pnpm run dist` 前，须按 `scripts/runtime-assets.json` 准备 `resources/jvm/jre/bin/java.exe`、`resources/jvm/d2j/*.jar`、`resources/jvm/stubs/stubs.jar` 和清单列出的库 JAR。
 
 `resources/jvm/stubs/stubs.jar` 不入库，也不会由普通构建生成。重建脚本使用现有 JAR 作为基线，因此运行前必须提供该文件；Windows 上还需提供 JDK 的 `javac.exe` 和 `jar.exe`。发布前须在 `scripts/runtime-assets.json` 中填写 JRE 和 dex2jar 的版本、来源及 SHA-256。`pnpm run dist` 会在编译前检查资源；`pnpm run pack` 会在创建打包暂存目录前运行完整预检。两者都会拒绝缺失的必需文件或来源信息。生成的 `native-bridge.jar` 为发布必需资源，缺失时预检会阻止打包。嵌入式 CPython、shell-shim 和 unidbg 运行时等资源仍需按使用场景准备。
+
+正式发布前请遵循[发布与版本约定](RELEASING.md)，确定版本号并填写 Release 说明。
 
 ## 许可证与反馈
 

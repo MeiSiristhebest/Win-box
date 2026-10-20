@@ -104,7 +104,7 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !url || !htmlUrl || isImage || isAudio || kernel === 'mpv') return;
+    if (!video || !url || !htmlUrl || isImage || isAudio || kernel !== 'html5') return;
 
     setError('');
     setMpvError('');

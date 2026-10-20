@@ -192,6 +192,10 @@ export interface AggVodItem extends VodItem {
 export interface SearchPerSource {
   profileId?: string;
   profileName?: string;
+  /** Stable requested order for cross-profile streaming results. */
+  profileOrder?: number;
+  /** Configured source order inside the profile, independent of completion time. */
+  sourceOrder?: number;
   key: string;
   name: string;
   status: 'ok' | 'empty' | 'error';
@@ -247,6 +251,10 @@ export interface SearchAllProgressEvent {
   /** Scope for progress sent to multiple renderer windows. */
   profileId?: string;
   profileName?: string;
+  /** Requested profile order, so streamed results retain the final report order. */
+  profileOrder?: number;
+  /** Configured source order inside the profile, independent of completion time. */
+  sourceOrder?: number;
   /**
    * 该源的结果（结构同 mergeSearchResults 的输入）。
    * ★ 2026-09-24：**可选** —— 快速窗口到点时会推一条「不带 source」的进度，
