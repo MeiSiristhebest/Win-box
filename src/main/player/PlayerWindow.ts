@@ -245,7 +245,7 @@ export function playerSetMini(isMini: boolean): void {
     w.webContents.send('player:mini', true);
   } else {
     const nb = normalBounds;
-    const restore = scaledWindowFor(PLAYER_NORMAL);
+    const restore = scaledWindowFor(PLAYER_NORMAL, w);
     mini = false; // ★ 先置位：恢复边界为正常尺寸，追踪器此时只会记录 normalBounds
     w.setMinimumSize(restore.minWidth, restore.minHeight);
     w.setFullScreenable(true);

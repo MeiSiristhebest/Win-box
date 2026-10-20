@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { client } from '../api/client';
-import { BOARD_CATEGORIES, DOMESTIC_BOARDS, TMDB_BOARDS, type DiscoverBoard } from '../../shared/discoverBoards';
+import { BOARD_CATEGORIES, DOMESTIC_BOARDS, pluginSectionToBoard, TMDB_BOARDS, type DiscoverBoard } from '../../shared/discoverBoards';
 import { Icon } from '../components/ui/Icon';
 import BoardPreviewCard, { type BoardPreview } from '../components/BoardPreviewCard';
 import { usePageActive } from '../lib/keepAlive';
@@ -23,7 +23,7 @@ export default function BoardsPage() {
     void client.metaDiscover().then(sections => {
       if (cancelled) return;
       setPreviews(Object.fromEntries(sections.filter(section => section.items.length > 0).map(section => [section.browseId || section.id, { items: section.items.slice(0, 3), stale: section.stale }])));
-      setPlugins(sections.filter(section => section.browseId?.startsWith('plugin:') || !builtin.has(section.id)).map(section => ({ id: section.browseId || section.id, title: section.title, provider: 'plugin', description: '插件提供的内容列表。' })));
+      setPlugins(sections.filter(section => section.browseId?.startsWith('plugin:') || !builtin.has(section.id)).map(pluginSectionToBoard));
     }).catch(() => undefined);
     void client.metaGetSettings().then(settings => { if (!cancelled) setHasTmdbKey(settings.hasUserKey); }).catch(() => { if (!cancelled) setHasTmdbKey(false); });
     return () => { cancelled = true; };

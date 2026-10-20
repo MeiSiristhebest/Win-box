@@ -1,4 +1,4 @@
-import type { DiscoverItem } from './types';
+import type { DiscoverItem, DiscoverSection } from './types';
 
 export type DiscoverBoardCategory = 'movie' | 'tv' | 'variety' | 'animation' | 'documentary';
 export const BOARD_CATEGORIES: ReadonlyArray<{ id: DiscoverBoardCategory; label: string }> = [
@@ -13,6 +13,18 @@ export interface DiscoverBoard {
   externalUrl?: string;
   mediaType?: 'movie' | 'tv';
   category?: DiscoverBoardCategory;
+}
+
+export function pluginSectionToBoard(section: Pick<DiscoverSection, 'id' | 'browseId' | 'title' | 'mediaType'>): DiscoverBoard {
+  const mediaType = section.mediaType === 'tv' ? 'tv' : 'movie';
+  return {
+    id: section.browseId || section.id,
+    title: section.title,
+    provider: 'plugin',
+    description: '插件提供的内容列表。',
+    mediaType,
+    category: mediaType,
+  };
 }
 
 export const DOMESTIC_BOARDS: readonly DiscoverBoard[] = [

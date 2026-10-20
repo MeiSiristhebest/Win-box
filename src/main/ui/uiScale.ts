@@ -35,8 +35,11 @@ export function uiScaleState(window: BrowserWindow | null = getMainWindow()): Ui
   return { pref, scale: resolveUiScale(work, pref), work: { width: work.width, height: work.height } };
 }
 
-export function scaledWindowFor(base: { width: number; height: number; minWidth?: number; minHeight?: number }) {
-  const work = displayFor(getMainWindow()).workArea;
+export function scaledWindowFor(
+  base: { width: number; height: number; minWidth?: number; minHeight?: number },
+  window: BrowserWindow | null = getMainWindow(),
+) {
+  const work = displayFor(window).workArea;
   return scaledWindowSize(base, resolveUiScale(work, getUiScalePref()), work);
 }
 
