@@ -50,11 +50,13 @@ export interface KernelOptions {
   mpvAvailable: boolean;
   /** **已启用且就绪**的插件引擎内核值集合（`engine:<contributeId>`）；**不参与 auto** */
   engines: readonly string[];
+  /** Media probing confirmed that standard playback needs conversion. Prefer native decoding when available. */
+  requiresCompatibility?: boolean;
 }
 
 /** `auto` 结果（只在 html5 ↔ mpv 之间选；mpv 不可用 → html5） */
 function autoKernel(url: string, opts: KernelOptions): Kernel {
-  return opts.mpvAvailable && preferMpvKernel(url) ? 'mpv' : 'html5';
+  return opts.mpvAvailable && (opts.requiresCompatibility || preferMpvKernel(url)) ? 'mpv' : 'html5';
 }
 
 /**

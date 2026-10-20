@@ -1,5 +1,5 @@
 import PosterSizeControl from '../components/PosterSizeControl';
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../api/client';
 import PluginSlot from '../components/PluginSlot';
@@ -22,6 +22,7 @@ import { useHomeSearchController } from '../features/home/useHomeSearchControlle
 export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string, id: string, pic?: string, name?: string, profileId?: string) => void }) {
   const navigate = useNavigate();
   const filtersOpen = useHomeFilters();
+  const pageActive = usePageActive();
   const [jumpPg, setJumpPg] = useState('');
   const [showTopBtn, setShowTopBtn] = useState(false);
   /**
@@ -241,12 +242,19 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     setHomeSearch,
   });
   const { applySearchMem, setProfileSearchScope, doSearch, folder, openFolder, exitFolder, exitSearch } = search;
-  const coverItem = (it: VodItem, sourceKey = key) => ({
+  const coverItem = useCallback((it: VodItem, sourceKey = key) => ({
     id: `${sourceKey}\u0000${it.id}`, name: (it.name || '').split(' - ')[0].trim(),
     year: /((?:19|20)\d{2})/.exec(`${it.name} ${it.remarks || ''}`)?.[1], pic: it.pic,
-  });
-  const covers = useCovers(items.map(it => coverItem(it)), !loading && !aggMode);
-  const aggCovers = useCovers((agg?.items || []).filter((it) => !aggSrc || sourceIdentityKey(it.sourceRef?.profileId ?? profileIdRef.current, it.sourceKey) === aggSrc).slice(0, aggCap).map((it) => coverItem(it, sourceIdentityKey(it.sourceRef?.profileId ?? profileIdRef.current, it.sourceKey))), !loading && aggMode);
+  }), [key]);
+  const coverProfileId = profileIdRef.current;
+  const browseCoverItems = useMemo(() => items.map(it => coverItem(it)), [items, coverItem]);
+  const searchCoverItems = useMemo(() => {
+    const results = agg?.items || [];
+    const visible = aggSrc ? results.filter(it => sourceIdentityKey(it.sourceRef?.profileId ?? coverProfileId, it.sourceKey) === aggSrc) : results;
+    return visible.slice(0, aggCap).map(it => coverItem(it, sourceIdentityKey(it.sourceRef?.profileId ?? coverProfileId, it.sourceKey)));
+  }, [agg, aggSrc, aggCap, coverProfileId, coverItem]);
+  const covers = useCovers(browseCoverItems, pageActive && !loading && !aggMode);
+  const aggCovers = useCovers(searchCoverItems, pageActive && !loading && aggMode);
   const picOf = (it: VodItem) => covers.picOf(coverItem(it));
   const aggPicOf = (it: AggVodItem) => aggCovers.picOf(coverItem(it, sourceIdentityKey(it.sourceRef?.profileId ?? profileIdRef.current, it.sourceKey)));
   const picErr = (it: VodItem) => (e: React.SyntheticEvent<HTMLImageElement>) =>
@@ -406,7 +414,6 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedProfileId]);
 
-  const pageActive = usePageActive();
   const pendingProfileRef = useRef(false);
   const preferredSourceRef = useRef('');
   const everActiveRef = useRef(false);
@@ -505,17 +512,20 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     uiMem.home.updatedAt = Date.now();
   }
 
-  const failed = agg?.perSource.filter((p) => p.status === 'error') ?? [];
+  const failed = useMemo(() => agg?.perSource.filter((p) => p.status === 'error') ?? [], [agg]);
   const isWideSearch = aggScope === 'all' || aggScope === 'all-profiles';
+  const resultProfileId = profileIdRef.current;
   /**
    * ★ 2026-09-25（用户要求）：全源搜索结果**顶部按源筛选** —— 只展示某个源的结果。
    *   筛选条只在「全源搜索 + 命中 ≥2 个源」时出现（单源搜索时它没有意义）。
    */
-  const aggSrcChips = (() => {
+  const aggSrcChips = useMemo(() => {
     if (!agg || !isWideSearch) return [];
+    const sourcesByIdentity = new Map(agg.perSource.map(source => [sourceIdentityKey(source.profileId ?? resultProfileId, source.key), source]));
+    const profileNames = new Map(profiles.map(profile => [profile.id, profile.name]));
     const n = new Map<string, { key: string; profileId: string; count: number }>();
     for (const it of agg.items) {
-      const profileId = it.sourceRef?.profileId ?? profileIdRef.current;
+      const profileId = it.sourceRef?.profileId ?? resultProfileId;
       const identity = sourceIdentityKey(profileId, it.sourceKey);
       const entry = n.get(identity) ?? { key: it.sourceKey, profileId, count: 0 };
       entry.count++;
@@ -523,8 +533,8 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     }
     return [...n.entries()]
       .map(([identity, entry]) => {
-        const perSource = agg.perSource.find((source) => sourceIdentityKey(source.profileId ?? profileIdRef.current, source.key) === identity);
-        const profileName = perSource?.profileName || profiles.find((profile) => profile.id === entry.profileId)?.name;
+        const perSource = sourcesByIdentity.get(identity);
+        const profileName = perSource?.profileName || profileNames.get(entry.profileId);
         const sourceName = perSource?.name || entry.key;
         return {
           identity,
@@ -533,11 +543,11 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
         };
       })
       .sort((a, b) => b.n - a.n);
-  })();
+  }, [agg, isWideSearch, resultProfileId, profiles, aggScope]);
   /** 按源筛选后的结果（网格 / 计数 / 「显示更多」都用它） */
-  const aggView = aggSrc
-    ? (agg?.items || []).filter((it) => sourceIdentityKey(it.sourceRef?.profileId ?? profileIdRef.current, it.sourceKey) === aggSrc)
-    : agg?.items || [];
+  const aggView = useMemo(() => aggSrc
+    ? (agg?.items || []).filter((it) => sourceIdentityKey(it.sourceRef?.profileId ?? resultProfileId, it.sourceKey) === aggSrc)
+    : agg?.items || [], [agg, aggSrc, resultProfileId]);
   /** 切换筛选 = 换一屏结果 → 分页计数复位 */
   const pickAggSrc = (k: string): void => {
     setAggSrc(k);
@@ -588,6 +598,12 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
       onOpenDetail(sourceKey, it.id, it.pic || '', it.name, sourceProfileId);
     })();
   };
+  const openAggItemRef = useRef(openAggItem);
+  useEffect(() => { openAggItemRef.current = openAggItem; });
+  const openAggItemStable = useCallback((it: AggVodItem) => openAggItemRef.current(it), []);
+  const aggPicErrRef = useRef(aggPicErr);
+  useEffect(() => { aggPicErrRef.current = aggPicErr; });
+  const handleAggImgErr = useCallback((it: AggVodItem, event: React.SyntheticEvent<HTMLImageElement>) => aggPicErrRef.current(it)(event), []);
   /**
    * ★ 2026-09-26（用户要求）：**源内网盘绑定** —— 该源是否靠网盘 Cookie 取流（ext 带 Cloud-drive
    *   或蜘蛛类属网盘家族）。是则在源主页给一条横幅 +「网盘绑定」入口，不用再去点源里的「配置」源。
@@ -810,8 +826,8 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
                         key={`${sourceIdentityKey(it.sourceRef?.profileId ?? profileIdRef.current, it.sourceKey)}-${it.id}`}
                         it={it}
                         pic={aggPicOf(it)}
-                        onErr={aggPicErr(it)}
-                        onOpen={() => openAggItem(it)}
+                         onErr={handleAggImgErr}
+                         onOpen={openAggItemStable}
                       />
                     ))}
                   </div>
@@ -1057,14 +1073,14 @@ const VodCard = memo(function VodCard({
 });
 
 /** 聚合结果卡：带来源徽标；同片多源提示；点击进对应源详情（pic 由外部注入 = TMDB 补全优先） */
-function AggCard({ it, pic, onOpen, onErr }: { it: AggVodItem; pic: string; onOpen: () => void; onErr: (e: React.SyntheticEvent<HTMLImageElement>) => void }) {
+const AggCard = memo(function AggCard({ it, pic, onOpen, onErr }: { it: AggVodItem; pic: string; onOpen: (it: AggVodItem) => void; onErr: (it: AggVodItem, e: React.SyntheticEvent<HTMLImageElement>) => void }) {
   return (
-    <button type="button" className="card-media ui-action card-media-button" aria-label={`打开 ${it.name}`} onClick={onOpen}>
+    <button type="button" className="card-media ui-action card-media-button" aria-label={`打开 ${it.name}`} onClick={() => onOpen(it)}>
       <div className="card">
         <div style={{ position: 'relative' }}>
           {/* ★ 空封面（搜索未命中 + 源图坏）→ 占位块（同上，不留灰影） */}
           {pic
-            ? <img src={pic} alt={it.name} onError={onErr} loading="lazy" decoding="async" />
+             ? <img src={pic} alt={it.name} onError={(event) => onErr(it, event)} loading="lazy" decoding="async" />
             : <div className="no-cover">暂无封面</div>}
           {it.remarks && <span className="badge">{it.remarks}</span>}
           <span
@@ -1087,4 +1103,4 @@ function AggCard({ it, pic, onOpen, onErr }: { it: AggVodItem; pic: string; onOp
       </div>
     </button>
   );
-}
+});

@@ -1,11 +1,33 @@
 // tests/aggSearch.spec.ts — 聚合搜索汇总：不去重 / 来源标注 / 错误隔离 / 统计
 import { describe, it, expect } from 'vitest';
-import { mergeSearchReports, mergeSearchResults, isSearchableSource, type AggSearchInput } from '../src/engine/vod/aggSearch';
+import { mergeSearchReports, mergeSearchResults, SearchResultsAccumulator, isSearchableSource, type AggSearchInput } from '../src/engine/vod/aggSearch';
 import type { VodItem } from '../src/shared/types';
 
 function v(id: string, name: string, src: string): VodItem {
   return { id, name, pic: '', remarks: '', year: '', area: '', type: '', sourceKey: src };
 }
+
+describe('incremental search reports', () => {
+  it('reuses unchanged source items, replaces updates, and preserves previous snapshots', () => {
+    const first: AggSearchInput = { profileId: 'a', key: 'same', name: 'A', status: 'ok', items: [v('1', 'First', 'same')] };
+    const second: AggSearchInput = { profileId: 'b', key: 'same', name: 'B', status: 'ok', items: [v('2', 'Second', 'same')] };
+    const accumulator = new SearchResultsAccumulator();
+    accumulator.add(first);
+    const before = accumulator.snapshot();
+    accumulator.add(second);
+    const after = accumulator.snapshot();
+    expect(after).toEqual(mergeSearchResults([first, second]));
+    expect(after.items[0]).toBe(before.items[0]);
+    expect(after.perSource[0]).toBe(before.perSource[0]);
+
+    const failed: AggSearchInput = { ...first, status: 'error', items: [], error: 'timeout' };
+    accumulator.add(failed);
+    expect(accumulator.snapshot()).toEqual(mergeSearchResults([first, second, failed]));
+    expect(before.items).toHaveLength(1);
+    expect(after.items).toHaveLength(2);
+    expect(after.failedSources).toBe(0);
+  });
+});
 
 describe('mergeSearchResults — 汇总不去重', () => {
   const src = (key: string, name: string, items: VodItem[]): AggSearchInput => ({ key, name, status: items.length ? 'ok' : 'empty', items });

@@ -39,6 +39,19 @@ describe('SearchCache', () => {
     expect(c.getEntry('kw20', T0 + 100)?.value).toBe(20);
   });
 
+  it('总缓存字节超限时按 LRU 淘汰，并跳过单份过大的报告', () => {
+    const c = new SearchCache<string>(SEARCH_CACHE_TTL_MS, 20, 200);
+    c.set('first', 'a'.repeat(30), T0);
+    c.set('second', 'b'.repeat(30), T0 + 1);
+    expect(c.getEntry('first', T0 + 2)).toBeNull();
+    expect(c.getEntry('second', T0 + 2)?.value).toBe('b'.repeat(30));
+    expect(c.estimatedBytes).toBeLessThanOrEqual(200);
+
+    c.set('oversized', 'x'.repeat(100), T0 + 3);
+    expect(c.getEntry('oversized', T0 + 4)).toBeNull();
+    expect(c.estimatedBytes).toBeLessThanOrEqual(200);
+  });
+
   it('delete/clear：强制刷新（重新搜索）与配置变更时作废', () => {
     const c = new SearchCache<number>();
     c.set('狂飙', 1, T0);

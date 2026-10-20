@@ -90,6 +90,31 @@ export function mergeSearchResults(inputs: AggSearchInput[]): SearchAllReport {
   return { items, perSource, hitSources, failedSources, totalRaw };
 }
 
+/** Normalize only the changed source; keep existing cards stable between progress batches. */
+export class SearchResultsAccumulator {
+  private sources = new Map<string, SearchAllReport>();
+
+  add(input: AggSearchInput): void {
+    this.sources.set(sourceIdentityKey(input.profileId, input.key), mergeSearchResults([input]));
+  }
+
+  snapshot(): SearchAllReport {
+    const items: AggVodItem[] = [];
+    const perSource: SearchPerSource[] = [];
+    let hitSources = 0;
+    let failedSources = 0;
+    let totalRaw = 0;
+    for (const report of this.sources.values()) {
+      for (const item of report.items) items.push(item);
+      for (const source of report.perSource) perSource.push(source);
+      hitSources += report.hitSources;
+      failedSources += report.failedSources;
+      totalRaw += report.totalRaw;
+    }
+    return { items, perSource, hitSources, failedSources, totalRaw };
+  }
+}
+
 /** Merge independently cached profile reports without collapsing identical source keys. */
 export function mergeSearchReports(
   reports: Array<{ profileId: string; profileName: string; report: SearchAllReport }>,

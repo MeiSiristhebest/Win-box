@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('electron', () => ({ app: { isPackaged: false, getPath: () => '' } }));
-import { htmlMediaPlan, htmlPlaylist } from '../src/main/player/HtmlMedia';
+import { htmlMediaPlan, htmlMediaToolsAvailable, htmlPlaylist, HTML_MEDIA_MAX_CACHED_SEGMENT_BYTES } from '../src/main/player/HtmlMedia';
 import { HtmlMedia } from '../src/main/player/HtmlMedia';
 import { createServer } from 'node:http';
 import { afterEach } from 'vitest';
-afterEach(() => vi.unstubAllGlobals());
+import { EventEmitter } from 'node:events';
+vi.mock('node:fs', async importOriginal => ({ ...await importOriginal<typeof import('node:fs')>(), existsSync: () => true }));
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 describe('HTML media codec compatibility', () => {
   const video = { codec_type: 'video', codec_name: 'h264', pix_fmt: 'yuv420p' };
   const probe = (audio: string, format = 'mov,mp4,m4a,3gp,3g2,mj2', v = video) => ({ format: { duration: '62.25', format_name: format }, streams: [v, { codec_type: 'audio', codec_name: audio }] });
@@ -14,6 +16,11 @@ describe('HTML media codec compatibility', () => {
     expect(htmlMediaPlan(probe('aac', 'matroska,webm')).compatible).toBe(false);
     expect(htmlMediaPlan(probe('aac', 'mp4', { ...video, codec_name: 'hevc' })).compatible).toBe(false);
     expect(htmlMediaPlan(probe('aac', 'mp4', { ...video, pix_fmt: 'yuv420p10le' })).compatible).toBe(false);
+  });
+  it('requires both FFmpeg tools for conversion and allows the caller to fall back when missing', () => {
+    expect(htmlMediaToolsAvailable('ffprobe.exe', 'ffmpeg.exe', () => true)).toBe(true);
+    expect(htmlMediaToolsAvailable('ffprobe.exe', 'ffmpeg.exe', path => path === 'ffprobe.exe')).toBe(false);
+    expect(HTML_MEDIA_MAX_CACHED_SEGMENT_BYTES).toBe(64 * 1024 * 1024);
   });
   it('playlist covers exact duration and isolates independent timestamps for seeking', () => {
     const list = htmlPlaylist(14.25);
@@ -44,5 +51,84 @@ describe('HTML media codec compatibility', () => {
       const invalid = await originalFetch(base, { headers: { Range: 'bytes=99-' } });
       expect(invalid.status).toBe(416);
     } finally { media.stop(); server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); }
+  });
+  it('bounds cached segment buffers across sessions and evicts least recently used segments', () => {
+    const media = new HtmlMedia({ i: vi.fn(), w: vi.fn(), e: vi.fn() }) as any;
+    const makeSession = () => ({ source: '', duration: 18, expires: Date.now() + 60000, segments: new Map(), pending: new Map(), procs: new Set() });
+    const first = makeSession();
+    const second = makeSession();
+    const third = makeSession();
+    media.maxCachedSegmentBytes = 14;
+    media.sessions.set('first', first);
+    media.sessions.set('second', second);
+    media.sessions.set('third', third);
+    const firstBuffer = Buffer.alloc(7);
+    const secondBuffer = Buffer.alloc(7);
+    const thirdBuffer = Buffer.alloc(7);
+    media.cacheSegment('first', first, 0, firstBuffer);
+    media.cacheSegment('second', second, 0, secondBuffer);
+    media.touchCachedSegment('first', first, 0, firstBuffer);
+    media.cacheSegment('third', third, 0, thirdBuffer);
+    expect(first.segments.get(0)).toBe(firstBuffer);
+    expect(second.segments.has(0)).toBe(false);
+    expect(third.segments.get(0)).toBe(thirdBuffer);
+    expect(media.cachedSegmentBytes).toBe(14);
+    media.release('first');
+    expect(media.cachedSegmentBytes).toBe(7);
+  });
+  it('returns a retryable response when the global FFmpeg segment worker limit is full', async () => {
+    const media = new HtmlMedia({ i: vi.fn(), w: vi.fn(), e: vi.fn() }) as any;
+    media.sessions.set('abc', { source: 'http://127.0.0.1/source', duration: 12, expires: Date.now() + 60000, segments: new Map(), pending: new Map(), procs: new Set() });
+    media.activeSegmentJobs = 2;
+    const server = createServer((req, res) => { void media.handle(new URL(req.url!, 'http://localhost'), req, res); });
+    await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
+    try {
+      const response = await fetch(`http://127.0.0.1:${(server.address() as any).port}/html/abc/0.ts`);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: '媒体兼容处理繁忙，请稍后重试' });
+    } finally { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); }
+  });
+
+  it('cancels an abandoned media probe and releases its input buffers immediately', async () => {
+    const media = new HtmlMedia({ i: vi.fn(), w: vi.fn(), e: vi.fn() }) as any;
+    let input: any;
+    const kill = vi.fn();
+    media.run = vi.fn((_exe: string, _args: string[], _timeout: number, owner: any) => new Promise((_resolve, reject) => {
+      input = owner;
+      owner.blocks.set(0, Buffer.alloc(16));
+      owner.procs.add({ kill: () => { kill(); reject(new Error('cancelled')); } });
+    }));
+    const response = Object.assign(new EventEmitter(), { destroyed: false, writableEnded: false, headersSent: false, writeHead: vi.fn(), end: vi.fn() });
+    const request = { socket: { localPort: 9978 }, headers: {}, method: 'GET' };
+    const url = new URL('http://127.0.0.1:9978/html/prepare');
+    url.searchParams.set('url', 'http://127.0.0.1:9978/play?url=media');
+    const pending = media.handle(url, request, response);
+    expect(media.inputs.size).toBe(1);
+    response.destroyed = true;
+    response.emit('close');
+    await pending;
+    expect(kill).toHaveBeenCalledOnce();
+    expect(input.controller.signal.aborted).toBe(true);
+    expect(input.blocks.size).toBe(0);
+    expect(media.inputs.size).toBe(0);
+    expect(media.expiryTimer).toBeNull();
+  });
+
+  it('expires abandoned sessions without needing another incoming request', () => {
+    vi.useFakeTimers();
+    const media = new HtmlMedia({ i: vi.fn(), w: vi.fn(), e: vi.fn() }) as any;
+    const input = { source: '', size: 16, expires: Date.now() + 1000, blocks: new Map([[0, Buffer.alloc(16)]]), pending: new Map(), procs: new Set(), controller: new AbortController() };
+    const session = { source: '', duration: 18, expires: input.expires, segments: new Map(), pending: new Map(), procs: new Set() };
+    media.inputs.set('abc', input);
+    media.sessions.set('abc', session);
+    media.cacheSegment('abc', session, 0, Buffer.alloc(16));
+    media.scheduleExpirySweep();
+    vi.advanceTimersByTime(60_000);
+    expect(media.inputs.size).toBe(0);
+    expect(media.sessions.size).toBe(0);
+    expect(input.blocks.size).toBe(0);
+    expect(media.cachedSegmentBytes).toBe(0);
+    expect(media.expiryTimer).toBeNull();
+    media.stop();
   });
 });

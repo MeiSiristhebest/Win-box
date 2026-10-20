@@ -5,7 +5,7 @@ import type { SearchAllReport, SourceBean, VodItem } from '../../../shared/types
 import type { HomeSearchMem } from '../../lib/uiMemory';
 import { uiMem, saveUiMemory } from '../../lib/uiMemory';
 import { client } from '../../api/client';
-import { mergeSearchResults, type AggSearchInput } from '../../../engine/vod/aggSearch';
+import { mergeSearchResults, SearchResultsAccumulator } from '../../../engine/vod/aggSearch';
 import { isSearchWindow, openSearchWindow } from '../../lib/searchWin';
 import type { makeStaleGuard } from '../../lib/staleGuard';
 import type { SortClassView } from './useHomeBrowseController';
@@ -229,7 +229,8 @@ export function useHomeSearchController({
         setLoading(false);
         return;
       }
-      const acc: AggSearchInput[] = [];
+      const acc = new SearchResultsAccumulator();
+      let resultsChanged = false;
       setAggProgress(null);
       setAggCap(60);
       setAggSrc('');
@@ -241,7 +242,10 @@ export function useHomeSearchController({
           flushTimer = null;
         }
         if (!searchGen.current.isCurrent(gen)) return;
-        setAgg(mergeSearchResults(acc));
+        if (resultsChanged) {
+          resultsChanged = false;
+          setAgg(acc.snapshot());
+        }
         if (progressed) setAggProgress(progressed);
       };
       const searchedProfileIds = new Set(selectedProfileIds);
@@ -250,10 +254,12 @@ export function useHomeSearchController({
         off = client.onSearchAllProgress((ev) => {
           if (ev.wd !== term || !searchedProfileIds.has(ev.profileId ?? '')) return;
           if (!searchGen.current.isCurrent(gen)) return;
-          if (ev.source) acc.push(ev.source);
+          if (ev.source) {
+            acc.add(ev.source);
+            resultsChanged = true;
+          }
           progressed = { done: ev.done, total: ev.total, pending: ev.pending ?? Math.max(0, ev.total - ev.done) };
-          setAggProgress(progressed);
-          if (ev.source && !flushTimer) flushTimer = setTimeout(flush, 200);
+          if (!flushTimer) flushTimer = setTimeout(flush, 200);
         });
       } catch { /* Progress is optional; the search request still returns the complete report. */ }
       try {

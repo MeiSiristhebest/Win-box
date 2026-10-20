@@ -82,7 +82,7 @@ function useSearchHarness({
   const [aggMode, setAggMode] = React.useState(false);
   const [aggScope, setAggScope] = React.useState<'current' | 'all' | 'all-profiles'>('current');
   const [agg, setAgg] = React.useState<SearchAllReport | null>(null);
-  const [, setAggProgress] = React.useState<{ done: number; total: number; pending: number } | null>(null);
+  const [aggProgress, setAggProgress] = React.useState<{ done: number; total: number; pending: number } | null>(null);
   const [, setAggCap] = React.useState(60);
   const [aggSrc, setAggSrc] = React.useState('');
   const [loading, setLoading] = React.useState(false);
@@ -171,6 +171,7 @@ function useSearchHarness({
     err,
     agg,
     aggScope,
+    aggProgress,
     allSources,
     allProfiles,
     profileIdRef,
@@ -195,6 +196,40 @@ beforeEach(() => {
 });
 
 describe('useHomeSearchController', () => {
+  it('batches progress bursts and reuses cards from unchanged sources', async () => {
+    vi.useFakeTimers();
+    const request = deferred<SearchAllReport>();
+    const off = vi.fn();
+    let emit!: Parameters<typeof client.onSearchAllProgress>[0];
+    vi.mocked(client.onSearchAllProgress).mockImplementationOnce(callback => { emit = callback; return off; });
+    vi.mocked(client.searchAll).mockReturnValueOnce(request.promise);
+    const { result, unmount } = renderHook(() => useSearchHarness({ wd: 'show', searchAllSources: true }));
+    let search!: Promise<void>;
+    try {
+      act(() => { search = result.current.doSearch(true); });
+      act(() => {
+        emit({ wd: 'show', profileId: 'profile-a', done: 1, total: 3, source: { key: 'a', name: 'A', status: 'ok', items: [{ id: '1', name: 'One' } as VodItem] } });
+        emit({ wd: 'show', profileId: 'profile-a', done: 2, total: 3 });
+      });
+      expect(result.current.agg).toBeNull();
+      expect(result.current.aggProgress).toBeNull();
+      act(() => { vi.advanceTimersByTime(200); });
+      expect(result.current.aggProgress).toEqual({ done: 2, total: 3, pending: 1 });
+      const first = result.current.agg!.items[0];
+      act(() => {
+        emit({ wd: 'show', profileId: 'profile-a', done: 3, total: 3, source: { key: 'b', name: 'B', status: 'empty', items: [] } });
+        vi.advanceTimersByTime(200);
+      });
+      expect(result.current.agg!.items[0]).toBe(first);
+      expect(result.current.agg!.perSource).toHaveLength(2);
+      await act(async () => { request.resolve(result.current.agg!); await search; });
+      expect(off).toHaveBeenCalledOnce();
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
   it('waits for profile loading before executing a search route', async () => {
     const { result, rerender } = renderHook(
       ({ ready }) => useSearchHarness({

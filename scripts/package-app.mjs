@@ -103,7 +103,7 @@ await rename(expectedStage, appDir);
 console.log(`Windows app staged at ${appDir}`);
 
 if (process.argv.includes('--installer')) {
-  const outFile = join(outputDir, `Win-Box Setup ${version}.exe`);
+  const outFile = join(outputDir, `Win-Box.Setup.${version}.exe`);
   const nsiPath = join(stagingDir, 'win-box-installer.nsi');
   const nsi = await buildInstallerScript({ appDir, outFile, version, license: join(ROOT, 'LICENSE'), icon: join(ROOT, 'build', 'icon.ico') });
   await mkdir(dirname(nsiPath), { recursive: true });

@@ -55,10 +55,7 @@ const artifactVersions = [...new Set([
   pkg.version,
   String(pkg.version).split('.').map(part => /^\d+$/.test(part) ? String(Number(part)) : part).join('.'),
 ])];
-const installerNames = new Set(artifactVersions.flatMap(version => [
-  `Win-Box Setup ${version}.exe`,
-  `Win-Box ${version}.exe`,
-]));
+const installerNames = new Set(artifactVersions.map(version => `Win-Box.Setup.${version}.exe`));
 const assets = (existsSync(output) ? readdirSync(output, { withFileTypes: true }) : [])
   .filter(e => e.isFile() && e.name.toLowerCase().endsWith('.exe') &&
     installerNames.has(e.name))

@@ -11,7 +11,7 @@
  *     再排除 Electron 自己那批 pid 与探针外壳（wmic/powershell/conhost/cmd）；
  *     ⇒ java / python / mpv / aria2c / ffmpeg 都会被算进来。
  *
- * 触发：播放开始（主进程 `media:state` 收到 **播放器窗口**的 play/playing）→ 60s 窗口内每 5s 采一次
+ * 仅在 WINBOX_MEMORY_PROBE=1 时启用自动采样。播放开始（主进程 `media:state` 收到播放器窗口的 play/playing）→ 60s 窗口内每 5s 采一次
  *   （一次播放会话只跑一轮，避免反复刷屏）；另在启动后采一次「空闲基线」以作对照。
  *
  * 隐私：只落内存数字与进程名，**不含 URL / 标题 / 凭据**（与 mediaDiag 同口径）。
@@ -197,6 +197,7 @@ let watchInFlight = false;
  * 只在**播放器窗口**的播放事件上调用（见 ipc/index.ts 的 MEDIA_STATE）。
  */
 export function startPlayMemWatch(): void {
+  if (process.env.WINBOX_MEMORY_PROBE !== '1') return;
   const now = Date.now();
   if (now < watchUntil) return; // 本轮窗口内重复触发 → 忽略
   watchUntil = now + PLAY_WATCH_MS + SAMPLE_EVERY_MS;

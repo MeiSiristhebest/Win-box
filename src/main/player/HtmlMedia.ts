@@ -9,6 +9,10 @@ import { resourcesDir } from '../util/paths';
 
 const SEGMENT_SECONDS = 6;
 const BLOCK_BYTES = 512 * 1024;
+const INPUT_BLOCK_CACHE_MAX = 12;
+const MAX_SEGMENTS_PER_SESSION = 4;
+const MAX_ACTIVE_SEGMENT_JOBS = 2;
+export const HTML_MEDIA_MAX_CACHED_SEGMENT_BYTES = 64 * 1024 * 1024;
 // Remote UC/Baidu media can require a long initial seek before ffmpeg emits
 // the first compatible segment. Keep this above the browser HLS timeout so a
 // slow-but-progressing transcode is not reported as a network failure.
@@ -16,6 +20,8 @@ const SOURCE_RANGE_TIMEOUT_MS = 120_000;
 const FFMPEG_IO_TIMEOUT_US = 120_000_000;
 const PROBE_TIMEOUT_MS = 180_000;
 const SEGMENT_TIMEOUT_MS = 180_000;
+const SESSION_TTL_MS = 30 * 60 * 1000;
+const EXPIRY_SWEEP_MS = 60_000;
 type Input = { source: string; size: number; expires: number; blocks: Map<number, Buffer>; pending: Map<number, Promise<Buffer>>; controller: AbortController; procs: Set<ChildProcess> };
 type Session = { source: string; duration: number; expires: number; segments: Map<number, Buffer>; pending: Map<number, Promise<Buffer>>; procs: Set<ChildProcess> };
 
@@ -26,6 +32,10 @@ export function htmlMediaPlan(probe: any): { duration: number; compatible: boole
   const duration = Number(probe?.format?.duration) || 0;
   const mp4 = /\b(mp4|mov)\b/.test(String(probe?.format?.format_name || ''));
   return { duration, compatible: mp4 && video?.codec_name === 'h264' && ['yuv420p', 'yuvj420p'].includes(video.pix_fmt) && (!audio || ['aac', 'mp3'].includes(audio.codec_name)) };
+}
+
+export function htmlMediaToolsAvailable(ffprobe: string, ffmpeg: string, exists = existsSync): boolean {
+  return exists(ffprobe) && exists(ffmpeg);
 }
 
 export function htmlPlaylist(duration: number): string {
@@ -40,7 +50,73 @@ export function htmlPlaylist(duration: number): string {
 export class HtmlMedia {
   private sessions = new Map<string, Session>();
   private inputs = new Map<string, Input>();
+  /** 全部 HTML 兼容会话共用一个 LRU 字节预算，避免每会话 4 段叠加成数百 MB。 */
+  private segmentLru = new Map<string, { sessionId: string; index: number; buffer: Buffer }>();
+  private cachedSegmentBytes = 0;
+  private activeSegmentJobs = 0;
+  private maxCachedSegmentBytes = HTML_MEDIA_MAX_CACHED_SEGMENT_BYTES;
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null;
   constructor(private log: Logger) {}
+
+  private pruneExpired(): void {
+    const now = Date.now();
+    for (const [id, session] of this.sessions) if (session.expires <= now) this.release(id);
+    for (const [id, input] of this.inputs) if (input.expires <= now) this.release(id);
+  }
+
+  private scheduleExpirySweep(): void {
+    if (this.expiryTimer || (!this.inputs.size && !this.sessions.size)) return;
+    this.expiryTimer = setTimeout(() => {
+      this.expiryTimer = null;
+      this.pruneExpired();
+      this.scheduleExpirySweep();
+    }, EXPIRY_SWEEP_MS);
+    this.expiryTimer.unref?.();
+  }
+
+  private segmentKey(sessionId: string, index: number): string {
+    return `${sessionId}:${index}`;
+  }
+
+  private removeCachedSegment(sessionId: string, index: number, session = this.sessions.get(sessionId)): void {
+    const key = this.segmentKey(sessionId, index);
+    const cached = this.segmentLru.get(key);
+    if (cached) {
+      this.segmentLru.delete(key);
+      this.cachedSegmentBytes = Math.max(0, this.cachedSegmentBytes - cached.buffer.byteLength);
+    }
+    if (!session || !cached || session.segments.get(index) === cached.buffer) session?.segments.delete(index);
+  }
+
+  private touchCachedSegment(sessionId: string, session: Session, index: number, buffer: Buffer): void {
+    const key = this.segmentKey(sessionId, index);
+    const cached = this.segmentLru.get(key);
+    if (cached?.buffer !== buffer) return;
+    this.segmentLru.delete(key);
+    this.segmentLru.set(key, cached);
+    session.segments.delete(index);
+    session.segments.set(index, buffer);
+  }
+
+  private cacheSegment(sessionId: string, session: Session, index: number, buffer: Buffer): void {
+    if (buffer.byteLength > this.maxCachedSegmentBytes) return;
+    this.removeCachedSegment(sessionId, index, session);
+    const key = this.segmentKey(sessionId, index);
+    session.segments.set(index, buffer);
+    this.segmentLru.set(key, { sessionId, index, buffer });
+    this.cachedSegmentBytes += buffer.byteLength;
+
+    while (session.segments.size > MAX_SEGMENTS_PER_SESSION) {
+      const oldest = session.segments.keys().next().value;
+      if (oldest === undefined) break;
+      this.removeCachedSegment(sessionId, oldest, session);
+    }
+    while (this.cachedSegmentBytes > this.maxCachedSegmentBytes) {
+      const oldest = this.segmentLru.values().next().value;
+      if (!oldest) break;
+      this.removeCachedSegment(oldest.sessionId, oldest.index);
+    }
+  }
 
   private run(exe: string, args: string[], timeout: number, owner?: { procs: Set<ChildProcess> }): Promise<Buffer> {
     return new Promise((resolve, reject) => {
@@ -71,15 +147,33 @@ export class HtmlMedia {
     });
   }
 
-  stop(): void { for (const id of this.inputs.keys()) this.release(id); }
+  stop(): void {
+    if (this.expiryTimer) clearTimeout(this.expiryTimer);
+    this.expiryTimer = null;
+    for (const id of new Set([...this.inputs.keys(), ...this.sessions.keys()])) this.release(id);
+  }
   private release(id: string): void {
     const s = this.sessions.get(id);
-    if (s) for (const p of s.procs) p.kill();
+    if (s) {
+      for (const p of s.procs) p.kill();
+      for (const index of s.segments.keys()) this.removeCachedSegment(id, index, s);
+      s.pending.clear();
+      s.procs.clear();
+    }
     this.sessions.delete(id);
     const input = this.inputs.get(id);
     input?.controller.abort();
-    if (input) for (const p of input.procs) p.kill();
+    if (input) {
+      for (const p of input.procs) p.kill();
+      input.blocks.clear();
+      input.pending.clear();
+      input.procs.clear();
+    }
     this.inputs.delete(id);
+    if (!this.inputs.size && !this.sessions.size && this.expiryTimer) {
+      clearTimeout(this.expiryTimer);
+      this.expiryTimer = null;
+    }
   }
 
   private async block(input: Input, n: number): Promise<Buffer> {
@@ -99,7 +193,7 @@ export class HtmlMedia {
         const buffer = Buffer.from(await response.arrayBuffer());
         if (buffer.length !== Number(range[2]) - start + 1 || buffer.length > BLOCK_BYTES) throw new Error('媒体 Range 长度不完整');
         input.blocks.set(n, buffer);
-        while (input.blocks.size > 24) input.blocks.delete(input.blocks.keys().next().value!);
+        while (input.blocks.size > INPUT_BLOCK_CACHE_MAX) input.blocks.delete(input.blocks.keys().next().value!);
         return buffer;
       })();
       input.pending.set(n, task);
@@ -109,7 +203,7 @@ export class HtmlMedia {
   }
 
   private async inputResponse(input: Input, req: IncomingMessage, res: ServerResponse): Promise<void> {
-    input.expires = Date.now() + 30 * 60 * 1000;
+    input.expires = Date.now() + SESSION_TTL_MS;
     if (!input.size) await this.block(input, 0);
     const match = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range || ''));
     const start = match ? Number(match[1]) : 0;
@@ -137,8 +231,7 @@ export class HtmlMedia {
   async handle(u: URL, req: IncomingMessage, res: ServerResponse): Promise<void> {
     const cors = { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' };
     const json = (status: number, value: unknown) => { res.writeHead(status, { ...cors, 'Content-Type': 'application/json' }); res.end(JSON.stringify(value)); };
-    for (const [id, s] of this.sessions) if (s.expires < Date.now()) this.release(id);
-    for (const [id, input] of this.inputs) if (input.expires < Date.now()) this.release(id);
+    this.pruneExpired();
     try {
       const inputMatch = /^\/html\/([a-f0-9-]+)\/source$/.exec(u.pathname);
       if (inputMatch) {
@@ -155,16 +248,25 @@ export class HtmlMedia {
         }
         const ffprobe = join(resourcesDir(), 'ffmpeg', 'ffprobe.exe');
         const ffmpeg = join(resourcesDir(), 'ffmpeg', 'ffmpeg.exe');
-        if (!existsSync(ffprobe) || !existsSync(ffmpeg)) throw new Error('缺少随包媒体兼容组件');
+        if (!htmlMediaToolsAvailable(ffprobe, ffmpeg)) {
+          this.log.w('html-media: 未找到 FFmpeg/ffprobe，改用 HTML5 直连；不支持的编码仍需安装媒体组件或切换 MPV');
+          json(200, { url: source });
+          return;
+        }
         while (this.inputs.size >= 6) this.release(this.inputs.keys().next().value!);
         const id = randomUUID();
-        const input: Input = { source, size: 0, expires: Date.now() + 30 * 60 * 1000, blocks: new Map(), pending: new Map(), controller: new AbortController(), procs: new Set() };
+        const input: Input = { source, size: 0, expires: Date.now() + SESSION_TTL_MS, blocks: new Map(), pending: new Map(), controller: new AbortController(), procs: new Set() };
         this.inputs.set(id, input);
+        this.scheduleExpirySweep();
+        // Cancel the probe immediately when the player switches source or closes its request.
+        const cancelPrepare = () => { if (!res.writableEnded) this.release(id); };
+        res.once('close', cancelPrepare);
         const inputUrl = `http://127.0.0.1:${req.socket.localPort}/html/${id}/source`;
         let info: any;
         try {
           info = await this.run(ffprobe, ['-v', 'error', '-rw_timeout', String(FFMPEG_IO_TIMEOUT_US), '-analyzeduration', '1000000', '-probesize', '524288', '-show_streams', '-show_format', '-of', 'json', inputUrl], PROBE_TIMEOUT_MS, input).then(b => JSON.parse(b.toString('utf8')));
         } catch (e) { this.release(id); throw e; }
+        finally { res.off('close', cancelPrepare); }
         const plan = htmlMediaPlan(info);
         const video = info.streams?.find((s: any) => s.codec_type === 'video');
         const resolution = { width: video?.width, height: video?.height };
@@ -173,7 +275,7 @@ export class HtmlMedia {
         if (plan.compatible) { this.release(id); json(200, { url: source, ...resolution }); return; }
         if (plan.duration <= 0 || plan.duration > 86400) { this.release(id); throw new Error('无法读取点播媒体时长'); }
         while (this.sessions.size >= 6) this.release(this.sessions.keys().next().value!);
-        this.sessions.set(id, { source: inputUrl, duration: plan.duration, expires: Date.now() + 30 * 60 * 1000, segments: new Map(), pending: new Map(), procs: new Set() });
+        this.sessions.set(id, { source: inputUrl, duration: plan.duration, expires: Date.now() + SESSION_TTL_MS, segments: new Map(), pending: new Map(), procs: new Set() });
         this.log.i('html-media: 使用 H264/AAC 兼容流（保留 HTML 播放与拖动）');
         json(200, { url: `http://127.0.0.1:${req.socket.localPort}/html/${id}/index.m3u8`, session: id, ...resolution });
         return;
@@ -182,32 +284,34 @@ export class HtmlMedia {
       const s = m ? this.sessions.get(m[1]) : undefined;
       if (!m || !s) { json(404, { error: '媒体会话已结束' }); return; }
       if (m[2] === 'release') { this.release(m[1]); json(200, { ok: true }); return; }
-      s.expires = Date.now() + 30 * 60 * 1000;
+      s.expires = Date.now() + SESSION_TTL_MS;
       if (m[2] === 'index.m3u8') {
         res.writeHead(200, { ...cors, 'Content-Type': 'application/vnd.apple.mpegurl' }); res.end(htmlPlaylist(s.duration)); return;
       }
       const n = Number(m[2].split('.')[0]);
       if (!Number.isSafeInteger(n) || n < 0 || n * SEGMENT_SECONDS >= s.duration) { json(404, { error: '无效分片' }); return; }
       let buffer = s.segments.get(n);
+      if (buffer) this.touchCachedSegment(m[1], s, n, buffer);
       if (!buffer) {
         let work = s.pending.get(n);
         if (!work) {
           if (s.pending.size >= 2) { json(503, { error: '正在处理媒体分片' }); return; }
+          if (this.activeSegmentJobs >= MAX_ACTIVE_SEGMENT_JOBS) { json(503, { error: '媒体兼容处理繁忙，请稍后重试' }); return; }
           const start = n * SEGMENT_SECONDS;
+          this.activeSegmentJobs++;
           work = this.run(join(resourcesDir(), 'ffmpeg', 'ffmpeg.exe'), [
             '-v', 'error', '-nostdin', '-rw_timeout', String(FFMPEG_IO_TIMEOUT_US), '-analyzeduration', '1000000', '-probesize', '524288', '-ss', String(start), '-i', s.source,
             '-t', String(Math.min(SEGMENT_SECONDS, s.duration - start)), '-map', '0:v:0?', '-map', '0:a:0?',
             '-sn', '-dn', '-threads', '2',
             '-vf', "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p", '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-g', '180', '-sc_threshold', '0',
             '-c:a', 'aac', '-b:a', '192k', '-ac', '2', '-ar', '48000', '-f', 'mpegts', 'pipe:1',
-          ], SEGMENT_TIMEOUT_MS, s);
+          ], SEGMENT_TIMEOUT_MS, s).finally(() => { this.activeSegmentJobs = Math.max(0, this.activeSegmentJobs - 1); });
           s.pending.set(n, work);
           work.finally(() => s.pending.delete(n)).catch(() => undefined);
         }
         buffer = await work;
         if (this.sessions.get(m[1]) !== s) { json(410, { error: '媒体会话已结束' }); return; }
-        s.segments.set(n, buffer);
-        while (s.segments.size > 4) s.segments.delete(s.segments.keys().next().value!);
+        this.cacheSegment(m[1], s, n, buffer);
       }
       if (res.destroyed) return;
       res.writeHead(200, { ...cors, 'Content-Type': 'video/mp2t', 'Content-Length': String(buffer.length) });

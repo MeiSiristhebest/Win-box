@@ -2,14 +2,21 @@ import { PlayerEngineSettings } from './PlayerEngineSettings';
 import { useEffect, useState } from 'react';
 import { client } from '../../api/client';
 import { DEFAULT_PLAYER_SETTINGS, type MpvStatus, type PlayerSettings } from '../../../shared/player';
+import { loadPlayerPrefs, savePlayerPrefs } from '../../lib/playerPrefs';
+import { isEngineKernel, type KernelPref } from '../../lib/kernel';
 
 export function PlaybackSettingsSection({ active }: { active: boolean }) {
   const [playPrefs, setPlayPrefs] = useState<PlayerSettings>({ ...DEFAULT_PLAYER_SETTINGS });
   const [playMsg, setPlayMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
+  const [internalMode, setInternalMode] = useState<KernelPref>(() => loadPlayerPrefs().kernel);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
 
-  useEffect(() => {
-    client.playerPrefsGet().then(setPlayPrefs).catch(() => undefined);
-  }, []);
+  const selectInternalMode = (mode: KernelPref) => {
+    savePlayerPrefs({ kernel: mode });
+    setInternalMode(mode);
+    setPlayMsg({ text: '已保存，下次打开应用内播放器时生效', kind: 'ok' });
+  };
 
   const toggleM3u8Purify = async (enabled: boolean) => {
     try {
@@ -31,16 +38,16 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
       const list = await client.btDetectPlayers();
       setBtPlayers(list);
       setBtMsg(list.length
-        ? { text: `检测到 ${list.length} 个：${list.map((player) => player.name).join('、')}（点名字填入路径）`, kind: 'ok' }
+        ? { text: '选择一个播放器即可保存', kind: 'ok' }
         : { text: '未检测到常见播放器：可安装 PotPlayer / VLC / mpv / MPC-HC，或手动粘贴播放器 exe 路径', kind: 'err' });
     } catch (error) {
       setBtMsg({ text: `检测失败：${(error as Error).message}`, kind: 'err' });
     }
   };
 
-  const saveBtPlayer = async () => {
+  const saveBtPlayer = async (path = btPlayerValue) => {
     try {
-      const settings = await client.playerPrefsSet({ btExternalPlayer: btPlayerValue.trim() });
+      const settings = await client.playerPrefsSet({ btExternalPlayer: path.trim() });
       setPlayPrefs(settings);
       setBtPlayerDraft(null);
       setBtMsg({
@@ -57,38 +64,52 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
   const [vodPlayerDraft, setVodPlayerDraft] = useState<string | null>(null);
   const [vodPlayers, setVodPlayers] = useState<Array<{ id: string; name: string; path: string }>>([]);
   const [vodMsg, setVodMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
+  const [vodBusy, setVodBusy] = useState(false);
   const vodPlayerValue = vodPlayerDraft ?? playPrefs.vodExternalPlayer;
 
   const toggleVodPlayerEnabled = async (enabled: boolean) => {
+    setVodBusy(true);
     try {
-      const settings = await client.playerPrefsSet({ vodExternalPlayerEnabled: enabled });
+      let path = (vodPlayerDraft ?? playPrefs.vodExternalPlayer).trim();
+      if (enabled && !path) {
+        const players = await client.vodDetectPlayers();
+        setVodPlayers(players);
+        path = players[0]?.path || '';
+      }
+      const settings = await client.playerPrefsSet({ vodExternalPlayerEnabled: enabled, ...(enabled && path ? { vodExternalPlayer: path } : {}) });
       setPlayPrefs(settings);
-      const path = (vodPlayerDraft ?? settings.vodExternalPlayer).trim();
+      if (enabled && path) setVodPlayerDraft(null);
       setVodMsg(!enabled
-        ? { text: '已停用：点播一律用内置播放器（已填路径也不会用它）', kind: 'ok' }
+        ? { text: '已改用应用内播放', kind: 'ok' }
         : path
-          ? { text: '已启用：点播将直接用上面的播放器播放', kind: 'ok' }
-          : { text: '已启用，但还没填播放器路径。请选择本机播放器或粘贴 exe 路径后保存。', kind: 'err' });
+          ? { text: '已启用：点播会直接打开所选播放器；无法接管时回到应用内播放', kind: 'ok' }
+          : { text: '未检测到可用播放器。可安装 PotPlayer 后重新检测，或在下方填写路径；目前继续使用应用内播放。', kind: 'err' });
     } catch (error) {
       setVodMsg({ text: `保存失败：${(error as Error).message}`, kind: 'err' });
+    } finally {
+      setVodBusy(false);
     }
   };
 
   const detectVodPlayers = async () => {
+    setVodBusy(true);
     try {
       const list = await client.vodDetectPlayers();
       setVodPlayers(list);
       setVodMsg(list.length
-        ? { text: `检测到 ${list.length} 个：${list.map((player) => player.name).join('、')}（点名字填入路径）`, kind: 'ok' }
+        ? { text: '选择一个播放器即可保存；是否用于点播由上方开关决定', kind: 'ok' }
         : { text: '未检测到常见播放器：可安装 PotPlayer / VLC / mpv / MPC-HC，或手动粘贴播放器 exe 路径', kind: 'err' });
     } catch (error) {
       setVodMsg({ text: `检测失败：${(error as Error).message}`, kind: 'err' });
+    } finally {
+      setVodBusy(false);
     }
   };
 
-  const saveVodPlayer = async () => {
+  const saveVodPlayer = async (path = vodPlayerValue) => {
+    setVodBusy(true);
     try {
-      const settings = await client.playerPrefsSet({ vodExternalPlayer: vodPlayerValue.trim() });
+      const settings = await client.playerPrefsSet({ vodExternalPlayer: path.trim() });
       setPlayPrefs(settings);
       setVodPlayerDraft(null);
       setVodMsg({
@@ -101,6 +122,8 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
       });
     } catch (error) {
       setVodMsg({ text: `保存失败：${(error as Error).message}`, kind: 'err' });
+    } finally {
+      setVodBusy(false);
     }
   };
 
@@ -109,8 +132,24 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
   const [mpvMsg, setMpvMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
 
   useEffect(() => {
-    client.mpvStatus().then(setMpvStatus).catch(() => setMpvStatus(null));
-  }, []);
+    if (!active) return;
+    let alive = true;
+    client.playerPrefsGet().then(settings => {
+      if (!alive) return;
+      setPlayPrefs(settings);
+      setPrefsLoaded(true);
+      setInternalMode(loadPlayerPrefs().kernel);
+      if (settings.vodExternalPlayer) void client.vodDetectPlayers().then(players => { if (alive) setVodPlayers(players); }).catch(() => undefined);
+    }).catch(() => { if (alive) setPlayMsg({ text: '播放设置读取失败，请重新打开此页后再保存', kind: 'err' }); });
+    return () => { alive = false; };
+  }, [active]);
+
+  useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    client.mpvStatus().then(status => { if (alive) setMpvStatus(status); }).catch(() => { if (alive) setMpvStatus({ available: false, path: '', source: 'none', note: '兼容播放组件检测失败，可先使用标准播放或外部播放器' }); });
+    return () => { alive = false; };
+  }, [active]);
 
   const saveMpvPath = async () => {
     try {
@@ -132,108 +171,105 @@ export function PlaybackSettingsSection({ active }: { active: boolean }) {
 
   return (
     <>
-      <PlayerEngineSettings active={active} />
-      <div className="card" id="cfg-m3u8-purify" style={{ padding: 12, marginBottom: 16 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input type="checkbox" checked={playPrefs.m3u8Purify} onChange={(event) => void toggleM3u8Purify(event.target.checked)} />
-            <span style={{ fontWeight: 600 }}>m3u8 去广告</span>
-          </label>
-          <span className="muted" style={{ fontSize: 11 }}>
-            点播清单播放前自动删掉广告分段（切片路径/域名、订阅规则、SCTE-35、切片时长特征）。
-            启发式清洗，默认关闭；仅对点播生效，删到段才替换清单。
-          </span>
-          {playMsg && <span className={playMsg.kind === 'err' ? 'err' : 'status'} style={{ margin: 0 }}>{playMsg.text}</span>}
-        </div>
-      </div>
+      <section className="card" id="cfg-playback-mode" style={{ padding: 16, marginBottom: 16 }}>
+        <h3 style={{ margin: '0 0 8px' }}>播放方式</h3>
+        <p className="muted">不确定时保持“自动选择”，直接打开影片即可。应用会根据资源选用标准或兼容播放。</p>
+        <label className="row" style={{ gap: 12 }}>
+          <span>应用内播放</span>
+          <select aria-label="应用内播放方式" value={internalMode} onChange={event => selectInternalMode(event.target.value as KernelPref)}>
+            <option value="auto">自动选择（推荐）</option>
+            <option value="html5">标准播放</option>
+            <option value="mpv" disabled={mpvStatus?.available === false}>兼容播放{mpvStatus?.available === false ? '（暂不可用）' : ''}</option>
+            {isEngineKernel(internalMode) && <option value={internalMode}>已选插件播放方式</option>}
+          </select>
+        </label>
+        <p className="muted">
+          {internalMode === 'auto'
+            ? '兼容播放可用时，标准播放失败会自动尝试，无需手动选择组件。'
+            : internalMode === 'mpv'
+              ? '适合特殊格式或标准播放有声无画的情况；继续使用应用内控制条、字幕和弹幕。'
+              : internalMode === 'html5'
+                ? '适合常见视频。若无法播放，可切回自动选择。'
+                : '当前使用手动选择的插件；可切回自动选择。'}
+        </p>
+        {playMsg && <output className={playMsg.kind === 'err' ? 'err' : 'status'} style={{ display: 'block', marginTop: 8 }}>{playMsg.text}</output>}
+      </section>
 
-      <div className="card" id="cfg-bt-player" style={{ padding: 12, marginBottom: 16 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={{ fontWeight: 600 }}>磁力外部播放器（MKV / HEVC）</span>
-          <span className="muted" style={{ fontSize: 11 }}>
-            磁力里的 MKV / HEVC 浏览器不能直接播：内置 BT 引擎边下边播时交给这里的播放器。留空 = 自动检测。
-          </span>
-          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-            <input
-              placeholder="播放器 exe 路径（留空 = 自动检测 PotPlayer / VLC / mpv / MPC-HC）…"
-              value={btPlayerValue}
-              style={{ flex: 1 }}
-              onChange={(event) => setBtPlayerDraft(event.target.value)}
-            />
-            <button className="primary" onClick={() => void saveBtPlayer()}>保存</button>
-            <button onClick={() => void detectBtPlayers()}>检测</button>
-          </div>
-          {btPlayers.length > 0 && (
-            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-              {btPlayers.map((player) => (
-                <button type="button" key={player.path} className="tag ui-action" title={player.path} aria-pressed={btPlayerValue === player.path} onClick={() => setBtPlayerDraft(player.path)}>
-                  {player.name}
-                </button>
-              ))}
-            </div>
-          )}
-          {btMsg && <span className={btMsg.kind === 'err' ? 'err' : 'status'} style={{ margin: 0 }}>{btMsg.text}</span>}
+      <section className="card" id="cfg-vod-player" style={{ padding: 16, marginBottom: 16 }}>
+        <h3 style={{ margin: '0 0 8px' }}>外部播放器</h3>
+        <p className="muted">习惯 PotPlayer 等播放器时启用。点播会直接打开它的独立窗口，请保持 Win-Box 运行。</p>
+        <label className="row" style={{ gap: 8, marginBottom: 12 }}>
+          <input type="checkbox" checked={playPrefs.vodExternalPlayerEnabled} disabled={vodBusy || !prefsLoaded} onChange={event => void toggleVodPlayerEnabled(event.target.checked)} />
+          <span>启用点播外部播放器</span>
+        </label>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" disabled={vodBusy || !prefsLoaded} onClick={() => void detectVodPlayers()}>{vodBusy ? '正在处理…' : '检测已安装的播放器'}</button>
+          {vodPlayers.map(player => (
+            <button type="button" disabled={vodBusy} key={player.path} className="tag ui-action" title={player.path} aria-pressed={vodPlayerValue === player.path} onClick={() => void saveVodPlayer(player.path)}>
+              {player.name}{vodPlayerValue === player.path ? ' ✓' : ''}
+            </button>
+          ))}
         </div>
-      </div>
+        <p className="muted">
+          {playPrefs.vodExternalPlayerEnabled && playPrefs.vodExternalPlayer ? '当前优先使用' + (vodPlayers.find(player => player.path === playPrefs.vodExternalPlayer)?.name || '已配置的外部播放器') + '；无法接管的资源会回到应用内播放。' : '当前使用应用内播放。'}
+          {' '}外部播放器的实时进度暂时不会同步回观看历史。
+        </p>
+        <details>
+          <summary>手动指定播放器路径</summary>
+          <div className="row" style={{ gap: 8, marginTop: 8 }}>
+            <input aria-label="点播外部播放器路径" placeholder="选择未被检测到的播放器时，填写 exe 路径" value={vodPlayerValue} style={{ flex: 1, minWidth: 0 }} onChange={event => setVodPlayerDraft(event.target.value)} />
+            <button type="button" disabled={vodBusy} onClick={() => void saveVodPlayer()}>保存路径</button>
+          </div>
+        </details>
+        {vodMsg && <output className={vodMsg.kind === 'err' ? 'err' : 'status'} style={{ display: 'block', marginTop: 8 }}>{vodMsg.text}</output>}
+      </section>
 
-      <div className="card" id="cfg-vod-player" style={{ padding: 12, marginBottom: 16 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={{ fontWeight: 600 }}>点播外部播放器（PotPlayer 等）</span>
-          <span className="muted" style={{ fontSize: 11 }}>
-            勾选后，点播使用所选播放器和本机中继。中继注入 header 与 cookie，历史续播使用上次位置。未勾选时使用内置播放器。
-          </span>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-            <input type="checkbox" checked={playPrefs.vodExternalPlayerEnabled} onChange={(event) => void toggleVodPlayerEnabled(event.target.checked)} />
-            <span>启用点播外部播放器</span>
-          </label>
-          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-            <input
-              placeholder="播放器 exe 路径（点「检测」自动探测 PotPlayer / VLC / mpv / MPC-HC）…"
-              value={vodPlayerValue}
-              style={{ flex: 1 }}
-              onChange={(event) => setVodPlayerDraft(event.target.value)}
-            />
-            <button className="primary" onClick={() => void saveVodPlayer()}>保存</button>
-            <button onClick={() => void detectVodPlayers()}>检测</button>
-          </div>
-          {vodPlayers.length > 0 && (
-            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-              {vodPlayers.map((player) => (
-                <button type="button" key={player.path} className="tag ui-action" title={player.path} aria-pressed={vodPlayerValue === player.path} onClick={() => setVodPlayerDraft(player.path)}>
-                  {player.name}
-                </button>
-              ))}
-            </div>
-          )}
-          {vodMsg && <span className={vodMsg.kind === 'err' ? 'err' : 'status'} style={{ margin: 0 }}>{vodMsg.text}</span>}
-        </div>
-      </div>
+      <section className="card" id="cfg-m3u8-purify" style={{ padding: 16, marginBottom: 16 }}>
+        <label className="row" style={{ gap: 8 }}>
+          <input type="checkbox" checked={playPrefs.m3u8Purify} disabled={!prefsLoaded} onChange={event => void toggleM3u8Purify(event.target.checked)} />
+          <span>尝试跳过点播广告</span>
+        </label>
+        <p className="muted">只对部分分段视频有效。识别可能不准确，默认关闭。</p>
+      </section>
 
-      <div className="card" id="cfg-mpv-kernel" style={{ padding: 12, marginBottom: 16 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={{ fontWeight: 600 }}>MPV 播放内核（4K / HEVC / MKV）</span>
-          <span className="muted" style={{ fontSize: 11 }}>
-            播放器窗口支持 Chromium 不易处理的 MKV、4K HEVC 和 HDR。字幕、弹幕和控制条仍由界面显示。通常使用随应用附带的版本。
-          </span>
-          <span className={mpvStatus && !mpvStatus.available ? 'err' : 'status'} style={{ margin: 0, wordBreak: 'break-all' }}>
-            {mpvStatus
-              ? mpvStatus.available
-                ? `可用：${mpvStatus.note}（${mpvStatus.path}）`
-                : `不可用：${mpvStatus.note}`
-              : '正在检测…'}
-          </span>
-          <div className="row" style={{ gap: 8, alignItems: 'center' }}>
-            <input
-              placeholder="mpv.exe 路径覆盖（留空 = 用随包内置构建）…"
-              value={mpvDraft ?? playPrefs.mpvPath}
-              style={{ flex: 1 }}
-              onChange={(event) => setMpvDraft(event.target.value)}
-            />
-            <button className="primary" onClick={() => void saveMpvPath()}>保存</button>
+      <details className="card" open={advancedOpen} onToggle={event => setAdvancedOpen(event.currentTarget.open)} style={{ padding: 16, marginBottom: 16 }}>
+        <summary>高级：播放组件与磁力播放</summary>
+        <dl>
+          <dt>PotPlayer 等外部播放器</dt>
+          <dd className="muted">独立的播放软件，使用它自己的界面和解码能力。接管播放时不需要另行启动应用内的 MPV 或兼容转码。</dd>
+          <dt>MPV：应用内兼容播放</dt>
+          <dd className="muted">作为应用内的兼容内核使用，保留 Win-Box 的播放控制和进度同步。通常使用随包版本。</dd>
+          <dt>FFmpeg：后台兼容组件</dt>
+          <dd className="muted">用于探测媒体信息、转换部分不兼容资源，按需运行，无需把它选作播放器。</dd>
+        </dl>
+
+        <section id="cfg-mpv-kernel" style={{ marginTop: 16 }}>
+          <h4>应用内兼容播放组件</h4>
+          <p className="muted" style={{ overflowWrap: 'anywhere' }}>
+            {mpvStatus ? (mpvStatus.available ? '已就绪：' : '暂不可用：') + mpvStatus.note : '正在检查…'}
+          </p>
+          <div className="row" style={{ gap: 8 }}>
+            <input aria-label="兼容播放组件路径" placeholder="自定义 mpv.exe 路径（留空使用随包版本）" value={mpvDraft ?? playPrefs.mpvPath} style={{ flex: 1, minWidth: 0 }} onChange={event => setMpvDraft(event.target.value)} />
+            <button type="button" onClick={() => void saveMpvPath()}>保存路径</button>
           </div>
-          {mpvMsg && <span className={mpvMsg.kind === 'err' ? 'err' : 'status'} style={{ margin: 0, wordBreak: 'break-all' }}>{mpvMsg.text}</span>}
-        </div>
-      </div>
+          {mpvMsg && <output className={mpvMsg.kind === 'err' ? 'err' : 'status'} style={{ display: 'block', marginTop: 8 }}>{mpvMsg.text}</output>}
+        </section>
+
+        <section id="cfg-bt-player" style={{ marginTop: 16 }}>
+          <h4>磁力视频的外部播放器</h4>
+          <p className="muted">内置播放无法处理磁力视频的格式时，交给这里的播放器。留空时自动检测，优先使用 PotPlayer；与点播设置分别保存。</p>
+          <div className="row" style={{ gap: 8 }}>
+            <input aria-label="磁力外部播放器路径" placeholder="播放器 exe 路径（留空自动检测）" value={btPlayerValue} style={{ flex: 1, minWidth: 0 }} onChange={event => setBtPlayerDraft(event.target.value)} />
+            <button type="button" onClick={() => void saveBtPlayer()}>保存路径</button>
+            <button type="button" onClick={() => void detectBtPlayers()}>检测</button>
+          </div>
+          {btPlayers.length > 0 && <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+            {btPlayers.map(player => <button type="button" key={player.path} className="tag ui-action" title={player.path} aria-pressed={btPlayerValue === player.path} onClick={() => void saveBtPlayer(player.path)}>{player.name}</button>)}
+          </div>}
+          {btMsg && <output className={btMsg.kind === 'err' ? 'err' : 'status'} style={{ display: 'block', marginTop: 8 }}>{btMsg.text}</output>}
+        </section>
+        {advancedOpen && <PlayerEngineSettings active={active} />}
+      </details>
     </>
   );
 }
