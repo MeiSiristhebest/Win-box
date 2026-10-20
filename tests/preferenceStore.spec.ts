@@ -8,6 +8,37 @@ afterEach(() => {
 });
 
 describe('renderer preference store', () => {
+  it.each([
+    ['netflix', 'dark'],
+    ['bilibili', 'light'],
+    ['apple', 'light'],
+    ['douban', 'light'],
+  ])('migrates the legacy %s theme to %s when initializing main preferences', async (legacyTheme, expectedTheme) => {
+    vi.resetModules();
+    localStorage.setItem('winbox-theme', legacyTheme);
+    const initializeUiPreferences = vi.fn(async (patch: { themeId: string }) => ({
+      ok: true as const,
+      data: {
+        revision: 1, initialized: true,
+        values: { themeId: patch.themeId, motion: 'auto' as const, showDiscover: true, waterfall: false, homeFilters: false, navMode: 'inline' as const, posterSize: 'medium' as const },
+      },
+    }));
+    Object.defineProperty(window, 'api', {
+      configurable: true,
+      value: { system: {
+        onUiPreferencesChanged: () => () => undefined,
+        getUiPreferences: async () => ({ ok: true, data: {
+          revision: 0, initialized: false,
+          values: { themeId: 'dark', motion: 'auto', showDiscover: true, waterfall: false, homeFilters: false, navMode: 'inline', posterSize: 'medium' },
+        } }),
+        initializeUiPreferences,
+      } },
+    });
+    const { syncUiPreferencesFromMain: sync } = await import('../src/renderer/lib/preferenceStore');
+    await sync();
+    expect(initializeUiPreferences).toHaveBeenCalledWith(expect.objectContaining({ themeId: expectedTheme }));
+  });
+
   it('notifies same-window subscribers only for their key and cleans listeners', () => {
     const themeListener = vi.fn();
     const motionListener = vi.fn();

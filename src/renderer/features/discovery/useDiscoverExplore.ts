@@ -14,7 +14,7 @@ export function useDiscoverExplore(load: () => void) {
   const [media, setMedia] = useState<DiscoverMediaId | null>(null);
   /** 各维度已选值（维度名 → 选项文本；`全部` = 不参与筛选）；缺失 = 该级未选、不展开下级 */
   const [dims, setDims] = useState<Record<string, string>>({});
-  const [sortId, setSortId] = useState(BUILTIN_VOCAB.movie.defaultSort);
+  const [sortId, setSortId] = useState('');
   const [items, setItems] = useState<DiscoverItem[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);

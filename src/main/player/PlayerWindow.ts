@@ -231,7 +231,7 @@ export function playerSetMini(isMini: boolean): void {
     const disp = screen.getDisplayMatching(b);
     const { x: ax, y: ay, width: aw, height: ah } = disp.workArea;
     // ★ 界面缩放：小窗与其最小尺寸都按当前倍率放大
-    const uiScale = uiScaleState().scale;
+    const uiScale = uiScaleState(w).scale;
     const mw = Math.round(MINI_W * uiScale);
     const mh = Math.round(MINI_H * uiScale);
     // 优先沿用上次小窗位置，首次则置于所在屏水平居中

@@ -136,6 +136,12 @@ describe('选项字典', () => {
     expect(DISCOVER_MEDIA.find((m) => m.id === 'tv')?.baseTag).toBe('电视剧');
     expect(DISCOVER_MEDIA.find((m) => m.id === 'variety')?.baseTag).toBe('综艺');
     expect(DISCOVER_MEDIA.find((m) => m.id === 'movie')?.baseTag).toBe('电影');
+    expect(DISCOVER_MEDIA.find((m) => m.id === 'animation')).toMatchObject({
+      mediaType: 'tv', baseTag: '动画', formats: ['tv', 'movie'],
+    });
+    expect(DISCOVER_MEDIA.find((m) => m.id === 'documentary')).toMatchObject({
+      mediaType: 'tv', baseTag: '纪录片', formats: ['tv', 'movie'],
+    });
   });
 
   it('年代选项：首项「全部」，含近 12 年与年代桶（豆瓣可下发）', () => {

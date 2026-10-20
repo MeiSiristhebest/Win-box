@@ -373,7 +373,9 @@ private imgProxy(u: URL, res: ServerResponse): void {
   try { push(new URL(target).origin + '/'); } catch { /* 非法 URL 已在上面拦掉 */ }
   push('');
   void (async () => {
-    const signal = AbortSignal.timeout(30000);
+    const clientAbort = new AbortController();
+    res.once('close', () => { if (!res.writableEnded) clientAbort.abort(); });
+    const signal = AbortSignal.any([clientAbort.signal, AbortSignal.timeout(30000)]);
     const dispatchers = domesticPoster ? dispatchChain(target, agent, imgAgent) : outboundDispatchers(target);
     for (const r of refs) {
       for (const dispatcher of dispatchers) {

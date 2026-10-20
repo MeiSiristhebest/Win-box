@@ -368,6 +368,7 @@ export interface DiscoverSection {
   id: string;
   title: string;
   items: DiscoverItem[];
+  mediaType?: 'movie' | 'tv';
   /** 内置和插件分区可使用相同的展示 id，浏览入口单独标识。 */
   browseId?: string;
   fetchedAt?: number;

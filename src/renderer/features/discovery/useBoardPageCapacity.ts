@@ -1,11 +1,11 @@
-import { useEffect, useState, type RefObject } from 'react';
+import { useLayoutEffect, useState, type RefObject } from 'react';
 import { BOARD_PAGE_SIZE } from '../../../shared/discoverBoards';
 import { usePageActive } from '../../lib/keepAlive';
 
 export function useBoardPageCapacity(ref: RefObject<HTMLDivElement | null>): number {
   const active = usePageActive();
   const [capacity, setCapacity] = useState(40);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = ref.current;
     if (!active || !element) return;
     let frame = 0;
@@ -25,6 +25,7 @@ export function useBoardPageCapacity(ref: RefObject<HTMLDivElement | null>): num
       const next = Math.max(40, Math.min(120, Math.ceil(columns * rows / BOARD_PAGE_SIZE) * BOARD_PAGE_SIZE));
       setCapacity(previous => previous === next ? previous : next);
     };
+    measure();
     const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
     const resize = new ResizeObserver(schedule);
     resize.observe(element);

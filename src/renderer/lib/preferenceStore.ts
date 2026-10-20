@@ -1,7 +1,8 @@
 import { client } from '../api/client';
 import type { UiPreferencesPatch, UiPreferencesSnapshot } from '../../shared/uiPreferences';
 import { normalizePosterSize } from '../../shared/posterSize';
-import { DEFAULT_UI_PREFERENCES, UI_THEME_IDS, validateUiPreferencesPatch } from '../../shared/uiPreferences';
+import { DEFAULT_UI_PREFERENCES, validateUiPreferencesPatch } from '../../shared/uiPreferences';
+import { normalizeTheme } from './themeTokens';
 
 type PreferenceListener = () => void;
 
@@ -59,9 +60,7 @@ function legacyPreferences(): UiPreferencesPatch {
   const theme = readStoredPreference(THEME_KEY);
   const motion = readStoredPreference(MOTION_KEY);
   return {
-    themeId: theme && ((UI_THEME_IDS as readonly string[]).includes(theme) || /^plugin:[a-z0-9-]{3,40}$/.test(theme))
-      ? theme as UiPreferencesPatch['themeId']
-      : DEFAULT_UI_PREFERENCES.themeId,
+    themeId: (theme && /^plugin:[a-z0-9-]{3,40}$/.test(theme) ? theme : normalizeTheme(theme)) as UiPreferencesPatch['themeId'],
     motion: motion === 'on' || motion === 'off' ? motion : DEFAULT_UI_PREFERENCES.motion,
     showDiscover: readStoredPreference(DISCOVER_KEY) !== '0',
     waterfall: readStoredPreference(WATERFALL_KEY) === '1',

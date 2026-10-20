@@ -51,7 +51,7 @@ export default function BoardPreviewCard({ board, seed, active }: { board: Disco
     </div>
     <div className="board-preview-body" aria-busy={!preview && !result.error}>
       <div className="board-preview-cover">{poster && cover ? <img src={poster} alt="" loading="lazy" decoding="async" onError={event => covers.onError(cover, event.currentTarget.getAttribute('src') || '')} /> : <span>{preview || result.error ? '暂无封面' : ''}</span>}</div>
-      {items.length > 0 ? <ol className="board-preview-list" aria-label="榜单预览">{items.map((item, index) => <li key={item.doubanId || item.tmdbId || item.title}><span className="board-preview-number" aria-hidden="true">{index + 1}</span><span className="board-preview-name" title={item.title}>{item.title}</span>{item.rating ? <span className="board-preview-rating" aria-label={item.rating.toFixed(1) + ' 分'}>{item.rating.toFixed(1)}</span> : null}</li>)}</ol>
+      {items.length > 0 ? <ol className="board-preview-list" aria-label="榜单预览">{items.map((item, index) => <li key={String(item.doubanId || item.tmdbId || item.title) + '-' + index}><span className="board-preview-number" aria-hidden="true">{index + 1}</span><span className="board-preview-name" title={item.title}>{item.title}</span>{item.rating ? <span className="board-preview-rating" aria-label={item.rating.toFixed(1) + ' 分'}>{item.rating.toFixed(1)}</span> : null}</li>)}</ol>
         : result.error || preview ? <span className="board-preview-unavailable">{result.error || '暂无预览'}<span>打开榜单查看</span></span>
           : <span className="board-preview-skeleton" aria-label="正在读取榜单预览"><i /><i /><i /></span>}
     </div>

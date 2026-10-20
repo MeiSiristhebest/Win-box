@@ -76,9 +76,10 @@ export function ProfileSwitcher() {
     }
   }
 
+  const activeLabel = active?.name || (config?.sources.length || config?.lives.length ? '当前配置' : '未导入');
   return (<>
-    <button type="button" className={`${styles.trigger} profile-switch-trigger`} title={`当前子仓：${active?.name || '未导入'}\n点击切换子仓`} aria-label={`切换子仓，当前：${active?.name || '未导入'}`} aria-haspopup="dialog" onClick={() => { setQuery(''); setError(''); setOpen(true); void refresh(); }}>
-      <span className={styles.triggerLabel}>子仓</span><span className={styles.current}>{active?.name || (config?.sources.length || config?.lives.length ? '当前配置' : '未导入')}</span><span aria-hidden="true">▾</span>
+    <button type="button" className={`${styles.trigger} profile-switch-trigger`} title={`当前子仓：${activeLabel}\n点击切换子仓`} aria-label={`切换子仓，当前：${activeLabel}`} aria-haspopup="dialog" onClick={() => { setQuery(''); setError(''); setOpen(true); void refresh(); }}>
+      <span className={styles.triggerLabel}>子仓</span><span className={styles.current}>{activeLabel}</span><span aria-hidden="true">▾</span>
     </button>
     <AppModal open={open} titleId={titleId} descriptionId={descriptionId} initialFocusRef={input} className={'app-dialog card modal-in ' + styles.dialog} canClose={!switching} onClose={() => setOpen(false)}>
       <div className={`${styles.heading} app-dialog-heading`}><h2 id={titleId}>切换子仓</h2><button className="app-dialog-close" type="button" disabled={switching} onClick={() => setOpen(false)}>关闭</button></div>

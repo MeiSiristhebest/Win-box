@@ -195,7 +195,7 @@ export class DomesticDiscover {
       return { board, items: parseDomesticItems(json, board.mediaType!), page, pageSize: BOARD_PAGE_SIZE, total, totalPages, hasMore,
         ...(!raw.length && total !== null && start < total ? { notice: '原站暂未返回这一页，请重试或前往原站查看。' } : {}),
       };
-    }, value => !!value && Array.isArray(value.items), null, refresh);
+    }, value => !!value && Array.isArray(value.items) && (page !== 1 || value.items.length > 0 || value.total === 0), null, refresh);
     if (!entry.value || !entry.at) throw new Error('暂时无法读取榜单，请稍后重试或前往原站查看');
     const stale = Date.now() - entry.at >= TTL || Date.now() < (this.retryAt.get(key) || 0);
     return { ...entry.value, fetchedAt: entry.at, stale };

@@ -1222,7 +1222,7 @@ export class SpiderHost {
     const section = (await this.pluginDiscoverSections()).find(item => item.id === pluginId);
     if (!section) throw new Error('这个榜单已不可用，请返回榜单列表重新选择');
     if (normalizeBoardPage(page) !== 1) throw new Error('这个插件仅提供一页内容');
-    return { board: { id, title: section.title, provider: 'plugin', description: '插件提供的内容列表。' },
+    return { board: { id, title: section.title, provider: 'plugin', description: '插件提供的内容列表。', mediaType: section.mediaType },
       items: section.items, page: 1, pageSize: section.items.length, total: section.items.length, totalPages: 1,
       hasMore: false, fetchedAt: 0, stale: false,
       notice: '这里只能显示插件提供的条目，插件未提供继续分页或原站入口。',

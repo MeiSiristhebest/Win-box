@@ -43,6 +43,7 @@ const SETTINGS_CARD_TABS: Readonly<Record<string, TabId>> = {
   import: 'sources', sources: 'sources', live: 'sources', lives: 'sources',
   audit: 'health', cache: 'health', merge: 'profiles',
   subtitle: 'account', meta: 'account',
+  'plugin-engines': 'play', 'plugin-keymap': 'shortcut',
   motion: 'appearance', 'show-discover': 'appearance', 'ui-scale': 'appearance', 'poster-size': 'appearance', 'nav-mode': 'appearance', 'home-browse': 'appearance',
   'm3u8-purify': 'play', 'bt-player': 'play', 'vod-player': 'play', 'mpv-kernel': 'play',
 };

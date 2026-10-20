@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { applyTheme, useTheme, useSkinLayout } from '../src/renderer/lib/theme';
-import { SEMANTIC_TOKEN_NAMES, themes, type Theme } from '../src/renderer/lib/themeTokens';
+import { registerPluginSkins, SEMANTIC_TOKEN_NAMES, themes, type Theme } from '../src/renderer/lib/themeTokens';
 
 describe('theme application', () => {
   const values = { themeId: 'dark', motion: 'auto', showDiscover: true, waterfall: false };
@@ -26,6 +26,7 @@ describe('theme application', () => {
     document.documentElement.removeAttribute('data-theme');
     document.documentElement.removeAttribute('style');
     Reflect.deleteProperty(window, 'api');
+    registerPluginSkins([]);
   });
 
   it('applies a complete token snapshot and persists each selected theme', () => {
@@ -50,8 +51,15 @@ describe('theme application', () => {
     act(() => applyTheme('light'));
     expect(result.current.theme).toBe('light');
     expect(result.current.layout.shell).toBe('topbar');
-    act(() => applyTheme('bilibili'));
-    expect(result.current.theme).toBe('light');
-    expect(result.current.layout.shell).toBe('topbar');
+    act(() => {
+      registerPluginSkins([{
+        id: 'plugin:test-layout', pluginId: 'test', label: '测试外观', base: 'light',
+        tokens: { '--surface-0': '#ffffff' },
+        layout: { shell: 'sidebar' },
+      }]);
+      applyTheme('plugin:test-layout');
+    });
+    expect(result.current.theme).toBe('plugin:test-layout');
+    expect(result.current.layout.shell).toBe('sidebar');
   });
 });

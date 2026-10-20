@@ -15,3 +15,8 @@ export function posterWidth(size: PosterSize, uiScale = 1): number {
   const width = POSTER_SIZE_OPTIONS.find(option => option.value === size)!.width;
   return width / (Number.isFinite(uiScale) && uiScale > 0 ? uiScale : 1);
 }
+
+export function posterIntrinsicHeight(size: PosterSize, uiScale = 1): number {
+  const scale = Number.isFinite(uiScale) && uiScale > 0 ? uiScale : 1;
+  return Math.round(posterWidth(size, scale) * 1.5 + 53 / scale);
+}

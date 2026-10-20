@@ -38,7 +38,7 @@ export default function DiscoverShelf({ title, count, view, children, boardId }:
 
   return <section className={`discovery-shelf ${view.containerClass || ''}`} style={view.containerStyle} aria-label={title}>
     <header className="discovery-shelf-heading">
-      <h2 className={view.titleClass}>{title}</h2>
+      <h2 className={view.titleClass} style={view.titleStyle}>{title}</h2>
       <div className="discovery-shelf-controls">
         <Link className="discovery-shelf-link" to={`/boards/${encodeURIComponent(boardId)}`} aria-label={`查看${title}列表`}>查看全部<Icon name="right" size={13} /></Link>
         <button type="button" aria-label={`向左浏览${title}`} disabled={!edges.back} onClick={() => scroll(-1)}><Icon name="left" size={15} /></button>

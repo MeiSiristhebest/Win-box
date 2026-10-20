@@ -936,10 +936,10 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
               <div className="empty">
                 {loading
                   ? '加载中…'
-                  : err
-                    ? '加载失败，请查看上方错误提示'
-                    : sites.length === 0
-                      ? <><h2>添加你的第一个订阅</h2><p>支持单仓、多仓和本地配置文件。</p><button className="primary" onClick={() => { try { localStorage.setItem('winbox-cfg-tab', 'sources'); } catch { /* Storage may be disabled. */ } navigate('/config'); }}>导入订阅</button></>
+                  : sites.length === 0
+                    ? <><h2>添加你的第一个订阅</h2><p>支持单仓、多仓和本地配置文件。</p><button className="primary" onClick={() => { try { localStorage.setItem('winbox-cfg-tab', 'sources'); } catch { /* Storage may be disabled. */ } navigate('/config'); }}>导入订阅</button></>
+                    : err
+                      ? '加载失败，请查看上方错误提示'
                       : <><h2>当前站点暂无内容</h2><p>可以切换分类、在左侧更换站点，或使用顶部搜索。</p></>}
               </div>
             ) : (

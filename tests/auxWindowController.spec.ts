@@ -21,7 +21,8 @@ vi.mock('electron', () => ({
     events = new Map<string, (...args: any[]) => void>();
     webContents = {
       id: mocks.windows.length + 1,
-      send: vi.fn(), isLoading: () => false, setZoomMode: vi.fn(),
+      send: vi.fn(), isLoading: () => false, isDestroyed: () => false,
+      getZoomFactor: vi.fn(() => 1), setZoomFactor: vi.fn(), setZoomMode: vi.fn(),
       setWindowOpenHandler: vi.fn(), invalidate: vi.fn(),
     };
     show = vi.fn(); focus = vi.fn(); restore = vi.fn();
@@ -60,7 +61,8 @@ describe.each(['search', 'detail'] as const)('独立 %s 窗口路由交接', (ki
     expect(c.open('latest%2F').reused).toBe(true);
     expect(mocks.windows).toHaveLength(1);
     const w = mocks.windows[0];
-    expect(w.webContents.send).not.toHaveBeenCalled();
+    expect(w.webContents.send).toHaveBeenCalledWith(IPC.UI_SCALE_CHANGED, expect.objectContaining({ scale: 1 }));
+    expect(w.webContents.send).not.toHaveBeenCalledWith(IPC.WIN_NAVIGATE, expect.anything());
     c.ready(w.webContents.id);
     expect(w.webContents.send).toHaveBeenLastCalledWith(IPC.WIN_NAVIGATE, expect.stringContaining('latest%252F'));
   });
@@ -69,7 +71,8 @@ describe.each(['search', 'detail'] as const)('独立 %s 窗口路由交接', (ki
     c.open('first');
     const w = mocks.windows[0];
     c.ready(w.webContents.id + 100);
-    expect(w.webContents.send).not.toHaveBeenCalled();
+    expect(w.webContents.send).toHaveBeenCalledWith(IPC.UI_SCALE_CHANGED, expect.objectContaining({ scale: 1 }));
+    expect(w.webContents.send).not.toHaveBeenCalledWith(IPC.WIN_NAVIGATE, expect.anything());
     c.ready(w.webContents.id);
     w.events.get('did-start-loading')?.();
     c.open('second');
@@ -86,6 +89,7 @@ describe.each(['search', 'detail'] as const)('独立 %s 窗口路由交接', (ki
     w.events.get('closed')?.();
     expect(c.open('third').reused).toBe(false);
     expect(mocks.windows).toHaveLength(2);
-    expect(mocks.windows[1].webContents.send).not.toHaveBeenCalled();
+    expect(mocks.windows[1].webContents.send).toHaveBeenCalledWith(IPC.UI_SCALE_CHANGED, expect.objectContaining({ scale: 1 }));
+    expect(mocks.windows[1].webContents.send).not.toHaveBeenCalledWith(IPC.WIN_NAVIGATE, expect.anything());
   });
 });

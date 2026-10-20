@@ -75,6 +75,7 @@ describe('插件发现页数据源 — 声明式取分区', () => {
     ]);
     expect(probe.calls[0].headers).toEqual({ Referer: 'https://api.example.com/' });
     expect(out.map((s) => s.id)).toEqual(['my-top-movie', 'my-top-tv']);
+    expect(out.map((s) => s.mediaType)).toEqual(['movie', 'tv']);
     expect(out[0].title).toBe('我的电影热榜');
     expect(out[0].items).toEqual([
       {

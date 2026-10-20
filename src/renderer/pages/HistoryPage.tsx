@@ -243,7 +243,7 @@ export default function HistoryPage() {
   };
 
   const clearAll = async () => {
-    if (!(await dialog.confirm(`清空全部 ${items.length} 条观看历史和播放进度？`, { title: '清空观看历史', confirmLabel: '清空历史', tone: 'danger' }))) return;
+    if (!(await dialog.confirm('清空全部观看历史和播放进度？', { title: '清空观看历史', confirmLabel: '清空历史', tone: 'danger' }))) return;
     clearUiMemory();
     setLastDeleted(null);
     refresh();

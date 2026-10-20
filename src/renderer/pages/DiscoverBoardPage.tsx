@@ -54,7 +54,7 @@ export default function DiscoverBoardPage() {
     </header>
     <div className="board-list-toolbar"><div className="board-summary" aria-live="polite">
       <span className="board-source">{source}</span>
-      {data && <span>{complete ? '共 ' + data.items.length + ' 部 · 完整榜单' : data.total === null ? '已加载 ' + data.items.length + ' 部' : '已加载 ' + data.items.length + ' / ' + data.total + ' 部'}</span>}
+      {data && <span>{complete ? '共 ' + data.items.length + ' 部 · 完整榜单' : data.total === null ? '已加载 ' + data.items.length + ' 部' : '已加载 ' + data.items.length + ' 部 · 原站共 ' + data.total + ' 条记录'}</span>}
       {data && data.fetchedAt > 0 && <span>{data.stale ? '上次成功读取' : '数据读取于'} <time dateTime={new Date(data.fetchedAt).toISOString()}>{new Date(data.fetchedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></span>}
     </div></div>
     {data?.stale && <output className="banner">正在显示缓存内容，数据可能已变化。可刷新榜单或查看原站。</output>}

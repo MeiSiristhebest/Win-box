@@ -47,7 +47,7 @@ export function isCacheableRoute(pathname: string): boolean {
 
 /** 缓存键 = 完整 pathname（详情页因此做到「一部片一个实例」） */
 export function cacheKeyOf(pathname: string): string {
-  return pathname;
+  return isBoardPath(pathname) ? normalizePath(pathname) : pathname;
 }
 
 /** 缓存分组：同组按上限淘汰（详情同属 `/detail` 一组，其余各自成组） */

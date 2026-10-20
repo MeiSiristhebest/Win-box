@@ -55,6 +55,14 @@ describe('国内发现页数据契约', () => {
     expect(fetcher.mock.calls.every(([url]) => !url.includes('themoviedb'))).toBe(true);
   });
 
+  it('不缓存总数大于零但解析结果为空的榜单首屏', async () => {
+    const store = fixture();
+    const fetcher = vi.fn(async () => ({ total: 12, subject_collection_items: [] }));
+    const provider = new DomesticDiscover(store, log, fetcher);
+    await expect(provider.boardPage('movie_top250', 1)).rejects.toThrow('暂时无法读取榜单');
+    expect(store.getObject('board:movie_top250:1', null)).toBeNull();
+  });
+
   it('重启后读磁盘缓存，过期数据立即显示，后台失败不覆盖成功结果', async () => {
     const store = fixture();
     const first = new DomesticDiscover(store, log, vi.fn(async () => hot));

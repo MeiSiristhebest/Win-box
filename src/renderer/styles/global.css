@@ -853,6 +853,7 @@ tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rg
    ★ 2026-09-29（用户报「文本只占半边、还要下滑」）：① **整块居中**；② 宽屏**两列平铺**（左右都铺开、
    高度近乎减半，1080p 基本一屏放下）；③ 窄屏自动回单列，条款不被跨列断开。 */
 .about { max-width: min(1180px, 94vw); margin: 0 auto; line-height: 1.75; font-size: 13px; padding-bottom: 20px; }
+.about > .page-heading { column-span: all; }
 @media (min-width: 1080px) {
   .about { column-count: 2; column-gap: 44px; }
 }

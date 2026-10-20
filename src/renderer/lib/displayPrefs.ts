@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { client } from '../api/client';
 import { getPosterSize } from './uiPrefs';
 import { subscribePreference } from './preferenceStore';
-import { posterWidth } from '../../shared/posterSize';
+import { posterIntrinsicHeight, posterWidth } from '../../shared/posterSize';
 import type { UiScalePref, UiScaleState } from '../../shared/uiScale';
 
 const fallback: UiScaleState = { pref: 'auto', scale: 1, work: { width: 0, height: 0 } };
@@ -14,6 +14,7 @@ const listeners = new Set<() => void>();
 function applyPosterSizing(): void {
   const root = document.documentElement;
   root.style.setProperty('--poster-width', posterWidth(getPosterSize(), state.scale) + 'px');
+  root.style.setProperty('--poster-intrinsic-height', posterIntrinsicHeight(getPosterSize(), state.scale) + 'px');
   root.style.setProperty('--poster-gap', 18 / state.scale + 'px');
   root.style.setProperty('--ui-zoom', String(state.scale));
   root.dataset.posterSize = getPosterSize();

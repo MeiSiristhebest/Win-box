@@ -48,7 +48,7 @@ function reconcileWindow(window: BrowserWindow): void {
   if (window.webContents.isDestroyed()) return;
   if (window.webContents.getZoomFactor() !== scale) window.webContents.setZoomFactor(scale);
   window.webContents.send(IPC.UI_SCALE_CHANGED, uiScaleState(window));
-  const preferred = scaledWindowSize(BASE_WINDOW, 1, work);
+  const preferred = scaledWindowSize(BASE_WINDOW, scale, work);
   const [oldMinWidth, oldMinHeight] = window.getMinimumSize();
   const main = window === getMainWindow();
   const minWidth = main ? preferred.minWidth : Math.min(oldMinWidth, Math.max(1, work.width - 40));

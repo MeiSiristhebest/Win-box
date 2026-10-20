@@ -66,7 +66,7 @@ export const themes = {
     label: '浅色', presentation: 'desktop', colorScheme: 'light',
     tokens: {
       surface: '#f7f8fa', 'surface-raised': '#ffffff', 'surface-elevated': '#ffffff',
-      'text-primary': '#25282f', 'text-secondary': '#626976', 'color-accent': '#355fd6',
+      'text-primary': '#25282f', 'text-secondary': '#606065', 'color-accent': '#355fd6',
       'on-accent': '#ffffff', 'color-danger': '#b8313b', 'on-danger': '#ffffff',
       'border-subtle': '#dfe2e8', backdrop: '#ffffff',
       'radius-control': '9px', 'radius-container': '14px',

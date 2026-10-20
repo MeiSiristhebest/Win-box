@@ -55,7 +55,7 @@ export function PlayerFitControl({
                 <button
                   key={option.value}
                   className={`vsp-btn${fit === option.value ? ' active' : ''}`}
-                  onClick={() => { onFitSelect(option.value); triggerRef.current?.focus(); }}
+                  onClick={() => { onFitSelect(option.value); onFitPointerLeave(); triggerRef.current?.focus(); }}
                 >
                   {option.label}
                 </button>

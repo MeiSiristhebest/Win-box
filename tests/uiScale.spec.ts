@@ -9,6 +9,7 @@ import {
   scaledWindowSize,
   UI_SCALE_OPTIONS,
 } from '../src/shared/uiScale';
+import { posterIntrinsicHeight, posterWidth } from '../src/shared/posterSize';
 
 /** 工作区（DIP）按「分辨率 − 任务栏约 40 DIP」估 */
 const work = (w: number, h: number) => ({ width: w, height: h - 40 });
@@ -88,5 +89,17 @@ describe('scaledWindowSize', () => {
   it('没有工作区信息时只做等比放大', () => {
     const s = scaledWindowSize({ width: 1100, height: 720, minWidth: 900, minHeight: 560 }, 1.25);
     expect(s).toEqual({ width: 1375, height: 900, minWidth: 1125, minHeight: 700 });
+  });
+});
+
+describe('poster size compensation', () => {
+  it('keeps poster width and intrinsic gallery height aligned across sizes and UI zoom', () => {
+    expect(posterWidth('small')).toBe(128);
+    expect(posterWidth('medium')).toBe(160);
+    expect(posterWidth('large')).toBe(200);
+    expect(posterWidth('large', 2)).toBe(100);
+    expect(posterIntrinsicHeight('small')).toBe(245);
+    expect(posterIntrinsicHeight('large')).toBe(353);
+    expect(posterIntrinsicHeight('large', 2)).toBe(177);
   });
 });

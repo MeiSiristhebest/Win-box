@@ -7,6 +7,8 @@
   button.gallery-icon-button:hover { background: var(--surface-elevated, var(--surface)); color: var(--text-primary); }
   .gallery-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--poster-width, 160px)), var(--poster-width, 160px))); column-gap: var(--poster-gap, 18px); }
-  .grid .card-media { contain-intrinsic-size: auto 260px; }
+  :root[data-discover='shelf'] .nf-row-scroll > *,
+  :root[data-discover='shelfWide'] .nf-row-scroll > * { flex: 0 0 var(--poster-width, 160px); width: var(--poster-width, 160px); }
+  .grid .card-media { contain-intrinsic-size: auto var(--poster-intrinsic-height, 293px); }
   .discover-card-facts { flex-wrap: wrap; gap: 2px 6px; }
 }

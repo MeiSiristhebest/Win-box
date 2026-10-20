@@ -339,8 +339,8 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
     <div
       ref={wrapRef}
       className={`srcpick${isSidebar ? ' srcpick-side' : ''}`}
-      onMouseEnter={cancelLeave}
-      onMouseLeave={scheduleLeave}
+      onPointerEnter={cancelLeave}
+      onPointerLeave={scheduleLeave}
       onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget) && !panelRef.current?.contains(event.relatedTarget)) setOpen(false); }}
     >
       <button
@@ -366,6 +366,8 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
           style={panelPosition}
           className={`srcpick-pop${pane && multi ? ' srcpick-pop-wide' : ''}${isSidebar ? ' srcpick-pop-side' : ''}${closing ? ' srcpick-closing' : ''}`}
           aria-label="订阅和来源"
+          onPointerEnter={cancelLeave}
+          onPointerLeave={scheduleLeave}
         >
           {error && <div className="err" role="alert">{error}</div>}
           <div className="srcpick-pop-tip">
