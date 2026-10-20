@@ -257,7 +257,8 @@ export default function ConfigPage() {
   useEffect(() => {
     if (!requestedSection || requestedTab !== tab) return;
     const revealAndScroll = (): boolean => {
-      const element = document.getElementById(`cfg-${requestedSection}`);
+      const targetId = requestedSection === requestedTab ? 'cfg-section-title' : `cfg-${requestedSection}`;
+      const element = document.getElementById(targetId);
       if (!element) return false;
       for (let parent = element.parentElement; parent; parent = parent.parentElement) {
         if (parent instanceof HTMLDetailsElement) parent.open = true;

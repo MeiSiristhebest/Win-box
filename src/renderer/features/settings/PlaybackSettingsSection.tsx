@@ -13,7 +13,6 @@ export function PlaybackSettingsSection({ active, requestedSection = '' }: { act
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
   const selectInternalMode = (mode: KernelPref) => {
-    if (!prefsLoaded) return;
     savePlayerPrefs({ kernel: mode });
     setInternalMode(mode);
     setPlayMsg({ text: '已保存，下次打开应用内播放器时生效', kind: 'ok' });
@@ -184,7 +183,7 @@ export function PlaybackSettingsSection({ active, requestedSection = '' }: { act
         <p className="muted">不确定时保持“自动选择”，直接打开影片即可。应用会根据资源选用标准或兼容播放。</p>
         <label className="row" style={{ gap: 12 }}>
           <span>应用内播放</span>
-          <select aria-label="应用内播放方式" value={internalMode} disabled={!prefsLoaded} onChange={event => selectInternalMode(event.target.value as KernelPref)}>
+          <select aria-label="应用内播放方式" value={internalMode} onChange={event => selectInternalMode(event.target.value as KernelPref)}>
             <option value="auto">自动选择（推荐）</option>
             <option value="html5">标准播放</option>
             <option value="mpv" disabled={mpvStatus?.available === false}>兼容播放{mpvStatus?.available === false ? '（暂不可用）' : ''}</option>

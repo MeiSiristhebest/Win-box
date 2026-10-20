@@ -48,6 +48,7 @@ describe('SpiderHost.searchAll across profiles', () => {
     let peak = 0;
     let started = 0;
     const startedProfiles = new Set<string>();
+    let profilesAtConcurrencyLimit: Set<string> | null = null;
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const releaseTimer = setTimeout(release, 1_000);
@@ -58,7 +59,10 @@ describe('SpiderHost.searchAll across profiles', () => {
         peak = Math.max(peak, active);
         const profileId = profileIds.find((id) => bean.key.startsWith(`${id}-`));
         if (profileId) startedProfiles.add(profileId);
-        if (active === 24) release();
+        if (active === 24) {
+          profilesAtConcurrencyLimit = new Set(startedProfiles);
+          release();
+        }
         try {
           await gate;
           return [];
@@ -75,6 +79,7 @@ describe('SpiderHost.searchAll across profiles', () => {
     }
 
     expect(peak).toBe(24);
+    expect(profilesAtConcurrencyLimit).toEqual(new Set(profileIds));
     expect(startedProfiles).toEqual(new Set(profileIds));
     expect(started).toBe(48);
   });
@@ -120,6 +125,47 @@ describe('SpiderHost.searchAll across profiles', () => {
     expect(peakLarge).toBe(24);
     expect(startedProfiles).toEqual(new Set(profileIds));
     expect(started).toBe(122);
+  });
+
+  it('keeps permits occupied until timed-out VM requests actually settle', async () => {
+    vi.useFakeTimers();
+    const profileIds = ['slow-profile-a', 'slow-profile-b'];
+    const sitesByProfile = new Map(profileIds.map(id => [
+      id,
+      profileSources(id, 24).map(bean => ({ ...bean, timeout: 5 })),
+    ]));
+    let active = 0;
+    let peak = 0;
+    let started = 0;
+    const fakeHost = makeHost(profileIds, sitesByProfile, {
+      search: async () => {
+        active++;
+        started++;
+        peak = Math.max(peak, active);
+        try {
+          await new Promise<[]>((resolve) => setTimeout(() => resolve([]), 6_000));
+          return [];
+        } finally {
+          active--;
+        }
+      },
+    });
+
+    try {
+      const search = fakeHost.searchAll('test', { profileIds });
+      await vi.advanceTimersByTimeAsync(5_501);
+      expect(started).toBe(24);
+      expect(active).toBe(24);
+      expect(peak).toBe(24);
+
+      await vi.advanceTimersByTimeAsync(20_000);
+      await expect(search).resolves.toMatchObject({ perSource: expect.any(Array) });
+      expect(started).toBe(48);
+      expect(active).toBe(0);
+      expect(peak).toBe(24);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('stops queued profile work and waits for in-flight searches before propagating preparation failures', async () => {

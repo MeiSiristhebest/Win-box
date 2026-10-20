@@ -59,7 +59,7 @@ describe('playback settings', () => {
     expect(screen.getByText('高级：播放组件与磁力播放').closest('details')?.open).toBe(true);
   });
 
-  it('keeps save controls disabled until player preferences finish loading', async () => {
+  it('keeps IPC-backed player controls disabled until preferences finish loading', async () => {
     let resolvePrefs!: (settings: PlayerSettings) => void;
     vi.mocked(client.playerPrefsGet).mockReturnValue(new Promise(resolve => { resolvePrefs = resolve; }));
     render(<PlaybackSettingsSection active requestedSection="mpv-kernel" />);
@@ -68,7 +68,7 @@ describe('playback settings', () => {
     const mpvPath = screen.getByRole('textbox', { name: '兼容播放组件路径' }) as HTMLInputElement;
     const mpvSave = mpvPath.parentElement?.querySelector('button') as HTMLButtonElement;
     const btPath = screen.getByRole('textbox', { name: '磁力外部播放器路径' }) as HTMLInputElement;
-    expect(mode.disabled).toBe(true);
+    expect(mode.disabled).toBe(false);
     expect(mpvPath.disabled).toBe(true);
     expect(mpvSave.disabled).toBe(true);
     expect(btPath.disabled).toBe(true);
@@ -76,6 +76,15 @@ describe('playback settings', () => {
     resolvePrefs({ ...DEFAULT_PLAYER_SETTINGS, mpvPath: 'D:\\Players\\mpv.exe' });
     await waitFor(() => expect(mpvPath.disabled).toBe(false));
     expect(mpvPath.value).toBe('D:\\Players\\mpv.exe');
+  });
+
+  it('keeps the local playback mode selector available when IPC preferences fail to load', async () => {
+    vi.mocked(client.playerPrefsGet).mockRejectedValue(new Error('IPC unavailable'));
+    render(<PlaybackSettingsSection active />);
+    const mode = screen.getByRole('combobox', { name: '应用内播放方式' }) as HTMLSelectElement;
+    expect(mode.disabled).toBe(false);
+    fireEvent.change(mode, { target: { value: 'html5' } });
+    expect(loadPlayerPrefs().kernel).toBe('html5');
   });
 
   it('detects and saves an external player when explicitly enabled', async () => {

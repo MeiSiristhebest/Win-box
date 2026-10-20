@@ -204,6 +204,7 @@ const SEARCH_ALL_PREPARE_MS = 12_000;
 
 type SearchWorkerRelease = () => void;
 type SearchWorkerWaiter = {
+  profileId: string;
   resolve: (release: SearchWorkerRelease | null) => void;
   signal: AbortSignal;
   onAbort: () => void;
@@ -214,13 +215,26 @@ class SharedSearchWorkerBudget {
   private active = 0;
   private cursor = 0;
   private readonly waiting = new Map<string, SearchWorkerWaiter[]>();
+  private readonly profilesAwaitingFirstWorker: Set<string>;
 
-  constructor(private readonly limit: number, private readonly profileIds: string[]) {}
+  constructor(
+    private readonly limit: number,
+    private readonly profileIds: string[],
+    initialProfileIds: string[] = profileIds,
+  ) {
+    this.profilesAwaitingFirstWorker = new Set(initialProfileIds);
+  }
+
+  finishProfile(profileId: string): void {
+    this.profilesAwaitingFirstWorker.delete(profileId);
+    this.dispatch();
+  }
 
   acquire(profileId: string, signal: AbortSignal): Promise<SearchWorkerRelease | null> {
     if (signal.aborted) return Promise.resolve(null);
     return new Promise((resolve) => {
       const waiter: SearchWorkerWaiter = {
+        profileId,
         resolve,
         signal,
         onAbort: () => {
@@ -244,13 +258,18 @@ class SharedSearchWorkerBudget {
 
   private dispatch(): void {
     while (this.active < this.limit) {
-      const waiter = this.takeNext();
+      // Keep one permit available for each selected profile that has not started
+      // yet, while letting already-started profiles use the remaining capacity.
+      const reservedSlots = Math.min(this.limit, this.profilesAwaitingFirstWorker.size);
+      const firstWorkersOnly = this.active >= this.limit - reservedSlots;
+      const waiter = this.takeNext(firstWorkersOnly);
       if (!waiter) return;
       waiter.signal.removeEventListener('abort', waiter.onAbort);
       if (waiter.signal.aborted) {
         waiter.resolve(null);
         continue;
       }
+      this.profilesAwaitingFirstWorker.delete(waiter.profileId);
       this.active++;
       let released = false;
       waiter.resolve(() => {
@@ -262,11 +281,12 @@ class SharedSearchWorkerBudget {
     }
   }
 
-  private takeNext(): SearchWorkerWaiter | null {
+  private takeNext(firstWorkersOnly: boolean): SearchWorkerWaiter | null {
     if (this.profileIds.length === 0) return null;
     for (let i = 0; i < this.profileIds.length; i++) {
       const profileId = this.profileIds[this.cursor];
       this.cursor = (this.cursor + 1) % this.profileIds.length;
+      if (firstWorkersOnly && !this.profilesAwaitingFirstWorker.has(profileId)) continue;
       const queue = this.waiting.get(profileId);
       const waiter = queue?.shift();
       if (!waiter) continue;
@@ -2418,7 +2438,11 @@ export class SpiderHost {
     // uses a captured config and profile-scoped runtime/cache keys; activeProfileId is unchanged.
     const profileWorkerCount = Math.min(SEARCH_ALL_PROFILE_WORKERS, contexts.length);
     const cancellation = new AbortController();
-    const workerBudget = new SharedSearchWorkerBudget(SEARCH_ALL_WORKERS_MAX, contexts.map((entry) => entry.profileId));
+    const workerBudget = new SharedSearchWorkerBudget(
+      SEARCH_ALL_WORKERS_MAX,
+      contexts.map((entry) => entry.profileId),
+      contexts.slice(0, profileWorkerCount).map((entry) => entry.profileId),
+    );
     let nextProfile = 0;
     const runProfileWorker = async (): Promise<void> => {
       for (;;) {
@@ -2444,6 +2468,8 @@ export class SpiderHost {
         } catch (error) {
           if (!cancellation.signal.aborted) cancellation.abort(error);
           throw cancellation.signal.reason ?? error;
+        } finally {
+          workerBudget.finishProfile(entry.profileId);
         }
       }
     };
@@ -2646,28 +2672,39 @@ export class SpiderHost {
         const i = order[cursor++];
         if (i === undefined) return;
         const b = pool[i];
-        const t0 = Date.now();
-        const budget = deadline - Date.now();
-        if (budget <= 500) {
-          finish(i, {
-            key: b.key,
-            name: b.name || b.key,
-            status: 'error',
-            error: `总体搜索已超时（>${Math.round(SEARCH_ALL_BUDGET_MS / 1000)}s），该源未执行`,
-            ms: 0,
-          });
-          continue; // 未真正执行 → 不写健康表（不是这个源的错）
-        }
-        const maxMs = /\.js(\?|$)/i.test(b.api || '') ? SEARCH_ALL_JS_MAX_MS : SEARCH_ALL_SOURCE_MAX_MS;
-        const sourceScope = b.runtimeScope || b.key;
-        const toMs = Math.min(sourceBudgetMs(this.sourceHealth.get(sourceScope), sourceTimeoutMs(b), maxMs), budget);
         const release = workerBudget && signal ? await workerBudget.acquire(profileId, signal) : undefined;
         if (signal?.aborted || (workerBudget && !release)) {
           release?.();
           return;
         }
+        const t0 = Date.now();
+        const budget = deadline - t0;
+        if (budget <= 500) {
+          try {
+            finish(i, {
+              key: b.key,
+              name: b.name || b.key,
+              status: 'error',
+              error: `总体搜索已超时（>${Math.round(SEARCH_ALL_BUDGET_MS / 1000)}s），该源未执行`,
+              ms: 0,
+            });
+          } finally {
+            release?.();
+          }
+          continue; // 未真正执行 → 不写健康表（不是这个源的错）
+        }
+        const maxMs = /\.js(\?|$)/i.test(b.api || '') ? SEARCH_ALL_JS_MAX_MS : SEARCH_ALL_SOURCE_MAX_MS;
+        const sourceScope = b.runtimeScope || b.key;
+        const toMs = Math.min(sourceBudgetMs(this.sourceHealth.get(sourceScope), sourceTimeoutMs(b), maxMs), budget);
+        let searchStarted = false;
         try {
-          const items = await raceTimeout(this.vm.search(b, term, false, toMs), toMs + 500, `单源搜索超时（>${Math.round(toMs / 1000)}s）`);
+          const searchRequest = Promise.resolve().then(() => this.vm.search(b, term, false, toMs));
+          searchStarted = true;
+          const heldSearchRequest = searchRequest.then(
+            (items) => { release?.(); return items; },
+            (error) => { release?.(); throw error; },
+          );
+          const items = await raceTimeout(heldSearchRequest, toMs + 500, `单源搜索超时（>${Math.round(toMs / 1000)}s）`);
           const ms = Date.now() - t0;
           noteSourceOk(this.statOf(sourceScope), ms, { empty: items.length === 0 }); // 空结果也记（连续空 → 下轮压预算）
           finish(i, {
@@ -2691,7 +2728,9 @@ export class SpiderHost {
           noteSourceFail(this.statOf(b.runtimeScope || b.key)); // 失败 → 后续搜索降权到队尾 + 短预算
           finish(i, { key: b.key, name: b.name || b.key, status: 'error', error: msg, ms });
         } finally {
-          release?.();
+          // A timeout only ends this caller's wait. Keep the shared permit until the
+          // underlying request settles, or it would no longer cap actual VM calls.
+          if (!searchStarted) release?.();
         }
       }
     };
