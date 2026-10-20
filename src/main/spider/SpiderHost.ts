@@ -173,6 +173,8 @@ const SEARCH_ALL_WORKERS = 10;
  *   子进程的实际并行度仍由 SpiderProcPool 把关（同 key 3 进程 × 进程内 24 并发）。
  */
 const SEARCH_ALL_WORKERS_MAX = 24;
+/** 跨档案搜索的并发档案数；每档共享 SEARCH_ALL_WORKERS_MAX 个总 worker 配额。 */
+const SEARCH_ALL_PROFILE_WORKERS = 3;
 /** 聚合搜索总体预算：到点先返回已拿到的结果，未完成的源标注超时（不再无限等） */
 const SEARCH_ALL_BUDGET_MS = 40_000;
 /**
@@ -2294,7 +2296,8 @@ export class SpiderHost {
     });
     const total = contexts.reduce((count, entry) => count + entry.total, 0);
     const doneByProfile = new Map(contexts.map((entry) => [entry.profileId, 0]));
-    const mergedReports: Array<{ profileId: string; profileName: string; report: SearchAllReport }> = [];
+    const mergedReports: Array<{ profileId: string; profileName: string; report: SearchAllReport } | null> =
+      Array.from({ length: contexts.length }, () => null);
     const overallDone = (): number => [...doneByProfile.values()].reduce((sum, done) => sum + done, 0);
     const forwardProgress = (entry: (typeof contexts)[number], event?: SearchAllProgressEvent): void => {
       if (!progress) return;
@@ -2329,21 +2332,32 @@ export class SpiderHost {
       } catch { /* Progress failure must not fail search. */ }
     };
 
-    // Keep one bounded per-profile worker pool active at a time. Each run uses a captured
-    // profile config and its profile-scoped runtime/cache keys; activeProfileId is never changed.
-    for (const entry of contexts) {
-      const report = await this.searchAllSingle(
-        term,
-        { refresh: opts.refresh, profileId: entry.profileId },
-        (event) => forwardProgress(entry, event),
-        entry.context,
-        entry.profileName,
-      );
-      mergedReports.push({ profileId: entry.profileId, profileName: entry.profileName, report });
-      doneByProfile.set(entry.profileId, entry.total);
-      forwardProgress(entry);
-    }
-    return mergeSearchReports(mergedReports);
+    // Search several profiles together, while splitting one shared source-worker budget
+    // across them. Each run uses a captured profile config and profile-scoped runtime/cache
+    // keys; activeProfileId is never changed.
+    const profileWorkerCount = Math.min(SEARCH_ALL_PROFILE_WORKERS, contexts.length);
+    const workersPerProfile = Math.max(1, Math.floor(SEARCH_ALL_WORKERS_MAX / profileWorkerCount));
+    let nextProfile = 0;
+    const runProfileWorker = async (): Promise<void> => {
+      for (;;) {
+        const index = nextProfile++;
+        const entry = contexts[index];
+        if (!entry) return;
+        const report = await this.searchAllSingle(
+          term,
+          { refresh: opts.refresh, profileId: entry.profileId },
+          (event) => forwardProgress(entry, event),
+          entry.context,
+          entry.profileName,
+          workersPerProfile,
+        );
+        mergedReports[index] = { profileId: entry.profileId, profileName: entry.profileName, report };
+        doneByProfile.set(entry.profileId, entry.total);
+        forwardProgress(entry);
+      }
+    };
+    await Promise.all(Array.from({ length: profileWorkerCount }, () => runProfileWorker()));
+    return mergeSearchReports(mergedReports.filter((entry): entry is NonNullable<typeof entry> => entry !== null));
   }
 
   private async searchAllSingle(
@@ -2352,6 +2366,7 @@ export class SpiderHost {
     progress: ((event: SearchAllProgressEvent) => void) | undefined = this.onSearchAllProgress,
     capturedContext?: { profileId: string; config: SiteConfig | null },
     profileNameOverride?: string,
+    workerLimit = SEARCH_ALL_WORKERS_MAX,
   ): Promise<SearchAllReport> {
     const term = (wd || '').trim();
     if (!term) throw new Error('请输入搜索关键词');
@@ -2473,7 +2488,7 @@ export class SpiderHost {
     }
     const total = active.length;
     let done = 0;
-    const workerCount = Math.min(SEARCH_ALL_WORKERS_MAX, Math.max(SEARCH_ALL_WORKERS, Math.ceil(total / 5)));
+    const workerCount = Math.min(workerLimit, Math.max(Math.min(SEARCH_ALL_WORKERS, workerLimit), Math.ceil(total / 5)));
     const deadline = Date.now() + SEARCH_ALL_BUDGET_MS;
     /**
      * ★ 派发顺序（源索引）：健康源（快者优先）→ 未知源 → 近期失败源（短预算）。

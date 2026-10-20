@@ -60,6 +60,8 @@ pnpm run dev
 
 `resources/jvm/stubs/stubs.jar` 不入库，也不会由普通构建生成。重建脚本使用现有 JAR 作为基线，因此运行前必须提供该文件；Windows 上还需提供 JDK 的 `javac.exe` 和 `jar.exe`。发布前须在 `scripts/runtime-assets.json` 中填写 JRE 和 dex2jar 的版本、来源及 SHA-256。`pnpm run dist` 会在编译前检查资源；`pnpm run pack` 会在创建打包暂存目录前运行完整预检。两者都会拒绝缺失的必需文件或来源信息。生成的 `native-bridge.jar` 为发布必需资源，缺失时预检会阻止打包。嵌入式 CPython、shell-shim 和 unidbg 运行时等资源仍需按使用场景准备。
 
+正式发布前请遵循[发布与版本约定](RELEASING.md)，确定版本号并填写 Release 说明。
+
 ## 许可证与反馈
 
 代码采用 MIT 许可证，详见 [LICENSE](LICENSE)。第三方组件按各自许可证使用。

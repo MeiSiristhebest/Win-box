@@ -1,6 +1,6 @@
 {
   "name": "win-box",
-  "version": "1.27.0",
+  "version": "1.27.1",
   "private": true,
   "description": "Windows 桌面媒体源管理与播放工具，支持多份配置导入和合并",
   "type": "module",
