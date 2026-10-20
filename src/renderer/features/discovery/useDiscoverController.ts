@@ -18,23 +18,25 @@ export function useDiscoverController() {
   const [genreError, setGenreError] = useState('');
   const genreRequest = useRef(0);
   const autoRetriedRef = useRef(false);
+  const sectionsRequest = useRef(0);
 
-  const fetchSections = useCallback((): Promise<void> => {
-    return client
-      .metaDiscover(false)
-      .then((nextSections) => {
-        if (nextSections.length) setSections(nextSections);
-        else setSections(previous => previous?.length ? previous : nextSections);
-        if (nextSections.length === 0) setErr('榜单暂时获取失败，请稍后重试；如已配置 TMDB，请检查自己的凭据和网络');
-      })
-      .catch((e: unknown) => setErr((e as Error).message));
+  const fetchSections = useCallback((refresh = false): Promise<void> => {
+    const requestId = ++sectionsRequest.current;
+    return client.metaDiscover(refresh).then(nextSections => {
+      if (requestId !== sectionsRequest.current) return;
+      if (nextSections.length) { setSections(nextSections); setErr(''); }
+      else {
+        setSections(previous => previous?.length ? previous : nextSections);
+        setErr('本次推荐未能加载，请稍后重试或检查元数据来源设置');
+      }
+    }).catch((error: unknown) => {
+      if (requestId === sectionsRequest.current) setErr(error instanceof Error ? error.message : '推荐加载失败');
+    }).finally(() => {
+      if (requestId === sectionsRequest.current) setLoading(false);
+    });
   }, []);
 
-  const load = useCallback((): void => {
-    setLoading(true);
-    setErr('');
-    void fetchSections().finally(() => setLoading(false));
-  }, [fetchSections]);
+  const load = useCallback((): void => { setLoading(true); setErr(''); void fetchSections(true); }, [fetchSections]);
 
   const retry = useCallback((): void => {
     autoRetriedRef.current = true;
@@ -49,7 +51,7 @@ export function useDiscoverController() {
   }, [load, loading, sections]);
 
   useEffect(() => {
-    void fetchSections().finally(() => setLoading(false));
+    void fetchSections();
     void client.metaGenres().then(setGenres).catch(() => undefined);
   }, [fetchSections]);
 

@@ -2,6 +2,7 @@ import type { Dispatch, Ref, SetStateAction } from 'react';
 import { customEndpointsText, mergeEndpoints } from '../../../engine/danmaku/endpoints';
 import { formatCandidateLabel } from '../../../engine/danmaku/normalizeQuery';
 import type { DanmakuCandidate, DanmakuSettings } from '../../../shared/danmaku';
+import { usePlayerPopupKeyboard } from '../../lib/usePlayerPopupKeyboard';
 
 interface DanmakuPanelProps {
   enabled: boolean;
@@ -20,6 +21,7 @@ interface DanmakuPanelProps {
   onAnchorPointerLeave: () => void;
   onPanelPointerEnter: () => void;
   onPanelPointerLeave: () => void;
+  onClose?: () => void;
   onToggle: () => void;
   onSettingsChange: Dispatch<SetStateAction<DanmakuSettings>>;
   onQueryChange: (value: string) => void;
@@ -46,7 +48,7 @@ export function DanmakuPanel({
   onAnchorPointerEnter,
   onAnchorPointerLeave,
   onPanelPointerEnter,
-  onPanelPointerLeave,
+  onClose = onAnchorPointerLeave,
   onToggle,
   onSettingsChange,
   onQueryChange,
@@ -57,11 +59,17 @@ export function DanmakuPanel({
   onCandidateSelect,
 }: DanmakuPanelProps) {
   const enabledSourceCount = settings.endpoints.filter((endpoint) => endpoint.enabled !== false).length;
+  const { triggerRef, panelId, onKeyDown, onPointerLeave, onBlur } = usePlayerPopupKeyboard(open, onPanelPointerEnter, onClose, onAnchorPointerLeave);
 
   return (
-    <div className="vp-popup-anchor" onPointerEnter={onAnchorPointerEnter} onPointerLeave={onAnchorPointerLeave}>
+    <div className="vp-popup-anchor" onPointerEnter={onAnchorPointerEnter} onPointerLeave={onPointerLeave} onBlur={onBlur}>
       <button
         className="vp-ctl"
+        ref={triggerRef}
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-keyshortcuts="ArrowDown"
+        onKeyDown={onKeyDown}
         title={`弹幕：${enabled ? '开' : '关'}（点击开关 · 悬停调整）`}
         onClick={onToggle}
       >
@@ -72,8 +80,8 @@ export function DanmakuPanel({
         {enabled && <span className="vp-subdot" />}
       </button>
       {open && (
-        <div ref={panelRef} className="vp-panelhost" onPointerEnter={onPanelPointerEnter} onPointerLeave={onPanelPointerLeave}>
-          <div className="vp-subpanel vp-dmpanel">
+        <div ref={panelRef} className="vp-panelhost" onPointerEnter={onPanelPointerEnter} onPointerLeave={onPointerLeave}>
+          <section id={panelId} aria-label="弹幕设置" className="vp-subpanel vp-dmpanel">
             <div className="vsp-row">
               <button className={`tag ${enabled ? 'active' : ''}`} onClick={onToggle}>弹幕：{enabled ? '开' : '关'}</button>
               <span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }}>{message || (activeEpisodeId != null ? '已加载' : '')}</span>
@@ -94,7 +102,7 @@ export function DanmakuPanel({
               <span className="muted vsp-label">字号</span>
               <button className="vsp-btn" onClick={() => onSettingsChange((current) => ({ ...current, fontSize: Math.max(16, current.fontSize - 2) }))}>A−</button>
               <input
-                type="range" min={16} max={40} value={settings.fontSize}
+                aria-label="弹幕字号" type="range" min={16} max={40} value={settings.fontSize}
                 onChange={(event) => onSettingsChange((current) => ({ ...current, fontSize: Number(event.target.value) }))}
               />
               <button className="vsp-btn" onClick={() => onSettingsChange((current) => ({ ...current, fontSize: Math.min(40, current.fontSize + 2) }))}>A＋</button>
@@ -102,7 +110,7 @@ export function DanmakuPanel({
             <div className="vsp-row">
               <span className="muted vsp-label">透明度</span>
               <input
-                type="range" min={20} max={100} value={Math.round(settings.opacity * 100)}
+                aria-label="弹幕不透明度" type="range" min={20} max={100} value={Math.round(settings.opacity * 100)}
                 onChange={(event) => onSettingsChange((current) => ({ ...current, opacity: Number(event.target.value) / 100 }))}
               />
               <span className="muted" style={{ fontSize: 11 }}>{Math.round(settings.opacity * 100)}%</span>
@@ -110,7 +118,7 @@ export function DanmakuPanel({
             <div className="vsp-row">
               <span className="muted vsp-label">密度</span>
               <input
-                type="range" min={25} max={100} value={Math.round(settings.density * 100)}
+                aria-label="弹幕密度" type="range" min={25} max={100} value={Math.round(settings.density * 100)}
                 onChange={(event) => onSettingsChange((current) => ({ ...current, density: Number(event.target.value) / 100 }))}
               />
               <span className="muted" style={{ fontSize: 11 }}>{settings.density.toFixed(2)}</span>
@@ -118,7 +126,7 @@ export function DanmakuPanel({
             <div className="vsp-row">
               <span className="muted vsp-label">速度</span>
               <input
-                type="range" min={50} max={300} value={settings.speed}
+                aria-label="弹幕速度" type="range" min={50} max={300} value={settings.speed}
                 onChange={(event) => onSettingsChange((current) => ({ ...current, speed: Number(event.target.value) }))}
               />
               <span className="muted" style={{ fontSize: 11 }}>{settings.speed}</span>
@@ -134,19 +142,21 @@ export function DanmakuPanel({
               <input
                 type="text"
                 value={query}
+                aria-label="弹幕剧名"
                 placeholder="剧名（自动清洗；可改输常见名）…"
                 style={{ flex: 1, minWidth: 120 }}
                 onChange={(event) => onQueryChange(event.target.value)}
-                onKeyDown={(event) => { if (event.key === 'Enter') onSearch(); }}
+                onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) onSearch(); }}
               />
               <input
                 type="text"
                 value={episode}
+                aria-label="弹幕集号"
                 placeholder="集（如 S1E01 / 第1集 / 1）"
                 title="集号：支持 S1E01、E01、第01集、1、更新至1 等写法；填 S2 可只指定季"
                 style={{ width: 128, flex: '0 0 128px' }}
                 onChange={(event) => onEpisodeChange(event.target.value)}
-                onKeyDown={(event) => { if (event.key === 'Enter') onSearch(); }}
+                onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) onSearch(); }}
               />
             </div>
             <div className="vsp-row" style={{ marginBottom: 6 }}>
@@ -223,7 +233,7 @@ export function DanmakuPanel({
                 })}
               </div>
             )}
-          </div>
+          </section>
         </div>
       )}
     </div>

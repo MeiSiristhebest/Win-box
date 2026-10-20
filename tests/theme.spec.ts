@@ -1,4 +1,4 @@
-// tests/theme.spec.ts — 皮肤注册表（内置 4 套 + 插件皮肤）值层归一
+// tests/theme.spec.ts — 浅色、深色和插件外观的注册表。
 // 只测纯值层 themeTokens（不引 DOM，主 tsconfig 可安全包含本测试）
 import { describe, expect, it } from 'vitest';
 import {
@@ -7,30 +7,28 @@ import {
 import type { ThemeSkinView } from '../src/shared/plugin';
 
 describe('normalizeTheme', () => {
-  it('合法主题原样返回（netflix / bilibili / apple / douban）', () => {
-    expect(normalizeTheme('netflix')).toBe('netflix');
-    expect(normalizeTheme('bilibili')).toBe('bilibili');
-    expect(normalizeTheme('apple')).toBe('apple');
-    expect(normalizeTheme('douban')).toBe('douban');
+  it('保留浅色和深色，并迁移旧主题名称', () => {
+    expect(normalizeTheme('dark')).toBe('dark');
+    expect(normalizeTheme('light')).toBe('light');
+    expect(normalizeTheme('netflix')).toBe('dark');
+    expect(normalizeTheme('bilibili')).toBe('light');
+    expect(normalizeTheme('apple')).toBe('light');
+    expect(normalizeTheme('douban')).toBe('light');
   });
 
-  it('★ 2026-09-30：已删除的经典主题（dark / light）与非法/空 → 回退默认皮肤（网飝）', () => {
-    expect(DEFAULT_THEME).toBe('netflix');
-    expect(normalizeTheme('dark')).toBe('netflix');
-    expect(normalizeTheme('light')).toBe('netflix');
-    expect(normalizeTheme('NETFLIX')).toBe('netflix');
-    expect(normalizeTheme('midnight')).toBe('netflix');
-    expect(normalizeTheme('')).toBe('netflix');
-    expect(normalizeTheme(null)).toBe('netflix');
-    expect(normalizeTheme(undefined)).toBe('netflix');
+  it('非法或空主题回退到深色', () => {
+    expect(DEFAULT_THEME).toBe('dark');
+    expect(normalizeTheme('NETFLIX')).toBe('dark');
+    expect(normalizeTheme('midnight')).toBe('dark');
+    expect(normalizeTheme('')).toBe('dark');
+    expect(normalizeTheme(null)).toBe('dark');
+    expect(normalizeTheme(undefined)).toBe('dark');
   });
 
-  it('★ 2026-10-09：四套皮肤展示名（网飝 / 哔哔 / 大果 / 大豆）', () => {
-    expect(Object.keys(THEME_LABELS).sort()).toEqual(['apple', 'bilibili', 'douban', 'netflix']);
-    expect(THEME_LABELS.netflix).toContain('网飝');
-    expect(THEME_LABELS.bilibili).toContain('哔哔');
-    expect(THEME_LABELS.apple).toContain('大果');
-    expect(THEME_LABELS.douban).toContain('大豆');
+  it('只显示深色和浅色两种内置外观', () => {
+    expect(Object.keys(THEME_LABELS).sort()).toEqual(['dark', 'light']);
+    expect(THEME_LABELS.dark).toBe('深色');
+    expect(THEME_LABELS.light).toBe('浅色');
   });
 });
 
@@ -42,16 +40,14 @@ describe('皮肤注册表（内置 + 插件）', () => {
     tokens: { '--accent': '#00e5ff' }, layout,
   });
 
-  it('内置四套皮肤的结构声明：外壳 / 详情 / 发现 / 筛选', () => {
+  it('两种内置外观和旧名称使用一致的结构声明', () => {
     const layoutOf = (id: string) => skinLayout(id);
-    expect(layoutOf('netflix')).toMatchObject({ shell: 'topbar', detailStyle: 'cinema', discoverStyle: 'shelf' });
-    expect(layoutOf('bilibili')).toMatchObject({ shell: 'dualbar' });
-    expect(layoutOf('apple')).toMatchObject({ shell: 'sidebar', detailStyle: 'glass', discoverStyle: 'shelfWide' });
-    expect(layoutOf('douban')).toMatchObject({
-      shell: 'pillbar', detailStyle: 'poster', discoverStyle: 'wall', filterStyle: 'card',
-    });
-    // 未声明的字段回落缺省：单行顶栏 + 朴素筛选条
-    expect(layoutOf('bilibili').filterStyle).toBe('plain');
+    expect(layoutOf('dark')).toMatchObject({ shell: 'topbar', navHeight: 58, cardWidth: 156, filterStyle: 'plain' });
+    expect(layoutOf('light')).toEqual(layoutOf('dark'));
+    expect(layoutOf('netflix')).toEqual(layoutOf('dark'));
+    expect(layoutOf('apple')).toEqual(layoutOf('light'));
+    expect(layoutOf('bilibili')).toEqual(layoutOf('light'));
+    expect(layoutOf('douban')).toEqual(layoutOf('light'));
     expect(skinBase('apple')).toBe('light');
     expect(skinBase('netflix')).toBe('dark');
   });
@@ -66,7 +62,7 @@ describe('皮肤注册表（内置 + 插件）', () => {
       expect(normalizeTheme('plugin:neon')).toBe('plugin:neon');
       expect(skinLayout('plugin:neon')).toMatchObject({ shell: 'dualbar', discoverStyle: 'wall', filterStyle: 'plain' });
       expect(skinBase('plugin:neon')).toBe('light');
-      expect(allSkins().map((s) => s.id)).toEqual(['netflix', 'bilibili', 'apple', 'douban', 'plugin:neon']);
+      expect(allSkins().map((s) => s.id)).toEqual(['dark', 'light', 'plugin:neon']);
       expect(allSkins().at(-1)?.kind).toBe('plugin');
       expect(allSkins().at(-1)?.label).toBe('霓虹');
     } finally {
@@ -74,7 +70,7 @@ describe('皮肤注册表（内置 + 插件）', () => {
       registerPluginSkins([]);
     }
     expect(normalizeTheme('plugin:neon')).toBe(DEFAULT_THEME);
-    expect(allSkins()).toHaveLength(4);
+    expect(allSkins()).toHaveLength(2);
   });
 
   it('非法插件皮肤条目（缺 id / 缺 tokens / 重复）被丢弃', () => {

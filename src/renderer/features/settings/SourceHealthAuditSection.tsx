@@ -21,11 +21,11 @@ const HEALTH_LABEL: Record<string, string> = {
 };
 
 const HEALTH_COLOR: Record<string, string> = {
-  'ok-content': 'var(--accent-2)',
-  'ok-classes': 'var(--warn)',
+  'ok-content': 'var(--text-success)',
+  'ok-classes': 'var(--text-warn)',
   'needs-ext': 'var(--accent)',
   empty: 'var(--text-dim)',
-  error: 'var(--danger)',
+  error: 'var(--text-danger)',
 };
 
 export function SourceHealthAuditSection({
@@ -46,7 +46,7 @@ export function SourceHealthAuditSection({
         </button>
         {audit && (
           <button
-            style={{ color: 'var(--danger)' }}
+            style={{ color: 'var(--text-danger)' }}
             disabled={!audit.some((item) => item.health === 'error')}
             onClick={onDeleteFailedSources}
             title="批量删除体检结果为失败或报错的源（不触碰原始文件）"
@@ -95,7 +95,7 @@ export function SourceHealthAuditSection({
                     </td>
                     <td style={{ borderBottom: '1px solid var(--border-soft)', color: 'var(--text-dim)', maxWidth: 380 }}>
                       {item.advice}
-                      {item.error && <div style={{ color: 'var(--danger)' }}>{item.error}</div>}
+                      {item.error && <div style={{ color: 'var(--text-danger)' }}>{item.error}</div>}
                     </td>
                     <td style={{ borderBottom: '1px solid var(--border-soft)' }}>{item.ms}ms</td>
                   </tr>

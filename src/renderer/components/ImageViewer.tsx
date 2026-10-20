@@ -26,6 +26,7 @@ export interface ImageViewerProps {
 
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 5;
+const VIEWER_CONTROL = 'button, input, select, textarea, a, [role="button"]';
 
 export default function ImageViewer(props: ImageViewerProps) {
   const [reload, setReload] = useState(0);
@@ -51,6 +52,7 @@ function ImageViewerContent({ src, name, index, total, canPrev, canNext, onPrev,
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
 
   const poke = useCallback(() => {
     setUi(true);
@@ -68,34 +70,52 @@ function ImageViewerContent({ src, name, index, total, canPrev, canNext, onPrev,
     setScale(Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(next.toFixed(2)))));
   }, []);
 
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.target instanceof Element && event.target.closest(VIEWER_CONTROL)) return;
+      event.preventDefault();
+      zoom(scale + (event.deltaY < 0 ? 0.15 : -0.15));
+      poke();
+    };
+    viewer.addEventListener('wheel', onWheel, { passive: false });
+    return () => viewer.removeEventListener('wheel', onWheel);
+  }, [scale, zoom, poke]);
+
   // 键盘：←/→ 换图、+/- 缩放、0 复位
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (isNativeModalOpen()) return;
+      const target = e.target instanceof Element ? e.target : null;
+      if (isNativeModalOpen() || e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey
+        || !viewerRef.current?.getClientRects().length || target?.closest('input, textarea, select, [contenteditable="true"]')) return;
       if (e.key === 'ArrowLeft' && canPrev) onPrev?.();
       else if (e.key === 'ArrowRight' && canNext) onNext?.();
       else if (e.key === '+' || e.key === '=') zoom(scale + 0.25);
       else if (e.key === '-') zoom(scale - 0.25);
       else if (e.key === '0') { zoom(1); setOff({ x: 0, y: 0 }); }
+      else return;
+      e.preventDefault();
+      poke();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [canPrev, canNext, onPrev, onNext, scale, zoom]);
+  }, [canPrev, canNext, onPrev, onNext, scale, zoom, poke]);
 
   return (
     <div
+      ref={viewerRef}
       className="vplayer ivi"
       onMouseMove={poke}
-      onWheel={(e) => {
-        zoom(scale + (e.deltaY < 0 ? 0.15 : -0.15));
-      }}
+      onFocusCapture={poke}
       onDoubleClick={(e) => {
+        if (e.target instanceof Element && e.target.closest(VIEWER_CONTROL)) return;
         e.stopPropagation();
         zoom(1);
         setOff({ x: 0, y: 0 });
       }}
       onPointerDown={(e) => {
-        if (e.button !== 0) return;
+        if (e.button !== 0 || (e.target instanceof Element && e.target.closest(VIEWER_CONTROL))) return;
         dragRef.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y };
         setDragging(true);
         try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }

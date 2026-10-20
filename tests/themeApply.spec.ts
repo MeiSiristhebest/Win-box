@@ -5,14 +5,14 @@ import { applyTheme, useTheme, useSkinLayout } from '../src/renderer/lib/theme';
 import { SEMANTIC_TOKEN_NAMES, themes, type Theme } from '../src/renderer/lib/themeTokens';
 
 describe('theme application', () => {
-  const values = { themeId: 'netflix', motion: 'auto', showDiscover: true, waterfall: false };
+  const values = { themeId: 'dark', motion: 'auto', showDiscover: true, waterfall: false };
   const updateUiPreferences = vi.fn((patch: Record<string, unknown>) => {
     Object.assign(values, patch);
     return Promise.resolve({ ok: true, data: { revision: 1, initialized: true, values: { ...values } } });
   });
 
   beforeEach(() => {
-    Object.assign(values, { themeId: 'netflix', motion: 'auto', showDiscover: true, waterfall: false });
+    Object.assign(values, { themeId: 'dark', motion: 'auto', showDiscover: true, waterfall: false });
     updateUiPreferences.mockClear();
     Object.defineProperty(window, 'api', {
       configurable: true,
@@ -43,15 +43,15 @@ describe('theme application', () => {
   });
 
   it('publishes the selected theme and layout from the same subscribed snapshot', () => {
-    applyTheme('netflix');
+    applyTheme('dark');
     const { result } = renderHook(() => ({ theme: useTheme(), layout: useSkinLayout() }));
-    expect(result.current.theme).toBe('netflix');
+    expect(result.current.theme).toBe('dark');
     expect(result.current.layout.shell).toBe('topbar');
-    act(() => applyTheme('apple'));
-    expect(result.current.theme).toBe('apple');
-    expect(result.current.layout.shell).toBe('sidebar');
+    act(() => applyTheme('light'));
+    expect(result.current.theme).toBe('light');
+    expect(result.current.layout.shell).toBe('topbar');
     act(() => applyTheme('bilibili'));
-    expect(result.current.theme).toBe('bilibili');
-    expect(result.current.layout.shell).toBe('dualbar');
+    expect(result.current.theme).toBe('light');
+    expect(result.current.layout.shell).toBe('topbar');
   });
 });

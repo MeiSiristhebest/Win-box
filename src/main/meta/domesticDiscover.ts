@@ -5,6 +5,7 @@ import { dispatchChain } from '../net/proxy';
 import { createDohAgent } from '../net/DnsResolver';
 import { JsonStore } from '../store/JsonStore';
 import { LOCAL_PROXY_BASE } from '../../shared/constants';
+import { BOARD_PAGE_SIZE, DOMESTIC_BOARDS, HOME_BOARD_IDS, normalizeBoardPage, type DiscoverBoardPage } from '../../shared/discoverBoards';
 import type { DiscoverItem, DiscoverSection, DiscoverGenrePage, Logger, MovieHotList, MovieHotItem } from '../../shared/types';
 
 const agent = new Agent({ connect: { timeout: 8000 } });
@@ -60,7 +61,13 @@ export function parseDomesticItems(json: unknown, mediaType: 'movie' | 'tv'): Di
     const raw = String(item.pic?.large || item.pic?.normal || item.cover?.url || item.cover_url || '');
     const poster = /^https?:\/\//i.test(raw) ? `${LOCAL_PROXY_BASE}/img?${new URLSearchParams({ u: raw, ref: 'https://m.douban.com/' })}` : '';
     const y = String(item.year || '').match(/\b(19|20)\d{2}\b/)?.[0];
-    return [{ title, year: y ? Number(y) : '', poster, mediaType, ...(/^\d+$/.test(id) ? { doubanId: id } : {}) }];
+    const rating = Number(item.rating?.value);
+    const rank = Number(item.rank);
+    return [{ title, year: y ? Number(y) : '', poster, mediaType,
+      ...(/^\d+$/.test(id) ? { doubanId: id } : {}),
+      ...(Number.isFinite(rating) && rating > 0 && rating <= 10 ? { rating } : {}),
+      ...(Number.isInteger(rank) && rank > 0 ? { rank } : {}),
+    }];
   });
 }
 
@@ -91,13 +98,7 @@ export const DOMESTIC_GENRES = {
   movie: ['剧情', '喜剧', '动作', '爱情', '科幻', '动画', '悬疑', '惊悚', '恐怖', '纪录片', '犯罪', '战争', '奇幻', '冒险'],
   tv: ['国产剧', '美剧', '英剧', '韩剧', '日剧', '港剧', '剧情', '喜剧', '爱情', '悬疑', '犯罪', '古装', '科幻', '动画'],
 };
-const SECTIONS: Array<{ id: string; title: string; mediaType: 'movie' | 'tv' }> = [
-  { id: 'movie_hot_gaia', title: '豆瓣热门电影', mediaType: 'movie' },
-  { id: 'movie_showing', title: '正在上映', mediaType: 'movie' },
-  { id: 'movie_top250', title: '豆瓣高分电影', mediaType: 'movie' },
-  { id: 'tv_hot', title: '豆瓣热门剧集', mediaType: 'tv' },
-  { id: 'tv_chinese_best_weekly', title: '华语剧集口碑榜', mediaType: 'tv' },
-];
+const SECTIONS = DOMESTIC_BOARDS.filter(board => (HOME_BOARD_IDS as readonly string[]).includes(board.id));
 
 interface Entry<T> { at: number; value: T }
 /** 先读磁盘成功结果、后台刷新；并发合并、失败一分钟退避，重启也不会丢榜单。 */
@@ -169,11 +170,35 @@ export class DomesticDiscover {
   async discover(refresh = false): Promise<DiscoverSection[]> {
     const parts = await Promise.all(SECTIONS.map(async section => {
       const e = await this.cached<DiscoverItem[]>(`section:${section.id}`, TTL,
-        async () => parseDomesticItems(await this.fetch(`${DOUBAN}subject_collection/${section.id}/items?start=0&count=${PAGE_SIZE}`), section.mediaType),
+        async () => parseDomesticItems(await this.fetch(`${DOUBAN}subject_collection/${section.id}/items?start=0&count=${PAGE_SIZE}`), section.mediaType!),
         v => Array.isArray(v) && v.length > 0, [], refresh);
-      return { id: section.id, title: section.title, items: e.value };
+      return { id: section.id, title: section.title, items: e.value, fetchedAt: e.at, stale: !e.at || Date.now() - e.at >= TTL };
     }));
     return parts.filter(s => s.items.length);
+  }
+
+  async boardPage(id: string, requestedPage: number, refresh = false): Promise<DiscoverBoardPage> {
+    const board = DOMESTIC_BOARDS.find(item => item.id === id);
+    if (!board) throw new Error('没有找到这个豆瓣榜单');
+    const page = normalizeBoardPage(requestedPage);
+    const start = (page - 1) * BOARD_PAGE_SIZE;
+    const key = `board:${id}:${page}`;
+    type Content = Omit<DiscoverBoardPage, 'fetchedAt' | 'stale'>;
+    const entry = await this.cached<Content | null>(key, TTL, async () => {
+      const json = await this.fetch(`${DOUBAN}subject_collection/${id}/items?start=${start}&count=${BOARD_PAGE_SIZE}`) as Record<string, unknown>;
+      const raw = json?.subject_collection_items ?? json?.items;
+      if (!Array.isArray(raw)) throw new Error('原站没有返回榜单内容');
+      const totalValue = Number(json.total);
+      const total = json.total != null && Number.isFinite(totalValue) && totalValue >= 0 ? Math.floor(totalValue) : null;
+      const totalPages = total === null ? null : Math.max(1, Math.min(500, Math.ceil(total / BOARD_PAGE_SIZE)));
+      const hasMore = raw.length > 0 && page < 500 && (total === null ? raw.length >= BOARD_PAGE_SIZE : start + raw.length < total);
+      return { board, items: parseDomesticItems(json, board.mediaType!), page, pageSize: BOARD_PAGE_SIZE, total, totalPages, hasMore,
+        ...(!raw.length && total !== null && start < total ? { notice: '原站暂未返回这一页，请重试或前往原站查看。' } : {}),
+      };
+    }, value => !!value && Array.isArray(value.items), null, refresh);
+    if (!entry.value || !entry.at) throw new Error('暂时无法读取榜单，请稍后重试或前往原站查看');
+    const stale = Date.now() - entry.at >= TTL || Date.now() < (this.retryAt.get(key) || 0);
+    return { ...entry.value, fetchedAt: entry.at, stale };
   }
 
   genres() {

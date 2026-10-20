@@ -109,8 +109,8 @@ export function SourceManagementSection({
 
   function statusCell(source: SourceBean) {
     const availability = sourceAvailability(source);
-    if (availability.usable) return <span style={{ color: 'var(--accent-2)' }}>可用</span>;
-    return <span style={{ color: 'var(--warn)' }} title={availability.hint}>{availability.hint ?? '不可用'}</span>;
+    if (availability.usable) return <span style={{ color: 'var(--text-success)' }}>可用</span>;
+    return <span style={{ color: 'var(--text-warn)' }} title={availability.hint}>{availability.hint ?? '不可用'}</span>;
   }
 
   async function chooseSource(key: string) {
@@ -247,7 +247,7 @@ export function SourceManagementSection({
             <span className="muted">已选 {selectedSourceCount} / {sources.length} 个源</span>
             <button disabled={busy || sourceDeleteBusy || !selectedSourceCount} onClick={() => void setGlobalBlock(sources.filter(source => sourcePick.has(source.key)).map(source => source.key), true)}>全局屏蔽所选</button>
             <button disabled={sourceDeleteBusy || !selectedSourceCount} onClick={() => setSourcePick(new Set())}>清空选择</button>
-            <button disabled={busy || sourceDeleteBusy || !selectedSourceCount} onClick={() => void deleteSelectedSources()} style={{ color: 'var(--danger)' }}>
+            <button disabled={busy || sourceDeleteBusy || !selectedSourceCount} onClick={() => void deleteSelectedSources()} style={{ color: 'var(--text-danger)' }}>
               {sourceDeleteBusy ? '删除中…' : `删除所选（${selectedSourceCount}）`}
             </button>
           </div>
@@ -255,6 +255,8 @@ export function SourceManagementSection({
         {sources.length === 0 ? (
           <div className="empty" style={{ padding: 24 }}>尚无源，请先导入订阅</div>
         ) : (
+          // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Keyboard users can scroll the source table.
+          <section className="table-scroll" aria-label="点播源列表" tabIndex={0}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ color: 'var(--text-dim)', textAlign: 'left' }}>
@@ -333,7 +335,7 @@ export function SourceManagementSection({
                             <summary className="muted" style={{ cursor: 'pointer', fontSize: 12 }}>
                               ext 配置（蜘蛛自定义参数）
                               {draft.ext.trim() ? (
-                                <span style={{ color: extOk.ok ? 'var(--accent-2)' : 'var(--danger)', marginLeft: 6 }}>
+                                <span style={{ color: extOk.ok ? 'var(--text-success)' : 'var(--text-danger)', marginLeft: 6 }}>
                                   {extOk.ok ? `已填 ✓ ${(extOk.keys ?? []).slice(0, 6).join(', ')}` : `⚠ ${extOk.error}`}
                                 </span>
                               ) : (
@@ -353,9 +355,9 @@ export function SourceManagementSection({
                                 <div style={{ fontSize: 11 }}>
                                   {draft.ext.trim() ? (
                                     extOk.ok ? (
-                                      <span style={{ color: 'var(--accent-2)' }}>JSON ✓ 键：{(extOk.keys ?? []).join(', ') || '（无）'}</span>
+                                      <span style={{ color: 'var(--text-success)' }}>JSON ✓ 键：{(extOk.keys ?? []).join(', ') || '（无）'}</span>
                                     ) : (
-                                      <span style={{ color: 'var(--danger)' }}>{extOk.error}</span>
+                                      <span style={{ color: 'var(--text-danger)' }}>{extOk.error}</span>
                                     )
                                   ) : (
                                     <span className="muted">ext 为空（合法，但部分蜘蛛必须要有 siteUrl 等参数）</span>
@@ -428,7 +430,7 @@ export function SourceManagementSection({
                           <div className="row" style={{ flexWrap: 'nowrap' }}>
                             <button onClick={(e) => { e.stopPropagation(); startEdit(s); }}>编辑</button>
                             <button onClick={(e) => { e.stopPropagation(); void runDiagnose(s.key); }}>诊断</button>
-                            <button disabled={sourceDeleteBusy} onClick={(e) => { e.stopPropagation(); deleteSource(s.key); }} style={{ color: 'var(--danger)' }}>删除</button>
+                            <button disabled={sourceDeleteBusy} onClick={(e) => { e.stopPropagation(); deleteSource(s.key); }} style={{ color: 'var(--text-danger)' }}>删除</button>
                             <button onClick={(e) => { e.stopPropagation(); moveSource(s.key, 'up'); }} title="上移" aria-label="上移">↑</button>
                             <button onClick={(e) => { e.stopPropagation(); moveSource(s.key, 'down'); }} title="下移" aria-label="下移">↓</button>
                             <button onClick={(e) => { e.stopPropagation(); moveSource(s.key, 'top'); }} title="置顶" aria-label="置顶">⤒</button>
@@ -442,6 +444,7 @@ export function SourceManagementSection({
               })}
             </tbody>
           </table>
+          </section>
         )}
         </div>
       </details>

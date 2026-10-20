@@ -12,7 +12,7 @@ describe('development component showcase', () => {
   });
 
   it('renders shared control states and applies a selected theme', async () => {
-    const values = { themeId: 'netflix', motion: 'auto', showDiscover: true, waterfall: false };
+    const values = { themeId: 'dark', motion: 'auto', showDiscover: true, waterfall: false };
     let revision = 0;
     const updateUiPreferences = vi.fn((patch: Record<string, unknown>) => {
       Object.assign(values, patch);
@@ -23,7 +23,7 @@ describe('development component showcase', () => {
       configurable: true,
       value: { system: { updateUiPreferences } },
     });
-    document.documentElement.setAttribute('data-theme', 'netflix');
+    document.documentElement.setAttribute('data-theme', 'dark');
 
     render(<ComponentShowcasePage />);
 
@@ -34,10 +34,10 @@ describe('development component showcase', () => {
     expect(screen.getByLabelText('订阅名称')).toBeTruthy();
     expect(screen.getByLabelText('无效示例').getAttribute('aria-invalid')).toBe('true');
 
-    fireEvent.change(screen.getByRole('combobox', { name: '展示主题' }), { target: { value: 'bilibili' } });
+    fireEvent.change(screen.getByRole('combobox', { name: '展示主题' }), { target: { value: 'light' } });
 
-    expect(document.documentElement.getAttribute('data-theme')).toBe('bilibili');
-    expect(updateUiPreferences).toHaveBeenLastCalledWith({ themeId: 'bilibili' });
-    await waitFor(() => expect(screen.getByText('当前主题：bilibili')).toBeTruthy());
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    expect(updateUiPreferences).toHaveBeenLastCalledWith({ themeId: 'light' });
+    await waitFor(() => expect(screen.getByText('当前主题：light')).toBeTruthy());
   });
 });

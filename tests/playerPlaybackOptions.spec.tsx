@@ -35,11 +35,12 @@ describe('player playback options', () => {
     fireEvent.click(container.querySelector('.vp-ctl') as HTMLButtonElement);
     fireEvent.click(buttons[1]);
     fireEvent.pointerOver(host);
-    fireEvent.pointerOut(host, { relatedTarget: null });
+    (container.querySelector('.vp-ctl') as HTMLButtonElement).blur();
+    fireEvent.pointerLeave(host, { relatedTarget: null });
 
     expect(props.onFitOpen).toHaveBeenCalledOnce();
     expect(props.onFitSelect).toHaveBeenCalledWith(PLAYER_FITS[1].value);
     expect(props.onFitPointerEnter).toHaveBeenCalledOnce();
-    expect(props.onFitPointerLeave).toHaveBeenCalledOnce();
+    expect(props.onFitPointerLeave).toHaveBeenCalled();
   });
 });

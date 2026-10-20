@@ -1,14 +1,20 @@
+@layer components {
 .trigger { display: inline-flex; align-items: center; gap: 6px; max-width: 210px; flex: 0 1 auto; padding: 5px 10px; -webkit-app-region: no-drag; }
 .triggerLabel { color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
 .current { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dialog { width: min(640px, calc(100vw - 48px)); }
-.heading, .footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dialog[open] { display: flex; flex-direction: column; width: min(640px, calc(100vw - 48px)); color: var(--text); }
+.heading, .footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .heading h2 { margin: 0; }
-.dialog > input { box-sizing: border-box; width: 100%; }
-.list { display: grid; gap: 8px; max-height: min(56vh, 560px); overflow: auto; margin-block: 12px; }
+.dialog > input { flex: 0 0 auto; box-sizing: border-box; width: 100%; }
+.dialog > input:focus-visible { outline: var(--focus-ring); outline-offset: 2px; box-shadow: none; }
+.list { display: grid; gap: 8px; min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; -webkit-app-region: no-drag; margin-block: 12px; }
 .choice { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; width: 100%; padding: 12px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .choice[aria-pressed='true'] { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, var(--surface-raised)); }
 .choiceName { font-weight: 600; }
+.choice:disabled { opacity: 1; cursor: not-allowed; }
+.choice:disabled .choiceName { color: var(--text-secondary); }
 .meta, .reason { color: var(--text-secondary); font-size: 12px; }
 .reason { line-height: 1.5; }
 .footer { font-size: 12px; }
+
+}

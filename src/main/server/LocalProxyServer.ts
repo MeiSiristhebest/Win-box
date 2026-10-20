@@ -366,13 +366,18 @@ private imgProxy(u: URL, res: ServerResponse): void {
   }
   // Referer 重试链（去重）：调用方给的 → 图片自身 origin → 不带
   const refs: string[] = [];
-  const push = (r: string): void => { if (r && !refs.includes(r)) refs.push(r); };
-  push(ref);
+  const push = (r: string): void => { if (!refs.includes(r)) refs.push(r); };
+  if (ref) push(ref);
+  const domesticPoster = /^https?:\/\/[^/]+\.doubanio\.com(?::\d+)?\//i.test(target);
+  if (domesticPoster) push('https://m.douban.com/');
   try { push(new URL(target).origin + '/'); } catch { /* 非法 URL 已在上面拦掉 */ }
   push('');
   void (async () => {
+    const signal = AbortSignal.timeout(30000);
+    const dispatchers = domesticPoster ? dispatchChain(target, agent, imgAgent) : outboundDispatchers(target);
     for (const r of refs) {
-      for (const dispatcher of outboundDispatchers(target)) {
+      for (const dispatcher of dispatchers) {
+        if (signal.aborted || res.destroyed) break;
         try {
           const headers: Record<string, string> = { accept: 'image/*', 'User-Agent': 'Mozilla/5.0 Win-Box/0.86' };
           if (r) headers.Referer = r;
@@ -381,6 +386,7 @@ private imgProxy(u: URL, res: ServerResponse): void {
             headers,
             headersTimeout: 12000,
             bodyTimeout: 20000,
+            signal,
             dispatcher,
           });
           const ct = String(rr.headers['content-type'] || '');
@@ -401,7 +407,8 @@ private imgProxy(u: URL, res: ServerResponse): void {
         }
       }
     }
-    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    if (res.destroyed) return;
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end('not found');
   })();
 }

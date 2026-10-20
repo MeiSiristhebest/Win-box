@@ -1,3 +1,4 @@
+import PosterSizeControl from '../components/PosterSizeControl';
 // src/renderer/pages/HistoryPage.tsx — 观看历史：与搜索结果一致的封面卡（card-media）+ 刮削元数据 + 进度/时间
 //
 // 删除能力有两档（与"清空全部"并存）：
@@ -11,6 +12,7 @@ import { recentWatch, clearUiMemory, deleteWatch, restoreWatch, loadUiMemory, lo
 import { client } from '../api/client';
 // ★ 2026-10-18 受限 UI 槽位（`contributes.ui.slot`）：宿主页面的槽位落点
 import PluginSlot from '../components/PluginSlot';
+import { useAppDialog } from '../components/AppDialog';
 import { useCovers } from '../lib/useCovers';
 // ★ 2026-09-30（用户要求）：显式绑定第三方播放器时，从历史直接由它续播（起播位置作为启动参数）
 import { playVodExternal } from '../lib/externalPlay';
@@ -54,6 +56,7 @@ function historyUpdateKey(item: WatchHistory): string {
 }
 
 export default function HistoryPage() {
+  const dialog = useAppDialog();
   const nav = useNavigate();
   const [items, setItems] = useState<WatchHistory[]>([]);
   const [profileView, setProfileView] = useState<ProfileSitesView>({ activeId: '', profiles: [] });
@@ -239,7 +242,8 @@ export default function HistoryPage() {
     }
   };
 
-  const clearAll = () => {
+  const clearAll = async () => {
+    if (!(await dialog.confirm(`清空全部 ${items.length} 条观看历史和播放进度？`, { title: '清空观看历史', confirmLabel: '清空历史', tone: 'danger' }))) return;
     clearUiMemory();
     setLastDeleted(null);
     refresh();
@@ -249,11 +253,12 @@ export default function HistoryPage() {
 
   return (
     <>
-      <div className="topbar">
+      <div className="topbar gallery-page-topbar">
         <span style={{ fontWeight: 700 }}>观看历史</span>
         <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
           {items.length ? `${items.length} 条${resumeCount ? ` · ${resumeCount} 条可续播` : ''} · 自动保存` : '尚未有播放记录'}
         </span>
+        <PosterSizeControl />
         {items.length > 0 && (
           <button className="linkbtn danger" style={{ marginLeft: 'auto' }} onClick={clearAll}>
             清空全部
@@ -281,7 +286,7 @@ export default function HistoryPage() {
       )}
       <div className="content hist-content">
         {items.length === 0 ? (
-          <div className="empty" style={{ marginTop: 40 }}>暂无观看记录 —— 播放任意资源后会自动出现在这里</div>
+          <div className="empty"><h2>还没有观看记录</h2><p>播放影片后，可以在这里继续观看。</p><button className="primary" onClick={() => nav('/home')}>浏览点播</button></div>
         ) : (
           <>
             <section className="quick-picks hist-filters" aria-label="历史来源分类">
@@ -335,7 +340,7 @@ export default function HistoryPage() {
                       {(it.sourceName || srcNames[it.sourceKey || '']) && (
                         <span
                           style={{
-                            position: 'absolute', left: 6, top: 6, background: 'rgba(0,0,0,.62)', color: 'var(--accent)',
+                            position: 'absolute', left: 6, top: 6, background: 'rgba(0,0,0,.62)', color: 'var(--on-media)',
                             fontSize: 10, padding: '1px 7px', borderRadius: 999, maxWidth: '62%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                           }}
                           title={group.label}

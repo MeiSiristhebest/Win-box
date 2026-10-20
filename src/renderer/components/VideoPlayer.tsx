@@ -1108,6 +1108,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             panelRef={subPanelHost}
             onAnchorPointerEnter={() => subHover.enter()}
             onAnchorPointerLeave={() => subHover.leave()}
+            onClose={() => { subHover.cancel(); setSubPanel(false); }}
             onPanelPointerEnter={() => subHover.enter(true)}
             onPanelPointerLeave={() => subHover.leave()}
             onToggle={toggleSub}
@@ -1133,6 +1134,7 @@ export default function VideoPlayer(props: VideoPlayerProps) {
             panelRef={dmPanelHost}
             onAnchorPointerEnter={() => dmHover.enter()}
             onAnchorPointerLeave={() => dmHover.leave()}
+            onClose={() => { dmHover.cancel(); setDmPanel(false); }}
             onPanelPointerEnter={() => dmHover.enter(true)}
             onPanelPointerLeave={() => dmHover.leave()}
             onToggle={toggleDanmaku}

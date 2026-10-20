@@ -5,15 +5,12 @@ import App from './App';
 import { AppDialogProvider } from './components/AppDialog';
 import { initTheme } from './lib/theme';
 import { dropSessionUiMemoryIfRestarted } from './lib/uiMemory';
+import { initDisplayPrefs } from './lib/displayPrefs';
 import { initMotionPref } from './lib/uiPrefs';
 import { syncUiPreferencesFromMain } from './lib/preferenceStore';
 import { client } from './api/client';
 import './styles/global.css';
-import './styles/netflix.css';
-import './styles/bilibili.css';
-import './styles/apple.css';
-// ★ 2026-10-08（用户要求）：第四套皮肤「豆风」（Material You × 豆瓣，浅色）
-import './styles/douban.css';
+import './styles/desktop.css';
 
 /**
  * ★ 2026-09-30（用户要求「软件关闭后，所有的墓碑机制都应该脱钩」）：
@@ -39,7 +36,7 @@ initMotionPref();
 void Promise.all([bootUiMemory(), syncUiPreferencesFromMain().catch(() => undefined)]).finally(() => {
   initTheme();
   initMotionPref();
-  createRoot(document.getElementById('root')!).render(
+  void initDisplayPrefs().finally(() => createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <HashRouter>
         <AppDialogProvider>
@@ -47,5 +44,5 @@ void Promise.all([bootUiMemory(), syncUiPreferencesFromMain().catch(() => undefi
         </AppDialogProvider>
       </HashRouter>
     </React.StrictMode>,
-  );
+  ));
 });

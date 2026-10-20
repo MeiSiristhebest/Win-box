@@ -29,7 +29,7 @@ describe('theme registry', () => {
 
   it('defines the semantic component tokens after the legacy theme layer', async () => {
     const css = await readFile(new URL('../src/renderer/styles/global.css', import.meta.url), 'utf8');
-    expect(css).toContain('@layer reset, legacy, tokens, base, components, layouts, utilities;');
+    expect(css).toContain('@layer reset, legacy, tokens, base, components, layouts, utilities, desktop;');
 
     for (const token of SEMANTIC_TOKEN_NAMES) {
       expect(css).toMatch(new RegExp(`--${token.replaceAll('-', '\\-')}\\s*:`));

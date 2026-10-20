@@ -1,4 +1,5 @@
 import { PLAYER_FITS, type PlayerFit } from '../../lib/playerPrefs';
+import { usePlayerPopupKeyboard } from '../../lib/usePlayerPopupKeyboard';
 
 interface PlayerRateControlProps {
   rate: number;
@@ -33,10 +34,11 @@ export function PlayerFitControl({
   onFitPointerLeave,
 }: PlayerFitControlProps) {
   const fitLabel = PLAYER_FITS.find((option) => option.value === fit)?.label ?? '适应';
+  const { triggerRef, panelId, onKeyDown, onPointerLeave, onBlur } = usePlayerPopupKeyboard(open, onFitOpen, onFitPointerLeave);
 
   return (
-    <div className="vp-vol" onPointerEnter={onFitPointerEnter} onPointerLeave={onFitPointerLeave}>
-        <button className="vp-ctl" title={`画面比例：${fitLabel}（悬停选择）`} onClick={onFitOpen}>
+    <div className="vp-vol" onPointerEnter={onFitPointerEnter} onPointerLeave={onPointerLeave} onBlur={onBlur}>
+        <button ref={triggerRef} className="vp-ctl" title={`画面比例：${fitLabel}（悬停选择）`} aria-expanded={open} aria-controls={panelId} aria-keyshortcuts="ArrowDown" onKeyDown={onKeyDown} onClick={onFitOpen}>
           <svg width="15" height="15" viewBox="0 0 24 24">
             <rect x="2.6" y="5" width="18.8" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
             <path d="M8.4 5v14M15.6 5v14" stroke="currentColor" strokeWidth="1.1" strokeDasharray="2 2" />
@@ -44,7 +46,7 @@ export function PlayerFitControl({
           {fit !== 'contain' && <span className="vp-subdot" />}
         </button>
         <div className={`vp-fithost${open ? ' open' : ''}`}>
-          <div className="vp-subpanel vp-fitpanel">
+          <div id={panelId} className="vp-subpanel vp-fitpanel">
             <div className="vsp-row" style={{ marginBottom: 6 }}>
               <span className="muted" style={{ fontSize: 11 }}>画面比例（会记住选择；强制比例为拉伸显示）</span>
             </div>
@@ -53,7 +55,7 @@ export function PlayerFitControl({
                 <button
                   key={option.value}
                   className={`vsp-btn${fit === option.value ? ' active' : ''}`}
-                  onClick={() => onFitSelect(option.value)}
+                  onClick={() => { onFitSelect(option.value); triggerRef.current?.focus(); }}
                 >
                   {option.label}
                 </button>

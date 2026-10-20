@@ -1,6 +1,6 @@
 import type { ThemeLayout, ThemeSkinView } from '../plugin';
-// Theme metadata and presentation selection. Color values remain in the theme CSS files.
-export type ShellPresentation = 'integrated-nav' | 'bilibili-header' | 'apple-sidebar' | 'douban-header';
+// Theme metadata, semantic colors, and presentation selection.
+export type ShellPresentation = 'desktop' | 'integrated-nav' | 'bilibili-header' | 'apple-sidebar' | 'douban-header';
 export type DiscoverPresentation = 'standard-grid' | 'netflix-rows' | 'apple-rows' | 'douban-wall';
 export type DetailPresentation = 'standard' | 'netflix-cinema' | 'apple-cinema' | 'douban-catalog';
 export type SourceBrowsePresentation = 'standard' | 'douban';
@@ -34,6 +34,7 @@ export interface PresentationDefinition {
 }
 
 export const presentations = {
+  desktop: { shell: 'desktop', discover: 'standard-grid', detail: 'standard', sourceBrowse: 'standard' },
   standard: { shell: 'integrated-nav', discover: 'standard-grid', detail: 'standard', sourceBrowse: 'standard' },
   bilibili: { shell: 'bilibili-header', discover: 'standard-grid', detail: 'standard', sourceBrowse: 'standard' },
   netflix: { shell: 'integrated-nav', discover: 'netflix-rows', detail: 'netflix-cinema', sourceBrowse: 'standard' },
@@ -51,50 +52,31 @@ export interface ThemeDefinition {
 }
 
 export const themes = {
-  netflix: {
-    label: '🎬 网飝', presentation: 'netflix', colorScheme: 'dark',
+  dark: {
+    label: '深色', presentation: 'desktop', colorScheme: 'dark',
     tokens: {
-      surface: '#000000', 'surface-raised': '#141414', 'surface-elevated': '#1f1f1f',
-      'text-primary': '#ffffff', 'text-secondary': '#bcbcbc', 'color-accent': '#e50914',
-      'on-accent': '#ffffff', 'color-danger': '#eb3942', 'on-danger': '#111111',
-      'border-subtle': 'rgba(255, 255, 255, .09)', backdrop: '#141414',
-      'radius-control': '4px', 'radius-container': '8px',
+      surface: '#111317', 'surface-raised': '#191c22', 'surface-elevated': '#242830',
+      'text-primary': '#edf0f6', 'text-secondary': '#a4acba', 'color-accent': '#9ab7ff',
+      'on-accent': '#132341', 'color-danger': '#ff8c91', 'on-danger': '#321114',
+      'border-subtle': '#292e38', backdrop: '#191c22',
+      'radius-control': '9px', 'radius-container': '14px',
     },
   },
-  bilibili: {
-    label: '📺 哔哔', presentation: 'bilibili', colorScheme: 'light',
+  light: {
+    label: '浅色', presentation: 'desktop', colorScheme: 'light',
     tokens: {
-      surface: '#f1f2f3', 'surface-raised': '#ffffff', 'surface-elevated': '#ffffff',
-      'text-primary': '#18191c', 'text-secondary': '#61666d', 'color-accent': '#00aeec',
-      'on-accent': '#08232c', 'color-danger': '#f56c6c', 'on-danger': '#111111',
-      'border-subtle': 'rgba(227, 229, 231, .9)', backdrop: '#f1f2f3',
-      'radius-control': '8px', 'radius-container': '12px',
-    },
-  },
-  apple: {
-    label: '🍎 大果', presentation: 'apple', colorScheme: 'light',
-    tokens: {
-      surface: '#f5f5f7', 'surface-raised': 'rgba(255, 255, 255, .72)', 'surface-elevated': 'rgba(255, 255, 255, .88)',
-      'text-primary': '#1d1d1f', 'text-secondary': '#6e6e73', 'color-accent': '#007aff',
-      'on-accent': '#00264c', 'color-danger': '#ff3b30', 'on-danger': '#111111',
-      'border-subtle': 'rgba(60, 60, 67, .1)', backdrop: 'rgba(250, 250, 252, .8)',
-      'radius-control': '10px', 'radius-container': '14px',
-    },
-  },
-  douban: {
-    label: '🫘 大豆', presentation: 'douban', colorScheme: 'light',
-    tokens: {
-      surface: '#f2f4ef', 'surface-raised': 'rgba(255, 255, 255, .86)', 'surface-elevated': '#ffffff',
-      'text-primary': '#1a1d19', 'text-secondary': '#5f675d', 'color-accent': '#2e9629',
-      'on-accent': '#102610', 'color-danger': '#d93025', 'on-danger': '#111111',
-      'border-subtle': 'rgba(26, 32, 25, .095)', backdrop: 'rgba(252, 253, 250, .93)',
-      'radius-control': '12px', 'radius-container': '20px',
+      surface: '#f7f8fa', 'surface-raised': '#ffffff', 'surface-elevated': '#ffffff',
+      'text-primary': '#25282f', 'text-secondary': '#626976', 'color-accent': '#355fd6',
+      'on-accent': '#ffffff', 'color-danger': '#b8313b', 'on-danger': '#ffffff',
+      'border-subtle': '#dfe2e8', backdrop: '#ffffff',
+      'radius-control': '9px', 'radius-container': '14px',
     },
   },
 } as Record<string, ThemeDefinition>;
 
 export type Theme = string;
-export const DEFAULT_THEME: Theme = 'netflix';
+export const DEFAULT_THEME: Theme = 'dark';
+const LEGACY_THEME_IDS: Readonly<Record<string, string>> = { netflix: 'dark', bilibili: 'light', apple: 'light', douban: 'light' };
 export const THEME_LABELS = Object.fromEntries(
   Object.entries(themes).map(([id, definition]) => [id, definition.label]),
 ) as Record<Theme, string>;
@@ -104,7 +86,8 @@ export function normalizeTheme(value: unknown): Theme {
 }
 
 export function presentationFor(theme: Theme): PresentationDefinition {
-  if (Object.hasOwn(themes, theme)) return presentations[themes[theme].presentation];
+  const known = findSkin(theme);
+  if (known?.kind === 'builtin') return presentations[themes[known.id].presentation];
   const layout = skinLayout(theme);
   const shells: Record<string, ShellPresentation> = { topbar: 'integrated-nav', dualbar: 'bilibili-header', sidebar: 'apple-sidebar', pillbar: 'douban-header' };
   const discover: Record<string, DiscoverPresentation> = { shelf: 'netflix-rows', shelfWide: 'apple-rows', wall: 'douban-wall' };
@@ -129,27 +112,15 @@ export interface SkinEntry {
   tokens?: Record<string, string>;
 }
 
-/**
- * 四套内置皮肤的结构声明（2026-10-18 定稿，勿改）：
- *   netflix = 单行顶栏 + 影院式详情 + 内容行；bilibili = 双行头；apple = 玻璃侧边栏 + 玻璃详情 + 宽内容行；
- *   douban = 胶囊导航 + 左海报右信息详情 + 海报墙 + 卡片筛选条。
- */
+/** 内置外观共用桌面布局；插件可继续声明自己的展示结构。 */
 const BUILTIN_SKINS: SkinEntry[] = [
   {
-    id: 'netflix', label: THEME_LABELS.netflix, kind: 'builtin', base: 'dark',
-    layout: { shell: 'topbar', detailStyle: 'cinema', discoverStyle: 'shelf', navHeight: 58, cardWidth: 176 },
+    id: 'dark', label: THEME_LABELS.dark, kind: 'builtin', base: 'dark',
+    layout: { shell: 'topbar', navHeight: 58, cardWidth: 156 },
   },
   {
-    id: 'bilibili', label: THEME_LABELS.bilibili, kind: 'builtin', base: 'light',
-    layout: { shell: 'dualbar' },
-  },
-  {
-    id: 'apple', label: THEME_LABELS.apple, kind: 'builtin', base: 'light',
-    layout: { shell: 'sidebar', detailStyle: 'glass', discoverStyle: 'shelfWide', navHeight: 52, sideWidth: 212 },
-  },
-  {
-    id: 'douban', label: THEME_LABELS.douban, kind: 'builtin', base: 'light',
-    layout: { shell: 'pillbar', detailStyle: 'poster', discoverStyle: 'wall', filterStyle: 'card' },
+    id: 'light', label: THEME_LABELS.light, kind: 'builtin', base: 'light',
+    layout: { shell: 'topbar', navHeight: 58, cardWidth: 156 },
   },
 ];
 
@@ -167,7 +138,8 @@ export function allSkins(): SkinEntry[] {
 /** 按 id 取皮肤（未知 id → undefined） */
 export function findSkin(id: unknown): SkinEntry | undefined {
   if (typeof id !== 'string' || !id) return undefined;
-  return BUILTIN_SKINS.find((s) => s.id === id) ?? pluginSkins.find((s) => s.id === id);
+  const key = Object.hasOwn(LEGACY_THEME_IDS, id) ? LEGACY_THEME_IDS[id] : id;
+  return BUILTIN_SKINS.find((s) => s.id === key) ?? pluginSkins.find((s) => s.id === key);
 }
 
 /**
@@ -195,7 +167,7 @@ export function registerPluginSkins(list: ThemeSkinView[] | undefined): void {
 }
 
 /**
- * 任意值 → 合法皮肤 id（未知 / 空 / 旧值 / 已被卸载的插件皮肤 → 默认皮肤网飝）。
+ * 任意值 → 合法外观 id；旧内置名称迁移到浅色或深色。
  * 注意：插件皮肤在**注册表载入之前**会先落到默认皮肤，载入后由 initTheme 还原真实意图。
  */
 

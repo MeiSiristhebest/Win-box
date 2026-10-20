@@ -15,7 +15,7 @@
   --accent-container: #e50914;
   --accent-soft: rgba(229, 9, 20, .18);
   --accent-2: #e50914;
-  --on-accent: #141414;   /* 亮面（白底播放键 / 白色选中态）上的前景色 —— 网飝的 on-brand 为暖黑 */
+  --on-accent: #ffffff;
   /* ---- 文本 ---- */
   --text: #ffffff;
   --text-dim: #b3b3b3;

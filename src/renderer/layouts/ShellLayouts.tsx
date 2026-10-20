@@ -22,16 +22,18 @@ export interface AppNavGroup {
 
 export const NAV: AppNavItem[] = [
   { to: '/', label: '发现', ico: '🧭', end: true },
+  { to: '/boards', label: '榜单', ico: '☷' },
   { to: '/home', label: '点播', ico: '▶' },
   { to: '/history', label: '历史', ico: '🕘' },
   { to: '/favorites', label: '收藏', ico: '⭐' },
   { to: '/live', label: '直播', ico: '📡' },
   { to: '/storage', label: '存储', ico: '🗄' },
-  { to: '/config', label: '配置', ico: '⚙' },
-  { to: '/about', label: '说明', ico: 'ℹ' },
+  { to: '/config', label: '设置', ico: '⚙' },
+  { to: '/about', label: '关于', ico: 'ℹ' },
 ];
 
 const APP_ICONS: Record<string, ReactNode> = {
+  '/boards': <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true"><path d="M3 12.5V9M8 12.5V3.5M13 12.5V6M1.5 14h13" /></svg>,
   '/': (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M2.6 7.1 8 2.8l5.4 4.3v5.2a.9.9 0 0 1-.9.9H3.5a.9.9 0 0 1-.9-.9V7.1Z" />
@@ -82,7 +84,7 @@ const APP_ICONS: Record<string, ReactNode> = {
 };
 
 export const APP_NAV_GROUPS: AppNavGroup[] = [
-  { label: '媒体', items: NAV.filter((item) => ['/', '/home', '/history', '/favorites', '/live', '/storage'].includes(item.to)) },
+  { label: '媒体', items: NAV.filter((item) => ['/', '/boards', '/home', '/history', '/favorites', '/live', '/storage'].includes(item.to)) },
   { label: '其他', items: NAV.filter((item) => ['/config', '/about'].includes(item.to)) },
 ];
 
@@ -115,15 +117,68 @@ interface ShellPresentationDefinition {
   mainClassName: string;
 }
 
+function DesktopHeader({ pageTitle, onBack, backDisabled }: ShellChromeProps) {
+  return (
+    <header className="desktop-topbar">
+      <div className="desktop-brand">
+        <span className="desktop-brand-mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 5v14l12-7L6 5Z" fill="currentColor" /></svg></span>
+        <span>Win-Box</span>
+      </div>
+      <button type="button" className="desktop-back" aria-label="返回" title="返回（Alt + ←）" disabled={backDisabled} onClick={onBack}>
+        <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m11.5 5-5 5 5 5M7 10h9" /></svg>
+      </button>
+      <span className="desktop-location"><span>媒体库</span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>{pageTitle === '配置' ? '设置' : pageTitle}</span>
+      <SearchPanel bar />
+      <span className="desktop-topbar-space" />
+      <TitleBar />
+    </header>
+  );
+}
+
+function DesktopSidebar({ navItems }: ShellChromeProps) {
+  const groups = [
+    { label: '浏览', routes: ['/', '/boards', '/home', '/live', '/storage'] },
+    { label: '资料库', routes: ['/history', '/favorites'] },
+  ];
+  const renderLink = (item: AppNavItem) => (
+    <NavLink key={item.to} to={item.to} end={item.end} title={item.label} aria-label={item.label} className={({ isActive }) => 'desktop-nav-item' + (isActive ? ' active' : '')}>
+      <span className="desktop-nav-icon">{APP_ICONS[item.to]}</span>
+      <span className="desktop-nav-label">{item.label}</span>
+    </NavLink>
+  );
+  return (
+    <>
+      <nav className="desktop-navigation" aria-label="主导航">
+        {groups.map(group => (
+          <div className="desktop-nav-group" key={group.label}>
+            <div className="desktop-group-label">{group.label}</div>
+            {navItems.filter(item => group.routes.includes(item.to)).map(renderLink)}
+          </div>
+        ))}
+      </nav>
+      <section className="desktop-context" aria-label="当前内容来源">
+        <div className="desktop-group-label">内容来源</div>
+        <ProfileSwitcher />
+        <SourcePicker variant="sidebar" />
+      </section>
+      <nav className="desktop-secondary" aria-label="应用管理">
+        {navItems.filter(item => ['/config', '/about'].includes(item.to)).map(renderLink)}
+      </nav>
+    </>
+  );
+}
+
 function IntegratedNavHeader({ navItems }: ShellChromeProps) {
   return (
     <nav className="nf-nav">
       <span className="nf-logo">WIN-BOX</span>
-      {navItems.map((item) => (
-        <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => 'nf-link' + (isActive ? ' active' : '')}>
-          {item.label}
-        </NavLink>
-      ))}
+      <div className="nf-links">
+        {navItems.map((item) => (
+          <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => 'nf-link' + (isActive ? ' active' : '')}>
+            {item.label}
+          </NavLink>
+        ))}
+      </div>
       <span className="nf-spacer" />
       <SearchPanel />
       <ProfileSwitcher />
@@ -220,6 +275,15 @@ function DoubanHeader({ navItems, appIcon, pageTitle }: ShellChromeProps) {
 }
 
 export const SHELL_PRESENTATIONS: Record<ShellPresentation, ShellPresentationDefinition> = {
+  desktop: {
+    header: DesktopHeader,
+    sidebar: DesktopSidebar,
+    needsAppIcon: false,
+    appClassName: () => 'app desktop-app',
+    bodyClassName: 'desktop-body',
+    sidebarClassName: 'desktop-sidebar',
+    mainClassName: 'desktop-main',
+  },
   'integrated-nav': {
     header: IntegratedNavHeader,
     needsAppIcon: false,
@@ -266,7 +330,7 @@ export function ShellFrame({ presentation, children, ...props }: ShellFrameProps
 
   return (
     <div className={definition.appClassName(props.theme)}>
-      <AppAmbient />
+      {presentation !== 'desktop' && <AppAmbient />}
       {props.disclaimer}
       <Header {...props} />
       <div className={`shell-body ${definition.bodyClassName}`.trim()}>

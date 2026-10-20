@@ -1,5 +1,6 @@
 import { client } from '../api/client';
 import type { UiPreferencesPatch, UiPreferencesSnapshot } from '../../shared/uiPreferences';
+import { normalizePosterSize } from '../../shared/posterSize';
 import { DEFAULT_UI_PREFERENCES, UI_THEME_IDS, validateUiPreferencesPatch } from '../../shared/uiPreferences';
 
 type PreferenceListener = () => void;
@@ -10,7 +11,8 @@ const WATERFALL_KEY = 'winbox-waterfall';
 const MOTION_KEY = 'winbox-motion';
 const HOME_FILTERS_KEY = 'winbox-home-filters';
 const NAV_MODE_KEY = 'winbox-nav-mode';
-const PREFERENCE_KEYS = [THEME_KEY, MOTION_KEY, DISCOVER_KEY, WATERFALL_KEY, HOME_FILTERS_KEY, NAV_MODE_KEY] as const;
+const POSTER_SIZE_KEY = 'winbox-poster-size';
+const PREFERENCE_KEYS = [THEME_KEY, MOTION_KEY, DISCOVER_KEY, WATERFALL_KEY, HOME_FILTERS_KEY, NAV_MODE_KEY, POSTER_SIZE_KEY] as const;
 const PREFERENCE_FIELDS = ['themeId', 'motion', 'showDiscover', 'waterfall'] as const;
 
 const listenersByKey = new Map<string, Set<PreferenceListener>>();
@@ -42,6 +44,7 @@ function snapshotValue(key: string): string | null {
     case DISCOVER_KEY: return latestSnapshot.values.showDiscover ? '1' : '0';
     case WATERFALL_KEY: return latestSnapshot.values.waterfall ? '1' : '0';
     case HOME_FILTERS_KEY: return latestSnapshot.values.homeFilters ? '1' : '0';
+    case POSTER_SIZE_KEY: return latestSnapshot.values.posterSize || 'medium';
     case NAV_MODE_KEY: return latestSnapshot.values.navMode === 'window' ? 'window' : 'inline';
     default: return null;
   }
@@ -64,6 +67,7 @@ function legacyPreferences(): UiPreferencesPatch {
     waterfall: readStoredPreference(WATERFALL_KEY) === '1',
     homeFilters: readStoredPreference(HOME_FILTERS_KEY) === '1',
     navMode: readStoredPreference(NAV_MODE_KEY) === 'window' ? 'window' : 'inline',
+    posterSize: normalizePosterSize(readStoredPreference(POSTER_SIZE_KEY)),
   };
 }
 
@@ -74,6 +78,7 @@ function valuesAsStrings(snapshot: UiPreferencesSnapshot): Record<string, string
     [DISCOVER_KEY]: snapshot.values.showDiscover ? '1' : '0',
     [WATERFALL_KEY]: snapshot.values.waterfall ? '1' : '0',
     [HOME_FILTERS_KEY]: snapshot.values.homeFilters ? '1' : '0',
+    [POSTER_SIZE_KEY]: snapshot.values.posterSize || 'medium',
     [NAV_MODE_KEY]: snapshot.values.navMode === 'window' ? 'window' : 'inline',
   };
 }
@@ -107,7 +112,8 @@ function applySnapshot(value: UiPreferencesSnapshot): void {
       || previous.showDiscover !== next.showDiscover
       || previous.waterfall !== next.waterfall
       || previous.homeFilters !== next.homeFilters
-      || previous.navMode !== next.navMode) return;
+      || previous.navMode !== next.navMode
+      || previous.posterSize !== next.posterSize) return;
   } else {
     latestSnapshot = snapshot;
   }
@@ -182,6 +188,7 @@ function patchForKey(key: string, value: string): UiPreferencesPatch | null {
   if (key === DISCOVER_KEY) return { showDiscover: value !== '0' };
   if (key === WATERFALL_KEY) return { waterfall: value === '1' };
   if (key === HOME_FILTERS_KEY) return { homeFilters: value === '1' };
+  if (key === POSTER_SIZE_KEY) return { posterSize: normalizePosterSize(value) };
   if (key === NAV_MODE_KEY) return { navMode: value === 'window' ? 'window' : 'inline' };
   return null;
 }

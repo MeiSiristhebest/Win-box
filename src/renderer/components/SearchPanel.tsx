@@ -5,7 +5,9 @@
 //   回车或点击任一条 → 跳 /search?agg=<关键词>（复用 HomePage 的全源搜索入口）。
 // ★ 2026-09-29（用户要求）：搜索框做大；热搜做成**右侧排名榜**；左侧下方为**搜索历史**
 //   （逐条可删 ✕、下方「清空搜索记录」、上限 10 条，第 11 条顶掉第 1 条）。
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useAnchoredPanel } from './useAnchoredPanel';
 import { client } from '../api/client';
 import { openSearchWindow } from '../lib/searchWin';
 import { isNativeModalOpen } from '../lib/modalScope';
@@ -40,14 +42,17 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
   /** ★ 2026-09-29：搜索历史（localStorage，最多 10 条） */
   const [hist, setHist] = useState<string[]>([]);
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<number | null>(null);
+  const panelId = useId();
+  const panelRef = useRef<HTMLElement | null>(null);
+  const panelPosition = useAnchoredPanel(open, triggerRef, panelRef, 520);
 
   /** 每次打开读主进程缓存；过期后台更新，下次打开即可看到更新后的真实榜单。 */
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    setHotLoading(true);
     client
       .metaMovieHot()
       .then((result) => { if (alive) setHot(result); })
@@ -56,21 +61,20 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
     return () => { alive = false; };
   }, [open, hotAttempt]);
 
-  // 打开面板时载入搜索历史（其它窗口/页面刚搜过的也能看到）
-  useEffect(() => {
-    if (open) setHist(loadSearchHistory());
-  }, [open]);
-
   // 打开时聚焦输入框；外部点击 / Esc 关闭
   useEffect(() => {
     if (!open) return;
     inputRef.current?.focus();
     const onDoc = (e: MouseEvent): void => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      if (!wrapRef.current?.contains(e.target as Node) && !panelRef.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: globalThis.KeyboardEvent): void => {
       if (isNativeModalOpen()) return;
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape' && !e.isComposing) {
+        e.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
@@ -82,30 +86,24 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
 
   // 联想：250ms 防抖（过期请求按代际丢弃，避免回填错词）
   useEffect(() => {
+    let cancelled = false;
     if (timerRef.current !== null) clearTimeout(timerRef.current);
     const term = q.trim();
-    if (!term) {
-      setSug([]);
-      setBusy(false);
-      return;
-    }
+    if (!open || !term) return;
     timerRef.current = window.setTimeout(() => {
-      const gen = term;
-      setBusy(true);
       client
         .metaSuggest(term)
         .then((list) => {
-          if (gen !== q.trim()) return; // 期间又输入了 → 丢弃
-          setSug(list || []);
+          if (!cancelled) setSug(list || []);
         })
-        .catch(() => setSug([]))
-        .finally(() => setBusy(false));
+        .catch(() => { if (!cancelled) setSug([]); })
+        .finally(() => { if (!cancelled) setBusy(false); });
     }, DEBOUNCE_MS);
     return () => {
+      cancelled = true;
       if (timerRef.current !== null) clearTimeout(timerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [q, open]);
 
   const go = (kw: string): void => {
     const t = (kw || '').trim();
@@ -117,6 +115,7 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
     setOpen(false);
     setQ('');
     setSug([]);
+    setBusy(false);
     void openSearchWindow(t).catch((e) => void dialog.alert(`无法打开搜索窗口：${e instanceof Error ? e.message : String(e)}`, { title: '无法打开搜索窗口' }));
   };
 
@@ -134,31 +133,43 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
   };
 
   return (
-    <div className={`srcpick${bar ? ' sp-bar-wrap' : ''}`} ref={wrapRef}>
+    <div className={`srcpick${bar ? ' sp-bar-wrap' : ''}`} ref={wrapRef}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget) && !panelRef.current?.contains(event.relatedTarget)) setOpen(false); }}>
       <button
+        ref={triggerRef}
         type="button"
         className={`srcpick-name sp-btn ui-action${bar ? ' sp-bar' : ''}`}
         aria-expanded={open}
+        aria-controls={panelId}
         title="搜索（全源搜索，结果边搜边出）"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (open) { setOpen(false); return; }
+          setHist(loadSearchHistory());
+          setHotLoading(true);
+          setSug([]);
+          setBusy(Boolean(q.trim()));
+          setOpen(true);
+        }}
       >
-        🔍 {bar ? <span className="sp-bar-hint">搜索影片、剧集、演员…</span> : '搜索'}
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg>
+        {bar ? <span className="sp-bar-hint">搜索影片、剧集、演员</span> : '搜索'}
       </button>
-      {open && (
-        <section className="sp-panel" aria-label="搜索建议">
+      {open && createPortal(
+        <section ref={panelRef} id={panelId} className="sp-panel" style={panelPosition} aria-label="搜索建议">
           <div className="sp-row">
             <input
               ref={inputRef}
               className="sp-input"
-              placeholder="搜索影片（回车=全源搜索）…"
+              aria-label="搜索影片"
+              placeholder="输入片名，按回车搜索全部来源"
               value={q}
-              onChange={(e) => setQ(e.target.value)}
+              onChange={(e) => { setQ(e.target.value); setSug([]); setBusy(Boolean(e.target.value.trim())); }}
               onKeyDown={(e) => {
                 // ★ 2026-09-26（用户反馈「搜奥特曼却按迪迦奥特曼搜」）：回车**永远搜输入的词** ——
                 //   此前是 `go(sug[0]?.title || q)`，联想列表首条会**悄悄替掉**用户输入
                 //   （输「奥特曼」→ TMDB 首条是「迪迦奥特曼」→ 实际搜的是迪迦）。
                 //   想用联想词请直接点该条。
-                if (e.key === 'Enter') go(q);
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) go(q);
               }}
             />
           </div>
@@ -208,7 +219,7 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
                 {hot?.fetchedAt ? <div className="muted">获取于 {new Date(hot.fetchedAt).toLocaleString('zh-CN')}</div> : null}
                 {!hot?.items.length ? (
                   <div className="sp-item muted">
-                    {hotLoading ? '正在加载热搜…' : <>热搜暂时获取失败，仍可直接搜索 <button onClick={() => setHotAttempt(n => n + 1)}>重试</button></>}
+                    {hotLoading ? '正在加载热搜…' : <>热搜暂时获取失败，仍可直接搜索 <button onClick={() => { setHotLoading(true); setHotAttempt(n => n + 1); }}>重试</button></>}
                   </div>
                 ) : (
                   <div className="sp-rank-list">
@@ -224,7 +235,7 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
               </div>
             </div>
           )}
-        </section>
+        </section>, document.body,
       )}
     </div>
   );

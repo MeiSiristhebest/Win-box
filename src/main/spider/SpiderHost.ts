@@ -132,6 +132,7 @@ import { endpointLabel, rankDanmakuAnimes } from '../../engine/danmaku/endpoints
 import type { DanmakuAnime, DanmakuApiEndpoint, DanmakuCandidate, DanmakuSettings } from '../../shared/danmaku';
 import type { MetaHit, MetaExtra, DiscoverSection, DiscoverGenre, DiscoverGenrePage, MetaImages } from '../../shared/types';
 import type { MetaSettings, MetaSettingsView, MetaSuggestion } from '../../shared/meta';
+import { discoverBoardById, normalizeBoardPage, type DiscoverBoardPage } from '../../shared/discoverBoards';
 import { normalizeMetaSettings } from '../../shared/meta';
 import { MetaStore } from '../meta/MetaStore';
 import { MetaSettingsStore } from '../meta/MetaSettings';
@@ -141,6 +142,7 @@ import {
   tmdbSuggest,
   tmdbImages,
   tmdbDiscover,
+  tmdbBoardPage,
   tmdbGenres,
   tmdbGenrePage,
   metaCacheKey,
@@ -1208,7 +1210,23 @@ export class SpiderHost {
     // ★ 内置失败也照样展示插件分区（插件是「增补」，不是「替代」）
     const extra = await this.pluginDiscoverSections();
     const seen = new Set(base.map((s) => s.id));
-    return [...base, ...extra.filter((s) => !seen.has(s.id))];
+    return [...base, ...extra.filter((s) => !seen.has(s.id)).map(section => ({ ...section, browseId: `plugin:${section.id}` }))];
+  }
+
+  async metaBoardPage(id: string, page: number, refresh = false): Promise<DiscoverBoardPage> {
+    const pluginId = id.startsWith('plugin:') ? id.slice(7) : id;
+    const board = id.startsWith('plugin:') ? undefined : discoverBoardById(id);
+    if (board?.provider === 'douban') return this.domesticDiscover.boardPage(id, page, refresh);
+    if (board?.provider === 'tmdb') return tmdbBoardPage(this.logger, id, page, refresh);
+    if (!id || id.length > 200) throw new Error('无效的榜单');
+    const section = (await this.pluginDiscoverSections()).find(item => item.id === pluginId);
+    if (!section) throw new Error('这个榜单已不可用，请返回榜单列表重新选择');
+    if (normalizeBoardPage(page) !== 1) throw new Error('这个插件仅提供一页内容');
+    return { board: { id, title: section.title, provider: 'plugin', description: '插件提供的内容列表。' },
+      items: section.items, page: 1, pageSize: section.items.length, total: section.items.length, totalPages: 1,
+      hasMore: false, fetchedAt: 0, stale: false,
+      notice: '这里只能显示插件提供的条目，插件未提供继续分页或原站入口。',
+    };
   }
 
   /**
@@ -1248,16 +1266,11 @@ export class SpiderHost {
 
   /**
    * ★ 2026-10-15（用户要求「级联分类」）：发现页「分类浏览」——数据层走**豆瓣**（大陆直连稳定，无需任何 Key）。
-   *   返回空页即表示豆瓣失败/风控 → 渲染层给出可读提示并回退榜单。
+   *   请求失败会传递具体原因，渲染层保留已加载的分类列表。
    */
   async metaDiscoverQuery(q: ExploreQuery): Promise<ExplorePage> {
     const mediaType: 'movie' | 'tv' = q?.mediaType === 'tv' ? 'tv' : 'movie';
-    try {
-      return await doubanExplorePage(this.logger, { ...q, mediaType });
-    } catch (e) {
-      this.logger.w(`meta:豆瓣 分类浏览查询失败: ${(e as Error).message}`);
-      return { items: [], start: 0, total: 0, hasMore: false };
-    }
+    return doubanExplorePage(this.logger, { ...q, mediaType });
   }
 
   /** ★ 2026-10-15：级联词表（豆瓣自带的类型/地区 + 排序；失败回退内置快照）——两页共用同一份选项 */

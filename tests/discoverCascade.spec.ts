@@ -131,11 +131,11 @@ describe('yearTagRange', () => {
 });
 
 describe('选项字典', () => {
-  it('分类：电影 / 剧集 / 综艺，媒体类型与固定 tag 正确', () => {
-    expect(DISCOVER_MEDIA.map((m) => m.id)).toEqual(['movie', 'tv', 'variety']);
+  it('分类包含五类，媒体类型与固定 tag 正确', () => {
+    expect(DISCOVER_MEDIA.map((m) => m.id)).toEqual(['movie', 'tv', 'variety', 'animation', 'documentary']);
     expect(DISCOVER_MEDIA.find((m) => m.id === 'tv')?.baseTag).toBe('电视剧');
     expect(DISCOVER_MEDIA.find((m) => m.id === 'variety')?.baseTag).toBe('综艺');
-    expect(DISCOVER_MEDIA.find((m) => m.id === 'movie')?.baseTag).toBe('');
+    expect(DISCOVER_MEDIA.find((m) => m.id === 'movie')?.baseTag).toBe('电影');
   });
 
   it('年代选项：首项「全部」，含近 12 年与年代桶（豆瓣可下发）', () => {

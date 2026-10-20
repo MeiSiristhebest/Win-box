@@ -18,6 +18,8 @@ export function ProfileSwitcher() {
   const alive = useRef(true);
   const loadSequence = useRef(0);
   const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const currentChoice = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const descriptionId = useId();
   const refresh = useCallback(async () => {
@@ -45,8 +47,18 @@ export function ProfileSwitcher() {
   const search = query.trim().toLocaleLowerCase();
   const filtered = choices.filter(item => !search || (item.name + ' ' + item.groupName).toLocaleLowerCase().includes(search));
 
+  useEffect(() => {
+    if (!open || !list.current) return;
+    const container = list.current;
+    const current = currentChoice.current;
+    container.scrollTop = !search && current
+      ? Math.max(0, current.offsetTop - container.offsetTop - (container.clientHeight - current.offsetHeight) / 2)
+      : 0;
+  }, [open, search, config]);
+
   async function activate(id: string) {
-    if (switchingRef.current || id === config?.activeProfileId) return;
+    if (switchingRef.current) return;
+    if (id === config?.activeProfileId) { setOpen(false); return; }
     switchingRef.current = true;
     setSwitching(true);
     setError('');
@@ -65,7 +77,7 @@ export function ProfileSwitcher() {
   }
 
   return (<>
-    <button type="button" className={styles.trigger} title="切换子仓，同时更新点播站点和直播线路" aria-haspopup="dialog" onClick={() => { setQuery(''); setError(''); setOpen(true); void refresh(); }}>
+    <button type="button" className={`${styles.trigger} profile-switch-trigger`} title={`当前子仓：${active?.name || '未导入'}\n点击切换子仓`} aria-label={`切换子仓，当前：${active?.name || '未导入'}`} aria-haspopup="dialog" onClick={() => { setQuery(''); setError(''); setOpen(true); void refresh(); }}>
       <span className={styles.triggerLabel}>子仓</span><span className={styles.current}>{active?.name || (config?.sources.length || config?.lives.length ? '当前配置' : '未导入')}</span><span aria-hidden="true">▾</span>
     </button>
     <AppModal open={open} titleId={titleId} descriptionId={descriptionId} initialFocusRef={input} className={'app-dialog card modal-in ' + styles.dialog} canClose={!switching} onClose={() => setOpen(false)}>
@@ -73,10 +85,10 @@ export function ProfileSwitcher() {
       <p id={descriptionId} className="muted">切换后，点播站点和直播线路使用该子仓的已保存配置。</p>
       <input ref={input} aria-label="筛选子仓" placeholder="输入子仓或订阅组名称" value={query} onChange={event => setQuery(event.target.value)} />
       {error && <p className="err" role="alert">{error}</p>}
-      <div className={styles.list} aria-busy={switching}>
+      <div ref={list} className={styles.list} aria-busy={switching}>
         {filtered.map(item => {
           const current = item.profileId === config?.activeProfileId;
-          return <button key={item.id} type="button" className={styles.choice} aria-pressed={current} disabled={switching || !item.restorable} onClick={() => { if (item.profileId) void activate(item.profileId); }}>
+          return <button key={item.id} ref={current ? currentChoice : undefined} type="button" className={styles.choice} aria-pressed={current} disabled={switching || !item.restorable} onClick={() => { if (item.profileId) void activate(item.profileId); }}>
             <span className={styles.choiceName}>{item.name}{current ? ' · 当前' : ''}</span>
             <span className={styles.meta}>{item.groupName} · {item.sourceCount} 个站点 · {item.liveCount} 条直播</span>
             {item.reason && <span className={styles.reason}>{item.reason}</span>}
@@ -84,7 +96,7 @@ export function ProfileSwitcher() {
         })}
         {!filtered.length && <p className="muted">{choices.length ? '没有匹配的子仓' : '尚未保存子仓配置，请先导入多仓订阅。'}</p>}
       </div>
-      <div className={`${styles.footer} app-dialog-actions`}><span className="muted">{switching ? '正在切换…' : choices.filter(item => item.restorable).length + ' 个可切换'}</span><button className="app-dialog-action-secondary" type="button" disabled={switching} onClick={() => { setOpen(false); try { localStorage.setItem('winbox-cfg-tab', 'profiles'); } catch { /* Storage may be disabled. */ } navigate('/config'); }}>管理配置档案</button></div>
+      <div className={`${styles.footer} app-dialog-actions`}><span className="muted">{switching ? '正在切换…' : `显示 ${filtered.length}/${choices.length} 个子仓 · ${filtered.filter(item => item.restorable).length} 个可切换`}</span><button className="app-dialog-action-secondary" type="button" disabled={switching} onClick={() => { setOpen(false); try { localStorage.setItem('winbox-cfg-tab', 'profiles'); } catch { /* Storage may be disabled. */ } navigate('/config'); }}>管理配置档案</button></div>
     </AppModal>
   </>);
 }

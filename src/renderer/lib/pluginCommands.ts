@@ -57,14 +57,8 @@ export async function runPluginCommand(cmd: PluginActionSpec, confirm?: (message
     case 'navigate': {
       const path = UI_NAV_PATHS[cmd.to as keyof typeof UI_NAV_PATHS];
       if (!path) return { ok: false, message: '命令目标页非法' };
-      location.hash = `#${path}`;
-      if (cmd.section) {
-        // 配置页是卡片锚点：等路由渲染出来再滚过去（跳页动画期间元素还没挂）
-        window.setTimeout(() => {
-          const el = document.getElementById(`cfg-${cmd.section}`);
-          if (el) el.scrollIntoView({ block: 'center' });
-        }, 350);
-      }
+      const query = cmd.to === 'config' && cmd.section ? '?' + new URLSearchParams({ section: cmd.section }).toString() : '';
+      location.hash = `#${path}${query}`;
       return { ok: true, message: '已跳转' };
     }
     case 'set-theme': {

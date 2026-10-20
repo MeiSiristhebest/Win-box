@@ -7,18 +7,21 @@
 //   （会报 "Unable to preventDefault inside passive event listener"）。必须自己挂 non-passive 监听。
 // 边界释放：滚到两端后不再拦截 → 页面可继续上下滚动，避免「滚轮被行锁住出不去」。
 import { useEffect, useRef } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, ReactNode, RefObject, UIEventHandler } from 'react';
 
 export interface HScrollRowProps {
   className?: string;
   style?: CSSProperties;
   children: ReactNode;
+  scrollRef?: RefObject<HTMLDivElement | null>;
+  onScroll?: UIEventHandler<HTMLDivElement>;
   /** 滚轮灵敏度（deltaY → scrollLeft 的倍率） */
   step?: number;
 }
 
-export default function HScrollRow({ className, style, children, step = 1 }: HScrollRowProps) {
-  const ref = useRef<HTMLDivElement | null>(null);
+export default function HScrollRow({ className, style, children, step = 1, scrollRef, onScroll }: HScrollRowProps) {
+  const localRef = useRef<HTMLDivElement | null>(null);
+  const ref = scrollRef ?? localRef;
 
   useEffect(() => {
     const el = ref.current;
@@ -36,10 +39,10 @@ export default function HScrollRow({ className, style, children, step = 1 }: HSc
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [step]);
+  }, [step, ref]);
 
   return (
-    <div ref={ref} className={className} style={style}>
+    <div ref={ref} className={className} style={style} onScroll={onScroll}>
       {children}
     </div>
   );

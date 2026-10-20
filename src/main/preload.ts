@@ -1,3 +1,4 @@
+import type { UiScaleState } from '../shared/uiScale';
 // src/main/preload.ts — contextBridge 暴露 window.api
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcResult } from '../shared/ipc-result';
@@ -7,6 +8,7 @@ import type { SubtitleFetchResult } from '../shared/subtitle';
 import type { MetaSettings, MetaSettingsView, MetaSuggestion } from '../shared/meta';
 import type { UiPreferencesPatch, UiPreferencesSnapshot } from '../shared/uiPreferences';
 import type { ExploreQuery, ExplorePage, ExploreVocabulary } from '../shared/discover';
+import type { DiscoverBoardPage } from '../shared/discoverBoards';
 import type { PluginDialogReply, PluginDialogRequest } from '../shared/pluginDialog';
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<IpcResult<T>> =>
@@ -186,6 +188,7 @@ const api = {
   dav: {
     list: () => invoke(IPC.DAV_LIST),
     set: (s: unknown) => invoke(IPC.DAV_SET, s),
+    test: (s: unknown) => invoke(IPC.DAV_TEST, s),
     remove: (id: string) => invoke(IPC.DAV_REMOVE, id),
     browse: (a: { id: string; path?: string }) => invoke(IPC.DAV_BROWSE, a),
     openExternal: (url: string) => invoke(IPC.DAV_OPEN_EXTERNAL, url),
@@ -220,6 +223,7 @@ const api = {
     extra: (name: string, year?: string) => invoke<MetaExtra | null>(IPC.META_EXTRA, name, year),
     // ★ 发现页榜单（无源时的默认主页；refresh=true 绕过 6h 缓存）
     discover: (refresh?: boolean) => invoke<DiscoverSection[]>(IPC.META_DISCOVER, !!refresh),
+    boardPage: (id: string, page: number, refresh?: boolean) => invoke<DiscoverBoardPage>(IPC.META_BOARD_PAGE, id, page, !!refresh),
     movieHot: () => invoke(IPC.META_MOVIE_HOT),
     discoverImages: (name: string, mediaType: 'movie' | 'tv', year?: string, kind?: 'backdrop' | 'poster', doubanId?: string) => invoke<MetaImages>(IPC.META_DISCOVER_IMAGES, name, mediaType, year, kind, doubanId),
     // 发现页分类随当前榜单来源切换。
@@ -440,6 +444,11 @@ const api = {
   ui: {
     getScale: () => invoke(IPC.UI_GET_SCALE),
     setScale: (v: string) => invoke(IPC.UI_SET_SCALE, v),
+    onScaleChanged: (cb: (state: UiScaleState) => void) => {
+      const listener = (_event: unknown, state: UiScaleState) => cb(state);
+      ipcRenderer.on(IPC.UI_SCALE_CHANGED, listener);
+      return () => ipcRenderer.removeListener(IPC.UI_SCALE_CHANGED, listener);
+    },
   },
 };
 

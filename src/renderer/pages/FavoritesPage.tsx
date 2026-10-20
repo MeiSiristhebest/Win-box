@@ -1,3 +1,4 @@
+import PosterSizeControl from '../components/PosterSizeControl';
 // src/renderer/pages/FavoritesPage.tsx — 我的收藏（增删改查）：
 //   · 增：详情页「收藏」按钮（本页也能从卡片进详情后再收藏）；
 //   · 查：关键词搜索（片名/备注/来源）+ 按「订阅-源」分组筛选 + 排序（最近收藏 / 名称）；
@@ -9,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { client } from '../api/client';
 // ★ 2026-10-18 受限 UI 槽位（`contributes.ui.slot`）：宿主页面的槽位落点
 import PluginSlot from '../components/PluginSlot';
+import { useAppDialog } from '../components/AppDialog';
 import { useCovers } from '../lib/useCovers';
 import { openDetailRoute } from '../lib/detailWin';
 import { restoreHistorySource } from '../lib/historySource';
@@ -52,6 +54,7 @@ function subscribeFavorites(notify: () => void): () => void {
 function favoritesSnapshot(): string { return JSON.stringify(listFavoritesWithKeys()); }
 
 export default function FavoritesPage() {
+  const dialog = useAppDialog();
   const nav = useNavigate();
   const snapshot = useSyncExternalStore(subscribeFavorites, favoritesSnapshot);
   const rows = useMemo<Row[]>(() => (JSON.parse(snapshot) as ReturnType<typeof listFavoritesWithKeys>).map(({ key, item }) => ({ ...item, key })), [snapshot]);
@@ -130,7 +133,8 @@ export default function FavoritesPage() {
       }
   };
 
-  const clearAll = (): void => {
+  const clearAll = async (): Promise<void> => {
+    if (!(await dialog.confirm(`清空全部 ${rows.length} 条收藏？`, { title: '清空收藏', confirmLabel: '清空收藏', tone: 'danger' }))) return;
     clearFavorites();
     setLastDeleted(null);
     setEditing(null);
@@ -148,11 +152,12 @@ export default function FavoritesPage() {
 
   return (
     <>
-      <div className="topbar">
+      <div className="topbar gallery-page-topbar">
         <span style={{ fontWeight: 700 }}>我的收藏</span>
         <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
           {rows.length ? `${rows.length} 条${kw ? ` · 匹配 ${filtered.length} 条` : ''}` : '尚未收藏任何影片'}
         </span>
+        <PosterSizeControl />
         {rows.length > 0 && (
           <button className="linkbtn danger" style={{ marginLeft: 'auto' }} onClick={clearAll}>
             清空全部收藏
@@ -182,7 +187,7 @@ export default function FavoritesPage() {
 
       <div className="content hist-content">
         {rows.length === 0 ? (
-          <div className="empty" style={{ marginTop: 40 }}>暂无收藏 —— 在影片详情页点「收藏」即可加入这里</div>
+          <div className="empty"><h2>还没有收藏</h2><p>在影片详情页点击「收藏」，即可保存到这里。</p><button className="primary" onClick={() => nav('/home')}>浏览点播</button></div>
         ) : (
           <>
             <div className="quick-picks" style={{ alignItems: 'center' }}>
@@ -260,7 +265,7 @@ export default function FavoritesPage() {
                               {(it.sourceName || it.sourceKey) && (
                                 <span
                                   style={{
-                                    position: 'absolute', left: 6, top: 6, background: 'rgba(0,0,0,.62)', color: 'var(--accent)',
+                                    position: 'absolute', left: 6, top: 6, background: 'rgba(0,0,0,.62)', color: 'var(--on-media)',
                                     fontSize: 10, padding: '1px 7px', borderRadius: 999, maxWidth: '62%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                                   }}
                                   title={group.label}
@@ -293,13 +298,13 @@ export default function FavoritesPage() {
                                   value={editing.title}
                                   placeholder="显示名（留空用源片名）"
                                   onChange={(e) => setEditing({ ...editing, title: e.target.value })}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) saveEdit(); }}
                                 />
                                 <input
                                   value={editing.note}
                                   placeholder="备注 / 短评…"
                                   onChange={(e) => setEditing({ ...editing, note: e.target.value })}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) saveEdit(); }}
                                 />
                                 <div className="row" style={{ gap: 6 }}>
                                   <button className="primary" onClick={saveEdit}>保存</button>

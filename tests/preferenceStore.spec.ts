@@ -73,7 +73,7 @@ describe('renderer preference store', () => {
     await syncUiPreferencesFromMain();
 
     expect(calls).toEqual(['subscribe', 'get']);
-    expect(readPreference('winbox-theme')).toBe('douban');
+    expect(readPreference('winbox-theme')).toBe('light');
     expect(readPreference('winbox-motion')).toBe('off');
     expect(readPreference('winbox-show-discover')).toBe('0');
     expect(readPreference('winbox-waterfall')).toBe('1');
@@ -96,10 +96,10 @@ describe('renderer preference store', () => {
     receive?.({
       revision: 4,
       initialized: true,
-      values: { themeId: 'apple', motion: 'off', showDiscover: false, waterfall: true },
+      values: { themeId: 'dark', motion: 'off', showDiscover: false, waterfall: true },
     });
 
-    expect(readPreference('winbox-theme')).toBe('apple');
+    expect(readPreference('winbox-theme')).toBe('dark');
     expect(readPreference('winbox-motion')).toBe('off');
     expect(readPreference('winbox-show-discover')).toBe('0');
     expect(readPreference('winbox-waterfall')).toBe('1');
@@ -134,9 +134,9 @@ describe('renderer preference store', () => {
 
     await syncUiPreferencesFromMain();
     writePreference('winbox-theme', 'apple');
-    expect(readPreference('winbox-theme')).toBe('douban');
+    expect(readPreference('winbox-theme')).toBe('light');
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-    expect(readPreference('winbox-theme')).toBe('douban');
+    expect(readPreference('winbox-theme')).toBe('light');
   });
 });

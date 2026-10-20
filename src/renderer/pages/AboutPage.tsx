@@ -12,10 +12,8 @@ function openExternal(url: string) {
 export default function AboutPage() {
   return (
     <>
-      <div className="topbar" style={{ justifyContent: 'center' }}>
-        <h2 style={{ margin: 0, fontSize: 16 }}>关于 Win-Box</h2>
-      </div>
       <div className="content about">
+        <header className="page-heading"><div><h1>关于 Win-Box</h1><p>Windows 媒体源管理与播放工具</p></div></header>
         <section className="about-sec">
           <h3>功能</h3>
           <p>
