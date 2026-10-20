@@ -7,18 +7,21 @@ import {
   type BackupFile,
   type BackupSettingsState,
 } from '../../shared/backup';
-import { DEFAULT_UI_PREFERENCES, UI_THEME_IDS, validateUiPreferencesPatch, type UiPreferencesPatch } from '../../shared/uiPreferences';
+import { normalizePosterSize } from '../../shared/posterSize';
+import { normalizeTheme } from '../../shared/ui/themeTokens';
+import { validateUiPreferencesPatch, type UiPreferencesPatch } from '../../shared/uiPreferences';
 
 export function backupUiPreferences(renderer: Record<string, string>): UiPreferencesPatch {
   const theme = renderer['winbox-theme'];
   const motion = renderer['winbox-motion'];
   return validateUiPreferencesPatch({
-    themeId: theme && (UI_THEME_IDS.includes(theme) || /^plugin:[a-z0-9-]{3,40}$/.test(theme)) ? theme : DEFAULT_UI_PREFERENCES.themeId,
+    themeId: theme && /^plugin:[a-z0-9-]{3,40}$/.test(theme) ? theme : normalizeTheme(theme),
     motion: motion === 'on' || motion === 'off' ? motion : 'auto',
     showDiscover: renderer['winbox-show-discover'] !== '0',
     waterfall: renderer['winbox-waterfall'] === '1',
     homeFilters: renderer['winbox-home-filters'] === '1',
     navMode: renderer['winbox-nav-mode'] === 'window' ? 'window' : 'inline',
+    posterSize: normalizePosterSize(renderer['winbox-poster-size']),
   });
 }
 

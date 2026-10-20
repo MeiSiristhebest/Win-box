@@ -11,6 +11,7 @@ import type { MetaHit, MetaExtra, DiscoverItem, DiscoverSection, DiscoverGenre, 
 import type { MetaStore } from './MetaStore';
 import type { MetaSuggestion } from '../../shared/meta';
 import type { MetaImages } from '../../shared/types';
+import { BOARD_PAGE_SIZE, TMDB_BOARDS, normalizeBoardPage, type DiscoverBoardPage } from '../../shared/discoverBoards';
 
 const agent = createDohAgent();
 /** 内置默认 API 地址（用户可在配置页填「API 代理地址」覆盖） */
@@ -33,7 +34,9 @@ export interface TmdbRuntimeConfig {
   imageBase: string;
 }
 let rt: TmdbRuntimeConfig = { userKey: '', apiBase: '', imageBase: '' };
+let runtimeRevision = 0;
 export function setTmdbRuntime(next: Partial<TmdbRuntimeConfig>): void {
+  if (Object.entries(next).some(([key, value]) => rt[key as keyof TmdbRuntimeConfig] !== value)) runtimeRevision++;
   rt = { ...rt, ...next };
 }
 
@@ -754,6 +757,78 @@ export async function tmdbDiscover(logger: Logger, refresh = false): Promise<Dis
   })();
   discoverInflight = task.catch(() => [] as DiscoverSection[]).finally(() => { discoverInflight = null; });
   return discoverInflight;
+}
+
+const BOARD_PATHS: Readonly<Record<string, string>> = {
+  'movie-popular': '/movie/popular', 'movie-upcoming': '/movie/upcoming', 'movie-top': '/movie/top_rated',
+  'tv-popular': '/tv/popular', 'tv-top': '/tv/top_rated',
+  'movie-now-playing': '/movie/now_playing', 'tv-airing-today': '/tv/airing_today', 'tv-on-the-air': '/tv/on_the_air',
+};
+const boardPages = new Map<string, DiscoverBoardPage>();
+const boardInflight = new Map<string, Promise<DiscoverBoardPage>>();
+
+/** 榜单保留没有海报的项目，避免用封面完整程度改变列表顺序和数量。 */
+function tmdbBoardItems(json: { results?: unknown }, mediaType: 'movie' | 'tv'): DiscoverItem[] {
+  if (!Array.isArray(json.results)) throw new Error('TMDB 没有返回榜单内容');
+  return json.results.flatMap((raw): DiscoverItem[] => {
+    if (!raw || typeof raw !== 'object') return [];
+    const item = raw as Record<string, unknown>;
+    const title = String(item.title || item.name || '').trim();
+    if (!title) return [];
+    const year = String(item.release_date || item.first_air_date || '').match(/^\d{4}/)?.[0];
+    const rating = Number(item.vote_average);
+    const id = Number(item.id);
+    const path = typeof item.poster_path === 'string' && item.poster_path.startsWith('/') ? item.poster_path : '';
+    return [{ title, year: year ? Number(year) : '', mediaType,
+      poster: path ? `${IMG_PROXY}?u=${encodeURIComponent(tmdbImageBase() + path)}` : '',
+      ...(Number.isInteger(id) && id > 0 ? { tmdbId: id } : {}),
+      ...(Number.isFinite(rating) && rating > 0 && rating <= 10 ? { rating } : {}),
+    }];
+  });
+}
+
+export async function tmdbBoardPage(logger: Logger, id: string, requestedPage: number, refresh = false): Promise<DiscoverBoardPage> {
+  const board = TMDB_BOARDS.find(item => item.id === id);
+  if (!board) throw new Error('没有找到这个 TMDB 榜单');
+  const cred = tmdbCreds();
+  if (!cred) throw new Error('请先在“设置 → 凭据”中配置自己的 TMDB 凭据');
+  const page = normalizeBoardPage(requestedPage);
+  const key = `${runtimeRevision}:${id}:${page}`;
+  const old = boardPages.get(key);
+  if (!refresh && old && Date.now() - old.fetchedAt < DISCOVER_TTL_MS) return old;
+  const running = boardInflight.get(key);
+  if (running) return running;
+  const task = (async (): Promise<DiscoverBoardPage> => {
+    try {
+      const auth = authFor(`${tmdbApiBase()}${BOARD_PATHS[id]}?language=zh-CN&page=${page}`, cred);
+      const response = await getJson(auth.url, auth.bearer, 12000);
+      if (response.status !== 200) throw new Error(`TMDB 榜单请求失败（HTTP ${response.status}）`);
+      const json = JSON.parse(response.text);
+      const count = Number(json.total_results);
+      const pages = Number(json.total_pages);
+      const total = json.total_results != null && Number.isFinite(count) && count >= 0 ? Math.floor(count) : null;
+      const totalPages = json.total_pages != null && Number.isFinite(pages) && pages >= 0 ? Math.max(1, Math.min(500, Math.floor(pages))) : null;
+      const items = tmdbBoardItems(json, board.mediaType!);
+      const data: DiscoverBoardPage = { board, items, page, pageSize: BOARD_PAGE_SIZE, total, totalPages,
+        hasMore: items.length > 0 && page < 500 && (totalPages === null ? items.length >= BOARD_PAGE_SIZE : page < totalPages),
+        fetchedAt: Date.now(), stale: false,
+        ...(pages > 500 ? { notice: 'TMDB 接口最多支持浏览前 500 页；可前往原站继续查找。' } : {}),
+      };
+      boardPages.delete(key);
+      boardPages.set(key, data);
+      if (boardPages.size > 100) boardPages.delete(boardPages.keys().next().value!);
+      return data;
+    } catch (error) {
+      logger.w(`meta:榜单 ${id} 第 ${page} 页读取失败`);
+      if (old && Date.now() - old.fetchedAt < 30 * 86400000) return { ...old, stale: true, notice: '本次请求失败，正在显示上次成功加载的内容。' };
+      throw new Error(error instanceof Error && error.message.startsWith('TMDB 榜单请求失败')
+        ? error.message : '暂时无法读取 TMDB 榜单，请检查凭据、API 地址和网络');
+    } finally {
+      boardInflight.delete(key);
+    }
+  })();
+  boardInflight.set(key, task);
+  return task;
 }
 
 // ==================== 发现页「分类」浏览（★ 2026-09-24） ====================

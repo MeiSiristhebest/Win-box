@@ -28,13 +28,28 @@ import {
   type ExploreVocabulary,
 } from '../../shared/discover';
 import type { DiscoverItem, Logger } from '../../shared/types';
-import { doubanBreakerOpen, doubanJson, noteDoubanStatus } from './doubanProvider';
+import { doubanJson } from './doubanProvider';
 
 const B = 'https://m.douban.com/rexxar/api/v2';
 const IMG_PROXY = `${LOCAL_PROXY_BASE}/img`;
 const PAGE_SIZE = 20;
 /** 豆瓣 total 上限（接口自身封顶 500） */
 const MAX_TOTAL = 500;
+// 分类接口独立计数；封面搜索的 403 不会暂停分类浏览。
+const exploreBreakers = new Map<'movie' | 'tv', { failures: number; until: number }>();
+function exploreBlockedUntil(mediaType: 'movie' | 'tv'): number {
+  const until = exploreBreakers.get(mediaType)?.until || 0;
+  return Date.now() < until ? until : 0;
+}
+function noteExploreStatus(mediaType: 'movie' | 'tv', status: number): boolean {
+  if (status === 200) { exploreBreakers.delete(mediaType); return false; }
+  if (status !== 403 && status !== 429) return false;
+  const previous = exploreBreakers.get(mediaType);
+  const failures = (previous?.until && Date.now() >= previous.until ? 0 : previous?.failures || 0) + 1;
+  const until = failures >= 3 ? Date.now() + 10 * 60 * 1000 : 0;
+  exploreBreakers.set(mediaType, { failures, until });
+  return until > 0;
+}
 
 interface RawItem {
   id?: string | number;
@@ -130,27 +145,30 @@ const pageCache = new Map<string, { t: number; data: ExplorePage }>();
 
 /**
  * 取一页豆瓣分类浏览。403/429 走与「豆瓣兜底」同一套熔断（省得被风控拖死）。
- * 失败/熔断 → 空页（渲染层据此提示并回退榜单）。
+ * 失败原因传给渲染层；已加载列表在重试期间保留。
  */
 export async function doubanExplorePage(logger: Logger, q: ExploreQuery): Promise<ExplorePage> {
   const mediaType: 'movie' | 'tv' = q.mediaType === 'tv' ? 'tv' : 'movie';
-  const empty: ExplorePage = { items: [], start: Math.max(0, Number(q.start) || 0), total: 0, hasMore: false };
-  if (doubanBreakerOpen()) return empty;
   const url = buildExploreUrl(mediaType, q);
   const c = pageCache.get(url);
-  if (c && Date.now() - c.t < PAGE_TTL_MS) return c.data;
+  if (!q.refresh && c && Date.now() - c.t < PAGE_TTL_MS) return c.data;
+  const blockedUntil = exploreBlockedUntil(mediaType);
+  if (blockedUntil) throw new Error('豆瓣分类暂时限制访问，请约 ' + Math.ceil((blockedUntil - Date.now()) / 60000) + ' 分钟后重试');
   try {
     const resp = await doubanJson(url, 12000);
     if (resp.status !== 200) {
-      if (resp.status !== 0 && noteDoubanStatus(resp.status)) logger.w(`meta:豆瓣 分类浏览连续风控(status=${resp.status})，暂停豆瓣请求`);
-      return empty;
+      if (resp.status !== 0 && noteExploreStatus(mediaType, resp.status)) logger.w(`meta:豆瓣 分类浏览连续风控(status=${resp.status})，暂停豆瓣请求`);
+      throw new Error(resp.status === 0 ? '豆瓣分类连接超时或网络不可用，请稍后重试' : '豆瓣分类请求失败（HTTP ' + resp.status + '），请稍后重试');
     }
-    noteDoubanStatus(200);
-    const json = JSON.parse(resp.text) as { total?: unknown; start?: unknown };
+    noteExploreStatus(mediaType, 200);
+    const json = JSON.parse(resp.text) as { total?: unknown; start?: unknown; items?: unknown };
+    if (!Array.isArray(json.items)) throw new Error('豆瓣分类返回的数据不完整，请稍后重试');
     const items = parseDoubanExplore(json, mediaType);
     const start = Math.max(0, Number(json?.start) || Number(q.start) || 0);
     const total = Math.max(0, Number(json?.total) || 0);
-    const data: ExplorePage = { items, start, total, hasMore: items.length > 0 && start + items.length < Math.min(total, MAX_TOTAL) };
+    const rawCount = Array.isArray(json.items) ? json.items.length : 0;
+    const nextStart = Math.min(MAX_TOTAL, start + rawCount);
+    const data: ExplorePage = { items, start, nextStart, total, hasMore: rawCount > 0 && nextStart < Math.min(total, MAX_TOTAL) };
     if (pageCache.size >= 200) {
       const first = pageCache.keys().next().value;
       if (first !== undefined) pageCache.delete(first);
@@ -159,7 +177,7 @@ export async function doubanExplorePage(logger: Logger, q: ExploreQuery): Promis
     return data;
   } catch (e) {
     logger.w(`meta:豆瓣 分类浏览失败: ${(e as Error).message}`);
-    return empty;
+    throw e;
   }
 }
 
@@ -169,14 +187,14 @@ let vocabCache: { t: number; data: ExploreVocabulary } | null = null;
 /** 豆瓣在线词表（类型/地区/排序），24h 内存缓存；任一路失败即回退内置快照 */
 export async function doubanExploreVocabulary(logger: Logger): Promise<ExploreVocabulary> {
   if (vocabCache && Date.now() - vocabCache.t < VOCAB_TTL_MS) return vocabCache.data;
-  if (doubanBreakerOpen()) return { ...BUILTIN_VOCAB_LOCAL, source: 'builtin' };
   const one = async (mediaType: 'movie' | 'tv'): Promise<ExploreVocab | null> => {
+    if (exploreBlockedUntil(mediaType)) return null;
     const resp = await doubanJson(buildExploreUrl(mediaType, { mediaType, tags: [], count: 1, start: 0 }), 10000);
     if (resp.status !== 200) {
-      if (resp.status !== 0 && noteDoubanStatus(resp.status)) logger.w(`meta:豆瓣 词表连续风控(status=${resp.status})`);
+      if (resp.status !== 0 && noteExploreStatus(mediaType, resp.status)) logger.w(`meta:豆瓣 词表连续风控(status=${resp.status})`);
       return null;
     }
-    noteDoubanStatus(200);
+    noteExploreStatus(mediaType, 200);
     try { return parseDoubanVocab(JSON.parse(resp.text), mediaType); } catch { return null; }
   };
   try {
@@ -220,5 +238,6 @@ const BUILTIN_VOCAB_LOCAL: ExploreVocabulary = {
 /** 测试用：清空内存缓存 */
 export function __resetDoubanExploreForTest(): void {
   pageCache.clear();
+  exploreBreakers.clear();
   vocabCache = null;
 }

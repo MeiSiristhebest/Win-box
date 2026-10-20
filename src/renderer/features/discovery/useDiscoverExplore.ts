@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { client } from '../../api/client';
-import { ALL_TAG, DISCOVER_MEDIA, type DiscoverMediaId, type ExploreVocabulary } from '../../../shared/discover';
+import { useLocation } from 'react-router-dom';
+import { usePageActive } from '../../lib/keepAlive';
+import { ALL_TAG, BUILTIN_VOCAB, DISCOVER_MEDIA, type DiscoverMediaId, type ExploreVocabulary } from '../../../shared/discover';
 import type { DiscoverItem } from '../../../shared/types';
 import type { CascadeLevel, CascadeOption } from '../../components/CascadeBar';
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 40;
 const MAX_TOTAL = 500;
 
 export function useDiscoverExplore(load: () => void) {
-  const [vocab, setVocab] = useState<ExploreVocabulary | null>(null);
+  const [vocab, setVocab] = useState<ExploreVocabulary>(BUILTIN_VOCAB);
   /** 一级「分类」：null = 未选（此时展示榜单） */
   const [media, setMedia] = useState<DiscoverMediaId | null>(null);
   /** 各维度已选值（维度名 → 选项文本；`全部` = 不参与筛选）；缺失 = 该级未选、不展开下级 */
@@ -18,9 +20,25 @@ export function useDiscoverExplore(load: () => void) {
   const [total, setTotal] = useState(0);
   const [bLoading, setBLoading] = useState(false);
   const [bErr, setBErr] = useState('');
+  const [errorPhase, setErrorPhase] = useState<'initial' | 'more' | 'refresh'>('initial');
   const reqRef = useRef(0);
+  const itemsRef = useRef<DiscoverItem[]>([]);
+  const cursor = useRef({ key: '', next: 0, count: 0, loading: false });
+  const [hasMore, setHasMore] = useState(false);
 
-  const mediaOpt = DISCOVER_MEDIA.find(m => m.id === media) || null;
+  const [format, setFormat] = useState<'movie' | 'tv'>('tv');
+  const location = useLocation();
+  const active = usePageActive();
+  const appliedLocation = useRef('');
+  const requestedMedia = DISCOVER_MEDIA.find(option => option.id === new URLSearchParams(location.search).get('media'))?.id;
+  useEffect(() => {
+    const destination = location.key + location.pathname + location.search;
+    if (!active || location.pathname !== '/' || !requestedMedia || appliedLocation.current === destination) return;
+    appliedLocation.current = destination;
+    setMedia(requestedMedia); setDims({}); setFormat('tv');
+  }, [active, location.pathname, location.search, location.key, requestedMedia]);
+  const baseMediaOpt = DISCOVER_MEDIA.find(m => m.id === media) || null;
+  const mediaOpt = baseMediaOpt?.formats ? { ...baseMediaOpt, mediaType: format } : baseMediaOpt;
   const mediaType: 'movie' | 'tv' = mediaOpt?.mediaType || 'movie';
   useEffect(() => {
     let alive = true;
@@ -34,59 +52,94 @@ export function useDiscoverExplore(load: () => void) {
   }, []);
   /** 当前分类可用的维度（综艺没有「类型」——它本身就是类型） */
   const dimensions = useMemo(() => {
-    if (!vocab || !media) return [];
-    if (media === 'movie') return vocab.movie.dimensions;
-    if (media === 'tv') return vocab.tv.dimensions;
-    return vocab.tv.dimensions.filter(d => d.key !== '类型');
-  }, [vocab, media]);
-  const sorts = media === 'tv' || media === 'variety' ? vocab?.tv.sorts : vocab?.movie.sorts;
+    if (!media) return [];
+    const available = vocab[mediaType].dimensions;
+    return media === 'movie' || media === 'tv' ? available : available.filter(d => d.key !== '类型');
+  }, [vocab, media, mediaType]);
+  const sorts = vocab[mediaType].sorts;
 
   /** 当前选择对应的豆瓣 tags（跳过「全部」） */
   const tagsOf = (sel: Record<string, string>): string[] =>
     [mediaOpt?.baseTag || '', ...Object.values(sel).filter(v => v && v !== ALL_TAG)].filter(Boolean);
 
-  const fetchPage = (pg: number, sel = dims): void => {
-    if (!media || !mediaOpt) return;
+  const queryKey = (sel: Record<string, string>): string => JSON.stringify([mediaType, tagsOf(sel), sortId]);
+  const fetchPage = (pg: number, sel = dims, append = false): void => {
+    if (!active || !media || !mediaOpt) return;
+    const key = queryKey(sel);
+    if (cursor.current.loading && cursor.current.key === key) return;
+    const previous = { ...cursor.current };
+    const preserving = !append && previous.key === key && previous.count > 0;
+    const start = append ? cursor.current.next : (pg - 1) * PAGE_SIZE;
     const id = ++reqRef.current;
-    setBLoading(true);
-    setBErr('');
-    client
-      .metaDiscoverQuery({
-        mediaType,
-        tags: tagsOf(sel),
-        ...(sortId ? { sort: sortId } : {}),
-        start: (pg - 1) * PAGE_SIZE,
-        count: PAGE_SIZE,
-      })
-      .then((r) => {
+    cursor.current = { ...cursor.current, key, next: start, loading: true };
+    setBLoading(true); setBErr(''); setErrorPhase(preserving ? 'refresh' : append ? 'more' : 'initial');
+    void (async () => {
+      let next = start;
+      let accumulated = append ? [...itemsRef.current] : [];
+      const target = accumulated.length + PAGE_SIZE;
+      let latestTotal = total;
+      let more = true;
+      try {
+        for (let read = 0; read < 6 && accumulated.length < target && more; read++) {
+          if (id !== reqRef.current) return;
+          const count = Math.min(PAGE_SIZE, target - accumulated.length);
+          const result = await client.metaDiscoverQuery({ mediaType, tags: tagsOf(sel), ...(sortId ? { sort: sortId } : {}), start: next, count, ...(preserving ? { refresh: true } : {}) });
+          if (id !== reqRef.current) return;
+          const seen = new Set<string>();
+          accumulated = [...accumulated, ...result.items].filter(item => {
+            const identity = String(item.doubanId || item.tmdbId || item.mediaType + ':' + item.title + ':' + item.year);
+            if (seen.has(identity)) return false; seen.add(identity); return true;
+          });
+          const previousStart = next;
+          next = result.nextStart ?? next + count;
+          latestTotal = result.total;
+          more = result.hasMore && next > previousStart && next < MAX_TOTAL;
+          if (!preserving) {
+            itemsRef.current = accumulated; setItems(accumulated);
+            cursor.current = { key, next, count: accumulated.length, loading: true };
+            setTotal(latestTotal); setPage(pg); setHasMore(more);
+          }
+        }
         if (id !== reqRef.current) return;
-        setItems(r.items);
-        setTotal(r.total);
-        setPage(pg);
-        if (r.items.length === 0) setBErr('该组合暂无结果，可放宽「类型 / 地区 / 年代」，或换一种「排序」再试');
-      })
-      .catch(() => { if (id === reqRef.current) { setItems([]); setBErr('豆瓣分类请求失败，请稍后重试'); } })
-      .finally(() => { if (id === reqRef.current) setBLoading(false); });
+        itemsRef.current = accumulated; setItems(accumulated);
+        cursor.current = { key, next, count: accumulated.length, loading: false };
+        setTotal(latestTotal); setPage(pg); setHasMore(more);
+        if (!accumulated.length) setBErr('该分类暂无内容，可调整筛选后重试');
+      } catch (error: unknown) {
+        if (id !== reqRef.current) return;
+        if (preserving) cursor.current = { ...previous, loading: false };
+        setBErr(error instanceof Error ? error.message : '暂时无法加载分类内容');
+      } finally {
+        if (id === reqRef.current) { cursor.current.loading = false; setBLoading(false); }
+      }
+    })();
   };
+  const loadMore = (): void => { if (hasMore && !bLoading) fetchPage(page + 1, dims, true); };
+  const retryPage = (): void => { if (errorPhase === 'refresh') fetchPage(1); else if (itemsRef.current.length) fetchPage(page + 1, dims, true); else fetchPage(1); };
 
-  /** 筛选变化 → 从第 1 页重取（★ 逐级点击才走到这里：每级选定都会即时出结果） */
   useEffect(() => {
+    if (!active) { ++reqRef.current; cursor.current.loading = false; setBLoading(false); return; }
     if (!media) {
-      ++reqRef.current;
-      setItems([]); setPage(1); setTotal(0); setBErr(''); setBLoading(false);
-      return;
+      ++reqRef.current; itemsRef.current = []; cursor.current = { key: '', next: 0, count: 0, loading: false };
+      setItems([]); setPage(1); setTotal(0); setBErr(''); setBLoading(false); setHasMore(false); return;
     }
+    const key = queryKey(dims);
+    if (cursor.current.key === key && (cursor.current.count > 0 || cursor.current.loading)) return;
+    ++reqRef.current; itemsRef.current = []; cursor.current = { key, next: 0, count: 0, loading: false };
+    setItems([]); setPage(1); setTotal(0); setHasMore(false);
     fetchPage(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [media, dims, sortId]);
+  }, [media, format, dims, sortId, active]);
 
   /** 级联点选：同级再点 = 取消（同时清掉其下各维度，保证「上级一变，下级重来」） */
   const onPick = (levelKey: string, id: string): void => {
     if (levelKey === 'media') {
       setMedia(media === id ? null : id as DiscoverMediaId);
       setDims({});
+      setFormat('tv');
       return;
     }
+    if (levelKey === 'format' && (id === 'movie' || id === 'tv')) { setFormat(id); setDims({}); return; }
     if (levelKey === 'sort') { setSortId(id); return; }
     const order: string[] = dimensions.map(d => d.key);
     const idx = order.indexOf(levelKey);
@@ -107,6 +160,7 @@ export function useDiscoverExplore(load: () => void) {
   /** 级联各级：**只把该出现的级放进来**（上一级选定后才出现），即「点击后才展开下级分类」 */
   const levels: CascadeLevel[] = [{ key: 'media', label: '分类', value: media, options: DISCOVER_MEDIA.map(m => ({ id: m.id, label: m.name })) }];
   {
+    if (mediaOpt?.formats) levels.push({ key: 'format', label: '形式', value: format, options: mediaOpt.formats.map(id => ({ id, label: id === 'movie' ? '电影' : '剧集' })) });
     let prevChosen = media !== null;
     for (const d of dimensions) {
       if (!prevChosen) break;
@@ -129,6 +183,7 @@ export function useDiscoverExplore(load: () => void) {
   const summary = ((): string => {
     if (!mediaOpt) return '';
     const parts = [mediaOpt.name];
+    if (mediaOpt.formats) parts.push(mediaType === 'movie' ? '电影' : '剧集');
     for (const d of dimensions) {
       const v = dims[d.key];
       if (v !== undefined) parts.push(v === ALL_TAG ? `全部${d.label}` : v);
@@ -140,5 +195,5 @@ export function useDiscoverExplore(load: () => void) {
 
   const totalPages = Math.max(1, Math.ceil(Math.min(total, MAX_TOTAL) / PAGE_SIZE));
 
-  return { media, mediaOpt, items, page, totalPages, loading: bLoading, error: bErr, levels, summary, onPick, fetchPage, backToRecommend };
+  return { media, mediaOpt, items, page, totalPages, total, hasMore, loading: bLoading, error: bErr, errorPhase, levels, summary, onPick, fetchPage, loadMore, retryPage, refreshPage: () => fetchPage(1), backToRecommend };
 }

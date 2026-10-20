@@ -64,6 +64,7 @@ const packed = await packager({
   buildVersion: version.split('-')[0],
   platform: 'win32',
   arch: 'x64',
+  electronZipDir: process.env.WINBOX_ELECTRON_ZIP_DIR?.trim() || undefined,
   out: stagingDir,
   overwrite: true,
   prune: true,

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from './ui/Button';
 
 type DialogTone = 'default' | 'danger';
@@ -93,7 +94,7 @@ export function AppModal({
   }, [open, initialFocusRef]);
 
   // Native dialog backdrop clicks are reported on the dialog element. Keyboard closing uses `cancel`.
-  return (
+  return createPortal(
     // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- native dialog backdrop clicks are reported on this element; keyboard closing uses cancel
     <dialog
       ref={dialogRef}
@@ -115,7 +116,8 @@ export function AppModal({
       }}
     >
       {children}
-    </dialog>
+    </dialog>,
+    document.body,
   );
 }
 

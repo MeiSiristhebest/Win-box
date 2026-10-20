@@ -75,7 +75,7 @@ export function SkipSegmentsControl({
               placeholder="0"
               value={draft.intro}
               onChange={(event) => onDraftChange({ ...draft, intro: event.target.value })}
-              onKeyDown={(event) => { if (event.key === 'Enter') onSave(); }}
+              onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) onSave(); }}
             />
             <span className="muted" style={{ fontSize: 11 }}>秒（起播即跳到）</span>
           </div>
@@ -90,7 +90,7 @@ export function SkipSegmentsControl({
               placeholder="0"
               value={draft.outro}
               onChange={(event) => onDraftChange({ ...draft, outro: event.target.value })}
-              onKeyDown={(event) => { if (event.key === 'Enter') onSave(); }}
+              onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) onSave(); }}
             />
             <span className="muted" style={{ fontSize: 11 }}>秒（剩这么多秒跳下一集）</span>
           </div>

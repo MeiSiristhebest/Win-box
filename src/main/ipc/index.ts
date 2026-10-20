@@ -111,8 +111,8 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   };
 
   // 自定义无边框窗口控制
-  ipcMain.handle(IPC.WIN_MINIMIZE, (e) => winOf(e)?.minimize());
-  ipcMain.handle(IPC.WIN_MAXIMIZE, (e) => {
+  registerHandler(IPC.WIN_MINIMIZE, (e: IpcMainInvokeEvent) => winOf(e)?.minimize(), log);
+  registerHandler(IPC.WIN_MAXIMIZE, (e: IpcMainInvokeEvent) => {
     const w = winOf(e);
     if (!w) return;
     // Transparent player windows can report false from isFullScreen() on Windows;
@@ -120,9 +120,9 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
     if (isPlayerWindow(w) && playerIsFullscreen()) { void playerSetFullscreen(false); return; }
     if (w.isMaximized()) w.unmaximize();
     else w.maximize();
-  });
-  ipcMain.handle(IPC.WIN_CLOSE, (e) => winOf(e)?.close());
-  ipcMain.handle(IPC.WIN_IS_MAXIMIZED, (e) => !!winOf(e)?.isMaximized());
+  }, log);
+  registerHandler(IPC.WIN_CLOSE, (e: IpcMainInvokeEvent) => winOf(e)?.close(), log);
+  registerHandler(IPC.WIN_IS_MAXIMIZED, (e: IpcMainInvokeEvent) => !!winOf(e)?.isMaximized(), log);
   /**
    * ★ 2026-09-30（用户要求）：播放器「置顶」按钮 —— 把**发起窗口**设为始终置顶。
    *   level 用 'floating'（HWND_TOPMOST 语义：压过所有普通窗口，但不与任务栏/系统 UI 抢层级）。
@@ -286,6 +286,7 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   // ★ 2026-09-24：详情页增强（演职员/类型/相关推荐）与发现页榜单（无源默认主页）
   registerHandler(IPC.META_EXTRA, (_e: any, name: string, year?: string) => host.metaExtra(String(name || ''), year ? String(year) : undefined), log);
   registerHandler(IPC.META_DISCOVER, (_e: any, refresh?: boolean) => host.metaDiscover(!!refresh), log);
+  registerHandler(IPC.META_BOARD_PAGE, (_e: any, id: string, page: number, refresh?: boolean) => host.metaBoardPage(String(id || ''), Number(page), !!refresh), log);
   registerHandler(IPC.META_MOVIE_HOT, () => host.metaMovieHot(), log);
   registerHandler(IPC.META_DISCOVER_IMAGES, (_e: any, name: string, mediaType: string, year?: string, kind?: string, doubanId?: string) =>
     host.metaDiscoverImages(String(name || ''), mediaType === 'tv' ? 'tv' : 'movie', /^\d{4}$/.test(String(year)) ? String(year) : undefined, kind === 'poster' ? 'poster' : 'backdrop', /^\d{5,}$/.test(String(doubanId || '')) ? String(doubanId) : undefined), log);
@@ -822,6 +823,7 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   // ★ 2026-09-29 WebDAV 存储（只读）：服务器管理 + 目录浏览；取流走 `/play?dav=<id>`（中继注入 Authorization）
   registerHandler(IPC.DAV_LIST, () => dav.list(), log);
   registerHandler(IPC.DAV_SET, (_e: any, s: DavServer) => dav.set(s || ({} as DavServer)), log);
+  registerHandler(IPC.DAV_TEST, (_e: any, s: DavServer) => dav.test(s || ({} as DavServer)), log);
   registerHandler(IPC.DAV_REMOVE, (_e: any, id: string) => {
     dav.remove(String(id || ''));
   }, log);
@@ -849,8 +851,8 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
 
   // ★ 2026-09-29 启动更新：检查（失败不影响使用）→ 用户确认后代理加速下载 Setup（进度推送）→ 拉起安装程序
   registerHandler(IPC.UPDATE_CHECK, () => updater.check(), log);
-  // ★ 2026-10-16（用户要求）：界面缩放 —— 读当前状态 / 改档位（改档位时主进程立即套用并重排窗口尺寸）
-  registerHandler(IPC.UI_GET_SCALE, () => uiScaleState(), log);
+  // ★ 2026-10-16（用户要求）：界面缩放：读取当前窗口状态，更新所有应用窗口的文字与控件缩放
+  registerHandler(IPC.UI_GET_SCALE, (event: Electron.IpcMainInvokeEvent) => uiScaleState(BrowserWindow.fromWebContents(event.sender)), log);
   registerHandler(IPC.UI_SET_SCALE, (_e: unknown, v: unknown) => setUiScalePref(v), log);
   registerHandler(IPC.UPDATE_DOWNLOAD, async () => {
     const push = (p: UpdateProgress): void => {

@@ -39,7 +39,7 @@ function getMetaSettings(forceRefresh = false): Promise<{ key: string; hasTmdb: 
 }
 
 /** 所有页面共用封面链路，始终保留原始源图，不把补图写回来源或历史。 */
-export function useCovers(items: CoverItem[], enabled = true) {
+export function useCovers(items: CoverItem[], enabled = true, sourceFirst = false) {
   const [settings, setSettings] = useState<{ key: string; hasTmdb: boolean } | null>(null);
   const [, setCoverRevision] = useState(0);
   const [failed, setFailed] = useState<Record<string, string[]>>({});
@@ -90,6 +90,8 @@ export function useCovers(items: CoverItem[], enabled = true) {
     for (const item of stableItems) {
       const key = JSON.stringify([settings.key, item.id, item.name, item.year, item.pic]);
       if (covers.current.has(key)) continue;
+      // 发现列表保留来源海报，由 img 的原生懒加载决定何时请求。
+      if (sourceFirst && item.pic?.trim() && !failed[key]?.includes(item.pic.trim())) continue;
       void enqueue(async () => {
         if (!alive) return;
         const cover = await resolveCover(item, {
@@ -102,6 +104,7 @@ export function useCovers(items: CoverItem[], enabled = true) {
               job = client.metaSearch(item.name, item.year, provider).then(hit => hit?.poster || '').catch(() => '');
               if (queries.size >= 500) queries.delete(queries.keys().next().value!);
               queries.set(queryKey, job);
+              void job.then(poster => { if (!poster && queries.get(queryKey) === job) queries.delete(queryKey); });
             }
             return job;
           },
@@ -120,8 +123,10 @@ export function useCovers(items: CoverItem[], enabled = true) {
     return () => { alive = false; };
     // 完成结果不重启批次，避免仍在处理的队列被取消。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stableItems, settings, enabled, failed, publishCoverBatch]);
+  }, [stableItems, settings, enabled, sourceFirst, failed, publishCoverBatch]);
+  const refresh = useCallback(() => { covers.current.clear(); setFailed({}); }, []);
   return {
+    refresh,
     picOf: (item: CoverItem): string => {
       const key = itemKey(item);
       const source = item.pic?.trim() || '';
@@ -130,7 +135,7 @@ export function useCovers(items: CoverItem[], enabled = true) {
     onError: (item: CoverItem, url: string): void => {
       const key = itemKey(item);
       if (failed[key]?.includes(url)) return;
-      setFailed(prev => ({ ...prev, [key]: [...(prev[key] || []), url] }));
+      setFailed(prev => prev[key]?.includes(url) ? prev : ({ ...prev, [key]: [...(prev[key] || []), url] }));
       covers.current.delete(key);
     },
   };

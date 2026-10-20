@@ -18,8 +18,8 @@
   --accent-2: #5e5ce6;
   /* ===== 文本 ===== */
   --text: #1d1d1f;
-  --text-dim: #6e6e73;
-  --text-faint: #aeaeb2;
+  --text-dim: #606065;
+  --text-faint: #606065;
   /* ===== 分隔与语义色 ===== */
   --border: rgba(60, 60, 67, .16);
   --border-soft: rgba(60, 60, 67, .1);
@@ -35,5 +35,5 @@
 }
 
 @layer tokens {
-  :root[data-theme='apple'] { --on-accent: #00264c; }
+  :root[data-theme='apple'] { --on-accent: #001326; }
 }

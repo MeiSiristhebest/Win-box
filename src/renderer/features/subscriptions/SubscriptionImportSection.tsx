@@ -19,20 +19,20 @@ export function SubscriptionImportSection({ active, flow, error, notice, onError
 
   return (
     <>
-      {job && jobHidden && (
+      {active && job && jobHidden && (
         <button className='linkbtn' onClick={() => flow.setJobHidden(false)}>显示导入进度</button>
       )}
-      {job && !jobHidden && (
+      {active && job && !jobHidden && (
         <output className='card' aria-live='polite' style={{ display: 'block', padding: 12, marginBottom: 16 }}>
           <div className='row' style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>{job.name || job.url}</strong>
+            <strong style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{job.name || job.url}</strong>
             <span>{job.state === 'resolving' ? '读取清单' : job.state === 'running' ? '导入中' : job.state === 'completed' ? '已完成' : job.state === 'partial' ? '部分完成' : job.state === 'cancelled' ? '已取消' : job.state === 'interrupted' ? '已中断' : '失败'}</span>
           </div>
           <div className='muted' style={{ marginTop: 4 }}>
             完成 {job.completed}/{job.total}，成功 {job.succeeded}，失败 {job.failed}，待处理 {job.pending}
             {job.currentName ? '；当前：' + job.currentName : ''}
           </div>
-          {job.message && <div style={{ marginTop: 4, fontSize: 12, overflowWrap: 'anywhere' }}>{job.message}</div>}
+          {job.message && <details className='import-report-details'><summary>查看导入报告与失败原因</summary><p>{job.message}</p></details>}
           <div className='row' style={{ marginTop: 8 }}>
             {importRunning && <button onClick={() => void flow.cancelImport()}>取消导入</button>}
             {job.state === 'interrupted' && <button disabled={busy} onClick={() => void flow.resumeInterruptedImport()}>恢复中断任务</button>}
@@ -45,51 +45,53 @@ export function SubscriptionImportSection({ active, flow, error, notice, onError
 
       {active && (
         <>
-          <div className='card' id='cfg-import' style={{ padding: 12, marginBottom: 16 }}>
-            <div className='row' style={{ marginBottom: 10 }}>
-              <input
-                style={{ width: 170, flex: '0 0 170px' }}
-                placeholder='订阅名称（可选）'
+          <div className='card' id='cfg-import' style={{ padding: 20, marginBottom: 20 }}>
+            <div className='import-heading'><h3>导入订阅</h3><p>支持单仓、多仓和直播配置，多仓会自动分组保存。</p></div>
+            <div className='import-fields'>
+              <label>名称（可选）<input
+                placeholder='自动读取订阅名称'
                 value={flow.name}
                 onChange={(event) => flow.setName(event.target.value)}
-              />
-              <input
-                style={{ flex: 1, minWidth: 260 }}
-                placeholder='配置地址（http(s)://…）'
+              /></label>
+              <label>配置地址<input
+                aria-label='配置地址'
+                placeholder='https://…'
                 value={flow.url}
                 onChange={(event) => flow.setUrl(event.target.value)}
-              />
+              /></label>
+            </div>
+            <div className='import-actions'>
               <button
                 className='primary'
                 disabled={busy || importRunning || !flow.url.trim()}
                 onClick={() => void flow.importUrl()}
                 title='多仓地址会建立订阅组，每个子仓单独保存为配置档案。超大清单分批处理，完成后可继续待处理项。地址尾加 #line=N 可单独导入一条线路。'
               >
-                {busy ? '导入中…' : '从地址导入'}
+                {busy ? '导入中…' : '导入订阅'}
               </button>
+              <span className='muted'>可查看进度、取消或重试失败项。</span>
             </div>
-            <div className='muted' style={{ fontSize: 12, margin: '-4px 0 10px' }}>
-              多仓地址会自动导入并分组保存。大清单分批处理；进度卡片可取消、重试失败项或继续待处理项。
-            </div>
-            <div className='row' style={{ marginTop: 4 }}>
-              <button disabled={busy || importRunning} onClick={() => void flow.importJsonLocal()}>导入本地 .json 文件</button>
-              <button disabled={busy || importRunning} onClick={() => void flow.importPyLocal()}>导入本地 .py 文件</button>
+            <details className='import-other'><summary>从本地文件导入</summary><div className='row'>
+              <button disabled={busy || importRunning} onClick={() => void flow.importJsonLocal()}>JSON 文件</button>
+              <button disabled={busy || importRunning} onClick={() => void flow.importPyLocal()}>Python 文件</button>
               <button disabled={busy || importRunning} onClick={() => void flow.importPackage()} title='可选择仅含 .py 文件的文件夹，自动在应用副本中生成订阅 JSON'>导入本地包</button>
               <button disabled={busy || importRunning} onClick={() => void flow.importLiveLocal()} title='选择本地 .txt / .m3u / .m3u8 直播源文件；导入后到「直播」页顶部线路下拉切换'>导入直播源（TXT / M3U）</button>
-            </div>
-            {notice && <div className='status' style={{ marginBottom: 8 }}>✅ {notice}</div>}
-            {error && <div className='err' style={{ marginBottom: 8 }}>操作失败：{error}</div>}
-            {flow.warnings.length > 0 && <div className='banner'>⚠ {flow.warnings.join('；')}</div>}
+            </div></details>
+            {notice && <output className='status' style={{ display: 'block', marginTop: 12 }}>{notice}</output>}
+            {error && <div className='err' role='alert' style={{ marginBottom: 8 }}>操作失败：{error}</div>}
+            {flow.warnings.length > 0 && <div className='banner'>{flow.warnings.join('；')}</div>}
             {flow.report && (
               <div className='status'>
-                最近一次导入：共 {flow.report.total} 条 —— ✅ {flow.report.ok} · ⏭ {flow.report.skipped} · ⚠️ {flow.report.degraded}
+                最近一次导入：{flow.report.total} 条 · 成功 {flow.report.ok} · 跳过 {flow.report.skipped} · 降级 {flow.report.degraded}
               </div>
             )}
           </div>
 
           {flow.report && flow.report.items.length > 0 && (
-            <div style={{ marginBottom: 16 }}>
-              <h4 style={{ margin: '0 0 8px' }}>导入诊断（最近一次）</h4>
+            <details className='import-diagnostics' style={{ marginBottom: 16 }}>
+              <summary>最近一次导入诊断（{flow.report.items.length} 条）</summary>
+              {/* oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- The scroll region needs focus for keyboard scrolling. */}
+              <section className='table-scroll' aria-label='导入诊断' tabIndex={0}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ color: 'var(--text-dim)', textAlign: 'left' }}>
@@ -108,15 +110,16 @@ export function SubscriptionImportSection({ active, flow, error, notice, onError
                       <td style={{ padding: 6, borderBottom: '1px solid var(--border)' }}>{item.type}</td>
                       <td style={{ padding: 6, borderBottom: '1px solid var(--border)' }}>
                         {item.status === 'OK'
-                          ? <span style={{ color: 'var(--accent-2)' }}>可用</span>
-                          : <span style={{ color: 'var(--warn)' }} title={item.message}>{item.message}</span>}
+                          ? <span style={{ color: 'var(--text-success)' }}>可用</span>
+                          : <span style={{ color: 'var(--text-warn)' }} title={item.message}>{item.message}</span>}
                       </td>
                       <td style={{ padding: 6, borderBottom: '1px solid var(--border)', color: 'var(--text-dim)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.api}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
+              </section>
+            </details>
           )}
         </>
       )}
@@ -145,7 +148,7 @@ export function SubscriptionImportSection({ active, flow, error, notice, onError
             aria-label='生成的 JSON 文件名'
             placeholder='例如：我的 Python 源'
             onChange={(event) => { onErrorClear(); flow.setPackageNamePrompt({ ...flow.packageNamePrompt!, name: event.target.value }); }}
-            onKeyDown={(event) => { if (event.key === 'Enter') void flow.confirmPackageName(); }}
+            onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) void flow.confirmPackageName(); }}
             className='app-dialog-input'
           />
           {error && <div role='alert' className='err app-dialog-error'>{error}</div>}
@@ -182,7 +185,7 @@ export function SubscriptionImportSection({ active, flow, error, notice, onError
             aria-label='直播线路名称'
             placeholder='例如：我的直播源'
             onChange={(event) => { onErrorClear(); flow.setLiveNamePrompt({ ...flow.liveNamePrompt!, name: event.target.value }); }}
-            onKeyDown={(event) => { if (event.key === 'Enter') void flow.confirmLiveName(); }}
+            onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) void flow.confirmLiveName(); }}
             className='app-dialog-input'
           />
           {error && <div role='alert' className='err app-dialog-error'>{error}</div>}

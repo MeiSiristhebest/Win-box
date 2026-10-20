@@ -47,6 +47,21 @@ export class DavService {
   async browse(id: string, path = '/'): Promise<DavBrowseResult> {
     const server = this.store.get(id);
     if (!server) throw new Error('该 WebDAV 服务器不存在（可能已被删除）');
+    return this.browseServer(server, path);
+  }
+
+  /** Check draft credentials without adding or updating a saved server. */
+  async test(server: DavServer): Promise<DavBrowseResult> {
+    const url = String(server?.url || '').trim();
+    if (!url) throw new Error('服务器地址不能为空');
+    if (!/^https?:\/\//i.test(url)) throw new Error('服务器地址需以 http:// 或 https:// 开头');
+    return this.browseServer({
+      id: '', name: String(server.name || '').trim() || '待测试存储', url,
+      username: String(server.username || '').trim(), password: String(server.password || ''),
+    }, '/');
+  }
+
+  private async browseServer(server: DavServer, path: string): Promise<DavBrowseResult> {
     const base = normalizeDavBase(server.url);
     const target = davJoin(base, path);
     const auth = davBasicAuth(server.username, server.password);

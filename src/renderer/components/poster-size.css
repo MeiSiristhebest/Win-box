@@ -1,0 +1,14 @@
+@layer components {
+  .poster-size-control { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; font-size: 12px; color: var(--text-secondary); -webkit-app-region: no-drag; }
+  .poster-size-control select { width: auto; min-width: 64px; min-height: 30px; padding: 4px 5px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text-primary); font: inherit; }
+  .poster-size-control:is(:hover, :focus-within) select { border-color: var(--border); background: var(--surface-raised, var(--surface)); }
+  .appearance-setting-card .poster-size-control > span { display: none; }
+  button.gallery-icon-button { display: inline-grid; place-items: center; flex: 0 0 auto; width: 30px; height: 30px; min-height: 30px; padding: 6px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); box-shadow: none; }
+  button.gallery-icon-button:hover { background: var(--surface-elevated, var(--surface)); color: var(--text-primary); }
+  .gallery-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--poster-width, 160px)), var(--poster-width, 160px))); column-gap: var(--poster-gap, 18px); }
+  :root[data-discover='shelf'] .nf-row-scroll > *,
+  :root[data-discover='shelfWide'] .ap-row-scroll > * { flex: 0 0 var(--poster-width, 160px); width: var(--poster-width, 160px); }
+  .grid .card-media { contain-intrinsic-size: auto var(--poster-intrinsic-height, 293px); }
+  .discover-card-facts { flex-wrap: wrap; gap: 2px 6px; }
+}

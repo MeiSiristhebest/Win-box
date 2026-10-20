@@ -76,7 +76,7 @@ export function SourceDiagnosticsSection({ request, onClose }: SourceDiagnostics
               {report.run.head && <div className="muted" style={{ wordBreak: 'break-all' }}>数据预览：{report.run.head}</div>}
             </div>
           )}
-          <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6, color: report.verdict.startsWith('探测正常') || report.verdict.includes('成功') ? 'var(--accent-2)' : 'var(--warn)' }}>
+          <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6, color: report.verdict.startsWith('探测正常') || report.verdict.includes('成功') ? 'var(--text-success)' : 'var(--text-warn)' }}>
             <b>结论：</b>{report.verdict}
           </div>
         </div>

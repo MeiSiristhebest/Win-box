@@ -48,7 +48,9 @@ function applyThemeToDocument(theme: Theme): void {
   const root = document.documentElement;
   const layout = skinLayout(theme);
   root.setAttribute('data-theme', theme);
+  root.setAttribute('data-ui', theme === 'light' || theme === 'dark' ? 'desktop' : 'plugin');
   root.setAttribute('data-base', skinBase(theme));
+  root.style.colorScheme = skinBase(theme);
   root.setAttribute('data-shell', layout.shell ?? 'topbar');
   root.setAttribute('data-detail', layout.detailStyle ?? 'basic');
   root.setAttribute('data-discover', layout.discoverStyle ?? 'basic');

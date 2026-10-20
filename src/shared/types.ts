@@ -345,6 +345,9 @@ export interface DiscoverItem {
   backdrop?: string;
   tmdbId?: number;
   doubanId?: string;
+  /** 来源提供的十分制评分与实际排名；缺省时不推算。 */
+  rating?: number;
+  rank?: number;
   mediaType: 'movie' | 'tv';
 }
 
@@ -365,6 +368,11 @@ export interface DiscoverSection {
   id: string;
   title: string;
   items: DiscoverItem[];
+  mediaType?: 'movie' | 'tv';
+  /** 内置和插件分区可使用相同的展示 id，浏览入口单独标识。 */
+  browseId?: string;
+  fetchedAt?: number;
+  stale?: boolean;
 }
 
 /**

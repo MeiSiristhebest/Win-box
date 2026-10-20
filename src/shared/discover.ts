@@ -12,18 +12,22 @@
 import type { DiscoverItem } from './types';
 
 /** 一级「分类」（媒体类型）：剧集=电视剧，综艺=综艺（豆瓣里同属 tv，用 tag 区分） */
-export type DiscoverMediaId = 'movie' | 'tv' | 'variety';
+export type DiscoverMediaId = 'movie' | 'tv' | 'variety' | 'animation' | 'documentary';
 export interface DiscoverMediaOption {
   id: DiscoverMediaId;
   name: string;
   mediaType: 'movie' | 'tv';
-  /** 该分类固定携带的豆瓣 tag（电影无） */
+  /** 该分类固定携带的豆瓣 tag */
   baseTag: string;
+  /** 动漫和纪录片可分别浏览电影与剧集。 */
+  formats?: readonly ('movie' | 'tv')[];
 }
 export const DISCOVER_MEDIA: DiscoverMediaOption[] = [
-  { id: 'movie', name: '电影', mediaType: 'movie', baseTag: '' },
+  { id: 'movie', name: '电影', mediaType: 'movie', baseTag: '电影' },
   { id: 'tv', name: '剧集', mediaType: 'tv', baseTag: '电视剧' },
   { id: 'variety', name: '综艺', mediaType: 'tv', baseTag: '综艺' },
+  { id: 'animation', name: '动漫', mediaType: 'tv', baseTag: '动画', formats: ['tv', 'movie'] },
+  { id: 'documentary', name: '纪录片', mediaType: 'tv', baseTag: '纪录片', formats: ['tv', 'movie'] },
 ];
 
 /** 「全部」文案 —— 各维度第一项统一是它 */
@@ -122,10 +126,14 @@ export interface ExploreQuery {
   /** 起始偏移（豆瓣按 start 分页，非页码） */
   start?: number;
   count?: number;
+  /** 用户刷新时重新读取来源，更新可能失效的图片地址。 */
+  refresh?: boolean;
 }
 export interface ExplorePage {
   items: DiscoverItem[];
   start: number;
+  /** 原始结果的下一偏移，包含被过滤的非影片条目。 */
+  nextStart?: number;
   total: number;
   hasMore: boolean;
 }

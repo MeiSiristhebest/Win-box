@@ -93,7 +93,7 @@ export function SavedProfilesSection({
                           value={renameDraft}
                           onChange={(event) => setRenameDraft(event.target.value)}
                           onKeyDown={(event) => {
-                            if (event.key === 'Enter') void saveRename(profile.id);
+                            if (event.key === 'Enter' && !event.nativeEvent.isComposing) void saveRename(profile.id);
                             if (event.key === 'Escape') { setRenameId(null); setRenameDraft(''); }
                           }}
                         />

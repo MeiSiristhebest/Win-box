@@ -41,7 +41,7 @@ export function CacheMaintenanceSection({ active }: { active: boolean }) {
           {busy ? '清理中…' : '立即清理'}
         </button>
       </div>
-      {message && <div className="muted" style={{ fontSize: 11, marginTop: 4, color: message.kind === 'ok' ? 'var(--accent-2)' : 'var(--warn)' }} aria-live="polite">{message.text}</div>}
+      {message && <div className="muted" style={{ fontSize: 11, marginTop: 4, color: message.kind === 'ok' ? 'var(--text-success)' : 'var(--text-warn)' }} aria-live="polite">{message.text}</div>}
       {dataDir && (
         <div className="muted" style={{ fontSize: 11, marginTop: 6 }} title={`计划目录：${dataDir.planned}`}>
           数据目录：{dataDir.path}

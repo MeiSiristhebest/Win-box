@@ -31,6 +31,7 @@ export const IPC = {
   // ★ 详情页增强（演职员/类型/相关推荐）与发现页榜单（无源默认主页）
   META_EXTRA: 'meta:extra',
   META_DISCOVER: 'meta:discover',
+  META_BOARD_PAGE: 'meta:boardPage',
   META_MOVIE_HOT: 'meta:movieHot',
   META_DISCOVER_IMAGES: 'meta:discoverImages',
   // ★ 发现页「分类」浏览（TMDB 类型清单 + 按类型翻页）
@@ -148,6 +149,7 @@ export const IPC = {
   DAV_SET: 'dav:set',
   DAV_REMOVE: 'dav:remove',
   DAV_BROWSE: 'dav:browse',
+  DAV_TEST: 'dav:test',
   /** WebDAV 文件用本机外部播放器接力（mkv/HEVC 等 Chromium 播不了的形态） */
   DAV_OPEN_EXTERNAL: 'dav:openExternal',
   // ★ 2026-09-29 DLNA 投屏（SSDP 发现 + AVTransport 三动作）
@@ -297,6 +299,7 @@ export const IPC = {
    */
   UI_GET_SCALE: 'ui:getScale',
   UI_SET_SCALE: 'ui:setScale',
+  UI_SCALE_CHANGED: 'ui:scaleChanged',
   /**
    * ★ 2026-09-29（用户要求）本地包「网页源」：在独立窗口打开 homePage html（fm 桥，见 WebHomeWindow）。
    * 下面三条 `fm:*` 是**网页窗口 preload → 主进程**的桥通道（渲染层不直接调用）。

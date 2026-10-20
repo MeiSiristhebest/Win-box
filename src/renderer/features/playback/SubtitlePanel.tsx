@@ -3,6 +3,7 @@ import type { Dispatch, Ref, SetStateAction } from 'react';
 import { buildSearchQuery } from '../../../engine/subtitle/normalizeQuery';
 import type { SubtitleCandidate } from '../../../shared/subtitle';
 import { subtitleSourceLabel } from '../../lib/subtitleText';
+import { usePlayerPopupKeyboard } from '../../lib/usePlayerPopupKeyboard';
 
 interface SubtitlePanelProps {
   embeddedTracks?: MpvSubtitleTrack[];
@@ -25,6 +26,7 @@ interface SubtitlePanelProps {
   onAnchorPointerLeave: () => void;
   onPanelPointerEnter: () => void;
   onPanelPointerLeave: () => void;
+  onClose?: () => void;
   onToggle: () => void;
   setFontSize: Dispatch<SetStateAction<number>>;
   setBottom: Dispatch<SetStateAction<number>>;
@@ -52,7 +54,7 @@ export function SubtitlePanel({
   onAnchorPointerEnter,
   onAnchorPointerLeave,
   onPanelPointerEnter,
-  onPanelPointerLeave,
+  onClose = onAnchorPointerLeave,
   onToggle,
   setFontSize,
   setBottom,
@@ -61,10 +63,16 @@ export function SubtitlePanel({
   onSearch,
   onSelectCandidate,
 }: SubtitlePanelProps) {
+  const { triggerRef, panelId, onKeyDown, onPointerLeave, onBlur } = usePlayerPopupKeyboard(open, onPanelPointerEnter, onClose, onAnchorPointerLeave);
   return (
-    <div className="vp-popup-anchor" onPointerEnter={onAnchorPointerEnter} onPointerLeave={onAnchorPointerLeave}>
+    <div className="vp-popup-anchor" onPointerEnter={onAnchorPointerEnter} onPointerLeave={onPointerLeave} onBlur={onBlur}>
       <button
         className="vp-ctl"
+        ref={triggerRef}
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-keyshortcuts="ArrowDown"
+        onKeyDown={onKeyDown}
         title={`字幕：${enabled ? '开' : '关'}（点击开关 · 悬停调整）`}
         onClick={onToggle}
       >
@@ -76,8 +84,8 @@ export function SubtitlePanel({
         {enabled && <span className="vp-subdot" />}
       </button>
       {open && (
-        <div ref={panelRef} className="vp-panelhost" onPointerEnter={onPanelPointerEnter} onPointerLeave={onPanelPointerLeave}>
-          <div className="vp-subpanel">
+        <div ref={panelRef} className="vp-panelhost" onPointerEnter={onPanelPointerEnter} onPointerLeave={onPointerLeave}>
+          <section id={panelId} aria-label="字幕设置" className="vp-subpanel">
             {onSelectTrack && <div><div className="vsp-row"><span className="muted">内置字幕轨</span></div><div className="vsp-fits"><button type="button" className="vsp-btn" onClick={() => onSelectTrack(-1)}>关闭内置字幕</button>{embeddedTracks.map((track, index) => <button type="button" key={track.id} className={'vsp-btn' + (sid === track.id ? ' active' : '')} aria-pressed={sid === track.id} onClick={() => onSelectTrack(track.id)}>{[track.lang, track.title, track.codec].filter(Boolean).join(' · ') || '字幕轨 ' + (index + 1)}</button>)}</div></div>}
             <div className="vsp-row">
               <button className={`tag ${enabled ? 'active' : ''}`} onClick={onToggle}>字幕：{enabled ? '开' : '关'}</button>
@@ -89,7 +97,7 @@ export function SubtitlePanel({
               <span className="muted vsp-label">字号</span>
               <button className="vsp-btn" onClick={() => setFontSize((value) => Math.max(12, value - 2))}>A−</button>
               <input
-                type="range" min={12} max={40} value={fontSize}
+                aria-label="字幕字号" type="range" min={12} max={40} value={fontSize}
                 onChange={(event) => setFontSize(Number(event.target.value))}
               />
               <button className="vsp-btn" onClick={() => setFontSize((value) => Math.min(40, value + 2))}>A＋</button>
@@ -98,7 +106,7 @@ export function SubtitlePanel({
               <span className="muted vsp-label">位置</span>
               <button className="vsp-btn" onClick={() => setBottom((value) => Math.max(10, value - 8))}>上移</button>
               <input
-                type="range" min={10} max={420} value={bottom}
+                aria-label="字幕垂直位置" type="range" min={10} max={420} value={bottom}
                 onChange={(event) => setBottom(Number(event.target.value))}
                 style={{ width: 90 }}
               />
@@ -114,10 +122,11 @@ export function SubtitlePanel({
             <div className="vsp-row" style={{ marginBottom: 6 }}>
               <input
                 className="vsp-input"
+                aria-label="字幕剧名"
                 value={query}
                 placeholder="剧名（可改）"
                 onChange={(event) => onQueryChange(event.target.value)}
-                onKeyDown={(event) => { if (event.key === 'Enter' && query.trim()) onSearch(); }}
+                onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && query.trim()) onSearch(); }}
               />
             </div>
             <div className="vsp-row">
@@ -144,7 +153,7 @@ export function SubtitlePanel({
                 ))}
               </div>
             )}
-          </div>
+          </section>
         </div>
       )}
     </div>

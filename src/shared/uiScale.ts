@@ -1,19 +1,9 @@
-// src/shared/uiScale.ts
 /**
- * ★ 2026-10-16（用户要求「自适应屏幕分辨率调节窗口大小与字体大小」）：
- *   症状：1K/2K 下尺寸合适，**4K 下整个 UI 都偏小**。根因 = 窗口默认 1280×800（DIP）与全部字号
- *   都是**固定 px**，完全不随屏幕分辨率/DIP 变化。
- *
- *   为什么按「显示器工作区（DIP）」推倍率，而不是按 Windows 缩放比例：
- *   Chromium 的 CSS px 本身就是 DIP —— Windows 缩放 150% 的 4K 屏，工作区只报 2560×1440。
- *   所以用工作区推出来的倍率恰好等价于「这块屏看起来有多大」，也天然把
- *   「4K@150%」与「2K@100%」归为同一档（两者观感本就相当）。
- *
- * 主进程据此**等比放大默认窗口与最小尺寸**，并 `webContents.setZoomFactor(scale)` 把整套 UI
- * （含字号、间距、圆角）一起放大；渲染层只负责在配置页读写这个偏好。
+ * Display scale controls text and controls through Electron zoom.
+ * Gallery posters compensate for this zoom using a separate size preference.
+ * Window startup size follows the display scale; later zoom changes preserve window bounds.
  */
 
-/** 1K（1920×1080）下观感合适的基准窗口（DIP）—— 其它分辨率按倍率等比放大 */
 export const BASE_WINDOW = { width: 1280, height: 800, minWidth: 960, minHeight: 600 } as const;
 
 /** 允许的缩放档位 */
@@ -77,12 +67,27 @@ export function scaledWindowSize(
   scale: number,
   work?: { width: number; height: number },
 ): { width: number; height: number; minWidth: number; minHeight: number } {
-  const width = Math.min(Math.round(base.width * scale), work ? Math.max(480, work.width - 40) : Number.MAX_SAFE_INTEGER);
-  const height = Math.min(Math.round(base.height * scale), work ? Math.max(360, work.height - 40) : Number.MAX_SAFE_INTEGER);
+  const width = Math.min(Math.round(base.width * scale), work ? Math.max(1, work.width - 40) : Number.MAX_SAFE_INTEGER);
+  const height = Math.min(Math.round(base.height * scale), work ? Math.max(1, work.height - 40) : Number.MAX_SAFE_INTEGER);
   return {
     width,
     height,
     minWidth: Math.min(Math.round((base.minWidth ?? 640) * scale), width),
     minHeight: Math.min(Math.round((base.minHeight ?? 400) * scale), height),
+  };
+}
+
+/** 调整尺寸和位置，使窗口完整位于当前显示器工作区；支持副屏的负坐标。 */
+export function fitWindowToWorkArea(
+  bounds: { x: number; y: number; width: number; height: number },
+  work: { x: number; y: number; width: number; height: number },
+): { x: number; y: number; width: number; height: number } {
+  const margin = Math.max(0, Math.min(20, Math.floor((Math.min(work.width, work.height) - 1) / 2)));
+  const width = Math.min(Math.max(1, Math.round(bounds.width)), Math.max(1, work.width - margin * 2));
+  const height = Math.min(Math.max(1, Math.round(bounds.height)), Math.max(1, work.height - margin * 2));
+  return {
+    width, height,
+    x: Math.round(Math.max(work.x + margin, Math.min(bounds.x, work.x + work.width - margin - width))),
+    y: Math.round(Math.max(work.y + margin, Math.min(bounds.y, work.y + work.height - margin - height))),
   };
 }

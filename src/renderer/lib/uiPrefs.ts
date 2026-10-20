@@ -1,6 +1,7 @@
 // src/renderer/lib/uiPrefs.ts
 // 界面偏好使用共享 preferenceStore，持久值由主进程管理，localStorage 仅作启动缓存和备份兼容。
 import { useSyncExternalStore } from 'react';
+import { normalizePosterSize, type PosterSize } from '../../shared/posterSize';
 import type { MotionPreference } from '../../shared/uiPreferences';
 import { readPreference, subscribePreference, writePreference } from './preferenceStore';
 
@@ -101,3 +102,9 @@ export function useNavMode(): NavMode { return useSyncExternalStore(subscribeNav
 export function getHomeFilters(): boolean { return readPreference(KEY_HOME_FILTERS) === '1'; }
 export function setHomeFilters(value: boolean): void { writePreference(KEY_HOME_FILTERS, value ? '1' : '0'); }
 export function useHomeFilters(): boolean { return useSyncExternalStore(subscribeHomeFilters, getHomeFilters, () => false); }
+
+const KEY_POSTER_SIZE = 'winbox-poster-size';
+const subscribePosterSize = (notify: () => void): (() => void) => subscribePreference(KEY_POSTER_SIZE, notify);
+export function getPosterSize(): PosterSize { return normalizePosterSize(readPreference(KEY_POSTER_SIZE)); }
+export function setPosterSize(value: PosterSize): void { writePreference(KEY_POSTER_SIZE, value); }
+export function usePosterSize(): PosterSize { return useSyncExternalStore(subscribePosterSize, getPosterSize, () => 'medium'); }

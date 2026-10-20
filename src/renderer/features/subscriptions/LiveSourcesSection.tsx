@@ -69,6 +69,8 @@ export function LiveSourcesSection({ active, lives, activeIndex, onRefresh, onEr
           {lives.length === 0 ? (
             <div className="empty" style={{ padding: 12 }}>尚无直播线路，可点上方「导入直播源（TXT / M3U）」添加</div>
           ) : (
+            // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Keyboard users can scroll the live source table.
+            <section className="table-scroll" aria-label="直播线路列表" tabIndex={0}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ color: 'var(--text-dim)', textAlign: 'left' }}>
@@ -98,7 +100,7 @@ export function LiveSourcesSection({ active, lives, activeIndex, onRefresh, onEr
                             onClick={(e) => e.stopPropagation()}
                             onChange={(e) => setLiveEditName(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') void saveLiveName(i);
+                              if (e.key === 'Enter' && !e.nativeEvent.isComposing) void saveLiveName(i);
                               if (e.key === 'Escape') { setLiveEditIdx(null); setLiveEditName(''); }
                             }}
                           />
@@ -123,6 +125,7 @@ export function LiveSourcesSection({ active, lives, activeIndex, onRefresh, onEr
                 })}
               </tbody>
             </table>
+            </section>
           )}
           <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
             点某行可把它设为直播页当前线路；「删除」只从应用线路列表移除，不改动你导入的原始文件。

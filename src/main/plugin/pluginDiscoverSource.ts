@@ -63,7 +63,7 @@ async function loadSection(sec: DiscoverSectionContribute): Promise<DiscoverSect
     });
   }
   if (!items.length) return null;
-  return { id: sec.id, title: sec.title, items };
+  return { id: sec.id, title: sec.title, mediaType: mt, items };
 }
 
 /** 声明式发现页数据源 → `DiscoverSource`（`id` 已由调用方去重） */

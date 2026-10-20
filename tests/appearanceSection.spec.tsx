@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { AppearanceSection } from '../src/renderer/features/settings/AppearanceSection';
 
 describe('AppearanceSection', () => {
-  const values = { themeId: 'netflix', motion: 'auto', showDiscover: true, waterfall: false };
+  const values = { themeId: 'dark', motion: 'auto', showDiscover: true, waterfall: false };
   let revision = 0;
   const updateUiPreferences = vi.fn((patch: Record<string, unknown>) => {
     Object.assign(values, patch);
@@ -13,7 +13,7 @@ describe('AppearanceSection', () => {
   });
 
   beforeEach(() => {
-    Object.assign(values, { themeId: 'netflix', motion: 'auto', showDiscover: true, waterfall: false });
+    Object.assign(values, { themeId: 'dark', motion: 'auto', showDiscover: true, waterfall: false });
     updateUiPreferences.mockClear();
     Object.defineProperty(window, 'api', {
       configurable: true,
@@ -37,13 +37,13 @@ describe('AppearanceSection', () => {
     render(<AppearanceSection />);
 
     const group = screen.getByRole('radiogroup', { name: '外观主题' });
-    expect(group.querySelectorAll('input[type="radio"]')).toHaveLength(4);
+    expect(group.querySelectorAll('input[type="radio"]')).toHaveLength(2);
 
-    fireEvent.click(screen.getByRole('radio', { name: /大豆/ }));
-    expect(updateUiPreferences).toHaveBeenCalledWith({ themeId: 'douban' });
+    fireEvent.click(screen.getByRole('radio', { name: /^浅色/ }));
+    expect(updateUiPreferences).toHaveBeenCalledWith({ themeId: 'light' });
     await waitFor(() => {
-      expect(document.documentElement.getAttribute('data-theme')).toBe('douban');
-      expect((screen.getByRole('radio', { name: /大豆/ }) as HTMLInputElement).checked).toBe(true);
+      expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+      expect((screen.getByRole('radio', { name: /^浅色/ }) as HTMLInputElement).checked).toBe(true);
     });
   });
 

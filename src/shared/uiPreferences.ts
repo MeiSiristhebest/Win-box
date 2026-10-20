@@ -1,4 +1,5 @@
-import { DEFAULT_THEME, themes, type Theme } from './ui/themeTokens';
+import type { PosterSize } from './posterSize';
+import { DEFAULT_THEME, findSkin, themes, type Theme } from './ui/themeTokens';
 
 export type UiThemeId = Theme;
 export const UI_THEME_IDS: readonly UiThemeId[] = Object.freeze(Object.keys(themes) as UiThemeId[]);
@@ -13,6 +14,7 @@ export interface UiPreferences {
   /** Optional when reading snapshots written before navigation preferences were added. */
   homeFilters?: boolean;
   navMode?: 'inline' | 'window';
+  posterSize?: PosterSize;
 }
 
 export interface UiPreferencesSnapshot {
@@ -30,6 +32,7 @@ export const DEFAULT_UI_PREFERENCES: Readonly<UiPreferences> = Object.freeze({
   waterfall: false,
   homeFilters: false,
   navMode: 'inline',
+  posterSize: 'medium',
 });
 
 const THEME_IDS = new Set<string>(UI_THEME_IDS);
@@ -41,15 +44,16 @@ export function validateUiPreferencesPatch(value: unknown): UiPreferencesPatch {
   const patch = value as Record<string, unknown>;
   const next: UiPreferencesPatch = {};
   for (const key of Object.keys(patch)) {
-    if (!['themeId', 'motion', 'showDiscover', 'waterfall', 'homeFilters', 'navMode'].includes(key)) {
+    if (!['themeId', 'motion', 'showDiscover', 'waterfall', 'homeFilters', 'navMode', 'posterSize'].includes(key)) {
       throw new TypeError(`不支持的界面偏好字段：${key}`);
     }
   }
   if (Object.hasOwn(patch, 'themeId')) {
-    if (typeof patch.themeId !== 'string' || (!THEME_IDS.has(patch.themeId) && !/^plugin:[a-z0-9-]{3,40}$/.test(patch.themeId))) {
+    const known = findSkin(patch.themeId);
+    if (typeof patch.themeId !== 'string' || (!THEME_IDS.has(patch.themeId) && known?.kind !== 'builtin' && !/^plugin:[a-z0-9-]{3,40}$/.test(patch.themeId))) {
       throw new TypeError('无效的主题 ID');
     }
-    next.themeId = patch.themeId as UiThemeId;
+    next.themeId = known?.kind === 'builtin' ? known.id : patch.themeId as UiThemeId;
   }
   if (Object.hasOwn(patch, 'motion')) {
     if (patch.motion !== 'auto' && patch.motion !== 'on' && patch.motion !== 'off') {
@@ -66,6 +70,10 @@ export function validateUiPreferencesPatch(value: unknown): UiPreferencesPatch {
   if (Object.hasOwn(patch, 'navMode')) {
     if (patch.navMode !== 'inline' && patch.navMode !== 'window') throw new TypeError('无效的页面打开方式');
     next.navMode = patch.navMode;
+  }
+  if (Object.hasOwn(patch, 'posterSize')) {
+    if (typeof patch.posterSize !== 'string' || !['small', 'medium', 'large'].includes(patch.posterSize)) throw new TypeError('无效的海报大小');
+    next.posterSize = patch.posterSize as PosterSize;
   }
   return next;
 }

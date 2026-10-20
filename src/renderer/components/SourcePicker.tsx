@@ -14,7 +14,9 @@
 // ★ 2026-10-09（用户指令：「删除之前版本做的换源的下拉菜单调整源的位置的功能，不美观」）：
 //   源行内管理按钮（⤒置顶 / ↑上移 / ↓下移 / ✕删除）与本组件内的对应逻辑已删除 —— 源管理只在配置页保留
 //   （IPC `cfg:moveSource` / `cfg:deleteSource` 未动）。
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useAnchoredPanel } from './useAnchoredPanel';
 import { client } from '../api/client';
 import { notifyProfileChanged } from '../lib/configEvents';
 import { isNativeModalOpen } from '../lib/modalScope';
@@ -40,8 +42,6 @@ export interface SourcePickerProps {
 const LEAVE_HOLD_MS = 3000;
 /** 「回缩」出场动画时长（与 CSS 的 `--dur-panel` 对齐；动画走完才 setOpen(false)，见 scheduleLeave） */
 const CLOSE_ANIM_MS = 280;
-/** 双栏弹层的期望宽度（与 CSS 的 max-width 对齐；用于判定左锚是否会出窗口右侧） */
-const WIDE_POP_PX = 400;
 
 export default function SourcePicker({ sites, current, onPick, variant = 'pill', disabled }: SourcePickerProps) {
   const [ownSites, setOwnSites] = useState<SourceBean[]>([]);
@@ -57,9 +57,12 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   const [paneId, setPaneId] = useState('');
   /** 源名检索词（只过滤右栏） */
   const [q, setQ] = useState('');
-  /** 弹层右锚（顶栏右侧入口左锚会把宽弹层推出窗口） */
-  const [popRight, setPopRight] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const keyboardInteraction = useRef(false);
+  const panelId = useId();
+  const panelRef = useRef<HTMLElement | null>(null);
+  const panelPosition = useAnchoredPanel(open, triggerRef, panelRef, 420, variant === 'sidebar' ? 'top' : 'bottom');
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const srcColRef = useRef<HTMLDivElement | null>(null);
   /** ★ 2026-09-30：档案视图请求代次 —— 只认最后一次请求的响应（慢响应不得覆盖新数据） */
@@ -177,11 +180,15 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent): void => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      if (!wrapRef.current?.contains(e.target as Node) && !panelRef.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent): void => {
       if (isNativeModalOpen()) return;
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape' && !e.isComposing) {
+        e.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
     };
     document.addEventListener('mousedown', onDoc);
     document.addEventListener('keydown', onKey);
@@ -190,17 +197,6 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
       document.removeEventListener('keydown', onKey);
     };
   }, [open]);
-
-  // 右锚判定：右侧空间不够放双栏弹层、且左侧更宽裕时改右锚（顶栏右侧的入口用得到）
-  useEffect(() => {
-    if (!open) return;
-    const el = wrapRef.current;
-    if (!el) return;
-    const r = el.getBoundingClientRect();
-    const leftRoom = r.left;
-    const rightRoom = window.innerWidth - r.right;
-    setPopRight(rightRoom < WIDE_POP_PX && leftRoom > rightRoom);
-  }, [open, views]);
 
   const list = sites ?? ownSites;
   const cur = current ?? ownKey;
@@ -235,6 +231,7 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   };
   const scheduleLeave = (): void => {
     if (!open) return;
+    if (keyboardInteraction.current && (wrapRef.current?.contains(document.activeElement) || panelRef.current?.contains(document.activeElement))) return;
     cancelLeave();
     leaveTimerRef.current = window.setTimeout(() => {
       leaveTimerRef.current = null;
@@ -264,6 +261,7 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   };
 
   const pick = async (k: string): Promise<void> => {
+    triggerRef.current?.focus();
     setOpen(false);
     if (k === cur) return;
     if (onPick) {
@@ -321,6 +319,7 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
       return;
     }
     setOpen(false);
+    triggerRef.current?.focus();
     try {
       await client.cfgSwitchProfileSource(targetProfile, k);
     } catch (cause) {
@@ -340,26 +339,35 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
     <div
       ref={wrapRef}
       className={`srcpick${isSidebar ? ' srcpick-side' : ''}`}
-      onMouseEnter={cancelLeave}
-      onMouseLeave={scheduleLeave}
+      onPointerEnter={cancelLeave}
+      onPointerLeave={scheduleLeave}
+      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget) && !panelRef.current?.contains(event.relatedTarget)) setOpen(false); }}
     >
       <button
+        ref={triggerRef}
         type="button"
         className={`srcpick-name ui-action${disabled ? ' disabled' : ''}`}
         disabled={disabled}
         aria-expanded={open}
+        aria-controls={panelId}
+        aria-label={`切换站点，当前：${label}`}
         title={`当前源：${label}\n点击切换源`}
-        onClick={toggleOpen}
+        onClick={(event) => { keyboardInteraction.current = event.detail === 0; toggleOpen(); }}
         onContextMenu={(e) => e.preventDefault()}
       >
-        {isSidebar ? <span className="srcpick-label">当前源</span> : null}
+        {isSidebar ? <span className="srcpick-label">站点</span> : null}
         <span className="srcpick-text">{label}</span>
         <span className="srcpick-caret">▾</span>
       </button>
-      {open && (
+      {open && createPortal(
         <section
-          className={`srcpick-pop${pane && multi ? ' srcpick-pop-wide' : ''}${popRight ? ' srcpick-pop-right' : ''}${closing ? ' srcpick-closing' : ''}`}
+          ref={panelRef}
+          id={panelId}
+          style={panelPosition}
+          className={`srcpick-pop${pane && multi ? ' srcpick-pop-wide' : ''}${isSidebar ? ' srcpick-pop-side' : ''}${closing ? ' srcpick-closing' : ''}`}
           aria-label="订阅和来源"
+          onPointerEnter={cancelLeave}
+          onPointerLeave={scheduleLeave}
         >
           {error && <div className="err" role="alert">{error}</div>}
           <div className="srcpick-pop-tip">
@@ -375,8 +383,9 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && filtered.length) void pickSource(filtered[0].key);
-              if (e.key === 'Escape') setOpen(false);
+              keyboardInteraction.current = true;
+              cancelLeave();
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing && filtered.length) void pickSource(filtered[0].key);
             }}
           />
           <div className="srcpick-cols">
@@ -417,7 +426,7 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
               ))}
             </div>
           </div>
-        </section>
+        </section>, document.body,
       )}
     </div>
   );

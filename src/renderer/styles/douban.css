@@ -20,7 +20,7 @@
   /* ---- 文本 ---- */
   --text: #1A1D19;                                /* M3 on-surface */
   --text-dim: #5F675D;                            /* M3 on-surface-variant（灰绿） */
-  --text-faint: #9AA396;                          /* 三级 / 占位文本 */
+  --text-faint: #5f675d;                          /* 三级 / 占位文本 */
   /* ---- 分隔与语义色 ---- */
   --border: #E0E5DC;                              /* M3 outline（暖绿灰） */
   --border-soft: rgba(26, 32, 25, .095);

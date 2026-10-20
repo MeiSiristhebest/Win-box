@@ -47,7 +47,7 @@ export function PluginSettingsPanels({ pluginId, panels, busy, onSave }: { plugi
           commit(f.type === 'number' ? Number(v) : v);
         }}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) (e.target as HTMLInputElement).blur();
         }}
       />
     );

@@ -7,6 +7,8 @@ import { useLocation } from 'react-router-dom';
 const ConfigPage = lazy(() => import('./pages/ConfigPage'));
 const HomePage = lazy(() => import('./pages/HomePage'));
 const DiscoverPage = lazy(() => import('./pages/DiscoverPage'));
+const BoardsPage = lazy(() => import('./pages/BoardsPage'));
+const DiscoverBoardPage = lazy(() => import('./pages/DiscoverBoardPage'));
 const DetailPage = lazy(() => import('./pages/DetailPage'));
 const PlayerPage = lazy(() => import('./pages/PlayerPage'));
 const LivePage = lazy(() => import('./pages/LivePage'));
@@ -88,8 +90,7 @@ function AppShell() {
     bindSearchNav((to) => nav(to));
     return () => bindSearchNav(null);
   }, [nav]);
-  /** ★ 2026-09-30（用户要求）：皮肤体系 —— 网飝 / 哔哔（都是「顶部导航一体化」外壳）+ 大果 / 豆风（各自独立外壳，见下）。
-   *  两个经典主题（经典深/浅）与 sidebar 版式已删除。 */
+  /** 内置浅深外观共用桌面布局；插件外观按自己的结构声明展示。 */
   const theme = useTheme();
   const shellId = presentationFor(theme).shell;
   const shell = SHELL_PRESENTATIONS[shellId];
@@ -116,14 +117,15 @@ function AppShell() {
   /** 工具栏标题（= 当前页面名，macOS 统一工具栏的居中标题位） */
   const pageTitle =
     loc.pathname === '/' ? '发现'
+      : loc.pathname.startsWith('/boards') ? '榜单'
       : loc.pathname.startsWith('/home') ? '点播'
         : loc.pathname.startsWith('/search') ? '全源搜索'
           : loc.pathname.startsWith('/detail') ? '影片详情'
             : loc.pathname.startsWith('/history') ? '观看历史'
               : loc.pathname.startsWith('/favorites') ? '我的收藏'
               : loc.pathname.startsWith('/live') ? '直播'
-                : loc.pathname.startsWith('/config') ? '配置'
-                  : loc.pathname.startsWith('/about') ? '说明'
+                : loc.pathname.startsWith('/config') ? '设置'
+                  : loc.pathname.startsWith('/about') ? '关于'
                     : 'Win-Box';
   /** 工具栏返回箭头（‹）：macOS 窗口的导航回退 */
   const goBack = (): void => {
@@ -428,6 +430,8 @@ function AppShell() {
   const routeDefs: Array<{ path: string; el: React.ReactElement }> = [
     // ★ 2026-09-24（用户定稿）：「发现」= 默认首页（软件打开即进这里）；「点播」= 源主页 /home
     { path: '/', el: <DiscoverPage /> },
+    { path: '/boards', el: <BoardsPage /> },
+    { path: '/boards/:boardId', el: <DiscoverBoardPage /> },
     { path: '/home', el: <HomePage onOpenDetail={openDetail} /> },
     /**
      * ★ 2026-09-24：全源搜索专用路由 —— 详情页「演员/相关推荐」与发现页卡片点击后跳这里，

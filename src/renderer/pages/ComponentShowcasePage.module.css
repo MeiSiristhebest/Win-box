@@ -20,7 +20,7 @@
 }
 
 .eyebrow {
-  color: var(--color-accent);
+  color: var(--text-accent);
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -81,7 +81,7 @@
   margin: 0.625rem 0;
 }
 
-.checkRow input { accent-color: var(--color-accent); }
+.checkRow input { accent-color: var(--text-accent); }
 
 .status {
   color: var(--text-secondary);

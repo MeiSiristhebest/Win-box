@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { client } from '../api/client';
 import type { UserConfig, SubscriptionRefreshResolution } from '../../shared/types';
 import type { AuditItem } from '../../shared/types';
@@ -19,12 +20,45 @@ import { LiveSourcesSection } from '../features/subscriptions/LiveSourcesSection
 import { SubscriptionImportSection } from '../features/subscriptions/SubscriptionImportSection';
 import { useSubscriptionImport } from '../features/subscriptions/useSubscriptionImport';
 import { Tabs } from '../components/ui/Tabs';
+import { Icon, type IconName } from '../components/ui/Icon';
 import { PluginSettingsSection } from '../features/settings/PluginSettingsSection';
 import { notifyProfileChanged } from '../lib/configEvents';
 
 type TabId = 'sources' | 'health' | 'profiles' | 'account' | 'storage' | 'appearance' | 'play' | 'shortcut' | 'network' | 'backup' | 'plugins';
 
+const SETTINGS_SECTIONS: { id: TabId; label: string; description: string; keywords: string }[] = [
+  { id: 'sources', label: '订阅与源', description: '导入订阅，管理点播站点和直播线路。', keywords: '导入 多仓 单仓 json python txt m3u 地址 文件 直播' },
+  { id: 'profiles', label: '配置档案', description: '切换、整理已保存的配置与订阅组。', keywords: '子仓 切换 重命名 订阅组 合并 导出' },
+  { id: 'health', label: '源健康与维护', description: '检查站点可用性，清理失效源和缓存。', keywords: '体检 诊断 缓存 清理 失败 检查' },
+  { id: 'appearance', label: '外观', description: '调整浅深外观、界面缩放和浏览方式。', keywords: '浅色 深色 主题 字体 缩放 海报 大小 密度 动效 窗口 发现 瀑布' },
+  { id: 'play', label: '播放', description: '设置播放器、字幕、弹幕和播放行为。', keywords: '播放器 内核 外部 mpv ffmpeg 字幕 弹幕 去广告 跳过 硬件 音频' },
+  { id: 'shortcut', label: '快捷键', description: '调整播放和窗口操作的快捷键。', keywords: '键盘 按键 老板键' },
+  { id: 'account', label: '凭据', description: '管理元数据服务和账户凭据。', keywords: '账号 密码 cookie token tmdb 豆瓣 api 密钥 登录' },
+  { id: 'storage', label: '存储', description: '添加、检查和管理 WebDAV 连接。', keywords: 'webdav dav 网盘 服务器 用户名 密码 连接' },
+  { id: 'network', label: '网络', description: '配置代理和网络访问选项。', keywords: '代理 proxy 请求 超时 连接' },
+  { id: 'plugins', label: '插件与组件', description: '管理插件、播放组件和扩展功能。', keywords: '扩展 安装 更新 组件 插件 皮肤' },
+  { id: 'backup', label: '备份', description: '备份、恢复和迁移应用配置。', keywords: '恢复 数据 导出 导入 迁移' },
+];
+const SETTINGS_CARD_TABS: Readonly<Record<string, TabId>> = {
+  import: 'sources', sources: 'sources', live: 'sources', lives: 'sources',
+  audit: 'health', cache: 'health', merge: 'profiles',
+  subtitle: 'account', meta: 'account',
+  'plugin-engines': 'play', 'plugin-keymap': 'shortcut',
+  motion: 'appearance', 'show-discover': 'appearance', 'ui-scale': 'appearance', 'poster-size': 'appearance', 'nav-mode': 'appearance', 'home-browse': 'appearance',
+  'm3u8-purify': 'play', 'bt-player': 'play', 'vod-player': 'play', 'mpv-kernel': 'play',
+};
+
+const SETTINGS_ICONS: Record<TabId, IconName> = {
+  sources: 'globe', profiles: 'layers', health: 'shield', appearance: 'palette', play: 'play',
+  shortcut: 'keyboard', account: 'key', storage: 'storage', network: 'globe', plugins: 'plug', backup: 'archive',
+};
+
 export default function ConfigPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedSection = searchParams.get('section') || '';
+  const requestedTab = SETTINGS_SECTIONS.find(item => item.id === requestedSection)?.id
+    ?? SETTINGS_CARD_TABS[requestedSection]
+    ?? (requestedSection.startsWith('plugin-') ? 'plugins' : undefined);
   const dialog = useAppDialog();
   const [busy, setBusy] = useState(false);
   const [cfg, setCfg] = useState<UserConfig | null>(null);
@@ -190,22 +224,14 @@ export default function ConfigPage() {
   }
 
   // ---- 选项卡（替代原 <a href="#cfg-*"> 锚点跳转，避免 HashRouter 下触发路由跳到空页）----
-  const TABS: { id: TabId; label: string }[] = [
-    { id: 'sources', label: '订阅与源' },
-    { id: 'health', label: '源健康与维护' },
-    { id: 'profiles', label: '配置档案' },
-    { id: 'account', label: '凭据' },
-    { id: 'storage', label: '存储' },
-    { id: 'appearance', label: '外观' },
-    { id: 'play', label: '播放' },
-    { id: 'plugins', label: '插件 / 组件' },
-    { id: 'shortcut', label: '快捷键' },
-    { id: 'network', label: '网络' },
-    { id: 'backup', label: '备份' },
-  ];
+  const TABS = SETTINGS_SECTIONS.map(item => ({ ...item, icon: <Icon name={SETTINGS_ICONS[item.id]} size={16} /> }));
+  const [settingsQuery, setSettingsQuery] = useState('');
+  const searchTerm = settingsQuery.trim().toLocaleLowerCase();
+  const matchingSections = SETTINGS_SECTIONS.filter(item => `${item.label} ${item.description} ${item.keywords}`.toLocaleLowerCase().includes(searchTerm));
   const CFG_TAB_KEY = 'winbox-cfg-tab';
   // 记住上次打开的选项卡：从配置页跳走再返回时仍停在原 tab
   const [tab, setTab] = useState<TabId>(() => {
+    if (requestedTab) return requestedTab;
     try {
       const s = localStorage.getItem(CFG_TAB_KEY) as TabId | null;
       return s && TABS.some((t) => t.id === s) ? s : 'sources';
@@ -213,18 +239,49 @@ export default function ConfigPage() {
       return 'sources';
     }
   });
+  const [lastRequestedSection, setLastRequestedSection] = useState(requestedSection);
+  if (lastRequestedSection !== requestedSection) {
+    setLastRequestedSection(requestedSection);
+    if (requestedTab) setTab(requestedTab);
+    setSettingsQuery('');
+  }
   const selectTab = (t: TabId) => {
     setTab(t);
+    if (requestedSection) setSearchParams({}, { replace: true });
     try { localStorage.setItem(CFG_TAB_KEY, t); } catch { /* ignore */ }
   };
+  useEffect(() => {
+    if (!requestedTab) return;
+    try { localStorage.setItem(CFG_TAB_KEY, requestedTab); } catch { /* Storage may be disabled. */ }
+  }, [requestedTab]);
+  useEffect(() => {
+    if (!requestedSection || requestedTab !== tab) return;
+    const element = document.getElementById(`cfg-${requestedSection}`);
+    if (element instanceof HTMLDetailsElement) element.open = true;
+    element?.scrollIntoView({ block: 'start' });
+  }, [requestedSection, requestedTab, tab]);
 
   return (
     <div className="content cfg-content">
-      <div className="cfg-tab-header">
-        <Tabs items={TABS} value={tab} onChange={selectTab} label="配置分区" idPrefix="config" className="cfg-tab-control" />
-      </div>
+      <header className="page-heading cfg-page-heading">
+        <div><h1>设置</h1><p>管理内容来源和应用偏好。</p></div>
+        <input className="cfg-search" aria-label="搜索设置" placeholder="搜索设置，如字幕、代理" value={settingsQuery} onChange={event => setSettingsQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Escape' && !event.nativeEvent.isComposing) setSettingsQuery(''); }} />
+      </header>
+      <div className="cfg-layout">
+      <aside className="cfg-navigation" aria-label="设置分类">
+        <Tabs items={TABS} value={tab} onChange={value => { selectTab(value); setSettingsQuery(''); }} orientation="vertical" label="配置分区" idPrefix="config" className="cfg-tab-control" />
+      </aside>
 
-      <div className="cfg-panel" id="config-panel" role="tabpanel" aria-labelledby={`config-tab-${tab}`} tabIndex={0}>
+      <div className="cfg-panel" id="config-panel" role="tabpanel" aria-labelledby={searchTerm ? 'cfg-results-title' : `config-tab-${tab}`} tabIndex={0}>
+        {searchTerm && <section className="cfg-search-results">
+          <div className="cfg-section-heading"><h2 id="cfg-results-title">搜索结果</h2><output>找到 {matchingSections.length} 个相关分类</output></div>
+          {matchingSections.map(item => <button key={item.id} className="cfg-search-result" onClick={() => { selectTab(item.id); setSettingsQuery(''); requestAnimationFrame(() => document.getElementById('cfg-section-title')?.focus()); }}>
+            <strong>{item.label}</strong><span>{item.description}</span><span aria-hidden="true">›</span>
+          </button>)}
+          {!matchingSections.length && <div className="empty"><h3>没有匹配的设置</h3><p>试试“播放”“订阅”或“网络”等关键词。</p><button onClick={() => setSettingsQuery('')}>清除搜索</button></div>}
+        </section>}
+        <div className="cfg-section-content" hidden={Boolean(searchTerm)}>
+        <div className="cfg-section-heading"><h2 id="cfg-section-title" tabIndex={-1}>{TABS.find(item => item.id === tab)?.label}</h2><p>{TABS.find(item => item.id === tab)?.description}</p></div>
         {err && tab !== 'sources' && <div className="err" role="alert">{err}</div>}
         <SubscriptionImportSection active={tab === 'sources'} flow={importFlow} error={err} notice={lastOk} onErrorClear={() => setErr('')} />
 
@@ -322,7 +379,7 @@ export default function ConfigPage() {
           <div className="muted" style={{ fontSize: 12 }}>没有可合并的档案——先在上方「已保存配置」里存下至少两份配置。</div>
         )}
         {mergeMsg && (
-          <div style={{ marginTop: 6, fontSize: 12, color: mergeMsg.kind === 'ok' ? 'var(--accent-2)' : 'var(--danger)', wordBreak: 'break-all' }}>
+          <div style={{ marginTop: 6, fontSize: 12, color: mergeMsg.kind === 'ok' ? 'var(--text-success)' : 'var(--text-danger)', wordBreak: 'break-all' }}>
             {mergeMsg.text}
           </div>
         )}
@@ -349,7 +406,8 @@ export default function ConfigPage() {
 
       <StorageSettingsSection active={tab === 'storage'} />
       <BackupSettingsSection active={tab === 'backup'} />
-
+      </div>
+      </div>
       </div>
     </div>
   );

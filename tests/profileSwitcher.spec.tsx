@@ -22,7 +22,7 @@ function setup() {
 describe('ProfileSwitcher', () => {
   it('lists live-only children and explains unavailable members', async () => {
     setup();
-    fireEvent.click(screen.getByTitle('切换子仓，同时更新点播站点和直播线路'));
+    fireEvent.click(screen.getByRole('button', { name: /切换子仓/ }));
     expect(await screen.findByRole('dialog', { name: '切换子仓' })).toBeTruthy();
     const liveOnly = await screen.findByRole('button', { name: /B子仓.*0 个站点.*1 条直播/ });
     expect((liveOnly as HTMLButtonElement).disabled).toBe(false);
@@ -39,7 +39,7 @@ describe('ProfileSwitcher', () => {
     window.addEventListener('winbox:profile-changed', profileChanged);
     window.addEventListener('winbox:sources-changed', sourcesChanged);
     try {
-      fireEvent.click(screen.getByTitle('切换子仓，同时更新点播站点和直播线路'));
+      fireEvent.click(screen.getByRole('button', { name: /切换子仓/ }));
       const target = await screen.findByRole('button', { name: /B子仓.*0 个站点/ });
       fireEvent.click(target);
       fireEvent.click(target);
@@ -53,7 +53,7 @@ describe('ProfileSwitcher', () => {
   it('shows activation failures and keeps the current repository', async () => {
     const { activate } = setup();
     activate.mockRejectedValue(new Error('配置快照无法恢复'));
-    fireEvent.click(screen.getByTitle('切换子仓，同时更新点播站点和直播线路'));
+    fireEvent.click(screen.getByRole('button', { name: /切换子仓/ }));
     fireEvent.click(await screen.findByRole('button', { name: /B子仓.*0 个站点/ }));
     expect((await screen.findByRole('alert')).textContent).toContain('配置快照无法恢复');
     expect(screen.getByRole('button', { name: /A子仓.*当前/ }).getAttribute('aria-pressed')).toBe('true');

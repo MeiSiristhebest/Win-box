@@ -11,7 +11,7 @@ import { profileConfig } from './fixtures/profileSwitchData';
 
 vi.mock('../src/renderer/components/PluginSlot', () => ({ default: () => null }));
 vi.mock('../src/renderer/lib/useCovers', () => ({ useCovers: () => ({ picOf: () => '', onError: vi.fn() }) }));
-vi.mock('../src/renderer/lib/uiPrefs', () => ({ useHomeFilters: () => false, setHomeFilters: vi.fn(), useWaterfall: () => false, setWaterfall: vi.fn() }));
+vi.mock('../src/renderer/lib/uiPrefs', () => ({ useHomeFilters: () => false, setHomeFilters: vi.fn(), useWaterfall: () => false, setWaterfall: vi.fn(), usePosterSize: () => 'medium', setPosterSize: vi.fn() }));
 vi.mock('../src/renderer/lib/uiMemory', () => ({ uiMem: { home: {} }, schedulePersist: vi.fn(), saveUiMemory: vi.fn() }));
 
 beforeEach(() => { uiMem.home = { key: '', tid: '', pg: 1, scrollTop: 0 }; });

@@ -50,6 +50,11 @@ describe('缓存键与分组', () => {
     expect(cacheGroupOf('/detail/b/2')).toBe('/detail');
   });
 
+  it('同一榜单的尾斜杠路径共用缓存键', () => {
+    expect(cacheKeyOf('/boards/movie_top250/')).toBe('/boards/movie_top250');
+    expect(cacheKeyOf('/boards/movie_top250')).toBe('/boards/movie_top250');
+  });
+
   it('上限：详情 4，其余 1', () => {
     expect(cacheLimitOf('/detail/a/1')).toBe(DETAIL_CACHE_MAX);
     expect(cacheLimitOf('/home')).toBe(1);

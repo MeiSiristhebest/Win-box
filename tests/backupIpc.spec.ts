@@ -62,6 +62,7 @@ describe('staged backup import', () => {
   it('validates and closes auxiliary windows before staging, then commits only for its owner', async () => {
     const result = await invoke(IPC.BACKUP_IMPORT) as BackupImportResult;
     expect(result.ok).toBe(true);
+    expect(result.renderer).toEqual({ 'winbox-theme': 'apple' });
     expect(result.restoreId).toBeTruthy();
     expect(fixtures.auxiliary.destroy).toHaveBeenCalledOnce();
     expect(restore).not.toHaveBeenCalled();
@@ -71,7 +72,7 @@ describe('staged backup import', () => {
     event = originalEvent;
     await invoke(IPC.BACKUP_COMMIT, result.restoreId);
     expect(restore).toHaveBeenCalledWith(settings);
-    expect(preferences.update).toHaveBeenCalledWith(expect.objectContaining({ themeId: 'apple' }));
+    expect(preferences.update).toHaveBeenCalledWith(expect.objectContaining({ themeId: 'light' }));
     await expect(invoke(IPC.BACKUP_COMMIT, result.restoreId)).rejects.toThrow('失效');
   });
 

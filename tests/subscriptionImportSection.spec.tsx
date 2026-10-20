@@ -41,10 +41,11 @@ describe('SubscriptionImportSection', () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined);
 
     render(<Harness onRefresh={onRefresh} />);
-    fireEvent.click(screen.getByRole('button', { name: '导入本地 .json 文件' }));
+    fireEvent.click(screen.getByText('从本地文件导入'));
+    fireEvent.click(screen.getByRole('button', { name: 'JSON 文件' }));
 
     await waitFor(() => expect(importJson).toHaveBeenCalledOnce());
-    expect(await screen.findByText(/最近一次导入：共 1 条/)).toBeTruthy();
+    expect(await screen.findByText(/最近一次导入：1 条/)).toBeTruthy();
     expect(screen.getByText('source-a')).toBeTruthy();
     expect(onRefresh).toHaveBeenCalledOnce();
   });

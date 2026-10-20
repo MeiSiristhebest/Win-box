@@ -28,15 +28,15 @@
 
 .input:focus-visible {
   border-color: var(--color-accent);
-  outline: 2px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+  outline: var(--focus-ring);
   outline-offset: 1px;
 }
 
 .input[aria-invalid='true'] {
-  border-color: var(--color-danger);
+  border-color: var(--text-danger);
 }
 
 .error {
-  color: var(--color-danger);
+  color: var(--text-danger);
   font-size: 0.8125rem;
 }

@@ -1,5 +1,6 @@
+import PosterSizeControl from '../components/PosterSizeControl';
 import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { client } from '../api/client';
 import PluginSlot from '../components/PluginSlot';
 import type { SourceBean, VodItem, SearchAllReport, AggVodItem } from '../../shared/types';
@@ -19,6 +20,7 @@ import { useHomeBrowseController, type SortClassView } from '../features/home/us
 import { useHomeSearchController } from '../features/home/useHomeSearchController';
 
 export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string, id: string, pic?: string, name?: string, profileId?: string) => void }) {
+  const navigate = useNavigate();
   const filtersOpen = useHomeFilters();
   const [jumpPg, setJumpPg] = useState('');
   const [showTopBtn, setShowTopBtn] = useState(false);
@@ -671,14 +673,19 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
         </span>
       </div>
       )}
-      <div className="content" ref={contentRef}>
+      <div className="content home-content" ref={contentRef}>
+        {!aggMode && <header className="page-heading">
+          <div><h1>点播</h1><p>{curSite ? `当前站点：${curSite.name || curSite.key}` : '导入订阅后，在这里浏览和播放内容。'}</p></div>
+          <PosterSizeControl />
+        </header>}
+        {aggMode && <div className="gallery-toolbar"><PosterSizeControl /></div>}
         {/* ★ 2026-10-18 插件受限 UI 槽位（`contributes.ui.slot`；无插件声明时零影响） */}
         <PluginSlot slot="home" />
         {isSearchWindow() && folder && <button style={{ marginBottom: 12 }} onClick={exitFolder}>← 返回搜索结果</button>}
         {err && <div className="err" style={{ marginBottom: 10 }}>{err}</div>}
         {!err && fallback && !aggMode && (
           <div className="banner" style={{ borderLeftColor: 'var(--accent-2)', marginBottom: 12 }}>
-            该源首页未提供推荐列表，已自动加载首个分类内容（点右上角「筛选」可切分类）。
+            当前展示首个分类的内容，可在下方切换分类。
           </div>
         )}
         {/* ★ 2026-09-26：网盘类源 → 源内绑定入口（替代「源内配置源」：cookie 直接配在应用里） */}
@@ -929,11 +936,11 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
               <div className="empty">
                 {loading
                   ? '加载中…'
-                  : err
-                    ? '加载失败，请查看上方错误提示'
-                    : sites.length === 0
-                      ? '尚未导入站源，请先到「配置」页导入'
-                      : '该源首页暂无数据（可切换分类、换源，或直接在上方输入关键词做聚合搜索）'}
+                  : sites.length === 0
+                    ? <><h2>添加你的第一个订阅</h2><p>支持单仓、多仓和本地配置文件。</p><button className="primary" onClick={() => { try { localStorage.setItem('winbox-cfg-tab', 'sources'); } catch { /* Storage may be disabled. */ } navigate('/config'); }}>导入订阅</button></>
+                    : err
+                      ? '加载失败，请查看上方错误提示'
+                      : <><h2>当前站点暂无内容</h2><p>可以切换分类、在左侧更换站点，或使用顶部搜索。</p></>}
               </div>
             ) : (
               <>
@@ -980,7 +987,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
                           placeholder="页码"
                           aria-label="跳至指定页码"
                           onChange={(e) => setJumpPg(e.target.value.replace(/[^0-9]/g, ''))}
-                          onKeyDown={(e) => { if (e.key === 'Enter') jumpToPage(); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) jumpToPage(); }}
                         />
                         <button disabled={loading || jumpPg.trim() === ''} onClick={jumpToPage} title="跳到输入的页码">跳页</button>
                       </>

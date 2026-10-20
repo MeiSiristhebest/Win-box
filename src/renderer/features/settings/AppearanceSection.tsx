@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
-import { client } from '../../api/client';
-import { UI_SCALE_OPTIONS, type UiScaleState } from '../../../shared/uiScale';
+import { useState } from 'react';
+import PosterSizeControl from '../../components/PosterSizeControl';
+import { setUiScale, useUiScaleState } from '../../lib/displayPrefs';
+import { UI_SCALE_OPTIONS } from '../../../shared/uiScale';
 import { applyTheme, useTheme, useSkins } from '../../lib/theme';
 import { setShowDiscover, setMotionPref, useShowDiscover, useMotionPref, setNavMode, useNavMode, setWaterfall, useWaterfall, type MotionPref } from '../../lib/uiPrefs';
 import styles from './AppearanceSection.module.css';
@@ -18,20 +19,16 @@ export function AppearanceSection() {
   const motion = useMotionPref();
   const navMode = useNavMode();
   const waterfall = useWaterfall();
-  const [uiScale, setUiScale] = useState<UiScaleState>({ pref: 'auto', scale: 1, work: { width: 0, height: 0 } });
-  useEffect(() => {
-    let active = true;
-    void Promise.resolve().then(() => client.uiGetScale()).then((value) => { if (active) setUiScale(value); }).catch(() => undefined);
-    return () => { active = false; };
-  }, []);
+  const uiScale = useUiScaleState();
+  const [scaleError, setScaleError] = useState('');
 
   return (
     <>
-      <section className={`card ${styles.card}`} id="cfg-appearance">
+      <section className={`card ${styles.card} appearance-theme-card`} id="cfg-appearance">
         <h2 className={styles.heading}>外观主题</h2>
         <div className={styles.options} role="radiogroup" aria-label="外观主题">
           {skins.map(({ id, label }) => (
-            <label key={id} className={`tag ${styles.radioOption} ${theme === id ? 'active' : ''}`}>
+            <label key={id} className={`appearance-theme-option ${styles.radioOption} ${theme === id ? 'active' : ''}`}>
               <input
                 className={styles.radioInput}
                 type="radio"
@@ -40,13 +37,14 @@ export function AppearanceSection() {
                 checked={theme === id}
                 onChange={() => applyTheme(id)}
               />
-              <span>{label}{theme === id ? ' ✓' : ''}</span>
+              <span className="theme-preview" data-mode={id} aria-hidden="true"><span className="theme-preview-nav" /><span className="theme-preview-cards"><span /><span /><span /></span></span>
+              <span>{label}{theme === id ? <small>已选</small> : null}</span>
             </label>
           ))}
         </div>
       </section>
 
-      <section className={`card ${styles.card}`} id="cfg-motion">
+      <section className={`card ${styles.card} appearance-setting-card`} id="cfg-motion">
         <h2 className={styles.heading}>界面动效</h2>
         <div className={styles.options} role="radiogroup" aria-label="界面动效">
           {MOTION_OPTIONS.map(([value, label]) => (
@@ -65,7 +63,7 @@ export function AppearanceSection() {
         </div>
       </section>
 
-      <section className={`card ${styles.card}`} id="cfg-show-discover">
+      <section className={`card ${styles.card} appearance-discover-card`} id="cfg-show-discover">
         <label className={styles.discoverToggle}>
           <input
             type="checkbox"
@@ -79,18 +77,23 @@ export function AppearanceSection() {
         </div>
       </section>
 
-      <section className={`card ${styles.card}`} id="cfg-ui-scale">
-        <h2 className={styles.heading}>界面缩放</h2>
+      <section className={`card ${styles.card} appearance-setting-card`} id="cfg-ui-scale">
+        <h2 className={styles.heading}>文字与控件缩放</h2>
         <div className={styles.options} role="radiogroup" aria-label="界面缩放">
           {UI_SCALE_OPTIONS.map((option) => (
             <label key={String(option.value)} className={`tag ${styles.radioOption} ${uiScale.pref === option.value ? 'active' : ''}`}>
-              <input className={styles.radioInput} type="radio" name="ui-scale" value={String(option.value)} checked={uiScale.pref === option.value} onChange={() => { void client.uiSetScale(option.value).then(setUiScale).catch(() => undefined); }} />
+              <input className={styles.radioInput} type="radio" name="ui-scale" value={String(option.value)} checked={uiScale.pref === option.value} onChange={() => { setScaleError(''); void setUiScale(option.value).catch(() => setScaleError('缩放未保存，请重试。')); }} />
               <span>{option.value === 'auto' ? '跟随屏幕（当前 ' + Math.round(uiScale.scale * 100) + '%）' : option.label}</span>
             </label>
           ))}
         </div>
       </section>
-      <section className={`card ${styles.card}`} id="cfg-nav-mode">
+      {scaleError && <p role="alert">{scaleError}</p>}
+      <section className={`card ${styles.card} appearance-setting-card`} id="cfg-poster-size">
+        <div><h2 className={styles.heading}>列表海报大小</h2><p className={`muted ${styles.help}`}>独立于文字缩放，所有影片列表共用。</p></div>
+        <PosterSizeControl />
+      </section>
+      <section className={`card ${styles.card} appearance-setting-card`} id="cfg-nav-mode">
         <h2 className={styles.heading}>详情与搜索的打开方式</h2>
         <div className={styles.options} role="radiogroup" aria-label="页面打开方式">
           {(['inline', 'window'] as const).map((value) => (
@@ -101,7 +104,7 @@ export function AppearanceSection() {
           ))}
         </div>
       </section>
-      <section className={`card ${styles.card}`} id="cfg-home-browse">
+      <section className={`card ${styles.card} appearance-setting-card`} id="cfg-home-browse">
         <h2 className={styles.heading}>点播页浏览方式</h2>
         <div className={styles.options} role="radiogroup" aria-label="点播页浏览方式">
           {[false, true].map((value) => (

@@ -1,5 +1,6 @@
 // src/renderer/api/client.ts — window.api 的类型化封装 + IpcResult 解包
 import type { IpcResult } from '../../shared/ipc-result';
+import type { DiscoverBoardPage } from '../../shared/discoverBoards';
 import type {
   SiteConfig,
   ImportReport,
@@ -182,6 +183,7 @@ declare global {
       dav: {
         list: () => Promise<IpcResult<DavServer[]>>;
         set: (s: DavServer) => Promise<IpcResult<DavServer>>;
+        test: (s: DavServer) => Promise<IpcResult<DavBrowseResult>>;
         remove: (id: string) => Promise<IpcResult<void>>;
         browse: (a: { id: string; path?: string }) => Promise<IpcResult<DavBrowseResult>>;
         openExternal: (url: string) => Promise<IpcResult<{ ok: boolean; player?: string; error?: string }>>;
@@ -213,6 +215,7 @@ declare global {
         extra: (name: string, year?: string) => Promise<IpcResult<MetaExtra | null>>;
         /** ★ 发现页榜单（无源默认主页） */
         discover: (refresh?: boolean) => Promise<IpcResult<DiscoverSection[]>>;
+        boardPage: (id: string, page: number, refresh?: boolean) => Promise<IpcResult<DiscoverBoardPage>>;
         movieHot: () => Promise<IpcResult<MovieHotList>>;
         discoverImages: (name: string, mediaType: 'movie' | 'tv', year?: string, kind?: 'backdrop' | 'poster', doubanId?: string) => Promise<IpcResult<MetaImages>>;
         /** ★ 发现页「分类」：类型清单与按类型翻页 */
@@ -376,6 +379,7 @@ declare global {
       ui: {
         getScale: () => Promise<IpcResult<UiScaleState>>;
         setScale: (v: UiScalePref) => Promise<IpcResult<UiScaleState>>;
+        onScaleChanged?: (cb: (state: UiScaleState) => void) => () => void;
       };
     };
   }
@@ -542,6 +546,7 @@ export const client = {
   /** ★ 2026-09-29 WebDAV 存储（只读） */
   davList: () => unwrap(window.api.dav.list()),
   davSet: (s: DavServer) => unwrap(window.api.dav.set(s)),
+  davTest: (s: DavServer) => unwrap(window.api.dav.test(s)),
   davRemove: (id: string) => unwrap(window.api.dav.remove(id)),
   davBrowse: (a: { id: string; path?: string }) => unwrap(window.api.dav.browse(a)),
   davOpenExternal: (url: string) => unwrap(window.api.dav.openExternal(url)),
@@ -571,6 +576,7 @@ export const client = {
   metaExtra: (name: string, year?: string) => unwrap(window.api.meta.extra(name, year)),
   /** ★ 发现页榜单（无源默认主页；refresh 绕过 6h 缓存） */
   metaDiscover: (refresh?: boolean) => unwrap(window.api.meta.discover(refresh)),
+  metaBoardPage: (id: string, page: number, refresh?: boolean) => unwrap(window.api.meta.boardPage(id, page, refresh)),
   metaMovieHot: () => unwrap(window.api.meta.movieHot()),
   metaDiscoverImages: (name: string, mediaType: 'movie' | 'tv', year?: string, kind?: 'backdrop' | 'poster', doubanId?: string) => unwrap(window.api.meta.discoverImages(name, mediaType, year, kind, doubanId)),
   /** ★ 发现页「分类」：TMDB 类型清单 */
@@ -645,6 +651,7 @@ export const client = {
   /** ★ 2026-10-16（用户要求「自适应屏幕分辨率调节窗口大小与字体大小」）：界面缩放读/写 */
   uiGetScale: () => unwrap(window.api.ui.getScale()),
   uiSetScale: (v: UiScalePref) => unwrap(window.api.ui.setScale(v)),
+  onUiScaleChanged: (cb: (state: UiScaleState) => void) => window.api?.ui?.onScaleChanged?.(cb) || (() => undefined),
   /** ★ 网络代理设置（DNS 污染 / SNI 阻断站点用） */
   proxyGet: () => unwrap<{ enabled: boolean; url: string }>(window.api.net.proxyGet()),
   proxySet: (patch: { enabled?: boolean; url?: string }) =>

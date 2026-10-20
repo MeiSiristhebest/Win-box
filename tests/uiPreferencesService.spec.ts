@@ -21,9 +21,9 @@ afterEach(() => {
 describe('main-process UI preference service', () => {
   it('imports legacy values once and persists a versioned snapshot', () => {
     const first = createService();
-    expect(first.get()).toMatchObject({ revision: 0, initialized: false, values: { themeId: 'netflix' } });
+    expect(first.get()).toMatchObject({ revision: 0, initialized: false, values: { themeId: 'dark' } });
     const initialized = first.initialize({ themeId: 'apple', motion: 'off', showDiscover: false, waterfall: true });
-    expect(initialized).toMatchObject({ revision: 1, initialized: true, values: { themeId: 'apple', motion: 'off', showDiscover: false, waterfall: true } });
+    expect(initialized).toMatchObject({ revision: 1, initialized: true, values: { themeId: 'light', motion: 'off', showDiscover: false, waterfall: true } });
     expect(first.initialize({ themeId: 'netflix' })).toEqual(initialized);
 
     const reopened = new UiPreferencesService(new JsonStore(join(temporaryDirectories.at(-1)!, 'preferences.json')));
@@ -51,6 +51,6 @@ describe('main-process UI preference service', () => {
     } as unknown as JsonStore;
     const service = new UiPreferencesService(store);
     expect(() => service.update({ themeId: 'bilibili' })).toThrow('disk unavailable');
-    expect(service.get()).toMatchObject({ revision: 0, initialized: false, values: { themeId: 'netflix' } });
+    expect(service.get()).toMatchObject({ revision: 0, initialized: false, values: { themeId: 'dark' } });
   });
 });

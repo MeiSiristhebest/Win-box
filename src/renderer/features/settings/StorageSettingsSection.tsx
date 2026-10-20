@@ -64,9 +64,7 @@ export function StorageSettingsSection({ active }: { active: boolean }) {
     setBusy(true);
     setMessage(null);
     try {
-      const saved = await client.davSet(draft);
-      const result = await client.davBrowse({ id: saved.id, path: '/' });
-      setServers(await loadServers());
+      const result = await client.davTest(draft);
       setMessage({ text: `连接成功：${result.path} 下 ${result.entries.length} 项`, kind: 'ok' });
     } catch (error) {
       setMessage({ text: (error as Error).message, kind: 'err' });
@@ -79,31 +77,28 @@ export function StorageSettingsSection({ active }: { active: boolean }) {
 
   return (
     <>
-      <div className="card" style={{ padding: 12, marginBottom: 16 }}>
+      <div className="card" style={{ padding: 20, marginBottom: 20 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <span className="muted" style={{ fontSize: 12 }}>
-            在「存储」页浏览并播放自建存储里的视频。取流时凭据由本机中继注入，不会出现在播放地址里。
-          </span>
-          <div className="row" style={{ alignItems: 'center', gap: 8 }}>
-            <span className="muted" style={{ fontSize: 11, flex: 'none', width: 48 }}>名称</span>
-            <input style={{ width: 170 }} placeholder="我的 OpenList" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} />
-            <span className="muted" style={{ fontSize: 11, flex: 'none', width: 48 }}>地址</span>
-            <input style={{ width: 320, fontFamily: 'monospace' }} placeholder="https://host:5244/dav" value={draft.url} onChange={(event) => setDraft((current) => ({ ...current, url: event.target.value }))} />
+          <div className="import-heading"><h3>{draft.id ? '编辑存储' : '添加存储'}</h3><p>连接 WebDAV 服务，在「存储」页浏览和播放视频。</p></div>
+          <div className="settings-form-grid">
+            <label>名称<input aria-label="存储名称" disabled={busy} placeholder="例如：家庭媒体库" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></label>
+            <label>WebDAV 地址<input aria-label="存储地址" disabled={busy} placeholder="https://host:5244/dav" value={draft.url} onChange={(event) => setDraft((current) => ({ ...current, url: event.target.value }))} /></label>
+            <label>用户名<input aria-label="存储用户名" disabled={busy} value={draft.username} onChange={(event) => setDraft((current) => ({ ...current, username: event.target.value }))} /></label>
+            <label>密码<input aria-label="存储密码" disabled={busy} type="password" value={draft.password} onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))} /></label>
           </div>
-          <div className="row" style={{ alignItems: 'center', gap: 8 }}>
-            <span className="muted" style={{ fontSize: 11, flex: 'none', width: 48 }}>用户名</span>
-            <input style={{ width: 170 }} value={draft.username} onChange={(event) => setDraft((current) => ({ ...current, username: event.target.value }))} />
-            <span className="muted" style={{ fontSize: 11, flex: 'none', width: 48 }}>密码</span>
-            <input style={{ width: 170 }} type="password" value={draft.password} onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))} />
-            <button className="primary" disabled={busy} onClick={() => void saveServer()}>{draft.id ? '保存修改' : '添加'}</button>
+          <div className="row" style={{ gap: 8, marginTop: 8 }}>
+            <button className="primary" disabled={busy || !draft.url.trim()} onClick={() => void saveServer()}>{draft.id ? '保存修改' : '添加存储'}</button>
             <button disabled={busy || !draft.url} onClick={() => void testServer()}>测试连接</button>
             {draft.id && <button disabled={busy} onClick={() => setDraft({ ...EMPTY_SERVER })}>取消编辑</button>}
           </div>
           {message && <span className={message.kind === 'err' ? 'err' : 'status'} style={{ margin: 0 }} aria-live="polite">{message.text}</span>}
         </div>
       </div>
-      <div className="card" style={{ padding: 12, marginBottom: 16 }}>
+      <div className="card" style={{ padding: 20, marginBottom: 20 }}>
+        <h3 className="settings-list-heading">已保存连接</h3>
         {servers.length ? (
+          // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- The scroll region needs focus for keyboard scrolling.
+          <section className="table-scroll" aria-label="已保存存储" tabIndex={0}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr>
@@ -127,6 +122,7 @@ export function StorageSettingsSection({ active }: { active: boolean }) {
               ))}
             </tbody>
           </table>
+          </section>
         ) : (
           <div className="empty">还没有添加存储</div>
         )}

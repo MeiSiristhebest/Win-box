@@ -18,13 +18,17 @@ export function usePageActive(): boolean {
 }
 
 /** 单页内跳转时保持挂载的页面（返回零重载） */
-const CACHEABLE = new Set(['/', '/home', '/search', '/history', '/favorites']);
+const CACHEABLE = new Set(['/', '/boards', '/home', '/search', '/history', '/favorites']);
 
 /** 详情页按「一部片一个实例」缓存（详情A → 详情B → 返回 也能零重载）；同一组最多保留这么多 */
 export const DETAIL_CACHE_MAX = 4;
 
 function isDetailPath(pathname: string): boolean {
   return /^\/detail(\/|$)/.test(pathname);
+}
+
+function isBoardPath(pathname: string): boolean {
+  return /^\/boards\/[^/]+\/?$/.test(pathname);
 }
 
 /** 去掉尾斜杠（`/home/` 与 `/home` 视为同一页；根路径 `/` 除外） */
@@ -37,22 +41,23 @@ function normalizePath(pathname: string): string {
 /** 是否纳入伪墓碑缓存（详情按片独立缓存；直播/存储/配置/说明每次重载，保持既有语义） */
 export function isCacheableRoute(pathname: string): boolean {
   if (isDetailPath(pathname)) return true;
+  if (isBoardPath(pathname)) return true;
   return CACHEABLE.has(normalizePath(pathname));
 }
 
 /** 缓存键 = 完整 pathname（详情页因此做到「一部片一个实例」） */
 export function cacheKeyOf(pathname: string): string {
-  return pathname;
+  return isBoardPath(pathname) ? normalizePath(pathname) : pathname;
 }
 
 /** 缓存分组：同组按上限淘汰（详情同属 `/detail` 一组，其余各自成组） */
 export function cacheGroupOf(pathname: string): string {
-  return isDetailPath(pathname) ? '/detail' : normalizePath(pathname);
+  return isDetailPath(pathname) ? '/detail' : isBoardPath(pathname) ? '/boards/item' : normalizePath(pathname);
 }
 
 /** 该路由同组实例上限（详情 4，其余 1） */
 export function cacheLimitOf(pathname: string): number {
-  return isDetailPath(pathname) ? DETAIL_CACHE_MAX : 1;
+  return isDetailPath(pathname) ? DETAIL_CACHE_MAX : isBoardPath(pathname) ? 3 : 1;
 }
 
 export interface CacheEntryMeta {

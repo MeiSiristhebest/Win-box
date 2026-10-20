@@ -1,3 +1,4 @@
+@layer components {
 .root {
   border-bottom: 1px solid var(--border-subtle);
   margin-bottom: 1rem;
@@ -25,14 +26,16 @@
 .tab[aria-selected='true'] {
   background: color-mix(in srgb, var(--color-accent) 12%, var(--surface-raised));
   border-color: color-mix(in srgb, var(--color-accent) 24%, var(--border-subtle));
-  border-bottom-color: var(--color-accent);
-  color: var(--color-accent);
+  border-bottom-color: var(--text-accent);
+  color: var(--text-accent);
   font-weight: 650;
 }
 
 .tab:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: var(--focus-ring);
   outline-offset: 2px;
   position: relative;
   z-index: 1;
+}
+
 }
