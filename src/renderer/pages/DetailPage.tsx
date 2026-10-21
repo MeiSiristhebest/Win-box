@@ -19,6 +19,7 @@ import { detailPresentationView } from '../lib/presentationRegistry';
 import { useDetailDataController } from '../features/detail/useDetailDataController';
 import { useDetailPlaybackController } from '../features/detail/useDetailPlaybackController';
 import { DetailEpisodeList } from '../features/detail/DetailEpisodeList';
+import { MovieSourcesPanel } from '../features/detail/MovieSourcesPanel';
 
 /**
  * ★ 2026-09-29：本会话已因「该源无剧集详情」自动跳到全源搜索的 item（键 = `<key>:<id>`）。
@@ -362,6 +363,7 @@ export default function DetailPage({
             )}
           </>
         )}
+        {detailName && <MovieSourcesPanel title={detailName} />}
       </div>
     </>
   );

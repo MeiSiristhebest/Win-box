@@ -7,6 +7,7 @@ import { useLocation } from 'react-router-dom';
 const ConfigPage = lazy(() => import('./pages/ConfigPage'));
 const HomePage = lazy(() => import('./pages/HomePage'));
 const DiscoverPage = lazy(() => import('./pages/DiscoverPage'));
+const DiscoverDetailPage = lazy(() => import('./pages/DiscoverDetailPage'));
 const BoardsPage = lazy(() => import('./pages/BoardsPage'));
 const DiscoverBoardPage = lazy(() => import('./pages/DiscoverBoardPage'));
 const DetailPage = lazy(() => import('./pages/DetailPage'));
@@ -213,7 +214,7 @@ function AppShell() {
   useEffect(() => {
     if (loc.pathname === '/player') return;
     return client.onNavDriveBind(() => {
-      nav('/home');
+      nav('/config?section=account');
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loc.pathname]);
@@ -430,6 +431,7 @@ function AppShell() {
   const routeDefs: Array<{ path: string; el: React.ReactElement }> = [
     // ★ 2026-09-24（用户定稿）：「发现」= 默认首页（软件打开即进这里）；「点播」= 源主页 /home
     { path: '/', el: <DiscoverPage /> },
+    { path: '/movie', el: <DiscoverDetailPage /> },
     { path: '/boards', el: <BoardsPage /> },
     { path: '/boards/:boardId', el: <DiscoverBoardPage /> },
     { path: '/home', el: <HomePage onOpenDetail={openDetail} /> },

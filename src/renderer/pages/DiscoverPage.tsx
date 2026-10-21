@@ -3,14 +3,15 @@ import PosterSizeControl from '../components/PosterSizeControl';
 // 内容：
 //   ① 推荐（豆瓣电影/剧集五分区；主进程持久缓存，过期后台更新）
 //   ② 分类（国内标签推荐分页，与 TMDB 类型 ID 解耦）
-// 交互：点任意影片 → 走 `#/search?agg=<片名>` 用「源」做一次全源搜索（没源时提示去导入）。
+// 交互：点任意影片进入资料页，并搜索全部已导入子仓的片源。
 import { useEffect, useRef, useState } from 'react';
 import { usePageActive } from '../lib/keepAlive';
 import ItemCard, { discoverCoverItem } from '../components/DiscoverItemCard';
 import '../features/discovery/boards.css';
 import PluginSlot from '../components/PluginSlot';
-import { openSearchWindow } from '../lib/searchWin';
-import { useAppDialog } from '../components/AppDialog';
+import { useNavigate } from 'react-router-dom';
+import { discoverDetailRoute } from '../../shared/discoverDetail';
+import type { DiscoverItem } from '../../shared/types';
 import { useTheme } from '../lib/theme';
 import { discoverPresentationView } from '../lib/presentationRegistry';
 import DiscoverShelf from '../components/DiscoverShelf';
@@ -21,7 +22,7 @@ import { useDiscoverExplore } from '../features/discovery/useDiscoverExplore';
 import CascadeBar from '../components/CascadeBar';
 
 export default function DiscoverPage() {
-  const dialog = useAppDialog();
+  const navigate = useNavigate();
   const active = usePageActive();
   const contentRef = useRef<HTMLDivElement>(null);
   const tailRef = useRef<HTMLDivElement>(null);
@@ -44,7 +45,7 @@ export default function DiscoverPage() {
   const coverItem = discoverCoverItem;
   const covers = useCovers((gSel ? gItems : (view.mode === 'poster-wall' ? sections?.[wallSec]?.items || [] : sections?.flatMap(s => s.items) || [])).map(coverItem), active, true);
 
-  const goSearch = (title: string): void => { void openSearchWindow(title).catch((e) => void dialog.alert(String(e), { title: '无法打开搜索窗口' })); };
+  const openMovie = (item: DiscoverItem): void => { navigate(discoverDetailRoute(item)); };
   return (
     <>
       <div className="content discover-content" ref={contentRef}>
@@ -70,7 +71,7 @@ export default function DiscoverPage() {
               <>
                 <div className="grid" aria-busy={gLoading}>
                   {gItems.map((it, i) => (
-                    <ItemCard key={`${it.title}-${i}`} it={it} poster={covers.picOf(coverItem(it))} onError={url => covers.onError(coverItem(it), url)} onOpen={() => goSearch(it.title)} card={view.card} />
+                    <ItemCard key={`${it.title}-${i}`} it={it} poster={covers.picOf(coverItem(it))} onError={url => covers.onError(coverItem(it), url)} onOpen={() => openMovie(it)} card={view.card} />
                   ))}
                 </div>
                 <div className="board-feed-tail" ref={tailRef}>
@@ -113,7 +114,7 @@ export default function DiscoverPage() {
               </div>
               <div className={view.wall.gridClass} key={`wall-${wallSec}`}>
                 {((sections || [])[Math.min(wallSec, Math.max(0, (sections || []).length - 1))]?.items || []).map((it, i) => (
-                  <ItemCard key={`${it.title}-${i}`} it={it} poster={covers.picOf(coverItem(it))} onError={url => covers.onError(coverItem(it), url)} onOpen={() => goSearch(it.title)} card={view.card} />
+                  <ItemCard key={`${it.title}-${i}`} it={it} poster={covers.picOf(coverItem(it))} onError={url => covers.onError(coverItem(it), url)} onOpen={() => openMovie(it)} card={view.card} />
                 ))}
               </div>
             </div>
@@ -127,7 +128,7 @@ export default function DiscoverPage() {
                       it={it}
                       poster={covers.picOf(coverItem(it))}
                       onError={url => covers.onError(coverItem(it), url)}
-                      onOpen={() => goSearch(it.title)}
+                      onOpen={() => openMovie(it)}
                       card={view.card}
                     />;
                     return view.row.cardWidth !== undefined

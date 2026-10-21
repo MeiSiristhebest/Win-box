@@ -81,6 +81,13 @@ export function useHomeBrowseController({
     // A new browse request invalidates category pages and older home requests.
     const gen = listGen.current.next();
     keyRef.current = k;
+    setClasses([]);
+    setTid('');
+    setFiltersActive({});
+    setItems([]);
+    setPageInfo({ page: 0, pagecount: 0, total: 0 });
+    setPg(1);
+    setFallback(false);
     setLoading(true);
     setErr('');
     try {
@@ -93,6 +100,7 @@ export function useHomeBrowseController({
       setPageInfo({ page: r.page, pagecount: r.pagecount, total: r.total });
       setPg(1);
       setFallback(!!r.homeFallback);
+      setErr(r.contentNotice || '');
       prepRetryCount.current = 0;
     } catch (e) {
       if (!listGen.current.isCurrent(gen)) return;

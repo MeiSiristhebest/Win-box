@@ -1,0 +1,8 @@
+.movie-detail-content { overflow-y: auto; }
+.movie-overview { display: flex; gap: 24px; margin: 20px 0 32px; align-items: flex-start; }
+.movie-overview > div { min-width: 0; }
+.movie-overview-poster { width: 160px; max-width: 30%; height: auto; border-radius: 12px; }
+.movie-overview-text { white-space: pre-line; line-height: 1.8; }
+.movie-source-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 12px; margin: 16px 0; }
+.movie-source-option { display: flex; flex-direction: column; gap: 8px; padding: 16px; text-align: left; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .movie-overview { gap: 12px; } .movie-overview-poster { width: 100px; } }

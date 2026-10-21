@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { client } from '../../api/client';
 import { DEFAULT_META_SETTINGS, type MetaSettings } from '../../../shared/meta';
 import type { SubtitleProviderView } from '../../../shared/subtitle';
+import DriveBindModal from '../../components/DriveBindModal';
 
 export function AccountServicesSection({ active }: { active: boolean }) {
+  const [driveOpen, setDriveOpen] = useState(false);
   const [subToken, setSubToken] = useState('');
   const [subTokenSaved, setSubTokenSaved] = useState(false);
   const [subProviders, setSubProviders] = useState<SubtitleProviderView[]>([]);
@@ -56,6 +58,11 @@ export function AccountServicesSection({ active }: { active: boolean }) {
 
   return (
     <>
+      <div className="card" id="cfg-drives" style={{ padding: 12, marginBottom: 16 }}>
+        <h2>全局网盘账号</h2><p>登录状态独立保存在本机，跨子仓和站点共享。可在这里统一登录、更新或解绑。</p>
+        <button type="button" onClick={() => setDriveOpen(true)}>管理网盘登录状态</button>
+      </div>
+      {driveOpen && <DriveBindModal siteName="所有子仓与站点" onClose={() => setDriveOpen(false)} onSaved={() => window.dispatchEvent(new Event('winbox:drives-changed'))} />}
       <div className="card" id="cfg-subtitle" style={{ padding: 12, marginBottom: 16 }}>
         <div className="row" style={{ marginBottom: 8 }}>
           <span className="muted" style={{ fontWeight: 600 }}>外挂字幕（多源在线检索）</span>

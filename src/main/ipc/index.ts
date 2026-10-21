@@ -573,7 +573,7 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   // ---- 详情/搜索独立窗口（已开则复用：聚焦 + 通知其换路由）----
   registerHandler(IPC.WIN_OPEN_DETAIL, (_e: any, a: { key?: string; id?: string; query?: string }) =>
     openDetailWindow(a || {}, uiPreferences.get().values.themeId), log);
-  registerHandler(IPC.WIN_OPEN_SEARCH, (_e: any, value: string | { term: string; profileId?: string }) => openSearchWindow(value, uiPreferences.get().values.themeId), log);
+  registerHandler(IPC.WIN_OPEN_SEARCH, (_e: any, value: string | { term: string; profileId?: string; allProfiles?: boolean }) => openSearchWindow(value, uiPreferences.get().values.themeId), log);
   registerHandler(IPC.WIN_ROUTE_READY, (e: any) => {
     searchWindowReady(e.sender.id);
     detailWindowReady(e.sender.id);

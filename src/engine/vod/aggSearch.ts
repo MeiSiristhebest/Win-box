@@ -17,7 +17,7 @@ import type { AggVodItem, SearchAllReport, SearchPerSource, SourceBean, VodItem 
  */
 export function isSearchableSource(s: Pick<SourceBean, 'type' | 'searchable'>): boolean {
   if (Number(s.searchable) === 0) return false;
-  return s.type === 0 || s.type === 1 || s.type === 3;
+  return s.type === 0 || s.type === 1 || s.type === 3 || s.type === 4;
 }
 
 export interface AggSearchInput {

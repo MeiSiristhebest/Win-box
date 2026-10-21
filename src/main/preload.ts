@@ -263,7 +263,7 @@ const api = {
     isAlwaysOnTop: () => invoke<boolean>(IPC.WIN_IS_ALWAYS_ON_TOP),
     // ★ 2026-10-08（用户要求）：详情页独立窗口（外观开关；已开则复用并通知换路由）
     openDetail: (a: { key: string; id: string; query?: string }) => invoke(IPC.WIN_OPEN_DETAIL, a),
-    openSearch: (args: { term: string; profileId?: string }) => invoke(IPC.WIN_OPEN_SEARCH, args),
+    openSearch: (args: { term: string; profileId?: string; allProfiles?: boolean }) => invoke(IPC.WIN_OPEN_SEARCH, args),
     routeReady: () => invoke(IPC.WIN_ROUTE_READY),
     reportError: (message: string) => invoke(IPC.WIN_REPORT_ERROR, message),
     onNavigate: (cb: (route: string) => void) => {

@@ -123,8 +123,18 @@ describe('订阅格式回归', () => {
     expect(parseJsonLenient(text)).toEqual(expected);
   });
 
-  it('数字后多余的引号仍报错', () => {
-    expect(() => parseJsonLenient('{"sites":[{"searchable":0"}]}')).toThrow();
+  it('recovers an orphan quote after a scalar in the reported remote configuration', () => {
+    expect(parseJsonLenient('{"sites":[{"searchable":0"}],"spider":"https://example.invalid/a.jar"}')).toEqual({ sites: [{ searchable: 0 }], spider: 'https://example.invalid/a.jar' });
+  });
+
+  it('recovers missing opening category quotes and raw control characters together', () => {
+    expect(parseJsonLenient('{"jar":"./lib/PG.txt;md5; abc\n","categories":["国产剧",日韩剧","欧美剧"]}')).toEqual({ jar: './lib/PG.txt;md5; abc\n', categories: ['国产剧', '日韩剧', '欧美剧'] });
+  });
+
+  it('preserves lookalike scalar text inside a valid string and rejects executable expressions', () => {
+    const value = ':0"},日韩剧"';
+    expect(parseJsonLenient(JSON.stringify({ value }))).toEqual({ value });
+    expect(() => parseJsonLenient('{"value":process.exit(1)"}')).toThrow();
   });
 
   it('拒绝对象中的可执行表达式', () => {

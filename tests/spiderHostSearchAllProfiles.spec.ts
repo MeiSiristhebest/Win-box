@@ -41,6 +41,46 @@ function profileSources(profileId: string, count: number, type = 0): SourceBean[
 }
 
 describe('SpiderHost.searchAll across profiles', () => {
+  it('does not permanently skip recoverable errors just because their message says unsupported', async () => {
+    const search = vi.fn<() => Promise<[]>>()
+      .mockRejectedValueOnce(new Error('ARM 兼容桥未实现此调用；源返回不支持当前登录状态'))
+      .mockResolvedValue([]);
+    const host = makeHost(['a'], new Map([['a', profileSources('a', 1)]]), { search });
+    expect((await host.searchAll('first', { profileIds: ['a'] })).failedSources).toBe(1);
+    expect((await host.searchAll('second', { profileIds: ['a'] })).failedSources).toBe(0);
+    expect(search).toHaveBeenCalledTimes(2);
+  });
+
+  it('allows manual refresh to recheck an explicitly unsupported source format', async () => {
+    const search = vi.fn<() => Promise<[]>>()
+      .mockRejectedValueOnce(Object.assign(new Error('QuickJS 字节码'), { code: 'JS_BYTECODE' }))
+      .mockResolvedValue([]);
+    const host = makeHost(['a'], new Map([['a', profileSources('a', 1)]]), { search });
+    await host.searchAll('first', { profileIds: ['a'] });
+    await host.searchAll('second', { profileIds: ['a'] });
+    expect(search).toHaveBeenCalledTimes(1);
+    await host.searchAll('second', { profileIds: ['a'], refresh: true });
+    expect(search).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares an in-flight search between results and movie-detail views', async () => {
+    const ids = ['profile-a', 'profile-b'];
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const search = vi.fn(async () => { await gate; return [] as []; });
+    const host = makeHost(ids, new Map(ids.map(id => [id, profileSources(id, 2, 4)])), { search });
+    const progressA = vi.fn(), progressB = vi.fn();
+    const first = host.searchAll('same movie', { profileIds: ids }, progressA);
+    const second = host.searchAll('same movie', { profileIds: ids }, progressB);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    release();
+    const [a, b] = await Promise.all([first, second]);
+    expect(search).toHaveBeenCalledTimes(4);
+    expect(a).toBe(b);
+    expect(progressA).toHaveBeenCalled();
+    expect(progressB).toHaveBeenCalledTimes(progressA.mock.calls.length);
+    expect(a.perSource).toHaveLength(4);
+  });
   it('keeps one shared 24-source cap while searching more than 24 sources across profiles', async () => {
     const profileIds = ['profile-a', 'profile-b', 'profile-c'];
     const sitesByProfile = new Map(profileIds.map((id) => [id, profileSources(id, 16)]));

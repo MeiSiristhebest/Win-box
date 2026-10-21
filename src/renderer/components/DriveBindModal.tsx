@@ -67,7 +67,7 @@ export default function DriveBindModal({ siteName, initialProvider, reason, onCl
       await client.driveSet(provider, ck); // 主进程：写凭据 + Cloud-drive 配置 + 重置蜘蛛进程
       setCookie('');
       refresh();
-      setMsg(`✓ 已保存「${driveProviderLabel(provider)}」Cookie。回到本源重新进一次即可生效（蜘蛛进程已重置）。`);
+      setMsg(`✓ 已保存「${driveProviderLabel(provider)}」全局登录状态，所有支持该网盘的子仓和源均可复用。`);
       onSaved();
     } catch (e) {
       setMsg(`保存失败：${(e as Error).message}`);
@@ -100,14 +100,15 @@ export default function DriveBindModal({ siteName, initialProvider, reason, onCl
       onClose={onClose}
     >
         <div className="app-dialog-heading">
-          <h2 id="drive-bind-title">网盘绑定 · {siteName}</h2>
+          <h2 id="drive-bind-title">全局网盘账号</h2>
           <button className="app-dialog-close" onClick={onClose}>关闭</button>
         </div>
 
         <div className="muted" style={{ fontSize: 12, lineHeight: 1.7, marginBottom: 10 }}>
           {initProv
             ? `检测到该资源来自「${driveProviderLabel(initProv)}」网盘的专用链接，未绑定对应 Cookie 时无法取流。绑定后回到播放页会自动重新解析。`
-            : '该源需要网盘 Cookie 才能取流。'}
+            : `使用场景：${siteName}。`}
+          <p>登录状态独立保存在本机，所有支持该网盘的子仓和站点共享；切换线路无需重复登录。</p>
           {reason ? <div style={{ marginTop: 4 }}>{reason}</div> : null}
         </div>
 

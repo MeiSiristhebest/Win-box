@@ -7,6 +7,7 @@ import type { SourceBean, VodItem, SearchAllReport, AggVodItem } from '../../sha
 import { sourceAvailability } from '../../engine/vod/sourceAvailability';
 import { isDoubanLikeSource } from '../../engine/config/sourceKind';
 import { sourceIdentityKey } from '../../engine/vod/aggSearch';
+import { discoverDetailRoute } from '../../shared/discoverDetail';
 import { uiMem, schedulePersist, type HomeSearchMem } from '../lib/uiMemory';
 import { makeStaleGuard } from '../lib/staleGuard';
 import { useHomeFilters, setHomeFilters } from '../lib/uiPrefs';
@@ -15,7 +16,7 @@ import { needsDriveBind } from '../../shared/driveProvider';
 import { useCovers } from '../lib/useCovers';
 import CascadeBar, { type CascadeLevel } from '../components/CascadeBar';
 import DriveBindModal from '../components/DriveBindModal';
-import { isSearchWindow, openSearchWindow } from '../lib/searchWin';
+import { isSearchWindow } from '../lib/searchWin';
 import { useHomeBrowseController, type SortClassView } from '../features/home/useHomeBrowseController';
 import { useHomeSearchController } from '../features/home/useHomeSearchController';
 
@@ -45,11 +46,11 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   // 聚合搜索态
   const [agg, setAgg] = useState<SearchAllReport | null>(null);
   const [aggMode, setAggMode] = useState(false);
-  /** 搜索范围：默认只搜当前源（快）；勾选后搜全部源（慢，遍历所有可搜索源） */
-  const [searchAllSources, setSearchAllSources] = useState(false);
+  /** 推荐跟随当前站点；搜索默认覆盖全部已导入子仓。 */
+  const [searchAllSources, setSearchAllSources] = useState(true);
   /** 实际执行搜索时用的范围（结果区展示用，避免用户中途改勾选导致文案错位） */
   const [aggScope, setAggScope] = useState<'current' | 'all' | 'all-profiles'>('current');
-  const [searchAllProfiles, setSearchAllProfiles] = useState(false);
+  const [searchAllProfiles, setSearchAllProfiles] = useState(true);
   /** ★ 全源搜索进度（已完成/总源数）：让用户看到「边搜边出」的推进，而不是干等 */
   const [aggProgress, setAggProgress] = useState<{ done: number; total: number; pending: number } | null>(null);
   /**
@@ -76,7 +77,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   const keyRef = useRef('');
   /** ★ 2026-09-26：`/search?agg=` 外部入口的本轮关键词（非空即需要跑一次全源搜索） */
   const aggParam = (searchParams.get('agg') || '').trim();
-  const requestedAllProfiles = searchParams.get('profiles') === 'all';
+  const requestedAllProfiles = searchParams.get('profiles') !== 'current';
   const contentRef = useRef<HTMLDivElement>(null);
   /** ★ 2026-09-26：源内「网盘绑定」弹层开关 + 已绑定凭据（用于横幅上的状态摘要） */
   const [bindOpen, setBindOpen] = useState(false);
@@ -138,7 +139,6 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     loadCategory,
     chooseCategory,
     chooseFilter,
-    chooseSource,
     currentClass,
     wfStatusText,
     wfNoMore,
@@ -366,7 +366,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
         }
         // ★ 搜索 → 详情 → 返回：恢复上次搜索结果界面（不重新浏览首页）
         const memSearch = uiMem.home.search;
-        if (isSearchWindow() && memSearch && memSearch.aggMode && memSearch.profileId === selectedProfileId && !!memSearch.searchAllProfiles === requestedAllProfiles) {
+        if (pathname === '/search' && memSearch && memSearch.aggMode && memSearch.profileId === selectedProfileId && !!memSearch.searchAllProfiles === requestedAllProfiles) {
           applySearchMem(memSearch);
           const pick = pickSource();
           if (pick) {
@@ -450,6 +450,11 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
         }
         if (reload || profileChanged || source.key !== keyRef.current) {
           setKey(source.key);
+          if (pathname === '/search' && aggParam) {
+            keyRef.current = source.key;
+            if (!requestedAllProfiles) void doSearch(true, aggParam, true, false);
+            return;
+          }
           void loadHome(source.key);
         }
       }).catch((cause: unknown) => {
@@ -465,13 +470,18 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
       const detail: unknown = (event as CustomEvent).detail;
       preferredSourceRef.current = typeof detail === 'string' ? detail : '';
       listGen.current.next();
-      searchGen.current.next();
+      if (pathname !== '/search' || !requestedAllProfiles) searchGen.current.next();
       refresh(true);
     };
     const onSources = (): void => refresh();
     const onSource = (event: Event): void => {
       const key: unknown = (event as CustomEvent).detail;
-      if (pageActive && !requestedProfileId && typeof key === 'string' && key) chooseSource(key);
+      if (requestedProfileId || typeof key !== 'string' || !key) return;
+      preferredSourceRef.current = key;
+      pendingProfileRef.current = true;
+      listGen.current.next();
+      if (pathname !== '/search' || !requestedAllProfiles) searchGen.current.next();
+      refresh(true);
     };
     if (pageActive) {
       if (everActiveRef.current || pendingProfileRef.current) refresh();
@@ -495,9 +505,8 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
 
   /**
    * 搜索。
-   * - 默认（searchAllSources=false）：只搜当前选中源 —— 快，行为与上游 TVBox 的
-   *   `filter__home` 模式一致（切换源即切换搜索范围）。
-   * - 勾选「全源搜索」：遍历全部可搜索源并发检索（调度位 12 + 池并行 8），结果**边搜边出**。
+   * - 默认遍历全部已导入子仓的可搜索源，结果边搜边出；推荐站点的选择不改变这个范围。
+   * - 用户可以显式缩小到当前子仓或当前站点。
    * - ★ 2026-09-23 三轮：同关键词 5 分钟内再搜 → 主进程直接返回本地缓存（**秒回**）；
    *   `force=true`（「重新搜索」按钮）忽略缓存强制重搜。
    */
@@ -557,17 +566,13 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   const curSite = sites.find((s) => s.key === key) ?? (key ? undefined : sites[0]);
   const listStyle = !!curSite?.style && /list/i.test(curSite.style);
   const siteCats = curSite?.categories?.filter(Boolean) ?? [];
-  /**
-   * ★ 2026-09-29（用户要求）：豆瓣类源**本质是搜索聚合**（蜘蛛只有 searchContent，
-   *   detailContent 为空或仅简介）⇒ 点封面**不进详情页**，改成拿片名做一次全源聚合搜索，
-   *   让用户直接换到「能出剧集」的源。非豆瓣源保持原行为（进详情）。
-   */
-  const goAggSearch = (name: string, profileId = profileIdRef.current || requestedProfileId || undefined): void => {
-    void openSearchWindow(name, profileId, searchAllProfiles).catch((e) => setErr(String(e)));
+  /** 推荐信息源没有可播放剧集，进入影片资料页并查找所有子仓的片源。 */
+  const openRecommendation = (item: VodItem): void => {
+    navigate(discoverDetailRoute({ title: item.name, poster: item.pic || '', year: Number.parseInt(item.year || '', 10) || '', mediaType: /剧|tv|series/i.test(item.type || '') ? 'tv' : 'movie' }));
   };
   const openItem = (it: VodItem): void => {
     if (it.tag === 'folder') { void openFolder(it.sourceRef?.key || key, it.id, it.name, it.sourceRef?.profileId ?? profileIdRef.current); return; }
-    if (isDoubanLikeSource(curSite)) { goAggSearch(it.name); return; }
+    if (isDoubanLikeSource(curSite)) { openRecommendation(it); return; }
     onOpenDetail(it.sourceRef?.key || key, it.id, it.pic || '', it.name, it.sourceRef?.profileId ?? profileIdRef.current);
   };
   /**
@@ -594,7 +599,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
       if (!site && sourceProfileId) {
         try { site = (await client.cfgProfileSources(sourceProfileId)).find((source) => source.key === sourceKey); } catch { /* Detail navigation can still use the source reference. */ }
       }
-      if (isDoubanLikeSource(site)) { goAggSearch(it.name, sourceProfileId); return; }
+      if (isDoubanLikeSource(site)) { openRecommendation(it); return; }
       onOpenDetail(sourceKey, it.id, it.pic || '', it.name, sourceProfileId);
     })();
   };
@@ -697,14 +702,14 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
         {aggMode && <div className="gallery-toolbar"><PosterSizeControl /></div>}
         {/* ★ 2026-10-18 插件受限 UI 槽位（`contributes.ui.slot`；无插件声明时零影响） */}
         <PluginSlot slot="home" />
-        {isSearchWindow() && folder && <button style={{ marginBottom: 12 }} onClick={exitFolder}>← 返回搜索结果</button>}
+        {pathname === '/search' && folder && <button style={{ marginBottom: 12 }} onClick={exitFolder}>← 返回搜索结果</button>}
         {err && <div className="err" style={{ marginBottom: 10 }}>{err}</div>}
         {!err && fallback && !aggMode && (
           <div className="banner" style={{ borderLeftColor: 'var(--accent-2)', marginBottom: 12 }}>
             当前展示首个分类的内容，可在下方切换分类。
           </div>
         )}
-        {/* ★ 2026-09-26：网盘类源 → 源内绑定入口（替代「源内配置源」：cookie 直接配在应用里） */}
+        {/* 网盘类源复用本机全局账号；此处仅提供快捷管理入口。 */}
         {driveSrc && !aggMode && (
           <div
             className="banner"
@@ -712,10 +717,10 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
           >
             <span>
               该源用网盘取流：
-              {boundDriveNames.length ? `已绑定「${boundDriveNames.join('/')}」` : '尚未绑定网盘 Cookie'}
-              {boundDriveNames.length ? '' : '，绑定后本源才能列出/播放盘内资源'}。
+              {boundDriveNames.length ? `全局已配置「${boundDriveNames.join('/')}」` : '尚未配置所需网盘账号'}。
+              账号由本机独立保存，各子仓中兼容的源可以共用。
             </span>
-            <button className="primary" onClick={() => setBindOpen(true)}>网盘绑定</button>
+            <button className="primary" onClick={() => setBindOpen(true)}>管理全局网盘账号</button>
           </div>
         )}
         {/* ★ 2026-09-29（用户要求）本地包「网页源」：该源首页是一张自带 Web UI 的 html → 独立窗口打开 */}
@@ -729,7 +734,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
           </div>
         )}
 
-        {isSearchWindow() && aggMode && !folder && profiles.length > 1 && (
+        {pathname === '/search' && aggMode && !folder && profiles.length > 1 && (
           <div className="banner" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input
@@ -738,7 +743,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
                 disabled={!profileReady}
                 onChange={(event) => setProfileSearchScope(event.target.checked)}
               />
-              搜索全部订阅档案（{profiles.length}）
+              聚合搜索全部子仓（{profiles.length}）
             </label>
             <span className="muted" style={{ fontSize: 12 }}>同名源按档案分别显示</span>
           </div>

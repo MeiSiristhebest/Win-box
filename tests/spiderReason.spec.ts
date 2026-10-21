@@ -106,10 +106,11 @@ describe('translateSpiderLog', () => {
     expect(translateSpiderLog('   ')).toBe('');
   });
 
-  it('安卓原生库缺失 → 明确说明是架构限制', () => {
+  it('安卓原生库缺失 → report the failed compatibility path', () => {
     const r = translateSpiderLog('java.lang.UnsatisfiedLinkError: no wexguard_v7 in java.library.path');
     expect(r).toContain('安卓原生库');
-    expect(r).toContain('架构限制');
+    expect(r).toContain('兼容桥');
+    expect(r).not.toContain('非移植缺陷');
   });
 
   // ★ 第十二轮实测的**真实**报错形态：资源已经补对了，卡在 CPU 架构上。
@@ -120,13 +121,13 @@ describe('translateSpiderLog', () => {
     );
     expect(r).toContain('ARM 原生库');
     expect(r).toContain('x64');
-    expect(r).toContain('请更换其他配置源');
+    expect(r).toContain('桥接日志');
   });
 
   it('dalvik DexClassLoader → 识别为加固/壳，而不是普通依赖缺失', () => {
     const r = translateSpiderLog('java.lang.NoClassDefFoundError: dalvik/system/DexClassLoader');
-    expect(r).toContain('加固');
-    expect(r).toContain('架构限制');
+    expect(r).toContain('dex');
+    expect(r).toContain('兼容桥');
     // 关键：不能被通用的 ClassNotFoundException 规则吞掉
     expect(r).not.toContain('依赖的接口在桌面版缺失');
   });

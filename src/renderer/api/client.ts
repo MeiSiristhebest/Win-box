@@ -57,6 +57,7 @@ interface HomeResult {
   sourceKey: string;
   /** true = 首页无推荐列表，已自动回退（homeVideoContent 或首个分类）取到内容 */
   homeFallback?: boolean;
+  contentNotice?: string;
 }
 
 interface ImportReturn {
@@ -261,7 +262,7 @@ declare global {
         isAlwaysOnTop: () => Promise<IpcResult<boolean>>;
         // ★ 2026-10-08（用户要求）：详情页独立窗口（已开则复用并通知换路由）
         openDetail: (a: { key: string; id: string; query?: string }) => Promise<IpcResult<{ ok: boolean; reused: boolean }>>;
-        openSearch: (args: { term: string; profileId?: string }) => Promise<IpcResult<{ ok: boolean; reused: boolean }>>;
+        openSearch: (args: { term: string; profileId?: string; allProfiles?: boolean }) => Promise<IpcResult<{ ok: boolean; reused: boolean }>>;
         routeReady: () => Promise<IpcResult<void>>;
         reportError: (message: string) => Promise<IpcResult<void>>;
         onNavigate: (cb: (route: string) => void) => () => void;
@@ -473,7 +474,7 @@ export const client = {
   winIsAlwaysOnTop: () => unwrap(window.api.win.isAlwaysOnTop()),
   // ★ 2026-10-08（用户要求）：详情页独立窗口
   winOpenDetail: (a: { key: string; id: string; query?: string }) => unwrap(window.api.win.openDetail(a)),
-  winOpenSearch: (term: string, profileId?: string) => unwrap(window.api.win.openSearch({ term, profileId })),
+  winOpenSearch: (term: string, profileId?: string, allProfiles = true) => unwrap(window.api.win.openSearch({ term, profileId, allProfiles })),
   winRouteReady: () => unwrap(window.api.win.routeReady()),
   winReportError: (message: string) => unwrap(window.api.win.reportError(message)),
   winOnNavigate: (cb: (route: string) => void) => window.api.win.onNavigate(cb),

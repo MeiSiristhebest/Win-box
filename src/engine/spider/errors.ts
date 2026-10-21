@@ -3,7 +3,7 @@
 // 统一由上层（SourceViewModel / SpiderHost / ipcGuard）捕获后把 message 展示到 UI，
 // 取代"静默返回空 + 只写日志"的旧行为。
 export type SourceProblemCode =
-  | 'TYPE_UNSUPPORTED' // type=2/4/-1 在桌面版无分发实现
+  | 'TYPE_UNSUPPORTED' // type=2/-1 在桌面版无分发实现
   | 'PY_UNSUPPORTED' // type=3 + api .py（安卓 normal flavor 同为空实现）
   | 'JAR_NO_RUNTIME' // jar(dex) 蜘蛛缺少 JVM 桥运行时
   | 'JAR_DOWNLOAD_FAIL' // jar(dex) 下载/转换失败

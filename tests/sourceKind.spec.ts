@@ -21,8 +21,9 @@ describe('sourceKindOf — type/api 归类', () => {
     expect(sourceKindOf({ type: 3, api: 'csp_Fty;md5;abc' })).toBe('spider-jar');
   });
 
-  it('type 2/4/-1 → unsupported（推送类）', () => {
-    for (const t of [2, 4, -1]) expect(sourceKindOf({ type: t, api: 'anything' })).toBe('unsupported');
+  it('type 2/-1 → unsupported；type4 uses the implemented JSON CMS path', () => {
+    for (const t of [2, -1]) expect(sourceKindOf({ type: t, api: 'anything' })).toBe('unsupported');
+    expect(sourceKindOf({ type: 4, api: 'https://example.invalid/api' })).toBe('cms-json');
   });
 });
 

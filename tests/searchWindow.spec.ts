@@ -5,7 +5,7 @@ import { applyEpisodeSwitch } from '../src/shared/playerEpisode';
 
 describe('搜索及详情路由', () => {
   it('搜索词完整编码且窗口标记准确', () => {
-    expect(searchWindowRoute('  a% /?#中文  ')).toBe('/search?agg=a%25%20%2F%3F%23%E4%B8%AD%E6%96%87&sw=1');
+    expect(searchWindowRoute('  a% /?#中文  ')).toBe('/search?agg=a%25%20%2F%3F%23%E4%B8%AD%E6%96%87&sw=1&profiles=all');
     expect(searchWindowRoute('片名', 'profile-a', true)).toBe('/search?agg=%E7%89%87%E5%90%8D&sw=1&profileId=profile-a&profiles=all');
     expect(isSearchWinHash('#' + searchWindowRoute('片名'))).toBe(true);
     for (const hash of ['#/home', '?sw=10', '?xsw=1', '?agg=sw%3D1']) expect(isSearchWinHash(hash)).toBe(false);

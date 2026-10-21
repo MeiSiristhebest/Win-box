@@ -35,6 +35,24 @@ function page(active = true) {
 }
 
 describe('HomePage child repository switching', () => {
+  it('refreshes a same-profile source selected while hidden and clears the previous list while loading', async () => {
+    const state = setup();
+    const view = render(page());
+    await screen.findByText('A影片');
+    view.rerender(page(false));
+    const next = profileConfig('A');
+    next.sources.push({ ...next.sources[0], key: 'other', name: '新站点' });
+    next.ui.activeSourceKey = 'other';
+    state.setConfig(next);
+    let finish!: (value: Awaited<ReturnType<typeof client.home>>) => void;
+    state.home.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    act(() => window.dispatchEvent(new CustomEvent('winbox:source-changed', { detail: 'other' })));
+    view.rerender(page(true));
+    await waitFor(() => expect(state.home).toHaveBeenLastCalledWith('other', 'A'));
+    expect(screen.queryByText('A影片')).toBeNull();
+    await act(async () => finish({ sourceKey: 'other', sortClasses: [], items: [{ id: 'new', name: '新站点影片', pic: '', remarks: '', year: '', area: '', type: '', sourceKey: 'other' }], page: 1, pagecount: 1, total: 1 }));
+    await screen.findByText('新站点影片');
+  });
   it('reloads a shared source key when the next child has no saved active source', async () => {
     const state = setup();
     render(page());

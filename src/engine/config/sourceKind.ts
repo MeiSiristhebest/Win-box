@@ -29,7 +29,7 @@ export interface SourceKindInfo {
 export function sourceKindOf(s: Pick<SourceBean, 'type' | 'api'>): SourceKind {
   const low = String(s.api || '').toLowerCase().split(';')[0].trim();
   if (s.type === 0) return 'cms-xml';
-  if (s.type === 1) return 'cms-json';
+  if (s.type === 1 || s.type === 4) return 'cms-json';
   if (s.type !== 3) return 'unsupported';
   if (low.endsWith('.js')) return 'spider-js';
   if (low.endsWith('.py')) return 'spider-py';
@@ -107,11 +107,11 @@ export function extRelevant(s: Pick<SourceBean, 'type' | 'api'>): boolean {
 // ---- ★ 2026-09-29（用户报「很多源本质上是豆瓣，他们没有具体详情」）----
 
 /**
- * 「点击片源应走**全源聚合搜索**而非详情页」的源判据（静态）。
+ * 推荐信息源的点击分流判据：进入影片资料页并聚合查找可播放来源。
  *
  * 依据（实测订阅里的豆瓣类源写法）：`key/name/api/ext` 任一带 `豆瓣` / `douban`。
  * 这类源是**搜索聚合型**（蜘蛛只做 searchContent，detailContent 返回空或只有简介），
- * 点进详情页必然「无详情 / 无剧集」；正确姿势是拿片名做一次全源搜索，换到能播的源。
+ * 它们的源内详情通常没有剧集，因此资料页另行搜索所有子仓的播放来源。
  *
  * ★ 2026-09-30（用户报「饭太硬的豆瓣主页点了还是无详情」）：fty/饭太硬 的豆瓣片单源写成
  *   `key=点我切源 / name=豆豆┃片单 / api=csp_DouDouGuard` —— 三个字段里**都没有「豆瓣/douban」**

@@ -194,7 +194,7 @@ const SEARCH_ALL_JS_MAX_MS = 5_000;
  */
 const SEARCH_ALL_QUICK_MS = 3_000;
 /** 「这个源在桌面端根本不成立」类错误（命中一次即加入会话级跳过集，后续全源搜索不再浪费时间） */
-const UNSUPPORTED_ERR = /UNSUPPORTED_|SCRIPT_ERROR|PY_UNSUPPORTED|桌面版无法|不支持|未实现/i;
+const UNSUPPORTED_SEARCH_CODES = new Set(['TYPE_UNSUPPORTED', 'JS_FORMAT_UNSUPPORTED', 'JS_BYTECODE']);
 /**
  * ★ 预备等待上限（2026-09-24 二次修正）：全源搜索开始时若有源的运行时正在下载/转换，
  * **先等这么一会儿**（用户看到进度文案「首次调用 jar 蜘蛛较慢」时本来就在等），
@@ -807,7 +807,7 @@ export class SpiderHost {
    */
   async auditAll(): Promise<AuditItem[]> {
     const pool = (this.config?.sites ?? []).filter((b) => {
-      if (b.type === 0 || b.type === 1) return true;
+      if (b.type === 0 || b.type === 1 || b.type === 4) return true;
       if (b.type === 3) return true; // jar / .js / .py 均已支持（体检同样覆盖 .py 源）
       return false;
     });
@@ -816,7 +816,7 @@ export class SpiderHost {
     let cursor = 0;
     const kindOf = (b: SourceBean): AuditItem['kind'] => {
       if (b.type === 0) return 'cms-xml';
-      if (b.type === 1) return 'cms-json';
+      if (b.type === 1 || b.type === 4) return 'cms-json';
       const low = String(b.api || '').toLowerCase();
       if (low.endsWith('.js')) return 'js';
       if (low.endsWith('.py')) return 'py';
@@ -2049,7 +2049,7 @@ export class SpiderHost {
    *
    * 阶梯（常规）：默认 UA → okhttp UA → okhttp+Referer → okhttp+Referer+Cookie → okhttp+DoH，
    *   全失败后自动**换另一种协议（http↔https）同路径再试一次**；每次尝试的响应特征都写日志。
-   *   `quick=true` 使用默认与 okhttp UA；已知 GitHub 代理失败后再尝试地址中的原站。
+   *   `quick=true` 最多使用四次 UA / Referer / 会话尝试；已知 GitHub 代理失败后再尝试原站。
    *   单子仓与整批时间上限由导入调度器控制。
    * 解密兜底（用户口径「用解密来兜底」）：本地 base64/hex → 第三方解密服务（详见 configDecrypt.ts 的隐私口径）。
    * 失败时把**分档诊断**记进 `lastConfigFetchHint`，由 importConfig 上屏「为什么导入不了」。
@@ -2155,7 +2155,7 @@ export class SpiderHost {
           return result;
         } catch (error) {
           if (fetched.hint) throw new Error(fetched.hint);
-          throw error;
+          throw new Error(`已取得配置正文，但解析失败：${error instanceof Error ? error.message : String(error)}；这不等同于其中所有影片源不可用`);
         }
       },
       onProgress: (progress) => options?.onProgress?.({ state: 'running', ...progress }),
@@ -2176,7 +2176,7 @@ export class SpiderHost {
 
     const primary = imported[0].result;
     const lineHint = subscriptionUrl ? '需要单独指定线路时，可在订阅地址尾加 #line=N（N 从 0 起）' : '';
-    const note = `多仓组「${group.name}」共 ${total} 个子仓：成功 ${successCount}、失败 ${failedCount}、待处理 ${pendingCount}。每个成功子仓已保存为独立档案${skipped.length ? `；问题：${skipped.slice(0, 6).join('；')}${skipped.length > 6 ? `；另有 ${skipped.length - 6} 项未列出` : ''}` : ''}${lineHint ? `。${lineHint}` : ''}`;
+    const note = `多仓组「${group.name}」共 ${total} 个子仓：成功 ${successCount}、失败 ${failedCount}、待处理 ${pendingCount}。每个成功子仓已保存为独立档案；此处仅检查配置能否获取和解析，不代表各影片源的播放可用性${skipped.length ? `；问题：${skipped.slice(0, 6).join('；')}${skipped.length > 6 ? `；另有 ${skipped.length - 6} 项未列出` : ''}` : ''}${lineHint ? `。${lineHint}` : ''}`;
     options?.onProgress?.({ message: note });
     this.report = primary.report;
     const warnings = [...new Set(imported.flatMap((item) => item.result.warnings || []))];
@@ -2369,7 +2369,37 @@ export class SpiderHost {
    *
    * @param opts.refresh 忽略缓存强制重搜（UI「重新搜索」按钮）
    */
+  private pendingSearches?: Map<string, { promise: Promise<SearchAllReport>; listeners: Set<(event: SearchAllProgressEvent) => void> }>;
+  private searchCredentialRevision = 0;
+
   async searchAll(
+    wd: string,
+    opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] },
+    onProgress?: (event: SearchAllProgressEvent) => void,
+  ): Promise<SearchAllReport> {
+    const term = (wd || '').trim();
+    if (!term) throw new Error('请输入搜索关键词');
+    const jobs = this.pendingSearches ??= new Map();
+    const key = JSON.stringify([this.manager.revision, this.searchCredentialRevision, term, opts?.profileIds ?? opts?.profileId ?? this.manager.activeProfileId(), !!opts?.refresh]);
+    let job = jobs.get(key);
+    if (!job) {
+      const listeners = new Set<(event: SearchAllProgressEvent) => void>();
+      const pending = {
+        listeners,
+        promise: Promise.resolve().then(() => this.runSearchAll(term, opts, event => {
+          for (const listener of listeners) { try { listener(event); } catch { /* Isolate a disconnected consumer. */ } }
+        })).finally(() => { if (jobs.get(key) === pending) jobs.delete(key); listeners.clear(); }),
+      };
+      jobs.set(key, pending);
+      job = pending;
+    }
+    const listener = onProgress ?? this.onSearchAllProgress;
+    if (listener) job.listeners.add(listener);
+    try { return await job.promise; }
+    finally { if (listener) job.listeners.delete(listener); }
+  }
+
+  private async runSearchAll(
     wd: string,
     opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] },
     onProgress?: (event: SearchAllProgressEvent) => void,
@@ -2495,7 +2525,7 @@ export class SpiderHost {
     const context = capturedContext ?? this.profileExecutionConfig(opts?.profileId);
     const profileId = context.profileId;
     const profileName = profileNameOverride ?? this.manager.rawProfiles().find((profile) => profile.id === profileId)?.name;
-    const cacheKey = JSON.stringify([profileId, term]);
+    const cacheKey = JSON.stringify([profileId, term, ...(this.searchCredentialRevision ? [this.searchCredentialRevision] : [])]);
     // ★ 秒回：同一关键词 TTL 内再搜 → 直接给上次报告（带 cachedAt，UI 提示「本地缓存 · 点「重新搜索」刷新」）
     if (!opts?.refresh) {
       const hit = this.searchCache.getEntry(cacheKey);
@@ -2508,11 +2538,9 @@ export class SpiderHost {
     }
     const pool = this.searchableSites(profileId, context.config);
     const results: Array<AggSearchInput | null> = Array.from({ length: pool.length }, () => null);
-    /**
-     * ★ 会话级「桌面端不支持」跳过集（2026-09-23 三轮续）：drpy 类 JS 源、需安卓原生库的壳源等
-     * 会**卡满预算才报错**且永远出不了结果（实测 2 个 drpy 源各占 10s）。首次失败即记入跳过集，
-     * 后续全源搜索直接跳过（并在报告里给出明确原因），把尾巴和噪音一起去掉。
-     */
+    // Only explicit unsupported formats are skipped for this session. A manual
+    // refresh rechecks them; network/runtime/ARM bridge errors remain retryable.
+    if (opts?.refresh) for (const source of pool) this.unsupportedSources.delete(source.runtimeScope || source.key);
     const active: number[] = [];
     const skipped: Array<AggSearchInput | null> = Array.from({ length: pool.length }, () => null);
     const searchT0 = Date.now();
@@ -2718,7 +2746,8 @@ export class SpiderHost {
           const ms = Date.now() - t0;
           const msg = (e as Error).message || String(e);
           // ★「桌面端不支持」类错误 → 记入跳过集（下次全源搜索不再为它花时间）
-          if (UNSUPPORTED_ERR.test(msg)) {
+          const code = e && typeof e === 'object' && 'code' in e ? String(e.code) : '';
+          if (UNSUPPORTED_SEARCH_CODES.has(code)) {
             const sourceScope = b.runtimeScope || b.key;
             if (!this.unsupportedSources.has(sourceScope)) {
               this.unsupportedSources.add(sourceScope);
@@ -2888,8 +2917,11 @@ export class SpiderHost {
    *   （表现为「刚绑定成功却仍然取不到流」）。这里同时清引擎实例缓存与常驻子进程。
    */
   resetSpidersAfterDriveChange(): void {
+    this.searchCredentialRevision = (this.searchCredentialRevision || 0) + 1;
+    this.pendingSearches?.clear();
     this.vm.spiderFactory.clear();
     this.bridge.resetPool();
+    this.searchCache.clear();
   }
 
   /**

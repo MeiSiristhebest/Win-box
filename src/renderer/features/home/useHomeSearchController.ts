@@ -173,7 +173,7 @@ export function useHomeSearchController({
     if (pathname !== '/search') return;
     setSearchParams(term ? {
       agg: term,
-      ...(allProfiles ? { profiles: 'all' } : {}),
+      profiles: allProfiles ? 'all' : 'current',
       ...(isSearchWindow() ? { sw: '1', profileId: profileIdRef.current } : {}),
     } : {}, { replace: true });
   }
@@ -199,8 +199,8 @@ export function useHomeSearchController({
       retryTimer.current = null;
       aggRetryCount.current = 0;
     }
-    if (!isSearchWindow()) {
-      try { await openSearchWindow(term, profileIdRef.current || requestedProfileId || undefined); } catch (e) { setErr(String(e)); }
+    if (pathname !== '/search' && !isSearchWindow()) {
+      try { await openSearchWindow(term, profileIdRef.current || requestedProfileId || undefined, forceAllProfileScope ?? searchAllProfiles); } catch (e) { setErr(String(e)); }
       return;
     }
     const allProfileScope = forceAllProfileScope ?? searchAllProfiles;

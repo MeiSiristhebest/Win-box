@@ -1,17 +1,17 @@
 import PosterSizeControl from '../components/PosterSizeControl';
 import { useEffect, useRef } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { BOARD_CATEGORIES, boardSourceName, discoverBoardById } from '../../shared/discoverBoards';
 import { useDiscoverBoard } from '../features/discovery/useDiscoverBoard';
 import { useBoardPageCapacity } from '../features/discovery/useBoardPageCapacity';
 import DiscoverItemCard, { discoverCoverItem } from '../components/DiscoverItemCard';
 import { Icon } from '../components/ui/Icon';
-import { useAppDialog } from '../components/AppDialog';
 import { useCovers } from '../lib/useCovers';
 import { useTheme } from '../lib/theme';
 import { usePageActive } from '../lib/keepAlive';
 import { discoverPresentationView } from '../lib/presentationRegistry';
-import { openSearchWindow } from '../lib/searchWin';
+import { discoverDetailRoute } from '../../shared/discoverDetail';
+import type { DiscoverItem } from '../../shared/types';
 import '../features/discovery/boards.css';
 
 export default function DiscoverBoardPage() {
@@ -23,7 +23,7 @@ export default function DiscoverBoardPage() {
   const capacity = useBoardPageCapacity(contentRef);
   const { data, loading, error, errorPhase, loadMore, refresh, retry } = useDiscoverBoard(boardId, capacity);
   const board = data?.board || discoverBoardById(boardId);
-  const dialog = useAppDialog();
+  const navigate = useNavigate();
   const theme = useTheme();
   const view = discoverPresentationView(theme);
   const covers = useCovers((data?.items || []).map(discoverCoverItem), active, true);
@@ -43,7 +43,7 @@ export default function DiscoverBoardPage() {
     observer.observe(tailRef.current);
     return () => observer.disconnect();
   }, [active, loading, error, data?.hasMore, data?.items.length, loadMore]);
-  const openItem = (title: string) => { void openSearchWindow(title).catch(error => void dialog.alert(String(error), { title: '无法搜索片源' })); };
+  const openItem = (item: DiscoverItem) => { navigate(discoverDetailRoute(item)); };
   const complete = !!data && !data.hasMore && data.total !== null && data.items.length === data.total;
   return <div className="content board-content" ref={contentRef}>
     <nav className="board-breadcrumbs" aria-label="当前位置"><Link to="/boards"><Icon name="left" size={12} />榜单</Link></nav>
@@ -63,7 +63,7 @@ export default function DiscoverBoardPage() {
     <section aria-label="榜单影片" aria-busy={loading}>
       {loading && !data ? <output className="empty"><span className="spinner" aria-hidden="true" />正在加载榜单…</output>
         : data?.items.length ? <div className="grid board-items">{data.items.map((item, index) => <DiscoverItemCard key={String(item.doubanId || item.tmdbId || item.title) + '-' + index}
-          it={item} poster={covers.picOf(discoverCoverItem(item))} onError={url => covers.onError(discoverCoverItem(item), url)} onOpen={() => openItem(item.title)} card={view.card} ratingLabel={source + '评分'} />)}</div>
+          it={item} poster={covers.picOf(discoverCoverItem(item))} onError={url => covers.onError(discoverCoverItem(item), url)} onOpen={() => openItem(item)} card={view.card} ratingLabel={source + '评分'} />)}</div>
           : !error && !loading ? <div className="empty"><h2>榜单暂未返回影片</h2><button type="button" onClick={refresh}>重新加载</button></div> : null}
     </section>
     {data && data.items.length > 0 && <div className="board-feed-tail" ref={tailRef}>

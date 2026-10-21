@@ -4,6 +4,7 @@
 // 每个 url 是一个独立子仓（站源配置 / 多仓 / 本地 clan:// 等）。
 // 纯 TS，不依赖 Electron/Node，可独立单测。
 import { parseJsonLenient } from '../util/json';
+import { trimJsonObject } from './ApiConfigParser';
 
 export interface MultiRepoItem {
   url: string;
@@ -63,17 +64,19 @@ export function parseMultiRepo(text: string): MultiRepo | null {
   let j: unknown;
   try {
     // 宽容解析（注释 + 尾随逗号，对齐 org.json）——见 parseJsonLenient 注释
-    j = parseJsonLenient(text.trim());
+    j = parseJsonLenient(trimJsonObject(text));
   } catch {
     return null;
   }
   if (!j || typeof j !== 'object' || Array.isArray(j)) return null;
+  if (Array.isArray((j as { sites?: unknown }).sites)) return null;
   const urls = (j as { urls?: unknown }).urls;
   if (!Array.isArray(urls)) return null;
   const items: MultiRepoItem[] = [];
   for (const u of urls) {
+    if (typeof u === 'string') { if (u.trim()) items.push({ url: u.trim() }); continue; }
     if (!u || typeof u !== 'object') continue;
-    const url = String((u as { url?: unknown }).url ?? '').trim();
+    const url = String((u as { url?: unknown; api?: unknown }).url ?? (u as { api?: unknown }).api ?? '').trim();
     if (!url) continue;
     const name = (u as { name?: unknown }).name;
     items.push({ url, name: name != null ? String(name).trim() : undefined });

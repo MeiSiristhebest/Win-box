@@ -14,8 +14,8 @@ export default function DiscoverItemCard({ it, poster, onError, onOpen, card, ra
   ratingLabel?: string;
 }) {
   return <button type="button" className="card-media ui-action card-media-button"
-    aria-label={`${it.title}${it.year ? ` (${it.year})` : ''}${it.rating ? `，${ratingLabel} ${it.rating.toFixed(1)}` : ''}，搜索片源`}
-    title={`${it.title} · 搜索片源`} onClick={onOpen}>
+    aria-label={`${it.title}${it.year ? ` (${it.year})` : ''}${it.rating ? `，${ratingLabel} ${it.rating.toFixed(1)}` : ''}，查看详情与片源`}
+    title={`${it.title} · 查看详情与片源`} onClick={onOpen}>
     <div className="card">
       <div className="media-poster">
         {poster ? <img src={poster} alt={it.title} loading="lazy" decoding="async" onError={event => onError(event.currentTarget.getAttribute('src') || '')} /> : <div className="no-cover">暂无封面</div>}

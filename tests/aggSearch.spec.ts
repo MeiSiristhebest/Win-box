@@ -171,10 +171,10 @@ describe('isSearchableSource — searchable 非 0 即参与', () => {
     expect(isSearchableSource({ type: 3, searchable: 0 })).toBe(false);
   });
 
-  it('类型口径不变：0/1/3 参与，2/4/-1 等无分发实现的类型仍排除', () => {
+  it('includes every implemented searchable type, including JSON CMS type4', () => {
     expect(isSearchableSource({ type: 3, searchable: 1 })).toBe(true);
     expect(isSearchableSource({ type: 2, searchable: 1 })).toBe(false);
-    expect(isSearchableSource({ type: 4, searchable: 1 })).toBe(false);
+    expect(isSearchableSource({ type: 4, searchable: 1 })).toBe(true);
     expect(isSearchableSource({ type: -1, searchable: 1 })).toBe(false);
   });
 

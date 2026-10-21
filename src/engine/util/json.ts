@@ -312,9 +312,18 @@ function escapeJsonStringControls(input: string): string {
   let out = '';
   let inString = false;
   let escaped = false;
-  for (const c of input) {
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
     if (inString) {
-      if (escaped) escaped = false;
+      if (escaped) {
+        escaped = false;
+        // JSON5 permits a backslash followed by a physical line break.
+        if (c === '\n' || c === '\r') {
+          out = out.slice(0, -1);
+          if (c === '\r' && input[i + 1] === '\n') i++;
+          continue;
+        }
+      }
       else if (c === '\\') escaped = true;
       else if (c === '"') inString = false;
       else if (c.charCodeAt(0) < 0x20) {
@@ -325,6 +334,33 @@ function escapeJsonStringControls(input: string): string {
       inString = true;
     }
     out += c;
+  }
+  return out;
+}
+
+/** Recover orphan quotes in literal values, without evaluating expressions. */
+function repairScalarQuotes(input: string): string {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    out += c;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === ':' || c === '[' || c === ',') {
+      const scalar = /^(\s*(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null))"(?=\s*[,}\]])/.exec(input.slice(i + 1));
+      if (scalar) { out += scalar[1]; i += scalar[0].length; }
+      else {
+        // Some published category arrays contain 日韩剧" instead of "日韩剧".
+        // Only accept a plain word followed by a closing quote and delimiter.
+        const word = /^(\s*)([\p{L}_][\p{L}\p{N}_-]*)"(?=\s*[,}\]])/u.exec(input.slice(i + 1));
+        if (word) { out += word[1] + JSON.stringify(word[2]); i += word[0].length; }
+      }
+    }
   }
   return out;
 }
@@ -361,7 +397,7 @@ export function parseJsonLenient(text: string): unknown {
         /* 继续尝试「先补键名再剥注释」 */
       }
     }
-    const repaired = quoteUnquotedKeys(quoteSingleQuotedStrings(text));
+    const repaired = quoteUnquotedKeys(repairScalarQuotes(quoteSingleQuotedStrings(text)));
     const reordered = escapeJsonStringControls(stripTrailingCommas(quoteUnquotedKeys(stripJsonComments(repaired))));
     if (reordered !== cleaned) {
       try {

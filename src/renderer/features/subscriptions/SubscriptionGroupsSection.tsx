@@ -28,6 +28,7 @@ export function SubscriptionGroupsSection({
   return (
     <section className="card" id="cfg-subscription-groups" style={{ padding: 12, marginBottom: 16 }}>
       <h3 style={{ fontWeight: 600, margin: '0 0 8px' }}>多仓订阅组</h3>
+      <p className="muted">状态表示配置获取和解析结果。配置未导入不等于其中所有影片源已失效；已导入的配置也需分别检查搜索和播放。</p>
       {groups.map((group) => {
         const ready = group.members.filter((member) => member.status === 'ready').length;
         const failed = group.members.filter((member) => member.status === 'failed').length;
@@ -44,7 +45,7 @@ export function SubscriptionGroupsSection({
             <div style={{ display: 'grid', gap: 6 }}>
               {group.members.map((member) => {
                 const profile = member.profileId ? profiles.find((item) => item.id === member.profileId) : undefined;
-                const stateLabel = member.status === 'ready' ? '可用' : member.status === 'failed' ? '失败' : member.status === 'needs-review' ? '待确认刷新' : member.status === 'pending' ? '待处理' : member.status === 'pending-removal' ? '上游已移除' : '待处理';
+                const stateLabel = member.status === 'ready' ? '配置已导入' : member.status === 'failed' ? '配置未导入' : member.status === 'needs-review' ? '待确认刷新' : member.status === 'pending' ? '待处理' : member.status === 'pending-removal' ? '上游已移除' : '待处理';
                 const refreshDiff = member.refreshDiff;
                 const changedKeys = refreshDiff?.changed.map((change) => `${change.key}（${change.fields.join('、')}）`) ?? [];
                 const preview = (items: string[]): string => items.length > 10

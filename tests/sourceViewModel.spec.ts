@@ -108,6 +108,27 @@ function vmWithSpider(sp: Spider): SourceViewModel {
   return v;
 }
 
+describe('spider runtime diagnostics', () => {
+  it('surfaces a native/runtime failure instead of reporting an empty category, search or detail', async () => {
+    const sp = new StubSpider('', '');
+    Object.defineProperty(sp, 'lastReason', { get: () => 'ARM 原生兼容桥调用失败' });
+    sp.searchContent = () => '';
+    sp.detailContent = () => '';
+    const v = vmWithSpider(sp);
+    const bean = { key: 'native', type: 3, api: 'csp_Test' } as SourceBean;
+    await expect(v.category(bean, 'anime', '1', {})).rejects.toThrow('ARM 原生兼容桥调用失败');
+    await expect(v.search(bean, 'test')).rejects.toThrow('ARM 原生兼容桥调用失败');
+    await expect(v.detail(bean, ['test'])).rejects.toThrow('ARM 原生兼容桥调用失败');
+  });
+
+  it('keeps a valid empty search distinct from runtime failure even if a diagnostic was retained', async () => {
+    const sp = new StubSpider('', '');
+    Object.defineProperty(sp, 'lastReason', { get: () => 'old diagnostic' });
+    sp.searchContent = () => '{"list":[]}';
+    await expect(vmWithSpider(sp).search({ key: 'valid', type: 3, api: 'csp_Test' } as SourceBean, 'test')).resolves.toEqual([]);
+  });
+});
+
 describe('SpiderFactory — getCSP 分发（type 3 api 后缀）', () => {
   const host = { http: mockHttp({}), kv: memKv(), logger: NullLogger };
   it('.js → JsSpider（T03-B JS 沙箱；脚本不可用时运行时降级）', () => {
@@ -383,6 +404,23 @@ describe('SourceViewModel — type 3 homeContent→homeVideoContent 回退（任
     const r = await vmWithSpider(sp).home({ key: 'q11', type: 3, api: 'csp_X' } as SourceBean);
     expect(r.homeFallback).toBeUndefined();
     expect(r.items).toHaveLength(0);
+  });
+
+  it('有分类但实际内容因原生桥失败而为空时保留原因', async () => {
+    const sp = new StubSpider(JSON.stringify({ class: [{ type_id: '1', type_name: '电影' }] }), '');
+    Object.defineProperty(sp, 'lastReason', { get: () => 'ARM 原生兼容桥调用失败' });
+    sp.catRet = '';
+    const r = await vmWithSpider(sp).home({ key: 'native-empty', type: 3, api: 'csp_X' } as SourceBean);
+    expect(r.sortClasses).toHaveLength(1);
+    expect(r.contentNotice).toBe('ARM 原生兼容桥调用失败');
+  });
+
+  it('分类返回合法空列表时不把旧诊断当成这次失败', async () => {
+    const sp = new StubSpider(JSON.stringify({ class: [{ type_id: '1', type_name: '电影' }] }), '');
+    Object.defineProperty(sp, 'lastReason', { get: () => 'old diagnostic' });
+    sp.catRet = '{"list":[]}';
+    const r = await vmWithSpider(sp).home({ key: 'valid-empty', type: 3, api: 'csp_X' } as SourceBean);
+    expect(r.contentNotice).toBeUndefined();
   });
 
   it('回退超时下限 200ms：timeoutMs=1 且回退永不 resolve → 约 200ms 返回（P2-1）', async () => {

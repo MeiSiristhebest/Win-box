@@ -17,5 +17,5 @@ export const SUBSCRIPTION_IMPORT_POLICY: Readonly<SubscriptionImportPolicy> = Ob
     standard: 30_000,
     quick: 12_000,
   }),
-  maxQuickAttempts: 2,
+  maxQuickAttempts: 4,
 });

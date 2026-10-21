@@ -1,7 +1,7 @@
 // src/engine/vod/SourceViewModel.ts
 // ★ type 分发的 TS 等价（SourceViewModel.java）。home/category/detail/search/player。
-// type 0/1 → CmsSource（内联，与安卓一致）；type 3 → SpiderFactory.getCSP()；
-// type 2/4/-1 → 桌面版无分发实现，抛 SourceProblemError(TYPE_UNSUPPORTED) 让 UI 上屏（任务 A1）。
+// type 0/1/4 → CmsSource；type 3 → SpiderFactory.getCSP()；
+// type 2/-1 → 桌面版无分发实现，抛 SourceProblemError(TYPE_UNSUPPORTED) 让 UI 上屏。
 import type { EngineHost } from '../ports';
 import type { SourceBean, VodItem, VodDetail, PlayResult } from '../../shared/types';
 import { LOCAL_PROXY_BASE } from '../../shared/constants';
@@ -35,6 +35,8 @@ const PAGE_COUNT_UNKNOWN = 9999;
 
 export interface HomeResult extends CmsResult {
   sourceKey: string;
+  /** 分类骨架可用，但推荐或分类内容加载失败时保留具体原因。 */
+  contentNotice?: string;
 }
 
 export interface CategoryResult extends CmsResult {
@@ -91,6 +93,10 @@ export class SourceViewModel {
     if (type === 3) {
       const sp = this.factory.getCSP(bean, this.host);
       const json = await Promise.resolve(sp.categoryContent(tid, pg, true, extend));
+      const reason = this.spiderReason(sp);
+      if (reason && !this.parseSpiderJson(json, key)) {
+        throw new SourceProblemError('SPIDER_ERROR', reason);
+      }
       return this.normalizeSpiderJson(json, key, false);
     }
     this.throwUnsupported(bean, 'category');
@@ -105,6 +111,10 @@ export class SourceViewModel {
     if (type === 3) {
       const sp = this.factory.getCSP(bean, this.host);
       const json = await Promise.resolve(sp.detailContent(ids));
+      const reason = this.spiderReason(sp);
+      if (reason && !this.parseSpiderJson(json, key)) {
+        throw new SourceProblemError('SPIDER_ERROR', reason);
+      }
       return this.normalizeSpiderDetail(json);
     }
     this.throwUnsupported(bean, 'detail');
@@ -123,6 +133,10 @@ export class SourceViewModel {
     if (type === 3) {
       const sp = this.factory.getCSP(bean, this.host);
       const json = await Promise.resolve(sp.searchContent(wd, quick, budget));
+      const reason = this.spiderReason(sp);
+      if (reason && !this.parseSpiderJson(json, key)) {
+        throw new SourceProblemError('SPIDER_ERROR', reason);
+      }
       return this.normalizeSpiderSearch(json, key);
     }
     this.throwUnsupported(bean, 'search');
@@ -163,7 +177,7 @@ export class SourceViewModel {
     return { parse: needParse, url, playUrl, flag };
   }
 
-  /** 桌面版不支持的 type（2/4/-1/其它）统一抛错（辅助方法；返回 never 以闭合控制流） */
+  /** 桌面版不支持的 type（2/-1/其它）统一抛错（辅助方法；返回 never 以闭合控制流） */
   private throwUnsupported(bean: SourceBean, method: string): never {
     const avail = sourceAvailability(bean);
     this.host.logger.w(`vm:${method} type=${bean.type} 桌面版不可用（${bean.key}）`);
@@ -326,6 +340,8 @@ export class SourceViewModel {
     const deadline = Date.now() + timeoutMs;
     const homeJson = await Promise.resolve(sp.homeContent(true)); // ★ 抛错向上传播（UnsupportedSpider 行为不变）
     const parsed = this.parseSpiderJson(homeJson, key);
+    let contentNotice = !parsed ? this.spiderReason(sp) : '';
+    const onNotice = (message: string) => { contentNotice = message; };
 
     // A：homeContent 自带列表**装得满一页** → 直接用，绝不触发回退（不打 homeFallback 标）
     if (parsed && parsed.items.length >= PAGE_ITEMS_ONE_PAGE) {
@@ -341,7 +357,7 @@ export class SourceViewModel {
 
     // B/C：无 list / 装不满一页（或 homeContent 非法）→ 回退 homeVideoContent
     const baseItems = parsed?.items ?? [];
-    const recItems = await this.tryHomeRec(sp, key, deadline);
+    const recItems = await this.tryHomeRec(sp, key, deadline, onNotice);
     const classes = parsed?.classes ?? [];
     // ★ 只采纳「更丰富」的回退结果（严格多于首页自带），避免把已有内容换小
     let items = recItems.length > baseItems.length ? recItems : baseItems;
@@ -350,7 +366,7 @@ export class SourceViewModel {
     // D：仍不满一页但有分类 → 分类兜底（对齐 CmsSource.home:81-91；这是 JVM 源主页空白的根因修复）
     let classFallbackPage: { page: number; pagecount: number; total: number } | null = null;
     if (items.length < PAGE_ITEMS_ONE_PAGE && classes.length > 0) {
-      const rec = await this.tryHomeClassRec(sp, key, classes[0].id, deadline);
+      const rec = await this.tryHomeClassRec(sp, key, classes[0].id, deadline, onNotice);
       if (rec && rec.items.length > items.length) {
         items = rec.items;
         classFallbackPage = { page: rec.page, pagecount: rec.pagecount, total: rec.total };
@@ -381,6 +397,7 @@ export class SourceViewModel {
       sourceKey: key,
       // P2-3：首页内容确由回退产出 → 打标，供体检 UI 显示「首页回退」
       ...(fallbackKind ? { homeFallback: true } : {}),
+      ...(items.length === 0 && contentNotice ? { contentNotice } : {}),
     };
   }
 
@@ -405,6 +422,7 @@ export class SourceViewModel {
     key: string,
     tid: string,
     deadline: number,
+    onNotice: (message: string) => void,
   ): Promise<{ items: VodItem[]; page: number; pagecount: number; total: number } | null> {
     try {
       const remaining = Math.max(200, deadline - Date.now());
@@ -414,6 +432,7 @@ export class SourceViewModel {
         'homeContent 分类兜底超时',
       );
       const p = this.parseSpiderJson(json, key);
+      onNotice(p ? '' : this.spiderReason(sp));
       if (!p || p.items.length === 0) {
         this.host.logger.i(`vm:home type3 ${key} 分类兜底（tid=${tid}）无数据`);
         return null;
@@ -427,12 +446,13 @@ export class SourceViewModel {
       };
     } catch (e) {
       this.host.logger.w(`vm:home type3 ${key} 分类兜底失败: ${(e as Error).message}`);
+      onNotice((e as Error).message || String(e));
       return null; // ★ 兜底失败静默降级，保留分类骨架
     }
   }
 
   /** 回退取首页推荐：失败/超时一律静默降级为空数组（绝不整体报错） */
-  private async tryHomeRec(sp: Spider, key: string, deadline: number): Promise<VodItem[]> {
+  private async tryHomeRec(sp: Spider, key: string, deadline: number, onNotice: (message: string) => void): Promise<VodItem[]> {
     try {
       // P2-1：回退超时下限 1000ms → 200ms，避免预算耗尽时被 1s 下限拖过体检 30s race 而误判
       const remaining = Math.max(200, deadline - Date.now());
@@ -442,6 +462,7 @@ export class SourceViewModel {
         'homeVideoContent 回退超时',
       );
       const p = this.parseSpiderJson(recJson, key);
+      onNotice(p ? '' : this.spiderReason(sp));
       if (!p || p.items.length === 0) {
         this.host.logger.i(`vm:home type3 ${key} homeVideoContent 无数据`);
         return [];
@@ -450,6 +471,7 @@ export class SourceViewModel {
       return p.items;
     } catch (e) {
       this.host.logger.w(`vm:home type3 ${key} homeVideoContent 回退失败: ${(e as Error).message}`);
+      onNotice((e as Error).message || String(e));
       return []; // ★ 回退失败静默降级，绝不整体报错
     }
   }

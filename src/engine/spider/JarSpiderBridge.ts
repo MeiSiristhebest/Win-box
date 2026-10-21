@@ -1920,9 +1920,9 @@ export class JarSpiderBridge {
           const abiMismatch = /Can't load this \.dll|machine code=0x[0-9a-f]+|wrong ELF class|not a valid Win32 application/i.test(err);
           const androidShell = /DexNative|UnsatisfiedLinkError|dalvik[/.]system[/.]/.test(err);
           this.lastSpiderReason = abiMismatch
-            ? '该源依赖 ARM 原生库（.so），与桌面 x64 架构不兼容，JVM 无法加载 —— 请更换其他配置源'
+            ? 'ARM 原生库（.so）未通过兼容桥加载，请检查原生运行时下载和该源的桥接日志；不能直接由 x64 JVM 加载'
             : androidShell
-              ? '该源为安卓加固/壳实现（代码加密 + 依赖原生库），桌面版无法运行 —— 请更换其他配置源'
+              ? '安卓壳或原生调用失败，当前兼容桥未能执行该源，请检查该源依赖与桥接日志'
               : `蜘蛛运行器异常：${translateSpiderLog(raw)}`;
         } else if (code !== 0) {
           const nativeCrash =
@@ -2153,11 +2153,11 @@ export function translateSpiderLog(log: string): string {
     //   —— 资源已经找对了（见 copyJarResources 补齐 assets 的说明），卡在 CPU 架构上。
     //   所以「原生库 ABI 不匹配」必须自成一条，且排在「找不到原生库」之前。
     [/Can't load this \.dll|machine code=0x[0-9a-f]+|wrong ELF class|not a valid Win32 application/i,
-      '该源依赖 ARM 原生库（.so），与桌面 x64 架构不兼容，JVM 无法加载 —— 请更换其他配置源'],
+      'ARM 原生库（.so）未通过兼容桥加载，请检查原生运行时下载和该源的桥接日志；不能直接由 x64 JVM 加载'],
     [/UnsatisfiedLinkError|native method .* not found|no .* in java\.library\.path/i,
-      '该源依赖安卓原生库（.so），桌面版无法加载（架构限制，非移植缺陷）'],
+      '安卓原生库（.so）或 JNI 方法调用失败，当前兼容桥未能执行该源；请检查原生运行时和依赖日志'],
     [/dalvik[./]system[./]|DexClassLoader|NoClassDefFoundError: dalvik/i,
-      '该源使用安卓动态 dex 加载（加固/壳），桌面版无法运行（架构限制，非移植缺陷）'],
+      '安卓动态 dex 加载失败，请检查转换产物、类路径与兼容桥；该错误不代表所有 dex 源均不支持'],
     // DEX 头部魔数：加载器把 dex 当类文件读时会给出这个字节序列
     [/dex\n?035|invalid dex|DexFile/i,
       '该源携带 dalvik 字节码（dex），桌面 JVM 无法执行（架构限制）'],

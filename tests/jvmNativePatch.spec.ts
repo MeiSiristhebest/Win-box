@@ -21,11 +21,11 @@ describe.skipIf(!ready)('真实 JVM dynamic native patch', () => {
       const cp = [classes, join(jvm, 'native-bridge/native-bridge.jar'), join(jvm, 'tools/asm-9.11.jar'),
         ...readdirSync(rt).filter(n => n.endsWith('.jar')).map(n => join(rt, n))].join(delimiter);
       const nativeSources = join(jvm, 'native-bridge/com/winbox/nativebridge');
-      command(join(bin, 'javac' + exe), ['-encoding', 'UTF-8', '-cp', cp, '-d', classes,
+      command(join(bin, 'javac' + exe), ['--release', '17', '-encoding', 'UTF-8', '-cp', cp, '-d', classes,
         ...readdirSync(nativeSources).filter(n => n.endsWith('.java')).map(n => join(nativeSources, n)),
         resolve('tests/fixtures/jvm-native/NativePatchProbe.java'), resolve('tests/fixtures/jvm-native/ArmSignalProbe.java'),
         resolve('tests/fixtures/jvm-native/ArmEventfdProbe.java'), resolve('tests/fixtures/jvm-native/BridgeFileSystemProbe.java')]);
-      command(join(bin, 'javac' + exe), ['-d', fixture, resolve('tests/fixtures/jvm-native/DynamicGuard.java')]);
+      command(join(bin, 'javac' + exe), ['--release', '17', '-d', fixture, resolve('tests/fixtures/jvm-native/DynamicGuard.java')]);
       const jar = join(dir, 'guard.jar'); command(join(bin, 'jar' + exe), ['cf', jar, '-C', fixture, '.']);
       expect(command(java, ['-cp', cp, 'NativePatchProbe', jar, join(dir, 'patched')]).stdout.trim()).toBe('native-patch-ok');
       expect(command(java, ['-cp', cp, 'ArmSignalProbe', join(dir, 'rootfs')]).stdout.trim()).toBe('arm-signals-ok');

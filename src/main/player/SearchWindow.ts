@@ -26,11 +26,11 @@ export function searchWindowReady(senderId: number): void {
   searchWin.webContents.send(IPC.WIN_NAVIGATE, pendingRoute);
 }
 
-export function openSearchWindow(term: string | { term: string; profileId?: string }, themeId: UiThemeId = DEFAULT_THEME): { ok: boolean; reused: boolean } {
+export function openSearchWindow(term: string | { term: string; profileId?: string; allProfiles?: boolean }, themeId: UiThemeId = DEFAULT_THEME): { ok: boolean; reused: boolean } {
   const value = typeof term === 'string' ? { term } : term;
   const searchTerm = String(value?.term || '');
   if (!searchTerm.trim()) throw new Error('搜索词不能为空');
-  pendingRoute = searchWindowRoute(searchTerm, value.profileId);
+  pendingRoute = searchWindowRoute(searchTerm, value.profileId, value.allProfiles ?? true);
   if (searchWin && !searchWin.isDestroyed()) {
     if (searchWin.isMinimized()) searchWin.restore();
     searchWin.show();

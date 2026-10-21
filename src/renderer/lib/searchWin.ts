@@ -25,7 +25,7 @@ export async function openSearchWindow(term: string, profileId?: string, allProf
     window.location.hash = searchWindowRoute(
       value,
       profileId ?? current.get('profileId') ?? undefined,
-      allProfiles ?? (current.get('profiles') === 'all'),
+      allProfiles ?? (current.get('profiles') !== 'current'),
     );
     return;
   }
@@ -33,5 +33,5 @@ export async function openSearchWindow(term: string, profileId?: string, allProf
     navFn(inlineSearchRoute(value, profileId, allProfiles));
     return;
   }
-  await client.winOpenSearch(value, profileId);
+  await client.winOpenSearch(value, profileId, allProfiles ?? true);
 }

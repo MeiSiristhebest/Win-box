@@ -28,12 +28,14 @@ export async function fetchSubscriptionConfig(dependencies: { http: HttpClient; 
     const timeoutMs = quick
       ? SUBSCRIPTION_IMPORT_POLICY.requestTimeoutMs.quick
       : SUBSCRIPTION_IMPORT_POLICY.requestTimeoutMs.standard;
-    const attempts = disguiseLadder({ quick, referer: siteRootOf(url) });
+    // Keep each child bounded by the batch signal, but do not equate a UA-only
+    // scan with unavailability: some subscriptions require a Referer/session.
+    const attempts = disguiseLadder({ referer: siteRootOf(url) });
     const isSubJson = (b: Buffer): boolean => looksLikeSubscribeJson(b.toString('utf-8'));
     const res = await fetchWithDisguise(dependencies.http, url, {
       accept: isSubJson,
       tryGitHubOrigin: true,
-      attempts: quick ? attempts.slice(0, SUBSCRIPTION_IMPORT_POLICY.maxQuickAttempts) : attempts,
+       attempts: quick ? attempts.slice(0, SUBSCRIPTION_IMPORT_POLICY.maxQuickAttempts) : attempts,
       timeoutMs,
       signal,
       onTry: (t) => {
@@ -76,7 +78,7 @@ export async function fetchSubscriptionConfig(dependencies: { http: HttpClient; 
     const encrypted = res.last ? looksEncrypted(res.last) : false;
     const image = res.last ? looksLikeImage(res.last) : false;
     const sn = res.last ? sniffBody(res.last) : null;
-    const hint =
+    const hint = '本次未能取得有效订阅配置，尚不能判定其中的影片源永久不可用。' +
       (encrypted ? '该地址返回的内容疑似**加密配置**（普通客户端无法直接使用）。' : '') +
       (image ? '该地址返回的是**图片**（疑似图片尾部隐写，但未从中提取到配置）。' : '') +
       (sn?.kind === 'dump'
