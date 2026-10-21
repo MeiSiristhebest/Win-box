@@ -363,7 +363,7 @@ export default function DetailPage({
             )}
           </>
         )}
-        {detailName && <MovieSourcesPanel title={detailName} />}
+        {detailName && <MovieSourcesPanel key={detailName} title={detailName} poster={cover} />}
       </div>
     </>
   );

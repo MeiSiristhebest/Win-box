@@ -47,4 +47,28 @@ describe('SubscriptionGroupsSection', () => {
     expect(onRemoveMember).toHaveBeenCalledWith(group.id, 'removed', '旧线路');
     expect(onResolveRefresh).toHaveBeenCalledWith(group.id, 'ready', 'keep-current');
   });
+
+  it('shows a failed refresh with its saved profile as retained and folds the request trace', () => {
+    const group: SubscriptionGroup = {
+      id: 'group-2', name: '多仓', url: 'https://example.test/list.json', status: 'partial',
+      members: [{
+        id: 'saved-failed', profileId: 'saved-profile', name: '旧线路', url: 'https://example.test/old.json', status: 'failed',
+        error: '「旧线路」 本次未能取得有效订阅配置。最后响应为 html（200B）。已尝试：okhttp UA：ECONNRESET',
+      }],
+      createdAt: '2026-10-15T00:00:00.000Z', updatedAt: '2026-10-15T00:00:00.000Z',
+    };
+    const profiles: UserProfile[] = [{
+      id: 'saved-profile', name: '旧线路', apiUrl: 'https://example.test/old.json', json: '{}',
+      sourceCount: 72, importedAt: '2026-10-15T00:00:00.000Z',
+    }];
+    render(<SubscriptionGroupsSection
+      groups={[group]} profiles={profiles} activeProfileId="other" busy={false} importRunning={false}
+      onRefresh={vi.fn()} onActivate={vi.fn()} onRemoveMember={vi.fn()} onResolveRefresh={vi.fn()}
+    />);
+
+    expect(screen.getByText('刷新失败，已保留上次配置')).toBeTruthy();
+    expect(screen.getByText(/72\s*个源（上次成功配置）/)).toBeTruthy();
+    fireEvent.click(screen.getByText('最后响应为 html（200B）。'));
+    expect(screen.getByText(/ECONNRESET/)).toBeTruthy();
+  });
 });

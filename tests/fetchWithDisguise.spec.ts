@@ -48,6 +48,7 @@ describe('sniffBody — 响应嗅探（失败分档上屏的依据）', () => {
     expect(sniffBody(Buffer.from('  [1,2]')).kind).toBe('json');
     expect(sniffBody(Buffer.from('<!DOCTYPE html><html><body>x</body></html>')).kind).toBe('html');
     expect(sniffBody(Buffer.from('<script>var a=1</script>')).kind).toBe('html');
+    expect(sniffBody(Buffer.from('<!-- security gateway --><!-- notice --><!doctype html><html></html>')).kind).toBe('html');
     expect(sniffBody(Buffer.from('<?xml version="1.0"?><r/>')).kind).toBe('xml');
     expect(sniffBody(Buffer.from([0x50, 0x4b, 0x03, 0x04])).kind).toBe('zip');
     expect(sniffBody(Buffer.from([0x1f, 0x8b, 0x08])).kind).toBe('gzip');
@@ -66,6 +67,11 @@ describe('sniffBody — 响应嗅探（失败分档上屏的依据）', () => {
 
   it('短 base64 字符串不算加密（避免把普通文本误判）', () => {
     expect(sniffBody(Buffer.from('aGVsbG8=')).kind).toBe('text');
+  });
+
+  it('不会把错误平台的方括号日志或带前导注释的页面误判成 JSON/XML', () => {
+    expect(sniffBody(Buffer.from('[[session-e4f5cfa7] Route error: The Repository has been blocked')).kind).toBe('text');
+    expect(sniffBody(Buffer.from('<!-- gateway --><!DOCTYPE html><html><title>访问安全</title></html>')).kind).toBe('html');
   });
 });
 
@@ -234,6 +240,44 @@ describe('fetchWithDisguise — 阶梯行为（假 HttpClient）', () => {
     expect(looksEncrypted(r.last as Buffer)).toBe(true);
     expect(describeFailures(r.tries)).toContain('ECONNRESET');
     expect(describeFailures(r.tries)).toContain('疑似加密');
+  });
+
+  it('快速扫描遇到连接错误时优先切换协议，并保留重定向目标', async () => {
+    const html = '<!DOCTYPE html><html><title>Sign in</title></html>';
+    const { http, calls } = fakeHttp([
+      new Error('Client network socket disconnected before secure TLS connection was established'),
+      { content: Array.from(Buffer.from(html)), finalUrl: 'https://a.b/login' },
+    ]);
+    const result = await fetchWithDisguise(http, 'http://a.b/config.json', {
+      accept: acceptJson,
+      attempts: [{ label: '默认 UA' }],
+      prioritizeFallbacksOnNetworkError: true,
+      totalTimeoutMs: 2_000,
+    });
+    expect(result.buf).toBeNull();
+    expect(calls.map(call => call.url)).toEqual(['http://a.b/config.json', 'https://a.b/config.json']);
+    expect(result.tries[0].reason).toContain('TLS');
+    expect(result.tries[1].finalUrl).toBe('https://a.b/login');
+    expect(describeFailures(result.tries)).toContain('最终跳转到 https://a.b/login');
+  });
+
+  it('连接快速回退到 GitHub 原站时不转发代理 Cookie', async () => {
+    const url = 'https://github.moeyy.xyz/https://raw.githubusercontent.com/owner/repo/main/config.json';
+    const { http, calls } = fakeHttp([
+      new Error('ECONNRESET'),
+      { content: Array.from(Buffer.from(json)) },
+    ]);
+    const result = await fetchWithDisguise(http, url, {
+      accept: acceptJson,
+      attempts: [{ label: '默认 UA' }],
+      tryAltProtocol: false,
+      tryGitHubOrigin: true,
+      prioritizeFallbacksOnNetworkError: true,
+    });
+    expect(result.buf?.toString()).toBe(json);
+    expect(calls[1].url).toBe('https://raw.githubusercontent.com/owner/repo/main/config.json');
+    expect(calls[1].headers?.Cookie).toBeUndefined();
+    expect(result.originUrl).toBe(calls[1].url);
   });
 
   it('达到整条下载期限后停止后续 UA 和换协议尝试', async () => {

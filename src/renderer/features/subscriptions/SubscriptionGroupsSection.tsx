@@ -25,6 +25,13 @@ export function SubscriptionGroupsSection({
 }: SubscriptionGroupsSectionProps) {
   if (groups.length === 0) return null;
 
+  const errorPreview = (error: string): string => {
+    const attemptsAt = error.indexOf('已尝试：');
+    const summary = (attemptsAt < 0 ? error : error.slice(0, attemptsAt)).replace(/^「[^」]*」\s*/, '').trim();
+    const useful = summary.match(/(?:请求最终跳转到|最后响应为|所有尝试都没有拿到响应体).*$/)?.[0] || summary;
+    return useful.length > 180 ? `${useful.slice(0, 177)}…` : useful;
+  };
+
   return (
     <section className="card" id="cfg-subscription-groups" style={{ padding: 12, marginBottom: 16 }}>
       <h3 style={{ fontWeight: 600, margin: '0 0 8px' }}>多仓订阅组</h3>
@@ -45,7 +52,7 @@ export function SubscriptionGroupsSection({
             <div style={{ display: 'grid', gap: 6 }}>
               {group.members.map((member) => {
                 const profile = member.profileId ? profiles.find((item) => item.id === member.profileId) : undefined;
-                const stateLabel = member.status === 'ready' ? '配置已导入' : member.status === 'failed' ? '配置未导入' : member.status === 'needs-review' ? '待确认刷新' : member.status === 'pending' ? '待处理' : member.status === 'pending-removal' ? '上游已移除' : '待处理';
+                const stateLabel = member.status === 'ready' ? '配置已导入' : member.status === 'failed' ? (profile ? '刷新失败，已保留上次配置' : '配置导入失败') : member.status === 'needs-review' ? '待确认刷新' : member.status === 'pending' ? '待处理' : member.status === 'pending-removal' ? '上游已移除' : '待处理';
                 const refreshDiff = member.refreshDiff;
                 const changedKeys = refreshDiff?.changed.map((change) => `${change.key}（${change.fields.join('、')}）`) ?? [];
                 const preview = (items: string[]): string => items.length > 10
@@ -56,12 +63,17 @@ export function SubscriptionGroupsSection({
                     <div className="row" style={{ justifyContent: 'space-between', gap: 8, borderLeft: '2px solid var(--border)', paddingLeft: 8 }}>
                       <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                         {member.name} <span className="muted">{stateLabel}</span>
-                        {member.error ? <span className="muted"> — {member.error}</span> : null}
-                        {profile ? <span className="muted"> — {profile.sourceCount} 个源</span> : null}
+                        {profile ? <span className="muted"> — {profile.sourceCount} 个源{member.status === 'failed' ? '（上次成功配置）' : ''}</span> : null}
                       </span>
                       {profile && profile.id !== activeProfileId && <button className="linkbtn" disabled={busy || importRunning} onClick={() => onActivate(profile.id)}>切换到此子仓</button>}
                       {member.status === 'pending-removal' && <button className="linkbtn danger" onClick={() => onRemoveMember(group.id, member.id, member.name)}>从组中移除</button>}
                     </div>
+                    {member.error ? (
+                      <details className="muted" style={{ marginLeft: 10, fontSize: 12, overflowWrap: 'anywhere' }}>
+                        <summary style={{ cursor: 'pointer' }}>{errorPreview(member.error)}</summary>
+                        <p style={{ whiteSpace: 'pre-wrap', margin: '4px 0' }}>{member.error}</p>
+                      </details>
+                    ) : null}
                     {refreshDiff ? (
                       <div style={{ marginLeft: 10, fontSize: 12 }}>
                         <details className="muted">

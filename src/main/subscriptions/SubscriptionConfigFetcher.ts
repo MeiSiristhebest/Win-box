@@ -10,6 +10,7 @@ import { SUBSCRIPTION_IMPORT_POLICY } from './ImportPolicy';
 
 /** Fetches and decodes subscription text without changing any profile or active configuration. */
 export async function fetchSubscriptionConfig(dependencies: { http: HttpClient; logger: Logger; localPkgs?: LocalPkgAccess }, url: string, quick = false, signal?: AbortSignal): Promise<{ text: string; hint: string }> {
+    const startedAt = Date.now();
     if (signal?.aborted) throw signal.reason ?? new Error('导入已取消');
     // ★ 2026-09-29（用户要求）本地包：`pkg://<i>/<rel>` —— 不联网，直接读包内订阅文本。
     //   文本已由 LocalPkgStore.readSubscription 用 rewritePkgPaths 展开相对路径（"/pkg" 或 file://），
@@ -35,8 +36,9 @@ export async function fetchSubscriptionConfig(dependencies: { http: HttpClient; 
     const res = await fetchWithDisguise(dependencies.http, url, {
       accept: isSubJson,
       tryGitHubOrigin: true,
-       attempts: quick ? attempts.slice(0, SUBSCRIPTION_IMPORT_POLICY.maxQuickAttempts) : attempts,
+      attempts: quick ? attempts.slice(0, SUBSCRIPTION_IMPORT_POLICY.maxQuickAttempts) : attempts,
       timeoutMs,
+      ...(quick ? { totalTimeoutMs: SUBSCRIPTION_IMPORT_POLICY.quickTotalTimeoutMs, prioritizeFallbacksOnNetworkError: true } : {}),
       signal,
       onTry: (t) => {
         const feat = [t.status ? `HTTP ${t.status}` : '', t.sniff ? `${t.sniff.kind} ${t.sniff.size}B` : '', t.reason || '']
@@ -73,12 +75,17 @@ export async function fetchSubscriptionConfig(dependencies: { http: HttpClient; 
       return { text: normalizeOriginPaths(disguise.text), hint: '' };
     }
     // ★ 解密兜底：本地编码优先，其次第三方解密服务（仅此处、且仅在所有伪装手段失败后）
-    const dec = await tryDecryptConfig(dependencies.http, url, raw, dependencies.logger, signal);
+    const remainingDecodeMs = quick
+      ? Math.max(0, SUBSCRIPTION_IMPORT_POLICY.itemTimeoutMs - (Date.now() - startedAt) - 500)
+      : 25_000;
+    const dec = await tryDecryptConfig(dependencies.http, url, raw, dependencies.logger, signal, remainingDecodeMs);
     if (dec) return { text: normalizeOriginPaths(dec.text), hint: '' };
     const encrypted = res.last ? looksEncrypted(res.last) : false;
     const image = res.last ? looksLikeImage(res.last) : false;
     const sn = res.last ? sniffBody(res.last) : null;
+    const finalUrl = [...res.tries].reverse().find((attempt) => attempt.finalUrl)?.finalUrl;
     const hint = '本次未能取得有效订阅配置，尚不能判定其中的影片源永久不可用。' +
+      (finalUrl ? `请求最终跳转到 ${finalUrl}，可能是登录、备案或访问验证页面。` : '') +
       (encrypted ? '该地址返回的内容疑似**加密配置**（普通客户端无法直接使用）。' : '') +
       (image ? '该地址返回的是**图片**（疑似图片尾部隐写，但未从中提取到配置）。' : '') +
       (sn?.kind === 'dump'

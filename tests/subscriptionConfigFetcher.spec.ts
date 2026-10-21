@@ -13,4 +13,19 @@ describe('batch import diagnostics', () => {
     expect(request).toHaveBeenCalledTimes(3);
     expect(request.mock.calls[2][0].headers?.Referer).toBe('https://example.invalid/');
   });
+
+  it('bounds quick imports and exposes the final login/landing redirect in diagnostics', async () => {
+    const request = vi.fn(async (_arg: HttpRequest) => ({
+      status: 200,
+      content: '<!-- verify --><!DOCTYPE html><html><title>Sign in</title></html>',
+      headers: {},
+      finalUrl: 'https://gitlab.example/users/sign_in?token=private',
+    }));
+    const logger = { i: vi.fn(), w: vi.fn(), e: vi.fn() };
+    const result = await fetchSubscriptionConfig({ http: { request }, logger }, 'https://example.invalid/config.json', true);
+    expect(request.mock.calls[0][0].totalTimeoutMs).toBe(22_000);
+    expect(result.hint).toContain('https://gitlab.example/users/sign_in');
+    expect(result.hint).not.toContain('token=private');
+    expect(result.hint).toContain('HTML');
+  });
 });

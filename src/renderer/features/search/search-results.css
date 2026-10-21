@@ -1,0 +1,6 @@
+.search-result-filters { margin: 14px 0; }
+.search-result-filter-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.search-result-filter-row label { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-dim); }
+.search-result-filter-row select { min-width: 140px; max-width: min(360px, 75vw); }
+.search-result-filter-note { margin: 8px 0; font-size: 12px; line-height: 1.6; }
+.search-result-origin { margin-top: 4px; color: var(--text-dim); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -7,6 +7,7 @@ import type { SourceBean, VodItem, SearchAllReport, AggVodItem } from '../../sha
 import { sourceAvailability } from '../../engine/vod/sourceAvailability';
 import { isDoubanLikeSource } from '../../engine/config/sourceKind';
 import { sourceIdentityKey } from '../../engine/vod/aggSearch';
+import { movieSearchTitle, searchResultView, type SearchMatchMode } from '../../engine/vod/searchRelevance';
 import { discoverDetailRoute } from '../../shared/discoverDetail';
 import { uiMem, schedulePersist, type HomeSearchMem } from '../lib/uiMemory';
 import { makeStaleGuard } from '../lib/staleGuard';
@@ -19,6 +20,7 @@ import DriveBindModal from '../components/DriveBindModal';
 import { isSearchWindow } from '../lib/searchWin';
 import { useHomeBrowseController, type SortClassView } from '../features/home/useHomeBrowseController';
 import { useHomeSearchController } from '../features/home/useHomeSearchController';
+import { SearchResultFilters } from '../features/search/SearchResultFilters';
 
 export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string, id: string, pic?: string, name?: string, profileId?: string) => void }) {
   const navigate = useNavigate();
@@ -63,6 +65,8 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
   const [aggCap, setAggCap] = useState(60);
   /** ★ 2026-09-25：全源搜索结果的「按源筛选」当前选中的源 key（'' = 全部） */
   const [aggSrc, setAggSrc] = useState('');
+  const [aggProfileFilter, setAggProfileFilter] = useState('');
+  const [aggMatchMode, setAggMatchMode] = useState<SearchMatchMode>('related');
   /**
    * ★ 2026-09-30（用户报「其他接口的盘搜类型源搜索出来的结果无法正常展示详情」）：
    * **文件夹条目**（`vod_tag=folder`，盘搜/网盘的「夸克 (92个)」这类）的展开视图 ——
@@ -242,19 +246,20 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
     setHomeSearch,
   });
   const { applySearchMem, setProfileSearchScope, doSearch, folder, openFolder, exitFolder, exitSearch } = search;
+  const resultProfileId = profileIdRef.current;
+  const resultView = useMemo(() => searchResultView(agg?.items ?? [], wd, { mode: aggMatchMode, profileId: aggProfileFilter, sourceId: aggSrc, defaultProfileId: resultProfileId }), [agg, wd, aggMatchMode, aggProfileFilter, aggSrc, resultProfileId]);
+  const aggView = useMemo(() => folder ? agg?.items ?? [] : resultView.items, [folder, agg, resultView.items]);
   const coverItem = useCallback((it: VodItem, sourceKey = key) => ({
-    id: `${sourceKey}\u0000${it.id}`, name: (it.name || '').split(' - ')[0].trim(),
+    id: `${sourceKey}\u0000${it.id}`, name: movieSearchTitle(it.name || ''),
     year: /((?:19|20)\d{2})/.exec(`${it.name} ${it.remarks || ''}`)?.[1], pic: it.pic,
   }), [key]);
   const coverProfileId = profileIdRef.current;
   const browseCoverItems = useMemo(() => items.map(it => coverItem(it)), [items, coverItem]);
   const searchCoverItems = useMemo(() => {
-    const results = agg?.items || [];
-    const visible = aggSrc ? results.filter(it => sourceIdentityKey(it.sourceRef?.profileId ?? coverProfileId, it.sourceKey) === aggSrc) : results;
-    return visible.slice(0, aggCap).map(it => coverItem(it, sourceIdentityKey(it.sourceRef?.profileId ?? coverProfileId, it.sourceKey)));
-  }, [agg, aggSrc, aggCap, coverProfileId, coverItem]);
+    return aggView.slice(0, aggCap).map(it => coverItem(it, sourceIdentityKey(it.sourceRef?.profileId ?? coverProfileId, it.sourceKey)));
+  }, [aggView, aggCap, coverProfileId, coverItem]);
   const covers = useCovers(browseCoverItems, pageActive && !loading && !aggMode);
-  const aggCovers = useCovers(searchCoverItems, pageActive && !loading && aggMode);
+  const aggCovers = useCovers(searchCoverItems, pageActive && aggMode, true);
   const picOf = (it: VodItem) => covers.picOf(coverItem(it));
   const aggPicOf = (it: AggVodItem) => aggCovers.picOf(coverItem(it, sourceIdentityKey(it.sourceRef?.profileId ?? profileIdRef.current, it.sourceKey)));
   const picErr = (it: VodItem) => (e: React.SyntheticEvent<HTMLImageElement>) =>
@@ -523,40 +528,6 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
 
   const failed = useMemo(() => agg?.perSource.filter((p) => p.status === 'error') ?? [], [agg]);
   const isWideSearch = aggScope === 'all' || aggScope === 'all-profiles';
-  const resultProfileId = profileIdRef.current;
-  /**
-   * ★ 2026-09-25（用户要求）：全源搜索结果**顶部按源筛选** —— 只展示某个源的结果。
-   *   筛选条只在「全源搜索 + 命中 ≥2 个源」时出现（单源搜索时它没有意义）。
-   */
-  const aggSrcChips = useMemo(() => {
-    if (!agg || !isWideSearch) return [];
-    const sourcesByIdentity = new Map(agg.perSource.map(source => [sourceIdentityKey(source.profileId ?? resultProfileId, source.key), source]));
-    const profileNames = new Map(profiles.map(profile => [profile.id, profile.name]));
-    const n = new Map<string, { key: string; profileId: string; count: number }>();
-    for (const it of agg.items) {
-      const profileId = it.sourceRef?.profileId ?? resultProfileId;
-      const identity = sourceIdentityKey(profileId, it.sourceKey);
-      const entry = n.get(identity) ?? { key: it.sourceKey, profileId, count: 0 };
-      entry.count++;
-      n.set(identity, entry);
-    }
-    return [...n.entries()]
-      .map(([identity, entry]) => {
-        const perSource = sourcesByIdentity.get(identity);
-        const profileName = perSource?.profileName || profileNames.get(entry.profileId);
-        const sourceName = perSource?.name || entry.key;
-        return {
-          identity,
-          n: entry.count,
-          name: aggScope === 'all-profiles' && profileName ? `${profileName} · ${sourceName}` : sourceName,
-        };
-      })
-      .sort((a, b) => b.n - a.n);
-  }, [agg, isWideSearch, resultProfileId, profiles, aggScope]);
-  /** 按源筛选后的结果（网格 / 计数 / 「显示更多」都用它） */
-  const aggView = useMemo(() => aggSrc
-    ? (agg?.items || []).filter((it) => sourceIdentityKey(it.sourceRef?.profileId ?? resultProfileId, it.sourceKey) === aggSrc)
-    : agg?.items || [], [agg, aggSrc, resultProfileId]);
   /** 切换筛选 = 换一屏结果 → 分页计数复位 */
   const pickAggSrc = (k: string): void => {
     setAggSrc(k);
@@ -690,7 +661,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
               : folder ? `正在展开「${folder.name}」…` : '搜索中…'
             : folder
               ? `「${folder.name}」${agg?.items.length ?? 0} 条`
-              : `命中 ${agg?.items.length ?? 0} 条`}
+              : `显示 ${aggView.length} 条`}
         </span>
       </div>
       )}
@@ -767,7 +738,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
                     {aggScope === 'all-profiles'
                       ? `「${wd}」共搜 ${profiles.length} 个订阅档案、${agg.perSource.length} 个源`
                       : `「${wd}」共搜 ${agg.perSource.length} 个源`}
-                    ：命中 {agg.hitSources} 个 · 共 {agg.items.length} 条（各源分别列出，不合并）
+                    ：{agg.hitSources} 个源返回 {agg.items.length} 条 · 当前显示 {aggView.length} 条
                     {agg.failedSources > 0 ? ` · ⚠ ${agg.failedSources} 个源出错（见下）` : ''}
                     {/* ★ 缓存秒回提示：这次结果是本机缓存（5 分钟内搜过同一关键词）→ 给一个「重新搜索」 */}
                     {agg.pendingSources ? (
@@ -785,7 +756,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
                   </>
                 ) : (
                   <>
-                    在「{agg.perSource[0]?.name ?? key}」中搜「{wd}」：{agg.items.length} 条
+                    在「{agg.perSource[0]?.name ?? key}」中搜「{wd}」：当前显示 {aggView.length} 条
                     {agg.items.length === 0 && (
                       <span className="muted"> —— 没找到？勾选上方「全源搜索」再试一次</span>
                     )}
@@ -795,30 +766,8 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
               )}
 
               {/* ★ 按源筛选条（全源搜索命中 ≥2 源时出现）：点一下只看该源的结果 */}
-              {aggSrcChips.length > 1 && (
-                <div className="row" style={{ marginBottom: 10, flexWrap: 'wrap', rowGap: 6 }}>
-                  <span className="muted" style={{ fontSize: 12 }}>按源筛选：</span>
-                  <button type="button"
-                    className={`tag ui-action ${aggSrc === '' ? 'active' : ''}`}
-                    aria-pressed={aggSrc === ''}
-                    title={`全部源 · ${agg.items.length} 条`}
-                    onClick={() => pickAggSrc('')}
-                  >
-                    全部 {agg.items.length}
-                  </button>
-                  {aggSrcChips.map((c) => (
-                    <button type="button"
-                      key={c.identity}
-                      className={`tag ui-action ${aggSrc === c.identity ? 'active' : ''}`}
-                      aria-pressed={aggSrc === c.identity}
-                      title={`${c.name} · ${c.n} 条`}
-                      onClick={() => pickAggSrc(c.identity)}
-                    >
-                      {c.name} {c.n}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {!folder && <SearchResultFilters profiles={resultView.profiles} sources={resultView.sources} profileId={aggProfileFilter} sourceId={aggSrc} mode={aggMatchMode} hiddenCount={resultView.hiddenCount}
+                onProfile={id => { setAggProfileFilter(id); pickAggSrc(''); }} onSource={pickAggSrc} onMode={mode => { setAggMatchMode(mode); setAggCap(60); }} />}
 
               {aggView.length > 0 ? (
                 <>
@@ -838,7 +787,7 @@ export default function HomePage({ onOpenDetail }: { onOpenDetail: (key: string,
                   </div>
                   {aggView.length > aggCap && (
                     <div style={{ textAlign: 'center', marginTop: 12 }}>
-                      <button onClick={() => setAggCap((n) => n + 240)}>显示更多（还有 {aggView.length - aggCap} 条）</button>
+                      <button onClick={() => setAggCap((n) => n + 60)}>显示更多（还有 {aggView.length - aggCap} 条）</button>
                     </div>
                   )}
                 </>
@@ -1104,6 +1053,7 @@ const AggCard = memo(function AggCard({ it, pic, onOpen, onErr }: { it: AggVodIt
             {it.tag === 'folder' && <span title="文件夹：点开列出里面的资源">📁 </span>}
             {it.name}
           </div>
+          <div className="search-result-origin" title={[it.sourceProfileName, it.sourceName || it.sourceKey].filter(Boolean).join(' / ')}>{[it.sourceProfileName, it.sourceName || it.sourceKey].filter(Boolean).join(' / ')}</div>
         </div>
       </div>
     </button>

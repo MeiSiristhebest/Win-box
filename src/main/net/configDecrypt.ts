@@ -90,6 +90,7 @@ export async function tryDecryptConfig(
   rawText: string,
   logger?: Logger,
   signal?: AbortSignal,
+  remoteTimeoutMs = 25_000,
 ): Promise<DecryptOutcome | null> {
   if (signal?.aborted) throw signal.reason ?? new Error('请求已取消');
   const local = decodeLocalCipher(rawText);
@@ -98,9 +99,13 @@ export async function tryDecryptConfig(
     return { text: local.text, how: local.how === 'aes-cbc' ? 'local-aes-cbc' : local.how === 'base64' ? 'local-base64' : 'local-hex' };
   }
   if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) return null;
+  if (remoteTimeoutMs <= 0) {
+    logger?.i('订阅解密兜底：本次剩余导入时间不足，跳过远程解密服务');
+    return null;
+  }
   try {
     const url = `${REMOTE_DECRYPT_ENDPOINT}?url=${encodeURIComponent(rawUrl)}`;
-    const res = await http.request({ url, method: 'get', timeoutMs: 25_000, buffer: 0, redirect: 1, signal, headers: { 'User-Agent': 'okhttp/3.12.0' } });
+    const res = await http.request({ url, method: 'get', timeoutMs: Math.min(25_000, remoteTimeoutMs), totalTimeoutMs: Math.min(25_000, remoteTimeoutMs), buffer: 0, redirect: 1, signal, headers: { 'User-Agent': 'okhttp/3.12.0' } });
     const text = typeof res.content === 'string' ? res.content : Buffer.from(res.content || []).toString('utf-8');
     if (res.status !== 200 || /解密失败/.test(text)) {
       logger?.w(`订阅解密兜底：远程解密服务未成功（HTTP ${res.status}${/解密失败/.test(text) ? '，返回"解密失败"' : ''}）`);

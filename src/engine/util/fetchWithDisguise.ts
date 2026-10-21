@@ -59,8 +59,9 @@ export function sniffBody(buf: Buffer, headLen = 80): BodySniff {
   const text = buf.toString('utf-8');
   const head = text.slice(0, headLen).replace(/\s+/g, ' ').trim();
   const t = text.replace(/^\uFEFF/, '').trimStart();
-  if (t.startsWith('{') || t.startsWith('[')) return { kind: 'json', head, size };
-  const lower = t.slice(0, 200).toLowerCase();
+  if (looksLikeJsonStart(t)) return { kind: 'json', head, size };
+  const htmlStart = t.replace(/^(?:<!--[\s\S]*?-->\s*)+/, '').trimStart();
+  const lower = htmlStart.slice(0, 200).toLowerCase();
   if (lower.startsWith('<!doctype') || lower.startsWith('<html') || lower.includes('<script')) {
     return { kind: 'html', head, size };
   }
@@ -74,6 +75,34 @@ export function sniffBody(buf: Buffer, headLen = 80): BodySniff {
     if (/^[A-Za-z0-9+/]+={0,2}$/.test(compact) && compact.length % 4 === 0) return { kind: 'base64', head, size };
   }
   return { kind: 'text', head, size };
+}
+
+function looksLikeJsonValueStart(text: string, index: number, depth = 0): boolean {
+  if (depth > 12) return false;
+  while (/\s/.test(text[index] || '')) index++;
+  const char = text[index];
+  if (char === '"' || char === '-' || (char >= '0' && char <= '9')) return true;
+  if (text.startsWith('true', index) || text.startsWith('false', index) || text.startsWith('null', index)) return true;
+  if (char === '{') return /^\{\s*(?:\}|"(?:\\.|[^"\\])*"\s*:)/.test(text.slice(index));
+  if (char === '[') {
+    let next = index + 1;
+    while (/\s/.test(text[next] || '')) next++;
+    return text[next] === ']' || looksLikeJsonValueStart(text, next, depth + 1);
+  }
+  return false;
+}
+
+function looksLikeJsonStart(text: string): boolean {
+  let index = 0;
+  while (/\s/.test(text[index] || '')) index++;
+  const char = text[index];
+  if (char === '{') return /^\{\s*(?:\}|"(?:\\.|[^"\\])*"\s*:)/.test(text.slice(index));
+  if (char === '[') {
+    let next = index + 1;
+    while (/\s/.test(text[next] || '')) next++;
+    return text[next] === ']' || looksLikeJsonValueStart(text, next, 1);
+  }
+  return false;
 }
 
 /** 是否「疑似加密」（整体 base64/hex）—— 导入失败时据此提示"该接口是加密配置" */
@@ -136,6 +165,8 @@ export function disguiseLadder(opts: { quick?: boolean; referer?: string; cookie
 export interface TryInfo {
   label: string;
   url: string;
+  /** Sanitized final URL when a response redirected to a different host/path. */
+  finalUrl?: string;
   ok: boolean;
   status?: number;
   /** 内容嗅探（失败时最有用：HTML 拦截页 / 疑似加密） */
@@ -168,6 +199,21 @@ export interface DisguiseResult {
   tries: TryInfo[];
   /** 本次会话捕获到的 Cookie（供后续请求复用） */
   cookie?: string;
+}
+
+function safeDiagnosticUrl(raw: string): string {
+  try {
+    const parsed = new URL(raw);
+    if (!/^https?:$/.test(parsed.protocol)) return '';
+    return `${parsed.protocol}//${parsed.host}${parsed.pathname}`.slice(0, 240);
+  } catch { return ''; }
+}
+
+function redirectedTo(url: string, finalUrl?: string): string | undefined {
+  if (!finalUrl) return undefined;
+  const original = safeDiagnosticUrl(url);
+  const final = safeDiagnosticUrl(finalUrl);
+  return original && final && original !== final ? final : undefined;
 }
 
 /** 从响应头里取 Set-Cookie 的 `k=v` 片段（多个取全部；纯函数） */
@@ -235,6 +281,8 @@ export async function fetchWithDisguise(
     tryAltProtocol?: boolean;
     /** 已知 GitHub 代理失效后，尝试 URL 中明确给出的 HTTPS 原站。 */
     tryGitHubOrigin?: boolean;
+    /** 多仓快速检查遇到连接错误时，先试一个协议或已知 GitHub 原站回退地址。 */
+    prioritizeFallbacksOnNetworkError?: boolean;
     /** 下载站点首次 403 种 Cookie：保持同一 UA，同址最多重试一次；默认关闭。 */
     retryWithCookie?: boolean;
     /** 取消正在执行的当前尝试，并阻止后续重试或协议回退。 */
@@ -249,17 +297,51 @@ export async function fetchWithDisguise(
     : 0;
   const bufMode = opts.buffer ?? 1;
   const tries: TryInfo[] = [];
-  let capturedCookie = '';
+  const cookiesByOrigin = new Map<string, string>();
+  const cookieFor = (target: string): string => cookiesByOrigin.get(safeDiagnosticUrl(target).split('/').slice(0, 3).join('/')) || '';
+  const baseCookie = (): string => cookieFor(url);
   let last: Buffer | undefined;
   let stoppedByDeadline = false;
   let originResponseUrl: string | undefined;
+  let altAttempted = false;
+  let originAttempted = false;
+  let networkFallbackAttempted = false;
+
+  const runPriorityFallback = async (): Promise<DisguiseResult | null> => {
+    if (!opts.prioritizeFallbacksOnNetworkError || networkFallbackAttempted || opts.signal?.aborted) return null;
+    const latest = tries[tries.length - 1];
+    if (!latest || latest.status !== undefined || /总超时/.test(latest.reason || '')) return null;
+    networkFallbackAttempted = true;
+    const origin = opts.tryGitHubOrigin ? githubOriginUrl(url) : '';
+    if (origin) {
+      originAttempted = true;
+      const attempt = { label: '默认 UA（GitHub 原站）', referer: siteRootOf(origin) };
+      const previousBody = last;
+      const result = await once(origin, attempt);
+      if (last !== previousBody) originResponseUrl = origin;
+      if (result.buf) return { buf: result.buf, last, tries, used: attempt, originUrl: origin, cookie: baseCookie() || undefined };
+      if (result.deadlineExceeded) stoppedByDeadline = true;
+      return null;
+    }
+    if (opts.tryAltProtocol !== false) {
+      const alt = protocolAltUrl(url);
+      if (alt) {
+        altAttempted = true;
+        const attempt: DisguiseAttempt = { label: `okhttp UA（换 ${alt.startsWith('https') ? 'https' : 'http'}）`, ua: UA_OKHTTP, referer: siteRootOf(url) };
+        const result = await once(alt, attempt);
+        if (result.buf) return { buf: result.buf, used: attempt, altUrl: alt, tries, cookie: baseCookie() || undefined, last };
+        if (result.deadlineExceeded) stoppedByDeadline = true;
+      }
+    }
+    return null;
+  };
 
   const once = async (u: string, a: DisguiseAttempt, cookieRetry = false): Promise<{ buf: Buffer | null; retryCookie?: string; deadlineExceeded?: boolean }> => {
     if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
     const headers: Record<string, string> = {};
     if (a.ua) headers['User-Agent'] = a.ua;
     if (a.referer) headers['Referer'] = a.referer;
-    const ck = a.cookie === true ? capturedCookie : a.cookie || '';
+    const ck = a.cookie === true ? cookieFor(u) : a.cookie || '';
     if (ck) headers['Cookie'] = ck;
     const remaining = deadline ? deadline - Date.now() : 0;
     if (deadline && remaining <= 0) {
@@ -300,11 +382,12 @@ export async function fetchWithDisguise(
         : await request;
       const buf = toBodyBuffer(res.content, bufMode);
       if (buf.length) last = buf;
-      if (!capturedCookie) {
-        const ck2 = cookieFromHeaders(res.headers);
-        if (ck2) capturedCookie = ck2;
+      const freshSessionCookie = retryCookieFromHeaders(res.headers, u, res.finalUrl);
+      if (freshSessionCookie) {
+        const origin = safeDiagnosticUrl(u).split('/').slice(0, 3).join('/');
+        cookiesByOrigin.set(origin, mergeRetryCookie(cookiesByOrigin.get(origin) || '', freshSessionCookie));
       }
-      const info: TryInfo = { label: a.label, url: u, ok: false, status: res.status, sniff: sniffBody(buf) };
+      const info: TryInfo = { label: a.label, url: u, ...(redirectedTo(u, res.finalUrl) ? { finalUrl: redirectedTo(u, res.finalUrl) } : {}), ok: false, status: res.status, sniff: sniffBody(buf) };
       if (res.status >= 200 && res.status < 300 && opts.accept(buf)) {
         info.ok = true;
         tries.push(info);
@@ -340,12 +423,12 @@ export async function fetchWithDisguise(
   for (const a of attempts) {
     if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
     // cookie 档但本次会话没捕获到 Cookie → 跳过（不要发一次没意义的空档）
-    if (a.cookie === true && !capturedCookie) {
+    if (a.cookie === true && !cookieFor(url)) {
       tries.push({ label: a.label, url, ok: false, reason: '本会话未捕获到 Cookie，跳过该档' });
       continue;
     }
     const r = await once(url, a);
-    if (r.buf) return { buf: r.buf, used: a, tries, cookie: capturedCookie || undefined, last };
+    if (r.buf) return { buf: r.buf, used: a, tries, cookie: baseCookie() || undefined, last };
     if (r.deadlineExceeded) {
       stoppedByDeadline = true;
       break;
@@ -353,41 +436,45 @@ export async function fetchWithDisguise(
     if (r.retryCookie) {
       const retry = { ...a, label: a.label + ' + 会话 Cookie', cookie: r.retryCookie };
       const next = await once(url, retry, true);
-      if (next.buf) return { buf: next.buf, used: retry, tries, cookie: capturedCookie || undefined, last };
+      if (next.buf) return { buf: next.buf, used: retry, tries, cookie: baseCookie() || undefined, last };
       if (next.deadlineExceeded) {
         stoppedByDeadline = true;
         break;
       }
     }
+    const fallback = await runPriorityFallback();
+    if (fallback) return fallback;
+    if (stoppedByDeadline) break;
   }
 
   // 全失败 → 换另一种协议同路径再试一次（仅 okhttp UA，控制时长）
-  if (!stoppedByDeadline && opts.tryAltProtocol !== false) {
+  if (!stoppedByDeadline && !altAttempted && opts.tryAltProtocol !== false) {
     if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
     const alt = protocolAltUrl(url);
     if (alt) {
       const a: DisguiseAttempt = { label: 'okhttp UA（换 ' + (alt.startsWith('https') ? 'https' : 'http') + '）', ua: UA_OKHTTP, referer: refererAlt };
+      altAttempted = true;
       const r = await once(alt, a);
-      if (r.buf) return { buf: r.buf, used: a, altUrl: alt, tries, cookie: capturedCookie || undefined, last };
-      if (r.deadlineExceeded) return { buf: null, last, tries, cookie: capturedCookie || undefined };
+      if (r.buf) return { buf: r.buf, used: a, altUrl: alt, tries, cookie: baseCookie() || undefined, last };
+      if (r.deadlineExceeded) return { buf: null, last, tries, cookie: baseCookie() || undefined };
       if (r.retryCookie) {
         const retry = { ...a, label: a.label + ' + 会话 Cookie', cookie: r.retryCookie };
         const next = await once(alt, retry, true);
-        if (next.buf) return { buf: next.buf, used: retry, altUrl: alt, tries, cookie: capturedCookie || undefined, last };
-        if (next.deadlineExceeded) return { buf: null, last, tries, cookie: capturedCookie || undefined };
+        if (next.buf) return { buf: next.buf, used: retry, altUrl: alt, tries, cookie: baseCookie() || undefined, last };
+        if (next.deadlineExceeded) return { buf: null, last, tries, cookie: baseCookie() || undefined };
       }
     }
   }
-  if (!stoppedByDeadline && opts.tryGitHubOrigin) {
+  if (!stoppedByDeadline && !originAttempted && opts.tryGitHubOrigin) {
     if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
     const origin = githubOriginUrl(url);
     if (origin) {
-      capturedCookie = '';
       const originAttempts = disguiseLadder({ quick: true }).map(attempt => ({
         ...attempt,
         label: attempt.label + '（GitHub 原站）',
         referer: siteRootOf(origin),
       }));
+      originAttempted = true;
       for (const attempt of originAttempts) {
         const previousBody = last;
         const result = await once(origin, attempt);
@@ -397,7 +484,7 @@ export async function fetchWithDisguise(
       }
     }
   }
-  return { buf: null, last, tries, cookie: capturedCookie || undefined, ...(originResponseUrl ? { originUrl: originResponseUrl } : {}) };
+  return { buf: null, last, tries, cookie: baseCookie() || undefined, ...(originResponseUrl ? { originUrl: originResponseUrl } : {}) };
 }
 
 /** 全失败时的一句人话诊断（给导入报错用；纯函数）。
@@ -409,6 +496,7 @@ export function describeFailures(tries: TryInfo[]): string {
     if (t.ok) return `${t.label} 成功`;
     const bits: string[] = [];
     if (t.status) bits.push(`HTTP ${t.status}`);
+    if (t.finalUrl) bits.push(`最终跳转到 ${t.finalUrl}`);
     if (t.sniff) {
       const kindZh: Record<BodyKind, string> = {
         empty: '空响应',

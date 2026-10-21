@@ -5,6 +5,8 @@ export interface SubscriptionImportPolicy {
   readonly itemTimeoutMs: number;
   readonly totalDurationMs: number;
   readonly requestTimeoutMs: Readonly<{ standard: number; quick: number }>;
+  /** Quick scans reserve the remaining child budget for decoding and diagnostics. */
+  readonly quickTotalTimeoutMs: number;
   readonly maxQuickAttempts: number;
 }
 
@@ -17,5 +19,6 @@ export const SUBSCRIPTION_IMPORT_POLICY: Readonly<SubscriptionImportPolicy> = Ob
     standard: 30_000,
     quick: 12_000,
   }),
+  quickTotalTimeoutMs: 22_000,
   maxQuickAttempts: 4,
 });

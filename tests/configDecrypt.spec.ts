@@ -119,6 +119,12 @@ describe('tryDecryptConfig — 两级兜底', () => {
     expect(await tryDecryptConfig(http, 'https://a.b/enc.json', 'x')).toBeNull();
   });
 
+  it('剩余远程解密预算为零时只做本地识别，不再发外网请求', async () => {
+    const { http, calls } = fakeHttp({ content: '' });
+    expect(await tryDecryptConfig(http, 'https://a.b/enc.json', '<html>gate</html>', undefined, undefined, 0)).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
   it('第三方返回的不是订阅 JSON → 返回 null（不把垃圾当配置）', async () => {
     const { http } = fakeHttp({ content: '// 时间\n<html>广告页</html>' });
     expect(await tryDecryptConfig(http, 'https://a.b/enc.json', 'x')).toBeNull();

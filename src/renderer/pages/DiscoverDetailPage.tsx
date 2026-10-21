@@ -38,6 +38,6 @@ export default function DiscoverDetailPage() {
         <p className="movie-overview-text">{meta?.overview || (metaLoading ? '正在获取影片简介…' : metaError || '元数据来源暂未提供简介。请选择下方片源查看详情和剧集。')}</p>
       </div>
     </section>
-    <MovieSourcesPanel key={name} title={name} />
+    <MovieSourcesPanel key={name} title={name} poster={poster} />
   </div>;
 }
