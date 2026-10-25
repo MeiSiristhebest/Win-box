@@ -16,10 +16,12 @@ import { useTheme } from '../lib/theme';
 import { discoverPresentationView } from '../lib/presentationRegistry';
 import DiscoverShelf from '../components/DiscoverShelf';
 import { Icon } from '../components/ui/Icon';
-import { useCovers } from '../lib/useCovers';
+import { useCovers } from '../features/covers/useCovers';
 import { useDiscoverController } from '../features/discovery/useDiscoverController';
 import { useDiscoverExplore } from '../features/discovery/useDiscoverExplore';
 import CascadeBar from '../components/CascadeBar';
+import { Tabs } from '../components/ui/Tabs';
+import { discoverExploreAdapter, discoverLandingAdapter } from '../features/discovery/adapters/discoveryAdapters';
 
 export default function DiscoverPage() {
   const navigate = useNavigate();
@@ -29,11 +31,11 @@ export default function DiscoverPage() {
   const theme = useTheme();
   const view = discoverPresentationView(theme);
   const isPosterWall = view.mode === 'poster-wall';
-  const { sections, err, loading, retry } = useDiscoverController();
+  const { sections, err, loading, retry } = useDiscoverController(discoverLandingAdapter);
   const {
     media, mediaOpt: gSel, items: gItems, hasMore: gHasMore,
     loading: gLoading, error: genreError, errorPhase: gErrorPhase, levels, loadMore: gLoadMore, retryPage: gRetry, refreshPage: gRefresh, onPick: explorePick,
-  } = useDiscoverExplore(retry);
+  } = useDiscoverExplore(retry, discoverExploreAdapter);
   useEffect(() => {
     if (!active || media === null || gLoading || genreError || !gHasMore || !tailRef.current || !contentRef.current) return;
     const observer = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) gLoadMore(); }, { root: contentRef.current, rootMargin: '0px 0px 400px 0px' });
@@ -46,6 +48,8 @@ export default function DiscoverPage() {
   const covers = useCovers((gSel ? gItems : (view.mode === 'poster-wall' ? sections?.[wallSec]?.items || [] : sections?.flatMap(s => s.items) || [])).map(coverItem), active, true);
 
   const openMovie = (item: DiscoverItem): void => { navigate(discoverDetailRoute(item)); };
+  const mediaTabs = [{ id: 'recommend', label: '推荐' }, ...levels[0].options.map(option => ({ id: `media-${option.id}`, label: option.label }))];
+  const selectedMediaTab = media === null ? 'recommend' : `media-${media}`;
   return (
     <>
       <div className="content discover-content" ref={contentRef}>
@@ -53,10 +57,23 @@ export default function DiscoverPage() {
           <div className="discover-heading-title"><h1>发现</h1>{!err && sections?.some(section => section.stale) && <span className="discover-cache-state" title="部分推荐来自缓存，可刷新更新">缓存内容</span>}</div>
           <div className="discovery-heading-actions"><PosterSizeControl /><button className="gallery-icon-button" type="button" aria-label={media === null ? '刷新推荐' : '刷新分类'} title={media === null ? '刷新推荐' : '刷新分类'} disabled={media === null ? loading : gLoading} onClick={() => { covers.refresh(); if (media === null) retry(); else gRefresh(); }}><Icon name="refresh" size={16} /></button></div>
         </header>
-        <nav className="browse-tabs discover-browse-tabs" aria-label="发现分类">
-          <button type="button" className="browse-tab" aria-pressed={media === null} onClick={() => { if (media !== null) explorePick('media', media); }}>推荐</button>
-          {levels[0].options.map(option => <button type="button" key={option.id} className="browse-tab" aria-pressed={media === option.id} onClick={() => { if (media !== option.id) explorePick('media', option.id); }}>{option.label}</button>)}
-        </nav>
+        <div className="discover-category-row">
+          <span className="discover-category-label">内容类型</span>
+          <Tabs
+            items={mediaTabs}
+            value={selectedMediaTab}
+            onChange={id => {
+              if (id === 'recommend') { if (media !== null) explorePick('media', media); return; }
+              const option = levels[0].options.find(item => `media-${item.id}` === id);
+              if (option && media !== option.id) explorePick('media', option.id);
+            }}
+            label="发现内容类型"
+            idPrefix="discover"
+            panelId="discover-panel"
+            className="browse-tabs discover-browse-tabs"
+          />
+        </div>
+        <div id="discover-panel" className="discover-results-panel" role="tabpanel" aria-labelledby={`discover-tab-${selectedMediaTab}`}>
         {media !== null && <div className="discover-filter-panel"><CascadeBar levels={levels.slice(1)} onPick={explorePick} /></div>}
         <PluginSlot slot="discover" />
         {genreError && gItems.length > 0 && gErrorPhase === 'refresh' && <div className="board-error" role="alert"><span>{genreError}</span><button type="button" onClick={gRetry}>重试刷新</button></div>}
@@ -139,6 +156,7 @@ export default function DiscoverPage() {
             ))
           )
         )}
+        </div>
       </div>
     </>
   );

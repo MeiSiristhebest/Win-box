@@ -12,33 +12,15 @@
 //   不会被主窗口的旧快照复活（与 `mergeHistoryViews` 同构）。
 import { historyGroupKey, tombstoneActive, unionTombstones } from './uiMemory';
 import { canWriteRendererStorage } from './storageEpoch';
+import type { FavoriteItem } from '../features/favorites/application/favoriteModel';
+export type { FavoriteItem } from '../features/favorites/application/favoriteModel';
+export { favoriteTitle } from '../features/favorites/application/favoriteModel';
 
 /** 收藏变更广播（同窗口 UI 即时同步；跨窗口由 App 的 focus/恢复可见重读兜底） */
 export const FAVORITES_EVENT = 'winbox:favorites-changed';
 
 /** localStorage 键（与 `tvboxUiMemory` 分开放，互不影响） */
 const FAVORITES_KEY = 'winbox-favorites';
-
-/** 一条收藏（字段命名与 `WatchHistory` 对齐，可直接喂给 `historyCategories` / `restoreHistorySource`） */
-export interface FavoriteItem {
-  name: string;
-  sourceKey?: string;
-  vodId?: string;
-  profileId?: string;
-  sourceName?: string;
-  pic?: string;
-  remarks?: string;
-  year?: string;
-  type?: string;
-  /** 用户自定义显示名（留空 = 用源片名） */
-  title?: string;
-  /** 用户备注 / 短评 */
-  note?: string;
-  /** 收藏时间（ms，列表默认按它倒序） */
-  createdAt: number;
-  /** 最后修改时间（ms，跨窗口合并取新者） */
-  updatedAt: number;
-}
 
 export interface FavoriteInput {
   name: string;
@@ -73,13 +55,6 @@ export function favoriteKeyCandidates(ref: FavoriteRef): string[] {
   const a = historyGroupKey(ref);
   const b = historyGroupKey({ ...ref, profileId: undefined });
   return a === b ? [a] : [a, b];
-}
-
-/** 列表展示名（用户改过的名字优先，其次源片名去掉「 - 副标题」） */
-export function favoriteTitle(it: FavoriteItem): string {
-  const custom = (it.title || '').trim();
-  if (custom) return custom;
-  return (it.name || '').split(' - ')[0]?.trim() || it.name || '';
 }
 
 let items = new Map<string, FavoriteItem>();
@@ -154,7 +129,7 @@ export function mergeFavoriteViews(
 function persist(): void {
   if (!canWriteRendererStorage()) return;
   const disk = readDisk();
-  tombs = unionTombstones(tombs, disk?.deleted);
+  tombs = unionTombstones(tombs, disk?.deleted, Date.now());
   items = mergeFavoriteViews(items, disk?.favorites, tombs);
   try {
     localStorage.setItem(FAVORITES_KEY, JSON.stringify({ favorites: Array.from(items), deleted: Array.from(tombs) }));
@@ -188,7 +163,7 @@ function markAction(key: string, kind: 'delete' | 'restore', afterUpdatedAt = 0)
 /** 盘 → 内存（App 启动、窗口 focus / 恢复可见时调用） */
 export function loadFavorites(): void {
   const disk = readDisk();
-  tombs = unionTombstones(tombs, disk?.deleted);
+  tombs = unionTombstones(tombs, disk?.deleted, Date.now());
   items = mergeFavoriteViews(items, disk?.favorites, tombs);
   loaded = true;
 }

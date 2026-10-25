@@ -12,84 +12,17 @@
 // 历史（用户要求「第三方播放器应也能正常保存历史记录 + 从历史启动要能识别历史播放的位置」）：
 //   · 拉起成功后照常 `recordWatch`（**不带 time**：外部播放器无法回传进度，保留上次已知位置而不是归零）；
 //   · `seek`（起播秒数）由调用方给出：历史页 = 该条记录的 time；详情页 = 同集已有进度（`uiMemory.sameEpProgress`）。
-import { client } from '../api/client';
-import { detectMediaKind } from './mediaKind';
-import { recordWatch, saveUiMemory } from './uiMemory';
+import { playVodExternal as executeVodExternalPlayback, openConfiguredExternalFallback as executeConfiguredExternalFallback } from '../features/playback/externalPlayback';
+import { rendererExternalPlaybackPorts } from './externalPlaybackAdapter';
 
-export interface VodExternalPlayInput {
-  /** 源 key（重新解析/记历史用） */
-  key: string;
-  /** 所属订阅档案；历史页切换订阅后传入 */
-  profileId?: string;
-  /** 播放源 flag */
-  flag: string;
-  /** 原始 episode url（**记历史与重新解析都用它**，直链可能过期） */
-  rawUrl: string;
-  /** 展示名（剧名 - 集名） */
-  display: string;
-  pic?: string;
-  remarks?: string;
-  sourceName?: string;
-  vodId?: string;
-  /** 起播位置（秒）：>0 时按播放器类型拼命令行参数 */
-  seek?: number;
+export type { VodExternalPlayInput, VodExternalOutcome } from '../features/playback/externalPlayback';
+
+/** Renderer adapter kept at the old import path for callers in the UI layer. */
+export function playVodExternal(input: import('../features/playback/externalPlayback').VodExternalPlayInput) {
+  return executeVodExternalPlayback(input, rendererExternalPlaybackPorts);
 }
 
-export interface VodExternalOutcome {
-  /** true = 已交给外部播放器（调用方**不要**再开内置播放器窗口） */
-  played: boolean;
-  /** 实际启动的播放器名（played=true 时） */
-  player?: string;
-}
-
-/**
- * 尝试用外部播放器直接播放。
- * @returns played=false → 调用方照旧走内置播放器窗口（未勾选启用 / 未填路径 / 解析不出 / 启动失败）。
- */
-export async function playVodExternal(a: VodExternalPlayInput): Promise<VodExternalOutcome> {
-  let bound = '';
-  try {
-    const prefs = await client.playerPrefsGet();
-    // ★ 2026-10-08：**勾选项为准** —— 未勾选时即使填了路径也用内置播放器（不再「有路径就启用」）
-    if (!prefs?.vodExternalPlayerEnabled) return { played: false };
-    bound = (prefs?.vodExternalPlayer || '').trim();
-  } catch {
-    return { played: false }; // 读偏好失败：保守走内置播放器
-  }
-  if (!bound) return { played: false };
-  const rawUrl = (a.rawUrl || '').trim();
-  if (!rawUrl) return { played: false };
-  let r: { url?: string; parse?: number; needDriveCookieBind?: string };
-  let profileId = a.profileId;
-  try {
-    if (profileId === undefined) profileId = await client.cfgGet().then((c) => c.activeProfileId).catch(() => '');
-    r = await client.play({ key: a.key, flag: a.flag, id: rawUrl, profileId });
-  } catch {
-    return { played: false }; // 解析失败：交给内置播放器窗口显示原因
-  }
-  const url = (r?.url || '').trim();
-  if (!url || r.parse === 1 || r.needDriveCookieBind) return { played: false };
-  const kind = detectMediaKind(url);
-  if (kind === 'image' || kind === 'unsupported') return { played: false };
-  try {
-    const res = await client.vodOpenExternal(url, undefined, a.seek);
-    if (!res?.ok) return { played: false };
-    // 记录观看历史（不带 time：外部播放器不回传进度，保留上次已知位置）
-    recordWatch({
-      url: rawUrl,
-      rawUrl,
-      flag: a.flag,
-      name: a.display,
-      pic: a.pic,
-      remarks: a.remarks,
-      sourceName: a.sourceName,
-      sourceKey: a.key,
-      profileId,
-      vodId: a.vodId,
-    });
-    saveUiMemory(); // 立即落盘：历史页/主窗口靠读 localStorage 同步
-    return { played: true, player: res.player };
-  } catch {
-    return { played: false };
-  }
+/** HTML5 playback failure fallback using the same preference/launch adapter. */
+export function openConfiguredExternalFallback(sourceUrl: string, position: number) {
+  return executeConfiguredExternalFallback(sourceUrl, position, rendererExternalPlaybackPorts);
 }

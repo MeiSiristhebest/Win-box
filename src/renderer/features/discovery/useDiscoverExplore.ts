@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { client } from '../../api/client';
 import { useLocation } from 'react-router-dom';
 import { usePageActive } from '../../lib/keepAlive';
 import { ALL_TAG, BUILTIN_VOCAB, DISCOVER_MEDIA, type DiscoverMediaId, type ExploreVocabulary } from '../../../shared/discover';
 import type { DiscoverItem } from '../../../shared/types';
 import type { CascadeLevel, CascadeOption } from '../../components/CascadeBar';
-const PAGE_SIZE = 40;
-const MAX_TOTAL = 500;
+import { DISCOVER_BATCH_SIZE, DISCOVER_MAX_ITEMS, loadDiscoverExploreBatch } from './application/discoverExploreUseCase';
+import type { DiscoverExplorePort } from './application/discoveryPorts';
 
-export function useDiscoverExplore(load: () => void) {
+export function useDiscoverExplore(load: () => void, port: DiscoverExplorePort) {
   const [vocab, setVocab] = useState<ExploreVocabulary>(BUILTIN_VOCAB);
   /** 一级「分类」：null = 未选（此时展示榜单） */
   const [media, setMedia] = useState<DiscoverMediaId | null>(null);
@@ -43,13 +42,13 @@ export function useDiscoverExplore(load: () => void) {
   useEffect(() => {
     let alive = true;
     const request = reqRef;
-    void Promise.resolve().then(() => client.metaExploreVocab()).then((value) => {
+    void Promise.resolve().then(() => port.loadVocabulary()).then((value) => {
       if (!alive) return;
       setVocab(value);
       setSortId(previous => previous || value.movie.defaultSort);
     }).catch(() => undefined);
     return () => { alive = false; ++request.current; };
-  }, []);
+  }, [port]);
   /** 当前分类可用的维度（综艺没有「类型」——它本身就是类型） */
   const dimensions = useMemo(() => {
     if (!media) return [];
@@ -69,42 +68,30 @@ export function useDiscoverExplore(load: () => void) {
     if (cursor.current.loading && cursor.current.key === key) return;
     const previous = { ...cursor.current };
     const preserving = !append && previous.key === key && previous.count > 0;
-    const start = append ? cursor.current.next : (pg - 1) * PAGE_SIZE;
+    const start = append ? cursor.current.next : (pg - 1) * DISCOVER_BATCH_SIZE;
     const id = ++reqRef.current;
     cursor.current = { ...cursor.current, key, next: start, loading: true };
     setBLoading(true); setBErr(''); setErrorPhase(preserving ? 'refresh' : append ? 'more' : 'initial');
     void (async () => {
-      let next = start;
-      let accumulated = append ? [...itemsRef.current] : [];
-      const target = accumulated.length + PAGE_SIZE;
-      let latestTotal = total;
-      let more = true;
       try {
-        for (let read = 0; read < 6 && accumulated.length < target && more; read++) {
+        const result = await loadDiscoverExploreBatch(port, {
+          query: { mediaType, tags: tagsOf(sel), ...(sortId ? { sort: sortId } : {}), ...(preserving ? { refresh: true } : {}) },
+          start,
+          existingItems: append ? itemsRef.current : [],
+          initialTotal: total,
+          preserveUntilComplete: preserving,
+        }, snapshot => {
           if (id !== reqRef.current) return;
-          const count = Math.min(PAGE_SIZE, target - accumulated.length);
-          const result = await client.metaDiscoverQuery({ mediaType, tags: tagsOf(sel), ...(sortId ? { sort: sortId } : {}), start: next, count, ...(preserving ? { refresh: true } : {}) });
-          if (id !== reqRef.current) return;
-          const seen = new Set<string>();
-          accumulated = [...accumulated, ...result.items].filter(item => {
-            const identity = String(item.doubanId || item.tmdbId || item.mediaType + ':' + item.title + ':' + item.year);
-            if (seen.has(identity)) return false; seen.add(identity); return true;
-          });
-          const previousStart = next;
-          next = result.nextStart ?? next + count;
-          latestTotal = result.total;
-          more = result.hasMore && next > previousStart && next < MAX_TOTAL;
-          if (!preserving) {
-            itemsRef.current = accumulated; setItems(accumulated);
-            cursor.current = { key, next, count: accumulated.length, loading: true };
-            setTotal(latestTotal); setPage(pg); setHasMore(more);
-          }
-        }
+          itemsRef.current = snapshot.items;
+          setItems(snapshot.items);
+          cursor.current = { key, next: snapshot.nextStart, count: snapshot.items.length, loading: true };
+          setTotal(snapshot.total); setPage(pg); setHasMore(snapshot.hasMore);
+        });
         if (id !== reqRef.current) return;
-        itemsRef.current = accumulated; setItems(accumulated);
-        cursor.current = { key, next, count: accumulated.length, loading: false };
-        setTotal(latestTotal); setPage(pg); setHasMore(more);
-        if (!accumulated.length) setBErr('该分类暂无内容，可调整筛选后重试');
+        itemsRef.current = result.items; setItems(result.items);
+        cursor.current = { key, next: result.nextStart, count: result.items.length, loading: false };
+        setTotal(result.total); setPage(pg); setHasMore(result.hasMore);
+        if (!result.items.length) setBErr('该分类暂无内容，可调整筛选后重试');
       } catch (error: unknown) {
         if (id !== reqRef.current) return;
         if (preserving) cursor.current = { ...previous, loading: false };
@@ -193,7 +180,7 @@ export function useDiscoverExplore(load: () => void) {
     return parts.join(' · ');
   })();
 
-  const totalPages = Math.max(1, Math.ceil(Math.min(total, MAX_TOTAL) / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(Math.min(total, DISCOVER_MAX_ITEMS) / DISCOVER_BATCH_SIZE));
 
   return { media, mediaOpt, items, page, totalPages, total, hasMore, loading: bLoading, error: bErr, errorPhase, levels, summary, onPick, fetchPage, loadMore, retryPage, refreshPage: () => fetchPage(1), backToRecommend };
 }

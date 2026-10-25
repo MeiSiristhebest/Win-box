@@ -3,18 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import type { AggVodItem } from '../../../shared/types';
 import { sourceIdentityKey } from '../../../engine/vod/aggSearch';
 import { movieSearchTitle, searchResultView, searchTitleScore, type SearchMatchMode } from '../../../engine/vod/searchRelevance';
-import { client } from '../../api/client';
 import { openDetailRoute } from '../../lib/detailWin';
-import { useCovers } from '../../lib/useCovers';
+import { useCovers } from '../covers/useCovers';
 import { usePageActive } from '../../lib/keepAlive';
 import { useMovieSources } from '../discovery/useMovieSources';
+import { movieSourceFolderAdapter, movieSourcesSearchAdapter } from '../discovery/adapters/movieSourcesAdapters';
+import { loadMovieSourceFolder } from '../discovery/application/movieSourcesUseCases';
 import { SearchResultFilters } from '../search/SearchResultFilters';
 import '../discovery/movie.css';
 
 export function MovieSourcesPanel({ title: name, poster = '' }: { title: string; poster?: string }) {
   const navigate = useNavigate();
   const active = usePageActive();
-  const { report, progress, loading, error, refresh, query } = useMovieSources(name, active);
+  const { report, progress, loading, error, refresh, query } = useMovieSources(name, active, movieSourcesSearchAdapter);
   const [cap, setCap] = useState(60);
   const [profileId, setProfileId] = useState('');
   const [sourceId, setSourceId] = useState('');
@@ -47,9 +48,9 @@ export function MovieSourcesPanel({ title: name, poster = '' }: { title: string;
     const request = ++folderRequest.current;
     setFolderLoading(true);
     try {
-      const result = await client.category({ key: item.sourceKey, tid: item.id, pg: '1', extend: {}, profileId: item.sourceRef?.profileId });
+      const items = await loadMovieSourceFolder(movieSourceFolderAdapter, item);
       if (request === folderRequest.current) {
-        setFolder({ name: item.name, items: result.items.map(entry => ({ ...entry, sourceKey: item.sourceKey, sourceRef: item.sourceRef, sourceName: item.sourceName, sourceProfileName: item.sourceProfileName, sameFromOtherSources: 0 })) });
+        setFolder({ name: item.name, items });
         setCap(60);
       }
     } catch (cause) { if (request === folderRequest.current) setFolderError(cause instanceof Error ? cause.message : String(cause)); }
@@ -95,7 +96,7 @@ const MovieSourceCard = memo(function MovieSourceCard({ item, pic, disabled, onO
         {pic ? <img src={pic} alt={item.name} loading="lazy" decoding="async" onError={event => onImageError(item, event.currentTarget)} /> : <div className="no-cover">{item.tag === 'folder' ? '网盘目录' : '暂无封面'}</div>}
         {(item.remarks || item.tag === 'folder') && <span className="badge">{item.tag === 'folder' ? '目录' : item.remarks}</span>}
       </div>
-      <div className="meta"><div className="name" title={item.name}>{item.name}</div><div className="movie-source-facts">{[item.year, item.type].filter(Boolean).join(' · ')}</div><div className="movie-source-origin" title={source}>{source}</div></div>
+      <div className="meta"><div className="name" title={item.name}>{item.name}</div><div className="movie-source-facts">{[item.year, item.type].filter(Boolean).join(' · ')}</div><div className="movie-source-origin" title={`来源：${source}`}><span className="movie-source-origin-label">来源</span><span>{source}</span></div></div>
     </div>
   </button>;
 });

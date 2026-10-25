@@ -1,31 +1,28 @@
 // @vitest-environment happy-dom
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { client } from '../src/renderer/api/client';
 import { useDiscoverController } from '../src/renderer/features/discovery/useDiscoverController';
 import type { DiscoverGenre, DiscoverGenrePage, DiscoverSection } from '../src/shared/types';
-
-vi.mock('../src/renderer/api/client', () => ({
-  client: {
-    metaDiscover: vi.fn(),
-    metaGenres: vi.fn(),
-    metaGenrePage: vi.fn(),
-  },
-}));
+import type { DiscoverLandingPort } from '../src/renderer/features/discovery/application/discoveryPorts';
 
 const section: DiscoverSection = { id: 'popular', title: '热门', items: [] };
 const genre: DiscoverGenre = { id: 878, name: '科幻' };
+const port: DiscoverLandingPort = {
+  loadSections: vi.fn(),
+  loadGenres: vi.fn(),
+  loadGenrePage: vi.fn(),
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(client.metaDiscover).mockResolvedValue([section]);
-  vi.mocked(client.metaGenres).mockResolvedValue({ movie: [genre], tv: [] });
-  vi.mocked(client.metaGenrePage).mockResolvedValue({ items: [], page: 1, totalPages: 1 });
+  vi.mocked(port.loadSections).mockResolvedValue([section]);
+  vi.mocked(port.loadGenres).mockResolvedValue({ movie: [genre], tv: [] });
+  vi.mocked(port.loadGenrePage).mockResolvedValue({ items: [], page: 1, totalPages: 1 });
 });
 
 describe('useDiscoverController', () => {
   it('loads recommendation sections and genre lists', async () => {
-    const { result } = renderHook(() => useDiscoverController());
+    const { result } = renderHook(() => useDiscoverController(port));
 
     await waitFor(() => expect(result.current.sections).toEqual([section]));
     await waitFor(() => expect(result.current.genres).toEqual({ movie: [genre], tv: [] }));
@@ -35,8 +32,8 @@ describe('useDiscoverController', () => {
 
   it('discards a genre response after the selected media changes', async () => {
     let resolveRequest!: (value: DiscoverGenrePage) => void;
-    vi.mocked(client.metaGenrePage).mockReturnValueOnce(new Promise((resolve) => { resolveRequest = resolve; }));
-    const { result } = renderHook(() => useDiscoverController());
+    vi.mocked(port.loadGenrePage).mockReturnValueOnce(new Promise((resolve) => { resolveRequest = resolve; }));
+    const { result } = renderHook(() => useDiscoverController(port));
     await waitFor(() => expect(result.current.genres.movie).toEqual([genre]));
 
     act(() => result.current.switchMedia('movie'));

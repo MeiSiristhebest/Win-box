@@ -7,6 +7,10 @@ const source = readFileSync(new URL('../src/renderer/pages/DetailPage.tsx', impo
 const file = parse(source, { sourceType: 'unambiguous', plugins: ['typescript', 'jsx'] });
 const playbackSource = readFileSync(new URL('../src/renderer/features/detail/useDetailPlaybackController.ts', import.meta.url), 'utf8');
 const playbackFile = parse(playbackSource, { sourceType: 'unambiguous', plugins: ['typescript', 'jsx'] });
+const playbackUseCaseSource = readFileSync(new URL('../src/renderer/features/detail/application/detailPlaybackUseCase.ts', import.meta.url), 'utf8');
+const playbackAdapterSource = readFileSync(new URL('../src/renderer/features/detail/adapters/detailPlaybackAdapter.ts', import.meta.url), 'utf8');
+const playerSessionSource = readFileSync(new URL('../src/renderer/features/playback/usePlayerPageSession.ts', import.meta.url), 'utf8');
+const playerSessionAdapterSource = readFileSync(new URL('../src/renderer/features/playback/adapters/playerPageSessionAdapter.ts', import.meta.url), 'utf8');
 const episodeListSource = readFileSync(new URL('../src/renderer/features/detail/DetailEpisodeList.tsx', import.meta.url), 'utf8');
 
 function walk(value: unknown, visit: (node: AstNode) => void): void {
@@ -56,24 +60,25 @@ function callsOnClient(code: string): string[] {
 describe('detail episode playback intent', () => {
   it('取链失败不会把原始选集参数回退交给播放器，preparedUrl 也经过校验', () => {
     const play = textOf(findFunction('play', playbackFile), playbackSource);
-    expect(play).toContain('playbackResultError(result)');
-    expect(play).toContain('onPlay(result.url,');
+    expect(playbackUseCaseSource).toContain('playbackResultError(result)');
+    expect(play).toContain('resolveDetailEpisodePlayback(');
+    expect(play).toContain('onPlay(outcome.url,');
     expect(play).not.toContain('result.url || target.url');
-    const player = readFileSync(new URL('../src/renderer/pages/PlayerPage.tsx', import.meta.url), 'utf8');
-    expect(player).toContain('playbackResultError(r)');
-    expect(player).not.toContain('setActiveUrl(target.url)');
+    expect(playerSessionSource).toContain('playbackResultError(result)');
+    expect(playerSessionSource).not.toContain('setActiveUrl(target.url)');
   });
 
   it('封面与背景加载不进入播放链路，简介仍展示源数据', () => {
-    const player = readFileSync(new URL('../src/renderer/pages/PlayerPage.tsx', import.meta.url), 'utf8');
-    for (const content of [source, player, playbackSource]) {
+    for (const content of [source, playbackSource, playerSessionSource]) {
       const calls = callsOnClient(content);
       expect(calls).not.toContain('metaSearch');
       expect(calls).not.toContain('metaExtra');
       expect(calls).not.toContain('metaImages');
     }
-    expect(callsOnClient(player)).toContain('play');
-    expect(callsOnClient(playbackSource)).toContain('play');
+    expect(callsOnClient(playerSessionSource)).not.toContain('play');
+    expect(callsOnClient(playerSessionAdapterSource)).toContain('play');
+    expect(callsOnClient(playbackSource)).not.toContain('play');
+    expect(callsOnClient(playbackAdapterSource)).toContain('play');
     expect(textOf(findFunction('play', playbackFile), playbackSource)).not.toMatch(/useCovers|metaSearch|metaDiscoverImages/);
     expect(source).toContain("pic: detail?.pic || fromListPic || ''");
     expect(source).toContain("const introText = (detail?.des || '').trim()");
@@ -117,8 +122,10 @@ describe('detail episode playback intent', () => {
   });
 
   it('player-local previous/next switching updates init.epIndex before resolving', () => {
-    const player = readFileSync(new URL('../src/renderer/pages/PlayerPage.tsx', import.meta.url), 'utf8');
-    expect(player).toMatch(/const next = \{ \.\.\.init, startTime: 0, lastUrl: '' \};\s*\/\/[^\n]*\n\s*next\.epIndex = idx/);
-    expect(player).toContain('idx >= 0 && idx < init.episodes.length');
+    expect(playerSessionSource).toContain('const next = { ...current, startTime: 0, lastUrl: \'\', epIndex: index };');
+    expect(playerSessionSource).toContain('updateInit(next);');
+    expect(playerSessionSource).toContain('void resolve(next, index);');
+    expect(playerSessionSource).toContain('index >= current.episodes.length');
+    expect(playerSessionSource).toContain('!Number.isInteger(index)');
   });
 });

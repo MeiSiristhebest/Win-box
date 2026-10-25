@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { client } from '../../api/client';
 import { usePageActive } from '../../lib/keepAlive';
 import { BOARD_PAGE_SIZE, type DiscoverBoardPage } from '../../../shared/discoverBoards';
+import type { DiscoverBoardPort } from './application/discoveryPorts';
 
 type Mode = 'initial' | 'more' | 'refresh';
 interface FeedState { id: string; data?: DiscoverBoardPage; nextPage: number; loading: boolean; error: string; errorPhase?: Mode }
 
-export function useDiscoverBoard(id: string, capacity = 40) {
+export function useDiscoverBoard(id: string, port: DiscoverBoardPort, capacity = 40) {
   const active = usePageActive();
   const [state, setState] = useState<FeedState>({ id, nextPage: 1, loading: true, error: '' });
   const latest = useRef(state);
@@ -37,7 +37,7 @@ export function useDiscoverBoard(id: string, capacity = 40) {
     try {
       for (let read = 0; read < pagesToRead; read++) {
         if (!current()) return;
-        const data = await client.metaBoardPage(requestId, sourcePage, mode === 'refresh');
+        const data = await port.loadPage(requestId, sourcePage, mode === 'refresh');
         if (!current()) return;
         const unit = data.pageSize || BOARD_PAGE_SIZE;
         if (read === 0) {
@@ -71,7 +71,7 @@ export function useDiscoverBoard(id: string, capacity = 40) {
     } finally {
       if (running.current === token) running.current = null;
     }
-  }, [publish]);
+  }, [port, publish]);
   useEffect(() => {
     cancel();
     if (latest.current.id !== id) publish({ id, nextPage: 1, loading: false, error: '' });

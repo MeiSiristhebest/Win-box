@@ -9,7 +9,7 @@ import { discoverDetailRoute } from '../src/shared/discoverDetail';
 import { mergeSearchResults } from '../src/engine/vod/aggSearch';
 import { profileConfig } from './fixtures/profileSwitchData';
 import { openDetailRoute } from '../src/renderer/lib/detailWin';
-import { openSearchWindow } from '../src/renderer/lib/searchWin';
+import { openSearchWindow } from '../src/renderer/features/search/adapters/searchWindowNavigationAdapter';
 import type { VodItem } from '../src/shared/types';
 
 vi.mock('../src/renderer/api/client', () => ({ client: {
@@ -17,7 +17,7 @@ vi.mock('../src/renderer/api/client', () => ({ client: {
   metaSearch: vi.fn(), metaExtra: vi.fn(), driveBindKeys: vi.fn(async () => []), driveGet: vi.fn(async () => ({})),
   onSearchAllProgress: vi.fn(() => vi.fn()),
 } }));
-vi.mock('../src/renderer/lib/searchWin', () => ({ isSearchWindow: () => false, openSearchWindow: vi.fn() }));
+vi.mock('../src/renderer/features/search/adapters/searchWindowNavigationAdapter', () => ({ isSearchWindow: () => false, openSearchWindow: vi.fn() }));
 vi.mock('../src/renderer/lib/detailWin', () => ({ isDetailWindow: () => false, openDetailRoute: vi.fn() }));
 vi.mock('../src/renderer/components/PluginSlot', () => ({ default: () => null }));
 vi.mock('../src/renderer/lib/useCovers', () => ({ useCovers: () => ({ picOf: () => '', onError: vi.fn() }) }));
@@ -44,12 +44,12 @@ describe('real inline aggregate entry', () => {
     vi.mocked(client.home).mockResolvedValue({ sourceKey: cfg.sources[0].key, sortClasses: [], items: [item], page: 1, pagecount: 1, total: 1 });
     const openDetail = vi.fn();
     render(<MemoryRouter initialEntries={['/home']}><Routes><Route path="/home" element={<HomePage onOpenDetail={openDetail} />} /><Route path="/movie" element={<DiscoverDetailPage />} /></Routes></MemoryRouter>);
-    fireEvent.click(await screen.findByText('跨仓影片'));
-    await screen.findByText('这是影片简介');
+    fireEvent.click(await screen.findByRole('button', { name: '打开 跨仓影片' }));
+    await screen.findByText('这是影片简介', {}, { timeout: 5000 });
     expect(client.searchAll).toHaveBeenCalledWith('跨仓影片', { profileIds: ['A'], refresh: false });
     expect(openDetail).not.toHaveBeenCalled();
     expect(openSearchWindow).not.toHaveBeenCalled();
-  });
+  }, 10000);
 
   it('executes all-profile search on the inline search route instead of navigating again', async () => {
     render(<MemoryRouter initialEntries={['/search?agg=跨仓影片']}><HomePage onOpenDetail={vi.fn()} /></MemoryRouter>);

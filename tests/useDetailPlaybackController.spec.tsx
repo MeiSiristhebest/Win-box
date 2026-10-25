@@ -1,22 +1,11 @@
 // @vitest-environment happy-dom
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import { client } from '../src/renderer/api/client';
 import { useDetailPlaybackController } from '../src/renderer/features/detail/useDetailPlaybackController';
+import type { DetailPlaybackPort } from '../src/renderer/features/detail/application/detailPlaybackPorts';
 import { makeStaleGuard } from '../src/renderer/lib/staleGuard';
-import type { VodDetail } from '../src/shared/types';
+import type { PlayResult, VodDetail } from '../src/shared/types';
 import * as React from 'react';
-
-vi.mock('../src/renderer/api/client', () => ({
-  client: {
-    play: vi.fn(),
-  },
-}));
-
-vi.mock('../src/renderer/lib/uiMemory', () => ({
-  uiMem: { detail: { set: vi.fn() } },
-  schedulePersist: vi.fn(),
-}));
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -46,20 +35,24 @@ const detail: VodDetail = {
   },
 };
 
-const playResult = {
+const playResult: PlayResult = {
   parse: 0,
   url: 'https://media.example/stream.m3u8',
   playUrl: '',
   flag: 'hls',
-} as Awaited<ReturnType<typeof client.play>>;
+};
 
 describe('useDetailPlaybackController', () => {
   it('ignores a playback response after the selected episode changes', async () => {
-    const oldRequest = deferred<Awaited<ReturnType<typeof client.play>>>();
-    const currentRequest = deferred<Awaited<ReturnType<typeof client.play>>>();
-    vi.mocked(client.play)
+    const oldRequest = deferred<PlayResult>();
+    const currentRequest = deferred<PlayResult>();
+    const playbackPort: DetailPlaybackPort = {
+      play: vi.fn()
       .mockReturnValueOnce(oldRequest.promise)
-      .mockReturnValueOnce(currentRequest.promise);
+      .mockReturnValueOnce(currentRequest.promise),
+      rememberSelection: vi.fn(),
+      persistSelection: vi.fn(),
+    };
     const onPlay = vi.fn();
     const onNeedDriveCookieBind = vi.fn();
 
@@ -72,6 +65,7 @@ describe('useDetailPlaybackController', () => {
       const contentRef = React.useRef<HTMLDivElement | null>(null);
       const playGenRef = React.useRef(makeStaleGuard());
       const controller = useDetailPlaybackController({
+        playbackPort,
         key: 'source-a',
         id: 'show-id',
         profileId: 'profile-a',
@@ -103,16 +97,16 @@ describe('useDetailPlaybackController', () => {
     });
 
     expect(result.current.busy).toBe(true);
-    expect(client.play).toHaveBeenNthCalledWith(1, {
+    expect(playbackPort.play).toHaveBeenNthCalledWith(1, {
       key: 'source-a',
       flag: 'hls',
-      id: 'episode-1',
+      episodeUrl: 'episode-1',
       profileId: 'profile-a',
     });
-    expect(client.play).toHaveBeenNthCalledWith(2, {
+    expect(playbackPort.play).toHaveBeenNthCalledWith(2, {
       key: 'source-a',
       flag: 'hls',
-      id: 'episode-2',
+      episodeUrl: 'episode-2',
       profileId: 'profile-a',
     });
 
@@ -135,5 +129,9 @@ describe('useDetailPlaybackController', () => {
       expect.objectContaining({ profileId: 'profile-a', epIndex: 1, flag: 'hls', vodId: 'show-id' }),
     );
     expect(result.current.busy).toBe(false);
+    expect(playbackPort.rememberSelection).toHaveBeenCalledWith('profile-a:source-a:show-id', {
+      flag: 'hls', ep: 1, scrollTop: 0,
+    });
+    expect(playbackPort.persistSelection).toHaveBeenCalledOnce();
   });
 });

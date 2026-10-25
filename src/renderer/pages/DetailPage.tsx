@@ -1,25 +1,31 @@
 // src/renderer/pages/DetailPage.tsx — 详情页（返回键 + 播放源/集数/滚动记忆 + 回播放页可继续）
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { detailRouteParams } from '../../shared/detailWin';
-import { client } from '../api/client';
 // ★ 2026-10-18 受限 UI 槽位（`contributes.ui.slot`）：宿主页面的槽位落点
 import PluginSlot from '../components/PluginSlot';
-import { openSearchWindow } from '../lib/searchWin';
 import BackButton from '../components/BackButton';
 import { isDetailWindow } from '../lib/detailWin';
-import { uiMem, schedulePersist } from '../lib/uiMemory';
 import type { Episode } from '../../shared/types';
-import { useCovers } from '../lib/useCovers';
+import { useCovers } from '../features/covers/useCovers';
 import HeroBackdrop from '../components/HeroBackdrop';
 import { detailIsEmpty } from '../../engine/config/sourceKind';
-import DriveBindModal from '../components/DriveBindModal';
+import { DriveBindingDialog } from '../features/driveBinding/DriveBindingDialog';
 import { useTheme } from '../lib/theme';
 import { detailPresentationView } from '../lib/presentationRegistry';
 import { useDetailDataController } from '../features/detail/useDetailDataController';
+import { detailDataAdapter } from '../features/detail/adapters/detailDataAdapter';
 import { useDetailPlaybackController } from '../features/detail/useDetailPlaybackController';
+import { detailPlaybackAdapter } from '../features/detail/adapters/detailPlaybackAdapter';
+import { detailBackdropAdapter } from '../features/detail/adapters/detailBackdropAdapter';
+import { useDetailBackdrop } from '../features/detail/useDetailBackdrop';
+import { detailFavoriteMetadataAdapter } from '../features/detail/adapters/detailFavoriteMetadataAdapter';
+import { useDetailFavoriteMetadata } from '../features/detail/useDetailFavoriteMetadata';
+import { useDetailScrollMemory } from '../features/detail/useDetailScrollMemory';
+import { detailScrollMemoryAdapter } from '../features/detail/adapters/detailScrollMemoryAdapter';
 import { DetailEpisodeList } from '../features/detail/DetailEpisodeList';
 import { MovieSourcesPanel } from '../features/detail/MovieSourcesPanel';
+import { SelectionButton } from '../components/ui/SelectionButton';
 
 /**
  * ★ 2026-09-29：本会话已因「该源无剧集详情」自动跳到全源搜索的 item（键 = `<key>:<id>`）。
@@ -30,8 +36,10 @@ import { FAVORITES_EVENT, addFavorite, findFavorite, removeFavorite } from '../l
 
 export default function DetailPage({
   onPlay,
+  onOpenSearch,
 }: {
   onPlay: (url: string, name: string, fromKey: string, id: string, meta?: { pic?: string; remarks?: string; sourceName?: string; title?: string; vodId?: string; episodes?: Episode[]; epIndex?: number; flag?: string; profileId?: string }) => void;
+  onOpenSearch: (term: string, profileId?: string) => Promise<void>;
 }) {
   const routerParams = useParams<{ key: string; id: string }>();
   const location = useLocation();
@@ -55,7 +63,7 @@ export default function DetailPage({
     busy,
     setBusy,
     playGenRef,
-  } = useDetailDataController({ key, id, requestedProfileId, routeKey });
+  } = useDetailDataController({ key, id, requestedProfileId, routeKey }, detailDataAdapter);
   /** ★ 2026-10-08（用户要求「详情页独立窗口」）：本页是否运行在独立详情窗口里（hash 带 dw=1）→ 返回=关窗 */
   const isDetailWin = isDetailWindow();
   const theme = useTheme();
@@ -75,11 +83,19 @@ export default function DetailPage({
   const [bindProvider, setBindProvider] = useState('');
   /** ★ 2026-09-24：播放（可能含解析/嗅探）进行中 → 按钮上屏进度 */
   const contentRef = useRef<HTMLDivElement>(null);
+  useDetailScrollMemory({
+    containerRef: contentRef,
+    memoryKey: memKey,
+    flag,
+    episodeIndex: ep,
+    detail,
+  }, detailScrollMemoryAdapter);
   /** ★ 2026-09-24：展示用片名 —— 详情自带优先，缺失时用列表页带入的（立播等源详情不返回 vod_name） */
   const displayName = (detail?.name || fromListName || '').trim();
   /** 无可播剧集时搜索用片名：去掉「 - 副标题」尾巴 */
   const detailName = displayName.split(' - ')[0]?.trim() || '';
   const { chooseFlag, chooseEp, play } = useDetailPlaybackController({
+    playbackPort: detailPlaybackAdapter,
     key,
     id,
     profileId,
@@ -105,20 +121,8 @@ export default function DetailPage({
    *   · 收藏键含「订阅档案 id」（同订阅同源同片一条）→ 先取当前档案；
    *   · 状态订阅 `winbox:favorites-changed`：在收藏页移除后回到本页会即时同步。
    */
-  const [favMeta, setFavMeta] = useState<{ profileId: string; sourceName: string }>({ profileId: '', sourceName: '' });
+  const favMeta = useDetailFavoriteMetadata(key || '', profileId, detailFavoriteMetadataAdapter);
   const [favOn, setFavOn] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    client
-      .cfgGet()
-      .then((cfg) => {
-        if (!alive) return;
-        setFavMeta({ profileId: profileId || cfg.activeProfileId, sourceName: cfg.sources.find((s) => s.key === key)?.name || '' });
-      })
-      .catch(() => undefined);
-    return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, profileId]);
   useEffect(() => {
     const sync = (): void =>
       setFavOn(findFavorite({ sourceKey: key, vodId: id, name: displayName, profileId: favMeta.profileId }) !== null);
@@ -158,39 +162,16 @@ export default function DetailPage({
   const covers = useCovers([coverItem], !loading);
   const cover = covers.picOf(coverItem);
   const coverErr = (e: React.SyntheticEvent<HTMLImageElement>) => covers.onError(coverItem, e.currentTarget.getAttribute('src') || '');
-  const [backdrop, setBackdrop] = useState<{ key: string; urls: string[] } | null>(null);
   const showBackdrop = presentation.backdrop.enabled;
-  useEffect(() => {
-    if (loading || !detailName || !showBackdrop) return;
-    let alive = true;
-    void client.metaDiscoverImages(detailName, /剧|tv/i.test(detail?.type || '') ? 'tv' : 'movie', detail?.year || undefined, 'backdrop')
-      .then(images => { if (alive) setBackdrop({ key: memKey, urls: images.backdrops }); })
-      .catch(() => undefined);
-    return () => { alive = false; };
-  }, [loading, detailName, detail?.year, detail?.type, memKey, showBackdrop]);
-
-  // 滚动位置记忆
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      const mem = uiMem.detail.get(memKey);
-      uiMem.detail.set(memKey, { flag, ep, scrollTop: el.scrollTop });
-      if (mem && mem.scrollTop !== el.scrollTop) void 0;
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => { el.removeEventListener('scroll', onScroll); schedulePersist(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [memKey, flag, ep]);
-
-  // 数据就绪后恢复滚动位置
-  useLayoutEffect(() => {
-    const mem = uiMem.detail.get(memKey);
-    if (mem && mem.scrollTop && contentRef.current) {
-      contentRef.current.scrollTop = mem.scrollTop;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detail, memKey]);
+  const backdrop = useDetailBackdrop({
+    identity: memKey,
+    name: detailName,
+    year: detail?.year || undefined,
+    mediaType: /剧|tv/i.test(detail?.type || '') ? 'tv' : 'movie',
+    enabled: showBackdrop,
+    loading,
+    port: detailBackdropAdapter,
+  });
 
   // 页码保存在详情控制器中；列表组件负责分页展示，选择集数始终使用全局下标。
   const epAll = detail?.episodes[flag] || [];
@@ -205,7 +186,7 @@ export default function DetailPage({
   const actorText = (detail?.actor || '').trim();
   const introText = (detail?.des || '').trim();
   /** 点击源提供的演员 → 对该关键词执行一次全源搜索。 */
-  const goSearch = (kw: string): void => { void openSearchWindow(kw, profileId || undefined).catch((e) => setErr(String(e))); };
+  const goSearch = (kw: string): void => { void onOpenSearch(kw, profileId || undefined).catch((e) => setErr(String(e))); };
 
   /**
    * ★ 2026-10-17（用户要求）：收藏按钮 —— 操作区与「该源无资源」两个分支都渲染它
@@ -231,7 +212,7 @@ export default function DetailPage({
     <>
       {/* ★ 2026-09-29：网盘未绑定 → 自动弹出绑定向导（预选该网盘）；绑定成功即自动重播 */}
       {bindProvider && (
-        <DriveBindModal
+        <DriveBindingDialog
           siteName={displayName || '当前源'}
           initialProvider={bindProvider}
           onClose={() => setBindProvider('')}
@@ -312,7 +293,7 @@ export default function DetailPage({
                 <div className="row" style={{ marginBottom: 10 }}>
                   <span className="muted">播放源：</span>
                   {detail.flags.map((f) => (
-                    <button type="button" key={f} className={`tag ui-action ${f === flag ? 'active' : ''}`} aria-pressed={f === flag} onClick={() => chooseFlag(f)}>{f}</button>
+                    <SelectionButton type="button" key={f} className="detail-source-choice" selected={f === flag} onClick={() => chooseFlag(f)}>{f}</SelectionButton>
                   ))}
                 </div>
                 {/* 每组至多 50 集，直接选择区间；浏览区间不会改变当前选中集。 */}

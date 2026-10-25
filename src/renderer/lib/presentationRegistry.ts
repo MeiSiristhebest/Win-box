@@ -11,7 +11,7 @@ export interface DiscoverPresentationView {
   filterMode: 'inline' | 'pills';
   spotlightLandscape: boolean;
   filters: { containerClass: string; rowClass: string; labelClass: string };
-  card: { hoverPlayClass: string | null; hoverPlaySize: number; yearBadge: boolean; yearBadgeClass: string };
+  card: { yearBadge: boolean; yearBadgeClass: string };
   row: {
     containerClass?: string;
     titleClass?: string;
@@ -35,12 +35,12 @@ export const DISCOVER_PRESENTATION_VIEWS = {
     filterMode: 'inline',
     spotlightLandscape: false,
     filters: { containerClass: '', rowClass: '', labelClass: '' },
-    card: { hoverPlayClass: null, hoverPlaySize: 0, yearBadge: false, yearBadgeClass: '' },
+    card: { yearBadge: false, yearBadgeClass: '' },
     row: {
-      containerStyle: { marginBottom: 30 },
-      titleStyle: { margin: '0 0 14px' },
+      containerStyle: { marginBottom: 24 },
+      titleStyle: { margin: '0 0 16px' },
       scrollStyle: { display: 'flex', gap: 18, overflowX: 'auto', paddingBottom: 10 },
-      cardWidth: 156,
+      cardWidth: 160,
     },
     wall: { containerClass: '', chipListClass: '', chipClass: '', gridClass: '' },
   },
@@ -49,7 +49,7 @@ export const DISCOVER_PRESENTATION_VIEWS = {
     filterMode: 'inline',
     spotlightLandscape: true,
     filters: { containerClass: '', rowClass: '', labelClass: '' },
-    card: { hoverPlayClass: null, hoverPlaySize: 0, yearBadge: false, yearBadgeClass: '' },
+    card: { yearBadge: false, yearBadgeClass: '' },
     row: { containerClass: 'nf-row', titleClass: 'nf-row-title', scrollClass: 'nf-row-scroll' },
     wall: { containerClass: '', chipListClass: '', chipClass: '', gridClass: '' },
   },
@@ -58,7 +58,7 @@ export const DISCOVER_PRESENTATION_VIEWS = {
     filterMode: 'inline',
     spotlightLandscape: false,
     filters: { containerClass: '', rowClass: '', labelClass: '' },
-    card: { hoverPlayClass: 'ap-card-play', hoverPlaySize: 13, yearBadge: false, yearBadgeClass: '' },
+    card: { yearBadge: false, yearBadgeClass: '' },
     row: { containerClass: 'ap-row', titleClass: 'ap-row-title', scrollClass: 'ap-row-scroll', cardWidth: 168 },
     wall: { containerClass: '', chipListClass: '', chipClass: '', gridClass: '' },
   },
@@ -67,7 +67,7 @@ export const DISCOVER_PRESENTATION_VIEWS = {
     filterMode: 'pills',
     spotlightLandscape: false,
     filters: { containerClass: 'db-filters', rowClass: 'db-filter-row', labelClass: 'db-filter-label' },
-    card: { hoverPlayClass: 'db-card-play', hoverPlaySize: 16, yearBadge: true, yearBadgeClass: 'db-year-badge' },
+    card: { yearBadge: true, yearBadgeClass: 'db-year-badge' },
     row: {},
     wall: {
       containerClass: 'db-wall',

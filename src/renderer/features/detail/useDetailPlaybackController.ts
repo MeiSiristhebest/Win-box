@@ -1,15 +1,15 @@
 import { useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { Episode, VodDetail } from '../../../shared/types';
-import { client } from '../../api/client';
 import { formatEpisodeLabel } from '../../lib/epName';
-import { uiMem, schedulePersist } from '../../lib/uiMemory';
-import { playbackResultError } from '../../../shared/playbackResult';
 import { makeStaleGuard } from '../../lib/staleGuard';
+import type { DetailPlaybackPort } from './application/detailPlaybackPorts';
+import { resolveDetailEpisodePlayback } from './application/detailPlaybackUseCase';
 
 type PlayGeneration = ReturnType<typeof makeStaleGuard>;
 
 type DetailPlaybackControllerOptions = {
+  playbackPort: DetailPlaybackPort;
   key: string | undefined;
   id: string | undefined;
   profileId: string;
@@ -41,6 +41,7 @@ type DetailPlaybackControllerOptions = {
 };
 
 export function useDetailPlaybackController({
+  playbackPort,
   key,
   id,
   profileId,
@@ -68,15 +69,15 @@ export function useDetailPlaybackController({
     setFlag(nextFlag);
     setEp(0);
     setEpPage(0);
-    uiMem.detail.set(memKey, { flag: nextFlag, ep: 0, scrollTop: contentRef.current?.scrollTop ?? 0 });
+    playbackPort.rememberSelection(memKey, { flag: nextFlag, ep: 0, scrollTop: contentRef.current?.scrollTop ?? 0 });
   }
 
   function chooseEp(index: number) {
     playGenRef.current.next();
     setBusy(false);
     setEp(index);
-    uiMem.detail.set(memKey, { flag, ep: index, scrollTop: contentRef.current?.scrollTop ?? 0 });
-    schedulePersist();
+    playbackPort.rememberSelection(memKey, { flag, ep: index, scrollTop: contentRef.current?.scrollTop ?? 0 });
+    playbackPort.persistSelection();
   }
 
   async function play(index = ep) {
@@ -91,22 +92,20 @@ export function useDetailPlaybackController({
     setErr('');
     setBusy(true);
     try {
-      if (!profileId) throw new Error('详情页尚未确定所属订阅');
       if (!playGenRef.current.isCurrent(gen)) return;
-      const result = await client.play({ key: key!, flag, id: target.url, profileId });
+      const outcome = await resolveDetailEpisodePlayback({ key: key!, flag, episodeUrl: target.url, profileId }, playbackPort);
       if (!playGenRef.current.isCurrent(gen)) return;
-      if (result.needDriveCookieBind) {
+      if (outcome.kind === 'needs-drive-binding') {
         setErr('');
-        onNeedDriveCookieBind(String(result.needDriveCookieBind));
+        onNeedDriveCookieBind(outcome.provider);
         return;
       }
-      const playError = playbackResultError(result);
-      if (playError) {
-        setErr(playError);
+      if (outcome.kind === 'failed') {
+        setErr(outcome.message);
         return;
       }
       const label = formatEpisodeLabel(target.name, index);
-      onPlay(result.url, `${displayName} - ${label}`, key!, id!, {
+      onPlay(outcome.url, `${displayName} - ${label}`, key!, id!, {
         pic: detail.pic,
         remarks: label,
         sourceName: key,

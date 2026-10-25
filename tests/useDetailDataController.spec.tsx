@@ -1,21 +1,9 @@
 // @vitest-environment happy-dom
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { client } from '../src/renderer/api/client';
+import { describe, expect, it, vi } from 'vitest';
 import { useDetailDataController } from '../src/renderer/features/detail/useDetailDataController';
 import type { VodDetail } from '../src/shared/types';
-import { uiMem } from '../src/renderer/lib/uiMemory';
-
-vi.mock('../src/renderer/api/client', () => ({
-  client: {
-    cfgGet: vi.fn(),
-    detail: vi.fn(),
-  },
-}));
-
-vi.mock('../src/renderer/lib/uiMemory', () => ({
-  uiMem: { detail: { get: vi.fn(), set: vi.fn() } },
-}));
+import type { DetailDataPort } from '../src/renderer/features/detail/application/detailDataPorts';
 
 function detail(name: string): VodDetail {
   return {
@@ -38,32 +26,30 @@ function route(key: string, id: string, profileId: string) {
   return { key, id, requestedProfileId: profileId, routeKey: `${key}\u0000${id}\u0000${profileId}` };
 }
 
-beforeEach(() => {
-  vi.mocked(client.cfgGet).mockReset();
-  vi.mocked(client.detail).mockReset();
-  vi.mocked(uiMem.detail.get).mockReset();
-  vi.mocked(uiMem.detail.set).mockReset();
-  vi.mocked(client.cfgGet).mockResolvedValue({ activeProfileId: 'profile-default' } as Awaited<ReturnType<typeof client.cfgGet>>);
-  vi.mocked(client.detail).mockResolvedValue(null);
-  vi.mocked(uiMem.detail.get).mockReturnValue(undefined);
+const createPort = (): DetailDataPort => ({
+  readActiveProfileId: vi.fn(async () => 'profile-default'),
+  loadDetail: vi.fn(async () => null),
+  readSelection: vi.fn(() => undefined),
+  rememberSelection: vi.fn(),
 });
 
 describe('useDetailDataController', () => {
   it('ignores a detail response after navigation changes the route', async () => {
     let resolveOld!: (value: VodDetail | null) => void;
     let resolveNew!: (value: VodDetail | null) => void;
-    vi.mocked(client.detail)
+    const port = createPort();
+    vi.mocked(port.loadDetail)
       .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
       .mockImplementationOnce(() => new Promise((resolve) => { resolveNew = resolve; }));
 
     const { result, rerender } = renderHook(
-      ({ args }) => useDetailDataController(args),
-      { initialProps: { args: route('source', 'old-id', 'profile-old') } },
+      ({ args, dataPort }) => useDetailDataController(args, dataPort),
+      { initialProps: { args: route('source', 'old-id', 'profile-old'), dataPort: port } },
     );
-    await waitFor(() => expect(client.detail).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(port.loadDetail).toHaveBeenCalledTimes(1));
 
-    rerender({ args: route('source', 'new-id', 'profile-new') });
-    await waitFor(() => expect(client.detail).toHaveBeenCalledTimes(2));
+    rerender({ args: route('source', 'new-id', 'profile-new'), dataPort: port });
+    await waitFor(() => expect(port.loadDetail).toHaveBeenCalledTimes(2));
     expect(result.current.detail).toBeNull();
     expect(result.current.loading).toBe(true);
 
@@ -78,6 +64,6 @@ describe('useDetailDataController', () => {
     });
 
     expect(result.current.detail?.name).toBe('new detail');
-    expect(client.detail).toHaveBeenNthCalledWith(2, { key: 'source', ids: ['new-id'], profileId: 'profile-new' });
+    expect(port.loadDetail).toHaveBeenNthCalledWith(2, 'source', 'new-id', 'profile-new');
   });
 });

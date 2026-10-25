@@ -60,7 +60,7 @@ function reloadFromDisk(): void {
 function diskTombstones(): Map<string, number> {
   const raw = memStore.get('tvboxUiMemory');
   const d = raw ? (JSON.parse(raw) as { deleted?: Array<[string, unknown]> }) : null;
-  return unionTombstones(new Map(), d?.deleted);
+  return unionTombstones(new Map(), d?.deleted, Date.now());
 }
 
 /**

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { client } from '../../api/client';
 import type { DiscoverGenre, DiscoverItem, DiscoverSection } from '../../../shared/types';
+import type { DiscoverLandingPort } from './application/discoveryPorts';
 
 type DiscoverMedia = 'movie' | 'tv';
 
-export function useDiscoverController() {
+export function useDiscoverController(port: DiscoverLandingPort) {
   const [sections, setSections] = useState<DiscoverSection[] | null>(null);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
@@ -22,7 +22,7 @@ export function useDiscoverController() {
 
   const fetchSections = useCallback((refresh = false): Promise<void> => {
     const requestId = ++sectionsRequest.current;
-    return client.metaDiscover(refresh).then(nextSections => {
+    return port.loadSections(refresh).then(nextSections => {
       if (requestId !== sectionsRequest.current) return;
       if (nextSections.length) { setSections(nextSections); setErr(''); }
       else {
@@ -34,7 +34,7 @@ export function useDiscoverController() {
     }).finally(() => {
       if (requestId === sectionsRequest.current) setLoading(false);
     });
-  }, []);
+  }, [port]);
 
   const load = useCallback((): void => { setLoading(true); setErr(''); void fetchSections(true); }, [fetchSections]);
 
@@ -52,8 +52,8 @@ export function useDiscoverController() {
 
   useEffect(() => {
     void fetchSections();
-    void client.metaGenres().then(setGenres).catch(() => undefined);
-  }, [fetchSections]);
+    void port.loadGenres().then(setGenres).catch(() => undefined);
+  }, [fetchSections, port]);
 
   const loadGenre = useCallback((genre: DiscoverGenre, page: number, mediaType: DiscoverMedia | null = media): void => {
     if (!mediaType) return;
@@ -63,8 +63,8 @@ export function useDiscoverController() {
     setGLoading(true);
     setGenreError('');
     setGItems([]);
-    void client
-      .metaGenrePage(mediaType, genre.id, page)
+    void port
+      .loadGenrePage(mediaType, genre.id, page)
       .then((result) => {
         if (requestId !== genreRequest.current) return;
         setGItems(result.items);
@@ -79,7 +79,7 @@ export function useDiscoverController() {
       .finally(() => {
         if (requestId === genreRequest.current) setGLoading(false);
       });
-  }, [media]);
+  }, [media, port]);
 
   const switchMedia = useCallback((nextMedia: DiscoverMedia): void => {
     ++genreRequest.current;

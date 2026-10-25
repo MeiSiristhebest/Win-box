@@ -1,23 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { DiscoverItem } from '../../shared/types';
-import { BOARD_CATEGORIES, boardSourceName, type DiscoverBoard } from '../../shared/discoverBoards';
-import { client } from '../api/client';
-import { useCovers } from '../lib/useCovers';
-import { discoverCoverItem } from './DiscoverItemCard';
-import { Icon } from './ui/Icon';
+import type { DiscoverItem } from '../../../../shared/types';
+import { BOARD_CATEGORIES, boardSourceName, type DiscoverBoard } from '../../../../shared/discoverBoards';
+import type { DiscoverBoardPreviewPort } from '../application/discoveryPorts';
+import { useCovers } from '../../covers/useCovers';
+import { discoverCoverItem } from '../../../components/DiscoverItemCard';
+import { Icon } from '../../../components/ui/Icon';
 
 export interface BoardPreview { items: DiscoverItem[]; stale?: boolean; total?: number | null }
-const lanes: Promise<unknown>[] = Array.from({ length: 3 }, () => Promise.resolve());
-let nextLane = 0;
-function enqueue<T>(job: () => Promise<T>): Promise<T> {
-  const slot = nextLane++ % lanes.length;
-  const pending = lanes[slot].then(job);
-  lanes[slot] = pending.catch(() => undefined);
-  return pending;
-}
 
-export default function BoardPreviewCard({ board, seed, active }: { board: DiscoverBoard; seed?: BoardPreview; active: boolean }) {
+export default function BoardPreviewCard({ board, seed, active, previewPort }: { board: DiscoverBoard; seed?: BoardPreview; active: boolean; previewPort: DiscoverBoardPreviewPort }) {
   const ref = useRef<HTMLAnchorElement>(null);
   const [visible, setVisible] = useState(false);
   const [result, setResult] = useState<{ data?: BoardPreview; error?: string }>({});
@@ -32,11 +24,11 @@ export default function BoardPreviewCard({ board, seed, active }: { board: Disco
   useEffect(() => {
     if (!active || !visible) return;
     let cancelled = false;
-    void enqueue(() => cancelled ? Promise.resolve(undefined) : client.metaBoardPage(board.id, 1))
-      .then(data => { if (!cancelled && data) setResult({ data: { items: data.items.slice(0, 3), stale: data.stale, total: data.total } }); })
+    void previewPort.loadPreview(board.id)
+      .then(data => { if (!cancelled) setResult({ data }); })
       .catch(() => { if (!cancelled) setResult({ error: '预览暂不可用' }); });
     return () => { cancelled = true; };
-  }, [active, visible, board.id]);
+  }, [active, visible, board.id, previewPort]);
   const preview = result.data || seed;
   const items = preview?.items.slice(0, 3) || [];
   const first = items[0];
