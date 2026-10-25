@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { JarSpiderBridge, spiderProxyPort } from '../src/engine/spider/JarSpiderBridge';
+import { SpiderSubprocessRunner } from '../src/engine/spider/SpiderSubprocessRunner';
 import { LOCAL_PROXY_BASE, LOCAL_PROXY_PORT } from '../src/shared/constants';
 import { NullLogger } from '../src/engine/util/logger';
 
@@ -165,13 +166,21 @@ describe('JarSpiderBridge.call — spawn argv 强制 UTF-8（任务 A）', () =>
     await p;
     expect('cwd' in (spawnMock.mock.calls[0][2] as object)).toBe(false);
 
-    const rs = (bridge as unknown as {
-      runSubprocess: (exe: string, argv: string[], cls: string, method: string) => Promise<string>;
-    }).runSubprocess.call(bridge, join(dir, 'py', 'python.exe'), ['r.py'], 'X', 'm');
+    // Python now receives the same extracted runner through its adapter port.
+    const pythonRunner = new SpiderSubprocessRunner({
+      spawn: (executable, argv, options) => spawnMock(executable, argv, options),
+      processEnvironment: () => ({}),
+      proxyEnvironment: () => ({}),
+      logBridgeNotes: vi.fn(),
+      logError: vi.fn(),
+      logWarning: vi.fn(),
+      logInfo: vi.fn(),
+    }, 100000);
+    const rs = pythonRunner.run(join(dir, 'py', 'python.exe'), ['r.py'], 'X', 'm');
     const py = spawnMock.mock.results[1].value as ReturnType<typeof fakeChild>;
     py.stdout.emit('data', Buffer.from('[]'));
     py.emit('close', 0);
-    await rs;
+    await expect(rs).resolves.toMatchObject({ ok: true, output: '[]' });
     expect('cwd' in (spawnMock.mock.calls[1][2] as object)).toBe(false);
   });
 });
