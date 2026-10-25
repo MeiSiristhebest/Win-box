@@ -20,7 +20,7 @@ export function VideoPlayerView({ model }: { model: VideoPlayerPresenterModel })
   const { items: dmItems, enabled: dmEnabled, settings: dmCfg } = danmaku;
   const { position, menuRef, infoOpen, actions: contextActions } = contextMenu;
   const playerContextMenu = { position, menuRef, onContextMenu: surface.onContextMenu };
-  const { items: episodeItems, current: episodeIndex, open: epPanel, title: episodeTitle, onClose: closeEpisodes, onSelect: pickEpisode } = episodes;
+  const { items: episodeItems, current: episodeIndex, open: epPanel, title: episodeTitle, page: episodePage, onPageChange: setEpisodePage, onClose: closeEpisodes, onSelect: pickEpisode } = episodes;
   const { audioTracks, subtitles, pluginKeys, active, statsOpen, keysOpen, mini: panelMini, mpvTech, formatNetworkSpeed, onStatsClose, onKeysClose } = technicalPanels;
   const { skip: skipToast, boost: boostTip, commandError } = toast;
   const statusProps = status;
@@ -118,7 +118,7 @@ export function VideoPlayerView({ model }: { model: VideoPlayerPresenterModel })
       />
       {/* ★ 2026-10-08（用户要求）：跳过片头片尾的短暂提示（2.5s 淡出；不拦截鼠标） */}
       <PlayerContextMenu position={playerContextMenu.position} menuRef={playerContextMenu.menuRef} onInfo={contextActions.onInfo} onCopy={contextActions.onCopy} />
-      {!mini && episodeItems?.length ? <PlayerEpisodePanel episodes={episodeItems} current={episodeIndex} open={epPanel} title={episodeTitle} onClose={closeEpisodes} onSelect={pickEpisode} /> : null}
+      {!mini && episodeItems?.length ? <PlayerEpisodePanel episodes={episodeItems} current={episodeIndex} open={epPanel} title={episodeTitle} page={episodePage} onPageChange={setEpisodePage} onClose={closeEpisodes} onSelect={pickEpisode} /> : null}
       <PlayerTechnicalPanels audioTracks={audioTracks} subtitles={subtitles} pluginKeys={pluginKeys} active={active} statsOpen={statsOpen} keysOpen={keysOpen} mini={panelMini} mpvTech={mpvTech} fmtNet={formatNetworkSpeed} onStatsClose={onStatsClose} onKeysClose={onKeysClose} />
       <PlayerInfoOverlay open={infoOpen && !mini} title={info.title} currentTime={cur} duration={dur} resolution={resText} formatTime={formatPlaybackTime} />
       {(skipToast || boostTip > 0 || commandError) && (

@@ -33,6 +33,7 @@ import { resolvePlayerControlAvailability } from './presentation/playerControlAv
 import { usePlayerPreferencePersistence, usePlayerPreferences } from './usePlayerPreferences';
 import type { PlayerFit } from './application/playerPreferences';
 import { usePlayerPanelSession } from './usePlayerPanelSession';
+import { usePlayerEpisodePanelPresenter } from './usePlayerEpisodePanelPresenter';
 import { usePlayerKernelTransitions } from './usePlayerKernelTransitions';
 import type { BossKeyPlaybackPort } from './application/bossKeyPlaybackSession';
 import { useBossKeyPlaybackEvents } from './useBossKeyPlaybackEvents';
@@ -469,6 +470,13 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
     panelHosts: { subtitle: subPanelHost, danmaku: dmPanelHost },
   } = panelSession;
   const { visible: ui, reveal: poke, hideIfNoPanel } = controls;
+  const episodePanel = usePlayerEpisodePanelPresenter({
+    current: props.epIndex ?? -1,
+    episodeCount: props.episodes?.length ?? 0,
+    open: epPanel,
+    setOpen: setEpPanel,
+    onSelect: index => props.onPickEpisode?.(index),
+  });
   usePlayerSurfaceAttributes(kernel !== 'html5', ui, !!props.allowMpv);
   useLayoutEffect(() => { controlsRevealRef.current = poke; }, [poke]);
   const {
@@ -757,7 +765,16 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
     },
     danmaku: { items: dmItems, enabled: dmEnabled, settings: dmCfg },
     contextMenu: { position: contextMenu.position, menuRef: contextMenu.menuRef, infoOpen: contextMenu.infoOpen, actions: contextActions },
-    episodes: { items: props.episodes, current: props.epIndex ?? -1, open: epPanel, title: playTitle || resourceName || '选集', onClose: () => setEpPanel(false), onSelect: (index: number) => props.onPickEpisode?.(index) },
+    episodes: {
+      items: props.episodes,
+      current: props.epIndex ?? -1,
+      open: epPanel,
+      title: playTitle || resourceName || '选集',
+      page: episodePanel.page,
+      onPageChange: episodePanel.setPage,
+      onClose: episodePanel.close,
+      onSelect: episodePanel.selectEpisode,
+    },
     technicalPanels: { audioTracks: audio.tracks, subtitles: technical.subtitles, pluginKeys, active: kernel === 'mpv', statsOpen, keysOpen, mini, mpvTech: technical.tech, formatNetworkSpeed, onStatsClose: () => setStatsOpen(false), onKeysClose: () => setKeysOpen(false) },
     info: { title: playTitle, currentTime: cur, duration: dur, resolution: resText },
     toast: { skip: skipToast, boost: boost.tip, commandError },

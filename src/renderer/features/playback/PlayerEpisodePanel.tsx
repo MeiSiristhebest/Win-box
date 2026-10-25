@@ -1,18 +1,9 @@
-import { useEffect, useState } from 'react';
 import { EP_PAGE_SIZE, epPageRanges, epPageSlice } from '../../lib/epPager';
 
-export function PlayerEpisodePanel({ episodes, current, open, title, onClose, onSelect }: {
-  episodes: { name: string; url: string }[]; current: number; open: boolean; title: string; onClose(): void; onSelect(index: number): void;
+export function PlayerEpisodePanel({ episodes, current, open, title, page, onClose, onSelect, onPageChange }: {
+  episodes: { name: string; url: string }[]; current: number; open: boolean; title: string; page: number;
+  onClose(): void; onSelect(index: number): void; onPageChange(page: number): void;
 }) {
-  const [page, setPage] = useState(0);
-
-  useEffect(() => {
-    if (open) {
-      const targetPage = Math.floor(Math.max(0, current) / EP_PAGE_SIZE);
-      setPage(targetPage);
-    }
-  }, [open, current]);
-
   const paged = epPageSlice(episodes, page, EP_PAGE_SIZE);
   const ranges = epPageRanges(episodes.length, EP_PAGE_SIZE);
 
@@ -32,7 +23,7 @@ export function PlayerEpisodePanel({ episodes, current, open, title, onClose, on
               role="tab"
               aria-selected={range.page === paged.page}
               className={'vp-ep-range-tab' + (range.page === paged.page ? ' active' : '')}
-              onClick={() => setPage(range.page)}
+              onClick={() => onPageChange(range.page)}
             >
               {range.label}
             </button>

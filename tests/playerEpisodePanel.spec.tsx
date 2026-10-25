@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 // tests/playerEpisodePanel.spec.tsx
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PlayerEpisodePanel } from '../src/renderer/features/playback/PlayerEpisodePanel';
+import { usePlayerEpisodePanelPresenter } from '../src/renderer/features/playback/usePlayerEpisodePanelPresenter';
 
 afterEach(cleanup);
 
@@ -24,8 +25,10 @@ describe('PlayerEpisodePanel', () => {
         current={5}
         open={true}
         title="测试番剧"
+        page={0}
         onClose={onClose}
         onSelect={onSelect}
+        onPageChange={vi.fn()}
       />,
     );
 
@@ -34,20 +37,23 @@ describe('PlayerEpisodePanel', () => {
     expect(items).toHaveLength(30);
   });
 
-  it('renders range tabs and auto-selects the page containing current episode when episodes > 50', () => {
+  it('renders the controlled page and delegates range changes', () => {
     const episodes = makeEpisodes(120);
     const onSelect = vi.fn();
     const onClose = vi.fn();
+    const onPageChange = vi.fn();
 
-    // current = 75 belongs to page 1 ('51-100')
+    // page=1 renders episodes 51-100; page selection is owned by the presenter.
     const { rerender } = render(
       <PlayerEpisodePanel
         episodes={episodes}
         current={75}
         open={true}
         title="海贼王"
+        page={1}
         onClose={onClose}
         onSelect={onSelect}
+        onPageChange={onPageChange}
       />,
     );
 
@@ -73,13 +79,52 @@ describe('PlayerEpisodePanel', () => {
         current={75}
         open={true}
         title="海贼王"
+        page={1}
         onClose={onClose}
         onSelect={onSelect}
+        onPageChange={onPageChange}
       />,
     );
     fireEvent.click(tabs[2]); // click '101-120'
+    expect(onPageChange).toHaveBeenCalledWith(2);
+    rerender(
+      <PlayerEpisodePanel
+        episodes={episodes}
+        current={75}
+        open={true}
+        title="海贼王"
+        page={2}
+        onClose={onClose}
+        onSelect={onSelect}
+        onPageChange={onPageChange}
+      />,
+    );
     const newItems = screen.getAllByRole('button').filter((b) => b.className.includes('vp-epitem'));
     expect(newItems).toHaveLength(20);
     expect(newItems[0].textContent).toContain('101');
+  });
+
+  it('resets to the selected episode page when opened and follows selection changes', () => {
+    const setOpen = vi.fn();
+    const onSelect = vi.fn();
+    const { result, rerender } = renderHook(
+      (props: { current: number; open: boolean }) => usePlayerEpisodePanelPresenter({
+        ...props,
+        episodeCount: 120,
+        setOpen,
+        onSelect,
+      }),
+      { initialProps: { current: 75, open: false } },
+    );
+
+    act(() => result.current.setPage(2));
+    expect(result.current.page).toBe(2);
+    rerender({ current: 75, open: true });
+    expect(result.current.page).toBe(1);
+    act(() => result.current.setPage(0));
+    rerender({ current: 110, open: true });
+    expect(result.current.page).toBe(2);
+    act(() => result.current.selectEpisode(4));
+    expect(onSelect).toHaveBeenCalledWith(4);
   });
 });
