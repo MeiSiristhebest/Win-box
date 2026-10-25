@@ -5,13 +5,14 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { usePlayerKeyboardShortcuts } from '../src/renderer/features/playback/usePlayerKeyboardShortcuts';
 import { playerKeyboardShortcutsAdapter } from '../src/renderer/features/playback/adapters/playerKeyboardShortcutsAdapter';
 
-function Harness({ isMpv = false, actions }: { isMpv?: boolean; actions: { play: () => void; pause: () => void; seek: (seconds: number) => void; volume: (value: number) => void; showVolume: () => void; reveal: () => void; exitFullscreen: () => void; stepSubtitleOffset?: (delta: -0.5 | 0.5) => void; toggleDanmaku?: () => void } }) {
+function Harness({ isMpv = false, actions }: { isMpv?: boolean; actions: { play: () => void; pause: () => void; seek: (seconds: number) => void; volume: (value: number) => void; showVolume: () => void; reveal: () => void; exitFullscreen: () => void; stepSubtitleOffset?: (delta: -0.5 | 0.5) => void; toggleDanmaku?: () => void; toggleMini?: () => void; cycleFit?: () => void; toggleFullscreen?: () => void } }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   usePlayerKeyboardShortcuts({
     videoRef, isMpv: () => isMpv, isPaused: () => true, play: actions.play, pause: actions.pause,
     getTime: () => 0, getDuration: () => 60, seek: actions.seek, getVolume: () => 0.5, setVolume: actions.volume,
     showVolume: actions.showVolume, revealControls: actions.reveal, exitMpvFullscreen: actions.exitFullscreen,
     onStepSubtitleOffset: actions.stepSubtitleOffset, onToggleDanmaku: actions.toggleDanmaku,
+    onToggleMini: actions.toggleMini, onCycleFit: actions.cycleFit, onToggleFullscreen: actions.toggleFullscreen,
   }, playerKeyboardShortcutsAdapter);
   return <><video ref={videoRef} /><input aria-label='text entry' /></>
 }
@@ -27,6 +28,9 @@ function actions() {
     exitFullscreen: vi.fn() as unknown as () => void,
     stepSubtitleOffset: vi.fn() as unknown as (delta: -0.5 | 0.5) => void,
     toggleDanmaku: vi.fn() as unknown as () => void,
+    toggleMini: vi.fn() as unknown as () => void,
+    cycleFit: vi.fn() as unknown as () => void,
+    toggleFullscreen: vi.fn() as unknown as () => void,
   };
 }
 
@@ -67,6 +71,18 @@ describe('usePlayerKeyboardShortcuts', () => {
     expect(handlers.stepSubtitleOffset).toHaveBeenCalledWith(0.5);
     expect(handlers.toggleDanmaku).toHaveBeenCalledOnce();
     expect(handlers.reveal).toHaveBeenCalledTimes(3);
+  });
+
+  it('triggers mini pip, aspect fit cycling, and fullscreen with p, a, and f', () => {
+    const handlers = actions();
+    render(<Harness actions={handlers} />);
+    fireEvent.keyDown(window, { key: 'p' });
+    fireEvent.keyDown(window, { key: 'a' });
+    fireEvent.keyDown(window, { key: 'f' });
+
+    expect(handlers.toggleMini).toHaveBeenCalledOnce();
+    expect(handlers.cycleFit).toHaveBeenCalledOnce();
+    expect(handlers.toggleFullscreen).toHaveBeenCalledOnce();
   });
 
   it('does not route global playback shortcuts while a native dialog is open', () => {
