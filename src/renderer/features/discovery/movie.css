@@ -99,6 +99,49 @@
 
 .movie-source-origin-label { color: var(--text-primary); font-weight: 600; }
 
+.movie-source-top .media-poster {
+  box-shadow: 0 0 0 2px #f59e0b, 0 8px 20px rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-media, 8px);
+}
+
+.badge-top-source {
+  background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+  color: #fff !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.fact-clarity-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.fact-ping-tag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fact-ping-tag.fast {
+  color: #10b981;
+}
+
+.fact-ping-tag.normal {
+  color: #f59e0b;
+}
+
+.fact-ping-tag.slow {
+  color: #ef4444;
+}
+
 @media (max-width: 700px) {
   .movie-overview { grid-template-columns: 112px minmax(0, 1fr); gap: 16px; padding: 0 0 18px; }
   .movie-overview-poster { width: 112px; }

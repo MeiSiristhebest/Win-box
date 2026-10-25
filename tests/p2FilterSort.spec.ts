@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { normalizeClassList, parseSortJson } from '../src/engine/parse/Movie';
 import { JarSpider } from '../src/engine/spider/JarSpider';
 import type { EngineHost } from '../src/engine/ports';
-import type { JarSpiderBridge } from '../src/engine/spider/JarSpiderBridge';
+import type { JarSpiderRuntimePort } from '../src/engine/spider/JarSpiderPorts';
 import { NullLogger } from '../src/engine/util/logger';
 import { getSessionSort, setSessionSort, clearSessionSort } from '../src/renderer/lib/sessionSort';
 
@@ -186,10 +186,9 @@ describe('JarSpider.categoryContent — extend kv 转义', () => {
       resolvePaths: (u: string[]) => u,
       call: async (_j: string[], _c: string, method: string, args: string[]) => {
         calls.push({ method, args });
-        return '';
+        return { ok: true, output: '', reason: '', failureKind: null, problemCode: null };
       },
-      lastReason: '',
-    } as unknown as JarSpiderBridge;
+    } as unknown as JarSpiderRuntimePort;
   }
 
   it('值含 & = 空格 中文 → 百分号编码后再拼 kv，SpiderRunner 不会错切', async () => {

@@ -36,6 +36,17 @@ describe('movie search relevance', () => {
     expect(searchTitleScore('流浪地球2', '流浪地球')).toBe(0);
   });
 
+  it('matches Chinese titles by Pinyin initials, full Pinyin and season abbreviations', () => {
+    expect(searchTitleScore('kb', '狂飙')).toBeGreaterThan(0);
+    expect(searchTitleScore('kuangbiao', '狂飙')).toBeGreaterThan(0);
+    expect(searchTitleScore('hlm', '红楼梦')).toBeGreaterThan(0);
+    expect(searchTitleScore('sgyy', '三国演义')).toBeGreaterThan(0);
+    expect(searchTitleScore('frxxz', '凡人修仙传')).toBeGreaterThan(0);
+    expect(searchTitleScore('qyn2', '庆余年 第二季')).toBeGreaterThan(0);
+    expect(searchTitleScore('qyn2', '庆余年 第一季')).toBe(0);
+    expect(searchTitleScore('qyn', '庆余年')).toBeGreaterThan(searchTitleScore('qyn', '庆余年 解说'));
+  });
+
   it('filters by profile and source identity without merging same-key sources', () => {
     const items = [item('嫁金钗', 'A'), item('火影忍者', 'A'), item('嫁金钗', 'B')];
     const view = searchResultView(items, '嫁金钗', { mode: 'related', profileId: 'B', sourceId: sourceIdentityKey('B', 'same') });

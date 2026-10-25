@@ -1,7 +1,11 @@
 // tests/sourceViewModel.spec.ts
-// SourceViewModel 端到端：type 0/1（CMS，mock HTTP）+ type 3 降级 + play + 类型化不可用原因（任务 A1/A3）。
+// SourceGateway 端到端：type 0/1（CMS，mock HTTP）+ type 3 降级 + play + 类型化不可用原因（任务 A1/A3）。
 import { describe, it, expect } from 'vitest';
-import { SourceViewModel, sourceAvailability } from '../src/engine/vod/SourceViewModel';
+import { SourceGateway, sourceAvailability } from '../src/engine/vod/SourceGateway';
+import { CmsSource } from '../src/engine/vod/CmsSource';
+import { SpiderSourceAdapter } from '../src/engine/vod/SpiderSourceAdapter';
+import { SpiderSourceRuntimeAdapter } from '../src/engine/spider/SpiderSourceRuntimeAdapter';
+import { CmsSourceAdapter } from '../src/engine/vod/CmsSourceAdapter';
 import { LOCAL_PROXY_BASE } from '../src/shared/constants';
 import { SpiderFactory } from '../src/engine/spider/SpiderFactory';
 import { JarSpiderBridge } from '../src/engine/spider/JarSpiderBridge';
@@ -60,8 +64,12 @@ const JSON_DETAIL = JSON.stringify({
 const XML_HOME = `<rss><class><ty id="1">电影</ty></class><list page="1" pagecount="1" pagesize="20" recordcount="1"><video><id>9</id><name>XML首页片</name><pic>p</pic><note>HD</note></video></list></rss>`;
 const XML_DETAIL = `<rss><list><video><id>9</id><name>XML详情片</name><pic>p</pic><dl><dd flag="m3u8">第01集$https://x/1#第02集$https://x/2</dd></dl></video></list></rss>`;
 
-function vm(http: HttpClient) {
-  return new SourceViewModel({ http, kv: memKv(), logger: NullLogger });
+function vm(http: HttpClient, clock?: { now(): number }) {
+  const host = { http, kv: memKv(), logger: NullLogger };
+  const factory = new SpiderFactory();
+  const cmsAdapter = new CmsSourceAdapter(new CmsSource(host, clock));
+  const spiderAdapter = new SpiderSourceAdapter(new SpiderSourceRuntimeAdapter(factory, host), NullLogger);
+  return new SourceGateway({ catalog: [cmsAdapter, spiderAdapter], playback: [cmsAdapter, spiderAdapter], proxy: [spiderAdapter] }, NullLogger);
 }
 
 /**
@@ -83,7 +91,7 @@ class StubSpider extends Spider {
       api: 'csp_Stub',
       ext: '',
       jar: '',
-      host: { http: mockHttp({}), kv: memKv(), logger: NullLogger },
+      host: { http: mockHttp({}), logger: NullLogger },
     });
   }
   override homeContent(): string {
@@ -101,11 +109,19 @@ class StubSpider extends Spider {
   }
 }
 
-/** 用给定蜘蛛桩替换 SourceViewModel 内部的 getCSP 分发 */
-function vmWithSpider(sp: Spider): SourceViewModel {
-  const v = vm(mockHttp({}));
-  v.spiderFactory.getCSP = () => sp;
-  return v;
+/** 用给定蜘蛛桩替换 source runtime factory */
+function vmWithSpider(sp: Spider): SourceGateway {
+  const http = mockHttp({});
+  const host = { http, kv: memKv(), logger: NullLogger };
+  const factory = new SpiderFactory();
+  factory.createForSource = () => sp;
+  const cmsAdapter = new CmsSourceAdapter(new CmsSource(host));
+  const spiderAdapter = new SpiderSourceAdapter(new SpiderSourceRuntimeAdapter(factory, host), NullLogger);
+  return new SourceGateway({
+    catalog: [cmsAdapter, spiderAdapter],
+    playback: [cmsAdapter, spiderAdapter],
+    proxy: [spiderAdapter],
+  }, NullLogger);
 }
 
 describe('spider runtime diagnostics', () => {
@@ -129,45 +145,46 @@ describe('spider runtime diagnostics', () => {
   });
 });
 
-describe('SpiderFactory — getCSP 分发（type 3 api 后缀）', () => {
+describe('SpiderFactory — source runtime selection（type 3 api 后缀）', () => {
   const host = { http: mockHttp({}), kv: memKv(), logger: NullLogger };
   it('.js → JsSpider（T03-B JS 沙箱；脚本不可用时运行时降级）', () => {
     const f = new SpiderFactory();
-    const sp = f.getCSP({ key: 'js1', type: 3, api: 'http://x/s.js' } as SourceBean, host);
+    const sp = f.createForSource({ key: 'js1', type: 3, api: 'http://x/s.js' } as SourceBean, host);
     expect(sp.constructor.name).toBe('JsSpider');
   });
   it('.py → UNSUPPORTED_PY', () => {
-    const sp = new SpiderFactory().getCSP({ key: 'py1', type: 3, api: 'http://x/s.py' } as SourceBean, host);
+    const sp = new SpiderFactory().createForSource({ key: 'py1', type: 3, api: 'http://x/s.py' } as SourceBean, host);
     expect(((sp as unknown) as { reason: string }).reason).toBe('UNSUPPORTED_PY');
   });
   it('csp_Xxx 无 JVM 桥 → UNSUPPORTED_JAR（降级保底）', () => {
-    const sp = new SpiderFactory().getCSP({ key: 'j1', type: 3, api: 'csp_NiNi' } as SourceBean, host);
+    const sp = new SpiderFactory().createForSource({ key: 'j1', type: 3, api: 'csp_NiNi' } as SourceBean, host);
     expect(((sp as unknown) as { reason: string }).reason).toBe('UNSUPPORTED_JAR');
   });
   it('csp_Xxx 有 JVM 桥 → JarSpider（等效 DexClassLoader）', () => {
     const mk = (p: string) => { try { require('node:fs').mkdirSync(p, { recursive: true }); } catch { /* ignore */ } return p; };
     const bridge = new JarSpiderBridge({ jvmDir: mk('.tmp/jvm'), cacheDir: mk('.tmp/cache') }, host);
-    const sp = new SpiderFactory({ jarBridge: bridge }).getCSP({ key: 'j2', type: 3, api: 'csp_Doll', jar: 'https://x/a.jar' } as SourceBean, host);
+  const sp = new SpiderFactory({ jarRuntime: bridge }).createForSource({ key: 'j2', type: 3, api: 'csp_Doll', jar: 'https://x/a.jar' } as SourceBean, host);
     expect(sp.constructor.name).toBe('JarSpider');
   });
   it('同 key 复用缓存', () => {
     const f = new SpiderFactory();
     const bean = { key: 'k', type: 3, api: 'csp_X' } as SourceBean;
-    const a = f.getCSP(bean, host);
-    const b = f.getCSP(bean, host);
+    const a = f.createForSource(bean, host);
+    const b = f.createForSource(bean, host);
     expect(a).toBe(b);
   });
   it('ext 变更后重建蜘蛛实例（★ ext 模块缺陷修复：改配置必须立即生效）', () => {
     const f = new SpiderFactory();
-    const a = f.getCSP({ key: 'e1', type: 3, api: 'csp_X', ext: '{"token":"old"}' } as SourceBean, host);
-    const b = f.getCSP({ key: 'e1', type: 3, api: 'csp_X', ext: '{"token":"new"}' } as SourceBean, host);
-    const c = f.getCSP({ key: 'e1', type: 3, api: 'csp_X', ext: '{"token":"new"}' } as SourceBean, host);
+    const a = f.createForSource({ key: 'e1', type: 3, api: 'csp_X', ext: '{"token":"old"}' } as SourceBean, host);
+    const b = f.createForSource({ key: 'e1', type: 3, api: 'csp_X', ext: '{"token":"new"}' } as SourceBean, host);
+    const c = f.createForSource({ key: 'e1', type: 3, api: 'csp_X', ext: '{"token":"new"}' } as SourceBean, host);
     expect(a).not.toBe(b); // ext 不同 → 新实例
     expect(b).toBe(c); // ext 相同 → 复用
   });
+
 });
 
-describe('SourceViewModel — type 1（CMS JSON）', () => {
+describe('SourceGateway — type 1（CMS JSON）', () => {
   it('home：返回分类 + 首页列表', async () => {
     const http = mockHttp({ [cmsJsonApi]: JSON_HOME });
     const r = await vm(http).home({ key: 'j', type: 1, api: cmsJsonApi } as SourceBean);
@@ -189,7 +206,7 @@ describe('SourceViewModel — type 1（CMS JSON）', () => {
   });
 });
 
-describe('SourceViewModel — type 0（CMS XML）', () => {
+describe('SourceGateway — type 0（CMS XML）', () => {
   it('home：解析 XML 分类与列表', async () => {
     const http = mockHttp({ [cmsXmlApi]: XML_HOME });
     const r = await vm(http).home({ key: 'x', type: 0, api: cmsXmlApi } as SourceBean);
@@ -204,7 +221,7 @@ describe('SourceViewModel — type 0（CMS XML）', () => {
   });
 });
 
-describe('SourceViewModel — play', () => {
+describe('SourceGateway — play', () => {
   it('type 0/1 直连，flag 不在 vipFlags → parse=0', async () => {
     const r = await vm(mockHttp({})).play({ key: 'j', type: 1, api: 'x', playUrl: '' } as SourceBean, 'm3u8', 'https://a/1.m3u8', ['vip']);
     expect(r.parse).toBe(0);
@@ -220,11 +237,11 @@ describe('SourceViewModel — play', () => {
   });
 });
 
-describe('SourceViewModel — type 3 降级 / 类型化失败原因（任务 A1）', () => {
-  it('type 3 + .js（脚本 404 → 蜘蛛空结果）→ 抛 SPIDER_ERROR', async () => {
+describe('SourceGateway — type 3 降级 / 类型化失败原因（任务 A1）', () => {
+  it('type 3 + .js（脚本 404）→ 按加载网络错误报告，不伪装成蜘蛛空结果', async () => {
     await expect(
       vm(mockHttp({})).home({ key: 'js1', type: 3, api: 'http://x/s.js' } as SourceBean),
-    ).rejects.toMatchObject({ code: 'SPIDER_ERROR' });
+    ).rejects.toMatchObject({ code: 'NETWORK' });
   });
 
   it('type 3 + .js 蜘蛛返回 {"list":[],"class":[]} → EMPTY_RESULT', async () => {
@@ -269,7 +286,7 @@ describe('SourceViewModel — type 3 降级 / 类型化失败原因（任务 A1�
   });
 });
 
-describe('SourceViewModel — type 3 homeContent→homeVideoContent 回退（任务 P0）', () => {
+describe('SourceGateway — type 3 homeContent→homeVideoContent 回退（任务 P0）', () => {
   it('homeContent 仅 class + homeVideoContent 有 list → class 来自 homeContent、items 来自回退', async () => {
     const sp = new StubSpider(
       JSON.stringify({ class: [{ type_id: '1', type_name: '电影' }], list: [] }),
@@ -449,7 +466,7 @@ describe('SourceViewModel — type 3 homeContent→homeVideoContent 回退（任
   });
 });
 
-describe('SourceViewModel — type3 首页分类兜底（P0-JVM-HOME：JVM 源主页空白根因修复）', () => {
+describe('SourceGateway — type3 首页分类兜底（P0-JVM-HOME：JVM 源主页空白根因修复）', () => {
   it('★ homeContent 仅 class + homeVideoContent 空 → 用首个分类第1页兜底，主页不再空网格', async () => {
     const sp = new StubSpider(JSON.stringify({ class: [{ type_id: '1', type_name: '电影' }], list: [] }), '');
     sp.catRet = JSON.stringify({
@@ -542,7 +559,7 @@ describe('SourceViewModel — type3 首页分类兜底（P0-JVM-HOME：JVM 源�
   });
 });
 
-describe('SourceViewModel — type 2/-1 桌面版不可用；type 4 走 CmsSource（任务 A1/A3）', () => {
+describe('SourceGateway — type 2/-1 桌面版不可用；type 4 走 CmsSource（任务 A1/A3）', () => {
   it('type=4 home → 走 CmsSource（JSON 变体，不再抛 TYPE_UNSUPPORTED）', async () => {
     const stub: HttpClient = {
       async request(): Promise<HttpResponse> {
@@ -578,7 +595,7 @@ describe('SourceViewModel — type 2/-1 桌面版不可用；type 4 走 CmsSourc
  *   ② 首页列表**装不满一页**时，回退「首个分类第 1 页」取能填满的内容（沿用既有分类兜底口径），
  *      且**只取更丰富的那份**（绝不把列表换小）。
  */
-describe('SourceViewModel — type3 「分类不分页 / 首页装不满一页」兜底', () => {
+describe('SourceGateway — type3 「分类不分页 / 首页装不满一页」兜底', () => {
   const listJson = (n: number, pagecount: number, total = 0): string =>
     JSON.stringify({
       page: 0,
@@ -655,7 +672,7 @@ describe('SourceViewModel — type3 「分类不分页 / 首页装不满一页�
   });
 });
 
-describe('SourceViewModel — type3 class 解析升级（P0-1：id 字符串 + type_flag + 空条目过滤）', () => {
+describe('SourceGateway — type3 class 解析升级（P0-1：id 字符串 + type_flag + 空条目过滤）', () => {
   it('非数字分类 id 原样保留、type_flag 透传为 flag', async () => {
     const sp = new StubSpider(
       JSON.stringify({
@@ -706,7 +723,7 @@ class PlayStubSpider extends Spider {
       api: 'csp_Stub',
       ext: '',
       jar: '',
-      host: { http: mockHttp({}), kv: memKv(), logger: NullLogger },
+      host: { http: mockHttp({}), logger: NullLogger },
     });
   }
   override playerContent(): string {
@@ -724,7 +741,7 @@ function playVia(json: string) {
   );
 }
 
-describe('SourceViewModel — type3 play 归一化（P1-2 normalizeSpiderPlay 重写）', () => {
+describe('SourceGateway — type3 play 归一化（P1-2 normalizeSpiderPlay 重写）', () => {
   it('直连 url + parse=0 → 原样透传', async () => {
     const r = await playVia(JSON.stringify({ parse: 0, url: 'https://a/1.m3u8' }));
     expect(r).toMatchObject({ parse: 0, url: 'https://a/1.m3u8', playUrl: '', flag: 'flv' });
@@ -852,7 +869,7 @@ describe('SourceViewModel — type3 play 归一化（P1-2 normalizeSpiderPlay �
   });
 });
 
-describe('SourceViewModel — type 0/1 CMS 网络失败包成 NETWORK（任务 A1）', () => {
+describe('SourceGateway — type 0/1 CMS 网络失败包成 NETWORK（任务 A1）', () => {
   it('HTTP 抛错 → NETWORK（中文，不再透传原始 undici 错）', async () => {
     const boom: HttpClient = {
       async request(_req: HttpRequest): Promise<HttpResponse> {
@@ -895,7 +912,7 @@ describe('sourceAvailability — UI/后端共用状态规则（任务 A2）', ()
   });
 });
 
-describe('SourceViewModel — 站点级 timeout 生效（bean.timeout 秒 → 请求超时 ms）', () => {
+describe('SourceGateway — 站点级 timeout 生效（bean.timeout 秒 → 请求超时 ms）', () => {
   function recorder() {
     const timeouts: number[] = [];
     const stub: HttpClient = {
@@ -913,7 +930,7 @@ describe('SourceViewModel — 站点级 timeout 生效（bean.timeout 秒 → �
   });
   it('type=4 CMS search：bean.timeout=60s → 超时 60000ms', async () => {
     const b2 = recorder();
-    await vm(b2.stub).search({ key: 't4', type: 4, api: 'http://x', timeout: 60 } as SourceBean, 'kw');
+    await vm(b2.stub, { now: () => 0 }).search({ key: 't4', type: 4, api: 'http://x', timeout: 60 } as SourceBean, 'kw');
     expect(b2.timeouts[0]).toBe(60000);
   });
 });

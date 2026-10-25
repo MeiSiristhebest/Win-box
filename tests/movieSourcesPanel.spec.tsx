@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MovieSourcesPanel } from '../src/renderer/features/detail/MovieSourcesPanel';
@@ -36,20 +37,22 @@ describe('movie source posters and filters', () => {
   });
 
   it('filters by child and by the producing source without starting another network search', async () => {
+    const user = userEvent.setup();
     show();
     await screen.findByRole('button', { name: /嫁金钗 高清，乙仓/ });
-    fireEvent.change(screen.getByLabelText('按子仓筛选'), { target: { value: 'B' } });
+    await user.selectOptions(screen.getByRole('combobox', { name: '按子仓筛选' }), 'B');
     expect(screen.queryByRole('button', { name: /嫁金钗，甲仓/ })).toBeNull();
-    fireEvent.change(screen.getByLabelText('按来源筛选'), { target: { value: sourceIdentityKey('B', 'same') } });
+    await user.selectOptions(screen.getByRole('combobox', { name: '按来源筛选' }), sourceIdentityKey('B', 'same'));
     expect(screen.getAllByRole('button', { name: /查看剧集与播放/ })).toHaveLength(1);
     expect(client.searchAll).toHaveBeenCalledTimes(1);
   });
 
   it('lets users inspect all returned results without showing the target movie poster on unrelated titles', async () => {
+    const user = userEvent.setup();
     vi.mocked(client.searchAll).mockResolvedValue(mergeSearchResults([{ profileId: 'A', key: 'one', name: '源', status: 'ok', items: [{ ...vod('嫁金钗'), pic: '' }, { ...vod('火影忍者'), pic: '' }] }]));
     show('嫁金钗', 'https://images.test/fallback.jpg');
     expect(await screen.findByRole('img', { name: /^嫁金钗$/ })).toHaveProperty('src', 'https://images.test/fallback.jpg');
-    fireEvent.change(screen.getByLabelText('搜索结果匹配方式'), { target: { value: 'all' } });
+    await user.selectOptions(screen.getByRole('combobox', { name: '搜索结果匹配方式' }), 'all');
     expect(screen.getByRole('button', { name: /火影忍者/ })).toBeTruthy();
     expect(screen.queryByRole('img', { name: '火影忍者' })).toBeNull();
     expect(client.searchAll).toHaveBeenCalledTimes(1);
