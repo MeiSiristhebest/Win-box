@@ -1,8 +1,8 @@
 // src/engine/js/worker/remoteHost.ts
-// worker 侧的 EngineHost：http 走消息往返；**同步** http/kv 走 SharedArrayBuffer + Atomics
+// worker 侧 JS 沙箱宿主端口：http 走消息往返；**同步** http/kv 走 SharedArrayBuffer + Atomics
 // （worker 阻塞自己，主进程照常服务 —— 这正是修「同步 req 冻住整个软件」的关键）。
 import type { MessagePort } from 'node:worker_threads';
-import type { EngineHost } from '../../ports';
+import type { JsSandboxHostPort } from '../JsSandboxPort';
 import type { HttpRequest, HttpResponse, KVStore, Logger } from '../../../shared/types';
 import { SAB_HEADER, SAB_MAX_BYTES, type HostCall, type HostReply, type SabPayload } from './protocol';
 
@@ -36,7 +36,7 @@ export interface RemoteHostOptions {
 /**
  * 构造 worker 侧宿主。日志前缀由沙箱自身负责（`js:<key>` / `spider js:<key>`），这里原样转发。
  */
-export function createRemoteHost(port: MessagePort, opts: RemoteHostOptions): EngineHost {
+export function createRemoteHost(port: MessagePort, opts: RemoteHostOptions): JsSandboxHostPort {
   let seq = 0;
   const nextId = (): number => ++seq;
   const pending = new Map<number, { resolve: (r: HttpResponse) => void; reject: (e: Error) => void }>();

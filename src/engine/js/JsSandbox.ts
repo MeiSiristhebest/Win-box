@@ -11,12 +11,14 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import vm from 'node:vm';
-import type { EngineHost } from '../ports';
+import type { JsSandboxHostPort, JsSpiderRuntimePort, SpiderStyle } from './JsSandboxPort';
 import { UnsupportedSourceError } from '../util/errors';
 import { compileModule, type CompiledModule } from './esmTransform';
 import { buildSandboxGlobals } from './globals';
 import { createLocalUpstream } from './globals/SandboxLocal';
 import { withTimeout } from '../util/withTimeout';
+import { SourceProblemError } from '../spider/errors';
+import { awaitWithAbort, throwIfAborted } from '../util/abort';
 
 /**
  * `assets://js/lib/X.js` → dr_py 仓库的 libs/X.js（drpy2 引擎脚本头部就是这种写法）。
@@ -36,33 +38,17 @@ export interface JsSandboxOptions {
   siteKey: string;
   api: string;
   ext: string;
-  host: EngineHost;
+  host: JsSandboxHostPort;
   /** resources/js-lib 目录（模板.js/gbk.js/cat.js 等本地库）；引擎层禁止 import electron，目录由宿主传入 */
   jsLibDir: string;
 }
 
-/** 蜘蛛方法名风格探测结果（写日志用，见任务书"方法名探测"） */
-export type SpiderStyle = 'hiker' | 'drpy' | 'unknown';
-
-/**
- * ★★ 2026-09-30：JS 沙箱的**执行侧接口**（JsSpider 只依赖这一面）。
- *   两个实现：
- *     · `JsSandbox`（本文件）—— 进程内 node:vm（默认/测试/降级）；
- *     · `PooledSandbox`（worker/JsWorkerPool.ts）—— worker 线程里跑同一份 JsSandbox。
- *   后者是为了修「同步 req() 用 spawnSync 实现 → **冻住整个主进程**，指向本机回环时
- *   还会与本地代理互等死锁」的问题（详见 worker/protocol.ts 头注释）。
- */
-export interface JsSandboxLike {
-  readonly siteKey: string;
-  readonly spiderStyle: SpiderStyle;
-  setExt(ext: string): void;
-  ensureLoaded(): Promise<void>;
-  callMethod(names: string[], args: unknown[], timeoutMs: number): Promise<unknown>;
-  destroy(): void;
-}
+/** Compatibility exports: the contract itself is owned by JsSandboxPort. */
+export type { SpiderStyle } from './JsSandboxPort';
+export type JsSandboxLike = JsSpiderRuntimePort;
 
 const SPIDER_METHODS = ['init', 'homeContent', 'homeVideoContent', 'categoryContent', 'detailContent',
-  'searchContent', 'playerContent', 'liveContent', 'proxy', 'localProxy', 'action', 'home', 'homeVid',
+  'searchContent', 'playerContent', 'liveContent', 'proxy', 'localProxy', 'proxyLocal', 'action', 'home', 'homeVid',
   'category', 'detail', 'search', 'play', 'live'];
 
 /** 判定对象"长得像蜘蛛"（两种方法名集合任一） */
@@ -92,10 +78,10 @@ function isJson(text: string): boolean {
   }
 }
 
-export class JsSandbox implements JsSandboxLike {
+export class JsSandbox implements JsSpiderRuntimePort {
   readonly siteKey: string;
   readonly api: string;
-  protected host: EngineHost;
+  protected host: JsSandboxHostPort;
   protected jsLibDir: string;
   private ext: string;
   private ctx: vm.Context | null = null;
@@ -130,8 +116,9 @@ export class JsSandbox implements JsSandboxLike {
     return this.style;
   }
 
-  /** 惰性加载（幂等；失败抛 UnsupportedSourceError，由 JsSpider 捕获降级） */
-  async ensureLoaded(): Promise<void> {
+  /** 惰性加载（幂等；加载失败清除缓存，允许调用方在瞬时错误后重试）。 */
+  async ensureLoaded(signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
     if (this.loaded) return;
     if (this.destroyed) throw new UnsupportedSourceError('DESTROYED', '沙箱已销毁');
     if (!this.loadPromise) {
@@ -140,14 +127,23 @@ export class JsSandbox implements JsSandboxLike {
         throw e;
       });
     }
-    return this.loadPromise;
+    return awaitWithAbort(this.loadPromise, signal);
   }
 
   // ------------------------------------------------------------------
   // 主脚本加载
   // ------------------------------------------------------------------
   private async doLoad(): Promise<void> {
-    const res = await this.host.http.request({ url: this.api, method: 'get', timeoutMs: 20000 });
+    let res;
+    try {
+      res = await this.host.http.request({ url: this.api, method: 'get', timeoutMs: 20000 });
+    } catch (error) {
+      throw new SourceProblemError(
+        'NETWORK',
+        `JS 蜘蛛脚本请求失败：${error instanceof Error ? error.message : String(error)}`,
+        { sourceKey: this.siteKey },
+      );
+    }
     let content = Array.isArray(res.content) ? Buffer.from(res.content).toString('utf-8') : String(res.content ?? '');
     content = content.replace(/^\uFEFF/, '').trim();
     if (isInvalidModuleContent(content)) {
@@ -192,6 +188,7 @@ export class JsSandbox implements JsSandboxLike {
       this.loaded = true;
     } catch (e) {
       if (e instanceof UnsupportedSourceError) throw e;
+      if (e instanceof SourceProblemError) throw e;
       // ★ 2026-09-29：带一行栈帧（minify 脚本只有 1~2 行，位置信息全在列号里）——
       //   drpy/壳类源排障时「Cannot access 'X' before initialization」这类 TDZ 报错没位置等于没法查
       const frame = e instanceof Error && e.stack ? (e.stack.split('\n')[1] ?? '').trim() : '';
@@ -239,11 +236,19 @@ export class JsSandbox implements JsSandboxLike {
     this.ctx = vm.createContext(this.globals);
   }
 
-  /** 调用超时（任务书：首页/分类 20s，其它 15s；超时该次失败返回空，不销毁上下文） */
-  async callMethod(names: string[], args: unknown[], timeoutMs: number): Promise<unknown> {
-    if (this.destroyed) return undefined;
-    await this.ensureLoaded();
-    if (!this.spider) return undefined;
+  /** 按调用区分能力缺失、脚本异常与超时；脚本正常返回的空值仍是成功结果。 */
+  async callMethod(names: string[], args: unknown[], timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
+    throwIfAborted(signal);
+    const requestedOperation = names[0] || 'unknown';
+    const invocation = { sourceKey: this.siteKey, operation: requestedOperation };
+    if (this.destroyed) {
+      throw new SourceProblemError('SPIDER_ERROR', 'JS 沙箱已销毁', invocation);
+    }
+    await this.ensureLoaded(signal);
+    throwIfAborted(signal);
+    if (!this.spider) {
+      throw new SourceProblemError('JS_FORMAT_UNSUPPORTED', 'JS 蜘蛛对象未加载', invocation);
+    }
     let fn: ((...a: unknown[]) => unknown) | null = null;
     let usedName = '';
     for (const n of names) {
@@ -256,15 +261,35 @@ export class JsSandbox implements JsSandboxLike {
     }
     if (!fn) {
       this.warnOnce(`方法 ${names.join('/')} 不存在`);
-      return undefined;
+      throw new SourceProblemError(
+        'OPERATION_UNSUPPORTED',
+        `JS 蜘蛛未实现 ${names.join('/') || '请求操作'}`,
+        { ...invocation, candidates: names },
+      );
     }
     const method = fn;
     const task = Promise.resolve().then(() => method.apply(this.spider, args));
     try {
-      return await withTimeout(task, timeoutMs, `调用超时(${timeoutMs}ms)`);
+      const value = await withTimeout(
+        task,
+        timeoutMs,
+        new SourceProblemError('SPIDER_TIMEOUT', `JS 蜘蛛 ${usedName} 调用超时（>${timeoutMs}ms）`, {
+          ...invocation,
+          operation: usedName,
+        }),
+        signal,
+      );
+      throwIfAborted(signal);
+      return value;
     } catch (e) {
+      throwIfAborted(signal);
+      if (e instanceof SourceProblemError) throw e;
       this.host.logger.e(`js:${this.siteKey} ${usedName} 调用失败`, e);
-      return undefined;
+      throw new SourceProblemError(
+        'SPIDER_ERROR',
+        `JS 蜘蛛 ${usedName} 执行失败：${e instanceof Error ? e.message : String(e)}`,
+        { ...invocation, operation: usedName },
+      );
     }
   }
 
@@ -336,7 +361,16 @@ export class JsSandbox implements JsSandboxLike {
     if (this.inProgress.has(url)) return {}; // 循环依赖兜底
     this.inProgress.add(url);
     try {
-      const res = await this.host.http.request({ url, method: 'get', timeoutMs: 20000 });
+      let res;
+      try {
+        res = await this.host.http.request({ url, method: 'get', timeoutMs: 20000 });
+      } catch (error) {
+        throw new SourceProblemError(
+          'NETWORK',
+          `JS 模块请求失败：${error instanceof Error ? error.message : String(error)}`,
+          { sourceKey: this.siteKey },
+        );
+      }
       let content = Array.isArray(res.content) ? Buffer.from(res.content).toString('utf-8') : String(res.content ?? '');
       content = content.replace(/^\uFEFF/, '').trim();
       if (isInvalidModuleContent(content) || content.startsWith('//bb')) {

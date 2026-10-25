@@ -9,9 +9,9 @@
 //     已修为：键缺失/空值时返回 b（第二参数作为真正默认值）。
 //   - 异常路径仍删键并返回 b（对齐上游）；上游 Hawk.delete(str) 少拼 jsRuntime_ 前缀
 //     属另一上游 bug，此处按任务书要求删除完整键名。
-import type { EngineHost } from '../../ports';
+import type { JsSandboxHostPort } from '../JsSandboxPort';
 
-export function createLocal(host: EngineHost): Record<string, unknown> {
+export function createLocal(host: JsSandboxHostPort): Record<string, unknown> {
   const key = (a: string, b: string): string => `jsRuntime_${a}_${b}`;
   return {
     /** local.get(a, b) —— 返回存储值；键缺失/空值时返回 b（真正默认值）；异常时删键并返回 b */
@@ -48,7 +48,7 @@ export function createLocal(host: EngineHost): Record<string, unknown> {
  * （drpy2.min.js 的 `getItem`），缺失时期望拿到**假值**；沿用上面的修复会返回 **k 本身**
  * （真值）→ drpy 误判"有缓存"→ 返回错误数据。故识别出 drpy 风格后换成这套上游语义。
  */
-export function createLocalUpstream(host: EngineHost): Record<string, unknown> {
+export function createLocalUpstream(host: JsSandboxHostPort): Record<string, unknown> {
   const key = (a: string, b: string): string => `jsRuntime_${a}_${b}`;
   return {
     get(a: string, b: string): string {

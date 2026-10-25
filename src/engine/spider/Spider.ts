@@ -2,14 +2,14 @@
 // 抽象基类，1:1 对齐 ref/app__src__main__java__com__github__catvod__crawler__Spider.java。
 // 默认返回空/降级值，子类按需覆写。Spider.java 的 Context/OkHttpClient 在 Windows 移植中
 // 由注入的 EngineHost（ports.ts）替代，因此 init 签名简化为 (ext)。
-import type { EngineHost } from '../ports';
+import type { SpiderRuntimeHostPort } from './SpiderPorts';
 
-export interface SpiderInit {
+export interface SpiderInit<THost extends SpiderRuntimeHostPort = SpiderRuntimeHostPort> {
   key: string;
   api: string;
   ext: string;
   jar: string;
-  host: EngineHost;
+  host: THost;
   /**
    * 源级调用超时（ms）：来自配置 `timeout`（秒）。JVM/CPython 子进程调用按它设超时，
    * 与聚合搜索的单源超时对齐（「源声明多久就该多久内出结果」）。缺省 20s。
@@ -26,7 +26,7 @@ export abstract class Spider {
   protected api = '';
   protected ext = '';
   protected jar = '';
-  protected host!: EngineHost;
+  protected host!: SpiderRuntimeHostPort;
   /** 源级调用超时（ms），子进程调用用（见 SpiderInit.timeoutMs） */
   readonly timeoutMs: number;
 
@@ -45,9 +45,8 @@ export abstract class Spider {
   }
 
   /**
-   * 最近一次调用中"蜘蛛端"报告的失败原因（可读短句，空串=无线索）。
-   * 基类默认无（同步/CMS 蜘蛛没有子进程日志）；JarSpider 覆写为 bridge 采集值。
-   * 用途：SourceViewModel 在蜘蛛返回空时把笼统文案细化为具体原因。
+   * 兼容入口：运行时准备失败原因（可读短句，空串=无线索）。
+   * JAR/Python 的执行期错误随调用传播，不从这里读取并发调用的诊断。
    */
   get lastReason(): string {
     return '';
@@ -78,13 +77,13 @@ export abstract class Spider {
    * @param timeoutMs 可选的**调用方预算**（聚合搜索会传比源声明更紧的值以加速出结果；
    *                  子进程蜘蛛据此设超时，缺省用源声明 timeout）。
    */
-  searchContent(key: string, quick: boolean, timeoutMs?: number): Promise<string> | string {
-    void key; void quick; void timeoutMs;
+  searchContent(key: string, quick: boolean, timeoutMs?: number, signal?: AbortSignal): Promise<string> | string {
+    void key; void quick; void timeoutMs; void signal;
     return '';
   }
 
-  searchContentPage(key: string, quick: boolean, pg: string, timeoutMs?: number): Promise<string> | string {
-    return this.searchContent(key, quick, timeoutMs);
+  searchContentPage(key: string, quick: boolean, pg: string, timeoutMs?: number, signal?: AbortSignal): Promise<string> | string {
+    return this.searchContent(key, quick, timeoutMs, signal);
   }
 
   /** 播放信息：flag=播放源标识, id=剧集id, vipFlags=需解析的flag列表 */
@@ -108,20 +107,22 @@ export abstract class Spider {
 
   cancelByTag(): void {}
 
-  destroy(): void {}
+  destroy(): void | Promise<void> {}
 
-  /** 本地代理：返回 [mimeType, bytes/Stream] —— v1 不做 */
-  proxyLocal(_params: Record<string, string>): unknown[] | null {
+  /** 本地代理：返回 [mimeType, bytes/Stream]；脚本运行时可异步提供响应。 */
+  proxyLocal(_params: Record<string, string>): unknown[] | null | Promise<unknown[] | null> {
     return null;
   }
 
   /** 代理/源内绑定入口：返回 JSON 字符串（二维码/输入框/302 结构），由调用方解析渲染 */
   proxy(params: Record<string, string>): Promise<string> | string {
-    const r = this.proxyLocal(params);
-    return r == null ? '' : JSON.stringify(r);
+    const result = this.proxyLocal(params);
+    const serialize = (response: unknown[] | null): string => response == null ? '' : JSON.stringify(response);
+    // Preserve synchronous implementations while waiting for async adapters before serialization.
+    return result == null || Array.isArray(result) ? serialize(result) : result.then(serialize);
   }
 
-  action(_action: string): string | null {
+  action(_action: string): string | null | Promise<string | null> {
     return null;
   }
 
@@ -133,4 +134,26 @@ export abstract class Spider {
   proxyPort(): number | null {
     return null;
   }
+}
+
+/** Operations whose default implementations are compatibility stubs, not capabilities. */
+export type SpiderOperation =
+  | 'homeContent'
+  | 'homeVideoContent'
+  | 'categoryContent'
+  | 'detailContent'
+  | 'searchContent'
+  | 'playerContent'
+  | 'liveContent'
+  | 'proxyPort';
+
+/**
+ * Keeps the upstream-compatible base class out of application capability decisions.
+ * An override is supported even when it returns a legitimate empty result; inherited
+ * base stubs are unsupported and must be reported as such by the boundary adapter.
+ */
+export function isSpiderOperationImplemented(spider: Spider, operation: SpiderOperation): boolean {
+  const implementation = spider[operation];
+  const compatibilityStub = Spider.prototype[operation];
+  return typeof implementation === 'function' && implementation !== compatibilityStub;
 }

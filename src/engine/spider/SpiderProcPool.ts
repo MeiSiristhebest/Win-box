@@ -8,7 +8,8 @@
 //    蜘蛛调用绝大多数时间在等网络 → 一个热 JVM 就能跑完整轮 33 源并发搜索，
 //    不必再多开 6 个 JVM（那正是「进源慢、搜索更慢」的根因：冷启动 ×N + 内存 ×N + 杀软扫描 ×N）。
 //  - PER_KEY_CAP 只在「线程池被占满」时兜底扩容；全局上限（内存自适应）防失控。
-//  - 请求超时 = 调用方给的源 timeout；★ **单请求超时不再 kill 进程**（进程里还有别的源的在途请求）。
+//  - 请求超时 = 调用方给的源 timeout；超时请求仍占住真实在途槽到迟到响应，避免超过运行时并发上限。
+//    当同一进程的所有在途调用都已超时后再回收该进程，避免永久占槽，也不影响仍有调用方等待的兄弟请求。
 //  - ★ 空结果与失败必须区分：蜘蛛成功返回 '' 是合法结果（空搜索），不误判失败去回退一次性。
 //  - 空闲 25s 回收冗余进程（保留每 key 1 个热进程）；★ 2026-10-17（B1）起：用户**开始播放**后池整体空闲 30s 再收敛到 1 个。
 //  - 单测默认禁用（VITEST）或 TVBOX_DISABLE_SPIDER_POOL=1 关闭。
@@ -23,7 +24,7 @@ export interface ServeRequest {
 }
 
 /** 池的失败原因（调用方据此决定是否回退一次性：执行超时不回退，见 JarSpiderBridge） */
-export type PoolFailReason = 'timeout' | 'queue-timeout' | 'exit' | 'spawn-error' | 'stdin' | 'lru' | 'idle' | 'dispose';
+export type PoolFailReason = 'timeout' | 'queue-timeout' | 'cancelled' | 'exit' | 'spawn-error' | 'stdin' | 'lru' | 'idle' | 'dispose';
 
 /** 池的结果：ok=false 仅表示进程/传输层失败（调用方应回退一次性）；ok=true + data='' 是合法空结果 */
 export interface PoolResult {
@@ -52,6 +53,10 @@ export interface PendingEntry {
   req: ServeRequest;
   resolve: (r: PoolResult) => void;
   timer: ReturnType<typeof setTimeout>;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+  callerCancelled?: boolean;
+  callerTimedOut?: boolean;
 }
 
 interface QueuedEntry {
@@ -59,6 +64,8 @@ interface QueuedEntry {
   resolve: (r: PoolResult) => void;
   timer: ReturnType<typeof setTimeout>;
   timeoutMs: number;
+  signal?: AbortSignal;
+  onAbort?: () => void;
 }
 
 interface Proc {
@@ -180,8 +187,19 @@ export class SpiderProcPool {
    *   因此这里先找「在途未满」的进程直接派发，只有全都满了才考虑扩容/排队。
    * @param timeoutMs 单请求执行超时（= 源 timeout）；排队等待另有 QUEUE_WAIT_MS 上限。
    */
-  submit(key: string, spec: SpawnSpec, req: ServeRequest, timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, preferredPort?: number): Promise<PoolResult> {
+  submit(
+    key: string,
+    spec: SpawnSpec,
+    req: ServeRequest,
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+    preferredPort?: number,
+    signal?: AbortSignal,
+  ): Promise<PoolResult> {
     return new Promise<PoolResult>((resolve) => {
+      if (signal?.aborted) {
+        resolve({ ok: false, data: '', reason: 'cancelled' });
+        return;
+      }
       let group = this.groups.get(key);
       if (!group) {
         group = [];
@@ -189,8 +207,8 @@ export class SpiderProcPool {
       }
       const owner = preferredPort ? group.find((p) => !p.dead && p.proxyPort === preferredPort) : undefined;
       if (owner) {
-        if (owner.pending.size < MAX_INFLIGHT_PER_PROC) this.dispatch(owner, req, resolve, timeoutMs);
-        else this.enqueue(owner, req, resolve, timeoutMs);
+        if (owner.pending.size < MAX_INFLIGHT_PER_PROC) this.dispatch(owner, req, resolve, timeoutMs, signal);
+        else this.enqueue(owner, req, resolve, timeoutMs, signal);
         return;
       }
       // 1) 组内有进程且其**在途数未满** → 直接派发（并发，行协议按 id 解复用）
@@ -203,7 +221,7 @@ export class SpiderProcPool {
         }
       }
       if (target) {
-        this.dispatch(target, req, resolve, timeoutMs);
+        this.dispatch(target, req, resolve, timeoutMs, signal);
         return;
       }
       // 3) 额度用尽/同 key 已满 → 排队到组内队列最短的进程
@@ -212,13 +230,13 @@ export class SpiderProcPool {
       if (!head) {
         // 组内进程全死（竞态兜底）：额度允许才补一个，否则按失败交调用方回退一次性
         if (this.aliveCount < this.globalCap() || this.reapOneLru(group)) {
-          this.dispatch(this.spawnProc(key, spec), req, resolve, timeoutMs);
+          this.dispatch(this.spawnProc(key, spec), req, resolve, timeoutMs, signal);
         } else {
           resolve({ ok: false, data: '' });
         }
         return;
       }
-      this.enqueue(head, req, resolve, timeoutMs);
+      this.enqueue(head, req, resolve, timeoutMs, signal);
     });
   }
 
@@ -302,19 +320,35 @@ export class SpiderProcPool {
   }
 
   /** 排队：等待期上限 QUEUE_WAIT_MS（排队超时只失败该请求，不牵连进程） */
-  private enqueue(proc: Proc, req: ServeRequest, resolve: (r: PoolResult) => void, timeoutMs: number): void {
-    const entry: QueuedEntry = {
-      req,
-      resolve,
-      timeoutMs,
-      timer: setTimeout(() => {
-        const i = proc.queue.indexOf(entry);
-        if (i >= 0) proc.queue.splice(i, 1);
-        resolve({ ok: false, data: '', reason: 'queue-timeout' }); // 排队超时 → 调用方回退一次性
-      }, QUEUE_WAIT_MS),
+  private enqueue(proc: Proc, req: ServeRequest, resolve: (r: PoolResult) => void, timeoutMs: number, signal?: AbortSignal): void {
+    if (signal?.aborted) {
+      resolve({ ok: false, data: '', reason: 'cancelled' });
+      return;
+    }
+    let entry!: QueuedEntry;
+    const timer = setTimeout(() => {
+      const index = proc.queue.indexOf(entry);
+      if (index >= 0) proc.queue.splice(index, 1);
+      this.detachQueuedEntry(entry);
+      resolve({ ok: false, data: '', reason: 'queue-timeout' }); // 排队超时 → 调用方回退一次性
+    }, QUEUE_WAIT_MS);
+    entry = { req, resolve, timeoutMs, timer, signal };
+    entry.onAbort = () => {
+      const index = proc.queue.indexOf(entry);
+      if (index < 0) return;
+      proc.queue.splice(index, 1);
+      this.detachQueuedEntry(entry);
+      resolve({ ok: false, data: '', reason: 'cancelled' });
     };
     proc.queue.push(entry);
+    signal?.addEventListener('abort', entry.onAbort, { once: true });
+    if (signal?.aborted) entry.onAbort();
     this.drainQueue(proc);
+  }
+
+  private detachQueuedEntry(entry: QueuedEntry): void {
+    clearTimeout(entry.timer);
+    if (entry.signal && entry.onAbort) entry.signal.removeEventListener('abort', entry.onAbort);
   }
 
   /** 队列排水：进程空闲（在途未满）就继续派发 */
@@ -322,24 +356,50 @@ export class SpiderProcPool {
     while (!proc.dead && proc.queue.length > 0 && proc.pending.size < MAX_INFLIGHT_PER_PROC) {
       const entry = proc.queue.shift();
       if (!entry) return;
-      clearTimeout(entry.timer);
-      this.dispatch(proc, entry.req, entry.resolve, entry.timeoutMs);
+      this.detachQueuedEntry(entry);
+      if (entry.signal?.aborted) {
+        entry.resolve({ ok: false, data: '', reason: 'cancelled' });
+        continue;
+      }
+      this.dispatch(proc, entry.req, entry.resolve, entry.timeoutMs, entry.signal);
     }
   }
 
-  private dispatch(proc: Proc, req: ServeRequest, resolve: (r: PoolResult) => void, timeoutMs: number): void {
+  private dispatch(proc: Proc, req: ServeRequest, resolve: (r: PoolResult) => void, timeoutMs: number, signal?: AbortSignal): void {
+    if (signal?.aborted) {
+      resolve({ ok: false, data: '', reason: 'cancelled' });
+      this.drainQueue(proc);
+      return;
+    }
     proc.lastUsed = Date.now();
     const timer = setTimeout(() => {
-      // ★ 三轮：单请求执行超时 **不再 kill 进程** —— 进程里可能还有 20+ 个其它源的在途请求，
-      //   杀掉会把它们一起判失败（用户侧表现为「一两个卡住的源把整轮搜索拖垮」）。
-      //   只失败这一个请求；迟到的应答按 id 找不到 pending 会被丢弃。
       const p = proc.pending.get(req.id);
-      if (!p) return;
-      proc.pending.delete(req.id);
-      resolve({ ok: false, data: '', reason: 'timeout' });
-      this.drainQueue(proc);
+      if (!p || p.callerTimedOut) return;
+      // The caller has timed out, but the JVM/Python method may still be occupying a worker.
+      // Keep its slot until a late response arrives; otherwise repeated timeouts can feed an
+      // unbounded executor/stdin queue behind the runtime's finite worker capacity.
+      p.callerTimedOut = true;
+      if (!p.callerCancelled) resolve({ ok: false, data: '', reason: 'timeout' });
+      // If every underlying request is now abandoned, reclaim the stuck shared process.
+      // Active sibling calls keep their process; their callers never receive a collateral failure.
+      if ([...proc.pending.values()].every((entry) => entry.callerTimedOut)) this.kill(proc, 'timeout');
     }, Math.max(3000, timeoutMs));
-    proc.pending.set(req.id, { req, resolve, timer });
+    const pending: PendingEntry = { req, resolve, timer, signal };
+    pending.onAbort = () => {
+      if (proc.pending.get(req.id) !== pending) return;
+      if (pending.callerCancelled || pending.callerTimedOut) return;
+      pending.callerCancelled = true;
+      // The shared runtime cannot interrupt one invocation without disrupting sibling calls.
+      // Stop waiting for the caller, but retain the slot until the actual work responds or times out.
+      if (pending.signal && pending.onAbort) pending.signal.removeEventListener('abort', pending.onAbort);
+      resolve({ ok: false, data: '', reason: 'cancelled' });
+    };
+    proc.pending.set(req.id, pending);
+    signal?.addEventListener('abort', pending.onAbort, { once: true });
+    if (signal?.aborted) {
+      pending.onAbort();
+      return;
+    }
     const line = JSON.stringify({ id: req.id, className: req.className, method: req.method, args: req.args });
     try {
       if (proc.child.stdin && proc.child.stdin.writable) proc.child.stdin.write(line + '\n');
@@ -347,6 +407,11 @@ export class SpiderProcPool {
     } catch {
       this.kill(proc, 'stdin');
     }
+  }
+
+  private detachPending(entry: PendingEntry): void {
+    clearTimeout(entry.timer);
+    if (entry.signal && entry.onAbort) entry.signal.removeEventListener('abort', entry.onAbort);
   }
 
   /** 回收最久空闲的进程（优先其它 key；同 key 的冗余进程也可回收）→ 腾出全局额度 */
@@ -389,7 +454,7 @@ export class SpiderProcPool {
           const env = JSON.parse(t) as { id?: string; ok?: boolean; data?: string; pp?: number };
           const p = proc.pending.get(env.id ?? '');
           if (p) {
-            clearTimeout(p.timer);
+            this.detachPending(p);
             proc.pending.delete(env.id ?? '');
             proc.lastUsed = Date.now();
             // ★ ok:true 且 data 为空串 = 蜘蛛合法空结果（不触发调用方回退）
@@ -398,10 +463,12 @@ export class SpiderProcPool {
             //   调用方据此记原因 / 触发类缺失兜底重试（见 PoolResult.error 注释）。
             const pp = Number.isInteger(env.pp) && (env.pp as number) > 0 ? (env.pp as number) : undefined;
             if (pp) proc.proxyPort = pp;
-            if (env.ok === false) {
-              p.resolve({ ok: true, data: '', error: String(env.data ?? ''), proxyPort: pp });
-            } else {
-              p.resolve({ ok: true, data: typeof env.data === 'string' ? env.data : '', proxyPort: pp });
+            if (!p.callerCancelled && !p.callerTimedOut) {
+              if (env.ok === false) {
+                p.resolve({ ok: true, data: '', error: String(env.data ?? ''), proxyPort: pp });
+              } else {
+                p.resolve({ ok: true, data: typeof env.data === 'string' ? env.data : '', proxyPort: pp });
+              }
             }
             this.drainQueue(proc);
           }
@@ -423,13 +490,13 @@ export class SpiderProcPool {
     if (proc.dead) return;
     proc.dead = true;
     for (const p of proc.pending.values()) {
-      clearTimeout(p.timer);
+      this.detachPending(p);
       // 传输层失败：ok=false + reason → 上层决定是否回退一次性
-      p.resolve({ ok: false, data: '', reason });
+      if (!p.callerCancelled && !p.callerTimedOut) p.resolve({ ok: false, data: '', reason });
     }
     proc.pending.clear();
     for (const q of proc.queue) {
-      clearTimeout(q.timer);
+      this.detachQueuedEntry(q);
       q.resolve({ ok: false, data: '', reason });
     }
     proc.queue = [];

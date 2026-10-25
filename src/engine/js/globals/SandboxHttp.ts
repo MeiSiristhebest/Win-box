@@ -17,7 +17,7 @@
 //   - 其余（http 路径）：Promise，等价 net.js 的 Promise 包装。
 import { spawnSync } from 'node:child_process';
 import * as iconv from 'iconv-lite';
-import type { EngineHost } from '../../ports';
+import type { JsSandboxHostPort } from '../JsSandboxPort';
 import type { HttpRequest, HttpResponse } from '../../../shared/types';
 
 export interface HttpRes {
@@ -200,7 +200,7 @@ function spawnSyncRequest(req: HttpRequest): HttpRes {
 }
 
 /** 同步请求核心：优先宿主注入实现（测试 mock），否则子进程 */
-function requestSyncIn(host: EngineHost, url: string, opts: HttpOptions): HttpRes {
+function requestSyncIn(host: JsSandboxHostPort, url: string, opts: HttpOptions): HttpRes {
   try {
     const req = toRequest(url, opts);
     if (typeof opts.complete === 'function') return errorRes(); // 同步模式不消费 complete
@@ -247,7 +247,7 @@ function loopbackHint(url: string): string {
  * 构造注入沙箱的 { _http, http, req } 全局。
  * host 通过 opts.__host 传递不优雅 —— 改为闭包捕获（见 buildSandboxGlobals）。
  */
-export function createHttpGlobals(host: EngineHost, siteKey: string): Record<string, unknown> {
+export function createHttpGlobals(host: JsSandboxHostPort, siteKey: string): Record<string, unknown> {
   const logE = (msg: string, err?: unknown): void => host.logger.e(`js:${siteKey} _http ${msg}`, err);
 
   /** 异步请求：异常一律返回错误空响应（Connect.error 语义） */

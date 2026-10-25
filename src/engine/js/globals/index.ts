@@ -7,7 +7,7 @@
 //   - cheerio / CryptoJS 同时注入为全局与 $.require 可取（蜘蛛两种写法都常见）。
 //   - 模板.js / gbk.js / similarity.js / cat.js / utils.js 的加载由 JsSandbox.loadLib 提供。
 //     utils.js 已由自研可执行子集覆盖（原 QuickJS 字节码不可执行），走正常模块加载。
-import type { EngineHost } from '../../ports';
+import type { JsSandboxHostPort } from '../JsSandboxPort';
 import * as cheerio from 'cheerio';
 import { CryptoJS } from './cryptoCompat';
 import { createHttpGlobals } from './SandboxHttp';
@@ -24,7 +24,7 @@ import { joinUrl, parseDomForArray, parseDomForList, parseDomForUrl } from './Ht
  * @param loadLib   $.require(name) 的实现，由 JsSandbox 提供（模块加载管线）
  */
 export function buildSandboxGlobals(
-  host: EngineHost,
+  host: JsSandboxHostPort,
   siteKey: string,
   loadLib: (name: string) => unknown,
 ): Record<string, unknown> {

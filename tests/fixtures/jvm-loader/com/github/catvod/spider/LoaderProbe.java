@@ -1,6 +1,7 @@
 package com.github.catvod.spider;
 
 import android.content.Context;
+import java.util.List;
 
 /** 私有类不能放在 -cp 上：它必须经蜘蛛 JAR 的加载器可见。 */
 public class LoaderProbe {
@@ -21,6 +22,12 @@ public class LoaderProbe {
         return value(Thread.currentThread().getContextClassLoader());
     }
 
+    public String searchContent(String key, boolean quick, String page) throws Exception {
+        String loaded = value(Thread.currentThread().getContextClassLoader());
+        if (key.isEmpty() && !quick && "1".equals(page)) return loaded;
+        return loaded + ":" + key + ":" + quick + ":" + page;
+    }
+
     public String liveContent(String key) throws Exception {
         final String[] result = new String[1];
         Thread child = new Thread(() -> {
@@ -30,6 +37,9 @@ public class LoaderProbe {
         child.start(); child.join();
         return result[0];
     }
+
+    /** An implemented operation may legally return an empty response. */
+    public String playerContent(String flag, String id, List<String> vipFlags) { return ""; }
 
     public String homeVideoContent() throws Exception {
         // 真实实现不在外壳 JAR，只在 shellShimClasses 的独立 JAR。

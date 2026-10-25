@@ -42,11 +42,11 @@ describe('JAR 入口类缺失的隔离兜底', () => {
     const declared = jar('declared', ['fixture/Helper.class']);
     const target = jar('target', [entry, 'fixture/Helper.class']);
     const unrelated = jar('unrelated', ['com/github/catvod/spider/Other.class']);
-    expect(await bridge.call([declared], cls, 'homeContent', [''])).toBe('resolved');
+    expect((await bridge.call([declared], cls, 'homeContent', [''])).output).toBe('resolved');
     const argv = spawn.mock.calls[1][1] as string[];
     expect(argv[argv.indexOf('SpiderRunner') + 1]).toBe(target);
     expect(argv).not.toContain(unrelated);
-    expect(await bridge.call([declared], cls, 'detailContent', ['', 'id'])).toBe('resolved');
+    expect((await bridge.call([declared], cls, 'detailContent', ['', 'id'])).output).toBe('resolved');
     expect(spawn).toHaveBeenCalledTimes(3); // 后续保持同一个候选，不重复走错误 jar
     bridge.dispose();
   });
@@ -55,9 +55,10 @@ describe('JAR 入口类缺失的隔离兜底', () => {
     const { bridge, jar } = setup();
     const declared = jar('declared', ['fixture/Helper.class']);
     jar('version-a', [entry], 'a'); jar('version-b', [entry], 'b');
-    expect(await bridge.call([declared], cls, 'homeContent', [''])).toBe('');
+    const result = await bridge.call([declared], cls, 'homeContent', ['']);
+    expect(result.output).toBe('');
     expect(spawn).toHaveBeenCalledTimes(1);
-    expect(bridge.lastReason).toContain('无法安全选择');
+    expect(result.reason).toContain('无法安全选择');
     bridge.dispose();
   });
 
@@ -65,7 +66,7 @@ describe('JAR 入口类缺失的隔离兜底', () => {
     const { bridge, jar } = setup();
     const declared = jar('declared', ['fixture/Helper.class']);
     jar('url-a', [entry]); jar('url-b', [entry]);
-    expect(await bridge.call([declared], cls, 'homeContent', [''])).toBe('resolved');
+    expect((await bridge.call([declared], cls, 'homeContent', [''])).output).toBe('resolved');
     expect(spawn).toHaveBeenCalledTimes(2);
     bridge.dispose();
   });
@@ -81,7 +82,7 @@ describe('JAR 入口类缺失的隔离兜底', () => {
   it('声明 jar 更新补齐入口后，不继续使用旧候选', async () => {
     const { bridge, jar } = setup();
     const declared = jar('declared', ['fixture/Helper.class']); jar('target', [entry]);
-    expect(await bridge.call([declared], cls, 'homeContent', [''])).toBe('resolved');
+    expect((await bridge.call([declared], cls, 'homeContent', [''])).output).toBe('resolved');
     jar('declared', [entry, 'fixture/Helper.class'], 'new declared build');
     await bridge.call([declared], cls, 'detailContent', ['', 'id']);
     const argv = spawn.mock.calls[2][1] as string[];
@@ -92,7 +93,7 @@ describe('JAR 入口类缺失的隔离兜底', () => {
   it('候选被不同构建覆盖后，丢弃已记住的构建绑定', async () => {
     const { bridge, jar } = setup();
     const declared = jar('declared', ['fixture/Helper.class']); jar('target', [entry]);
-    expect(await bridge.call([declared], cls, 'homeContent', [''])).toBe('resolved');
+    expect((await bridge.call([declared], cls, 'homeContent', [''])).output).toBe('resolved');
     jar('target', [entry], 'different replacement build with new length');
     await bridge.call([declared], cls, 'detailContent', ['', 'id']);
     const argv = spawn.mock.calls[2][1] as string[];

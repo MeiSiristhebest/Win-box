@@ -1,43 +1,49 @@
 // src/engine/spider/SpiderFactory.ts
-// ★ getCSP 二次分发（ApiConfig.java:1456）。仅处理 type=3：按 api 后缀
-//   .js → JsSpider（JS 沙箱）
-//   .py → UnsupportedSpider(UNSUPPORTED_PY)
-//   其它 → JarSpider（jar/dex，等效 DexClassLoader：JVM 桥）—— 需配置 bridge + jar URL
-// 注意：type 0/1/4 不走 getCSP（SourceViewModel 内联处理，见 CmsSource）。
+// Runtime source creation replaces Android's getCSP二次分发（ApiConfig.java:1456）。
+// 注意：type 0/1/4 不走此工厂（由 CmsSource 处理）。
 import type { SourceBean } from '../../shared/types';
 import type { EngineHost } from '../ports';
-import { Spider, DEFAULT_SPIDER_TIMEOUT_MS, type SpiderInit } from './Spider';
+import { Spider, type SpiderInit } from './Spider';
+import { sourceTimeoutMs } from './sourceTimeout';
+export { sourceTimeoutMs } from './sourceTimeout';
 import { SpiderNull } from './SpiderNull';
 import { UnsupportedSpider } from './UnsupportedSpider';
 import { SpiderCache } from './SpiderCache';
-import { JsSpider } from '../js/JsSpider';
-import { JarSpider } from './JarSpider';
-import { PySpider } from './PySpider';
-import type { JarSpiderBridge } from './JarSpiderBridge';
+import type { JarSpiderRuntimePort } from './JarSpiderPorts';
+import type { SpiderFactoryPort } from './SpiderFactoryPort';
+import { createBuiltinSpiderRuntimeProviders } from './createBuiltinSpiderRuntimeProviders';
+import type { SpiderRuntimeProvider } from './SpiderRuntimeProvider';
+import type { PythonSpiderScriptPort } from './PythonSpiderScriptPort';
+import type { PythonSpiderRuntimePort } from './PythonSpiderRuntimePort';
 
-/**
- * 源级超时（ms）：配置 `timeout`（秒）> 0 则用之（clamp [5,60]s，与 SourceViewModel.t 口径一致），
- * 否则回落到 DEFAULT_SPIDER_TIMEOUT_MS。
- * ★ 同源：子进程调用超时（本文件传入 SpiderInit）与聚合搜索的单源 race 都用它 ——
- *   「源声明多久就该多久内出结果」，避免某源无限期占着 worker（历史上表现为「搜半天没结果」）。
- */
-export function sourceTimeoutMs(bean: { timeout?: number } | null | undefined): number {
-  const sec = Number(bean?.timeout) || 0;
-  if (!(sec > 0)) return DEFAULT_SPIDER_TIMEOUT_MS;
-  return Math.min(60_000, Math.max(5_000, Math.round(sec * 1000)));
-}
 
 export interface SpiderFactoryOptions {
-  /** JVM 桥（jar/dex 蜘蛛运行时）。缺省则 jar 蜘蛛降级 */
-  jarBridge?: JarSpiderBridge;
+  /** JVM-backed spider capability; absent runtimes degrade to a typed unsupported adapter. */
+  jarRuntime?: JarSpiderRuntimePort;
+  /** Python execution capability, separate from JVM archive conversion. */
+  pythonRuntime?: PythonSpiderRuntimePort;
+  /** Main-process port for Python script resolution, download, and cache I/O. */
+  pythonScripts?: PythonSpiderScriptPort;
+  /** Ordered protocol extensions. They take precedence over built-in source runtimes. */
+  runtimeProviders?: readonly SpiderRuntimeProvider<EngineHost>[];
+  /** Reports best-effort adapter teardown failures without blocking configuration changes. */
+  onDisposeError?: (error: unknown, spider: Spider) => void;
 }
 
-export class SpiderFactory {
-  private cache = new SpiderCache();
-  private bridge: JarSpiderBridge | undefined;
+export class SpiderFactory implements SpiderFactoryPort<EngineHost> {
+  private readonly cache: SpiderCache;
+  private readonly runtimeProviders: readonly SpiderRuntimeProvider<EngineHost>[];
 
   constructor(opts: SpiderFactoryOptions = {}) {
-    this.bridge = opts.jarBridge;
+    this.cache = new SpiderCache(opts.onDisposeError);
+    this.runtimeProviders = [
+      ...(opts.runtimeProviders ?? []),
+      ...createBuiltinSpiderRuntimeProviders({
+        jarRuntime: opts.jarRuntime,
+        pythonRuntime: opts.pythonRuntime,
+        pythonScripts: opts.pythonScripts,
+      }),
+    ];
   }
 
   /**
@@ -50,10 +56,10 @@ export class SpiderFactory {
     return `${bean.runtimeScope || bean.key}::${sig}`;
   }
 
-  /** 安卓 getCSP(sourceBean) 等价 —— 仅 type=3 */
-  getCSP(bean: SourceBean, host: EngineHost): Spider {
+  /** Creates and caches the runtime adapter selected for a type=3 source. */
+  createForSource(bean: SourceBean, host: EngineHost): Spider {
     return this.cache.getOrPut(this.keyOf(bean), () => {
-      const init: SpiderInit = {
+      const init: SpiderInit<EngineHost> = {
         key: bean.runtimeScope || bean.key,
         api: bean.api,
         ext: bean.ext,
@@ -63,23 +69,9 @@ export class SpiderFactory {
         //   使「蜘蛛卡住」最迟在源声明时间内被 kill（此前池内固定 120s → 表现为「搜半天没结果」）
         timeoutMs: sourceTimeoutMs(bean),
       };
-      const api = bean.api.toLowerCase();
-      // .js —— JS 沙箱（惰性加载；脚本字节码/格式问题在首次调用时降级）
-      if (api.endsWith('.js') || api.includes('.js?')) {
-        return new JsSpider(init);
-      }
-      // .py —— 嵌入式 CPython3 宿主；无桥则降级
-      if (api.includes('.py')) {
-        if (this.bridge) {
-          return new PySpider(init, this.bridge);
-        }
-        return new UnsupportedSpider(init, 'UNSUPPORTED_PY', 'python spider 需要 JVM 桥运行时（bridge 未配置）');
-      }
-      // jar(dex) —— JVM 桥等效 DexClassLoader（site.jar 或全局 spider jar 在运行时解析）
-      if (this.bridge) {
-        return new JarSpider(init, this.bridge);
-      }
-      return new UnsupportedSpider(init, 'UNSUPPORTED_JAR', 'jar(dex) spider 需要 JVM 桥运行时（bridge 未配置）');
+      const provider = this.runtimeProviders.find((candidate) => candidate.supports(bean));
+      if (provider) return provider.create(bean, init);
+      return new UnsupportedSpider(init, 'UNSUPPORTED_FORMAT', '没有已注册的运行时可以处理该蜘蛛源');
     });
   }
 

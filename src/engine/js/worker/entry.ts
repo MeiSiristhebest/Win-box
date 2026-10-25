@@ -4,6 +4,8 @@ import { parentPort, workerData } from 'node:worker_threads';
 import { JsSandbox } from '../JsSandbox';
 import { createRemoteHost } from './remoteHost';
 import type { WorkerReply, WorkerTask } from './protocol';
+import { SourceProblemError } from '../../spider/errors';
+import { UnsupportedSourceError } from '../../util/errors';
 
 interface WorkerData {
   jsLibDir: string;
@@ -25,6 +27,27 @@ function safeClone(v: unknown): unknown {
   } catch {
     return String(v);
   }
+}
+
+function serializeFailure(error: unknown): Extract<WorkerReply, { t: 'err' }>['failure'] {
+  if (error instanceof SourceProblemError) {
+    const detail = error.detail && typeof error.detail === 'object' ? error.detail as Record<string, unknown> : null;
+    return {
+      kind: 'source-problem',
+      code: error.code,
+      message: error.message,
+      ...(detail ? {
+        detail: {
+          ...(typeof detail.sourceKey === 'string' ? { sourceKey: detail.sourceKey } : {}),
+          ...(typeof detail.operation === 'string' ? { operation: detail.operation } : {}),
+        },
+      } : {}),
+    };
+  }
+  if (error instanceof UnsupportedSourceError) {
+    return { kind: 'unsupported-source', message: error.message, reason: error.reason };
+  }
+  return { kind: 'error', message: error instanceof Error ? error.message : String(error) };
 }
 
 port.on('message', (msg: WorkerTask) => {
@@ -56,16 +79,20 @@ port.on('message', (msg: WorkerTask) => {
       }
       if (msg.t === 'call') {
         const sb = sandboxes.get(msg.key);
-        if (!sb) throw new Error(`沙箱未打开（${msg.key}）`);
+        if (!sb) {
+          port.postMessage({
+            t: 'err', id: msg.id,
+            failure: { kind: 'sandbox-missing', message: `沙箱未打开（${msg.key}）` },
+          } satisfies WorkerReply);
+          return;
+        }
         const value = await sb.callMethod(msg.names, msg.args, msg.timeoutMs);
         port.postMessage({ t: 'ok', id: msg.id, value: safeClone(value) } satisfies WorkerReply);
         return;
       }
     } catch (e) {
-      const err = e as { message?: string; reason?: string };
-      const message = `${err.message || String(e)}${err.reason ? `（${err.reason}）` : ''}`;
       const id = msg.t === 'call' || msg.t === 'open' ? msg.id : -1;
-      port.postMessage({ t: 'err', id, message } satisfies WorkerReply);
+      port.postMessage({ t: 'err', id, failure: serializeFailure(e) } satisfies WorkerReply);
     }
   })();
 });

@@ -1,13 +1,15 @@
 // tests/pySpider.spec.ts — .py 蜘蛛（嵌入式 CPython3 宿主 PySpider）适配层单测
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PySpider } from '../src/engine/spider/PySpider';
+import { SourceProblemError } from '../src/engine/spider/errors';
 import { SpiderFactory } from '../src/engine/spider/SpiderFactory';
 import { UnsupportedSpider } from '../src/engine/spider/UnsupportedSpider';
 import type { EngineHost } from '../src/engine/ports';
-import type { JarSpiderBridge } from '../src/engine/spider/JarSpiderBridge';
+import type { PythonSpiderRuntimePort } from '../src/engine/spider/PythonSpiderRuntimePort';
+import type { PythonSpiderScriptLoadResult, PythonSpiderScriptPort } from '../src/engine/spider/PythonSpiderScriptPort';
 import { NullLogger } from '../src/engine/util/logger';
 
 const PY_SRC =
@@ -24,15 +26,20 @@ function makeHost(content: unknown): EngineHost {
   } as unknown as EngineHost;
 }
 
-function makeBridge(calls: { pyPath: string; cls: string; method: string; args: string[] }[], cacheDir: string) {
+function makeBridge(calls: { pyPath: string; cls: string; method: string; args: string[]; timeoutMs?: number }[], cacheDir: string): PythonSpiderRuntimePort {
   return {
-    pyCacheDir: cacheDir,
-    lastReason: '',
-    callPython: async (pyPath: string, cls: string, method: string, args: string[]) => {
-      calls.push({ pyPath, cls, method, args });
-      return '{"list":[]}';
+    pyRuntimeReady: () => true,
+    prewarmPythonRuntime: async () => cacheDir,
+    prewarmPython: () => 0,
+    callPython: async (pyPath: string, cls: string, method: string, args: string[], timeoutMs?: number) => {
+      calls.push({ pyPath, cls, method, args, timeoutMs });
+      return { ok: true, output: '{"list":[]}', reason: '', failureKind: null, problemCode: null };
     },
-  } as unknown as JarSpiderBridge;
+  };
+}
+
+function makeScripts(path = 'C:/cache/source.py', load: () => Promise<PythonSpiderScriptLoadResult> = async () => ({ status: 'ready', path })): PythonSpiderScriptPort {
+  return { status: () => ({ path, available: true }), load };
 }
 
 const tmpDirs: string[] = [];
@@ -52,26 +59,71 @@ afterEach(() => {
   tmpDirs.length = 0;
 });
 
-describe('SpiderFactory.getCSP — .py 分支', () => {
+describe('SpiderFactory.createForSource — .py 分支', () => {
   const bean = (api: string) => ({ key: 'k', type: 3, api, ext: '', jar: '' });
   it('有 bridge → 返回 PySpider', () => {
-    const f = new SpiderFactory({ jarBridge: {} as JarSpiderBridge });
-    const sp = f.getCSP(bean('http://x/a.py') as never, makeHost([]));
+    const f = new SpiderFactory({ pythonRuntime: {} as PythonSpiderRuntimePort, pythonScripts: makeScripts() });
+    const sp = f.createForSource(bean('http://x/a.py') as never, makeHost([]));
     expect(sp).toBeInstanceOf(PySpider);
   });
   it('无 bridge → 降级 UnsupportedSpider', () => {
     const f = new SpiderFactory();
-    const sp = f.getCSP(bean('http://x/a.py') as never, makeHost([]));
+    const sp = f.createForSource(bean('http://x/a.py') as never, makeHost([]));
     expect(sp).toBeInstanceOf(UnsupportedSpider);
   });
 });
 
 describe('PySpider — 方法→callPython 的参数契约', () => {
+  it('preserves a typed timeout from the runtime instead of relabeling it as missing Python', async () => {
+    const cacheDir = tmpCache();
+    const bridge: PythonSpiderRuntimePort = {
+      pyRuntimeReady: () => true,
+      prewarmPythonRuntime: async () => cacheDir,
+      prewarmPython: () => 0,
+      callPython: async () => ({
+        ok: false,
+        output: '',
+        reason: '蜘蛛调用超时',
+        failureKind: null,
+        problemCode: 'SPIDER_TIMEOUT',
+      }),
+    };
+    const sp = new PySpider({ key: 'py', api: 'https://x/a.py', ext: '', jar: '', host: makeHost(Array.from(Buffer.from(PY_SRC))) }, bridge, makeScripts());
+
+    await expect(sp.homeContent(true)).rejects.toMatchObject({ code: 'SPIDER_TIMEOUT', message: '蜘蛛调用超时' });
+  });
+
+  it('preserves a typed missing-runtime error from the Python bridge', async () => {
+    const cacheDir = tmpCache();
+    const bridge: PythonSpiderRuntimePort = {
+      pyRuntimeReady: () => true,
+      prewarmPythonRuntime: async () => cacheDir,
+      prewarmPython: () => 0,
+      callPython: async () => { throw new SourceProblemError('PY_UNSUPPORTED', '嵌入式 Python 运行时缺失'); },
+    };
+    const sp = new PySpider({ key: 'py', api: 'https://x/a.py', ext: '', jar: '', host: makeHost(Array.from(Buffer.from(PY_SRC))) }, bridge, makeScripts());
+
+    await expect(sp.homeContent(true)).rejects.toMatchObject({ code: 'PY_UNSUPPORTED' });
+  });
+
+  it('classifies an unexpected runtime execution exception as a spider error', async () => {
+    const cacheDir = tmpCache();
+    const bridge: PythonSpiderRuntimePort = {
+      pyRuntimeReady: () => true,
+      prewarmPythonRuntime: async () => cacheDir,
+      prewarmPython: () => 0,
+      callPython: async () => { throw new Error('runner protocol failed'); },
+    };
+    const sp = new PySpider({ key: 'py', api: 'https://x/a.py', ext: '', jar: '', host: makeHost(Array.from(Buffer.from(PY_SRC))) }, bridge, makeScripts());
+
+    await expect(sp.homeContent(true)).rejects.toMatchObject({ code: 'SPIDER_ERROR', message: 'runner protocol failed' });
+  });
+
   it('homeContent 调用 bridge.callPython(…, "homeContent", [ext])', async () => {
     const cacheDir = tmpCache();
     const calls: { pyPath: string; cls: string; method: string; args: string[] }[] = [];
     const bridge = makeBridge(calls, cacheDir);
-    const sp = new PySpider({ key: 'py', api: 'https://x/a.py', ext: '{"siteUrl":"https://s"}', jar: '', host: makeHost(Array.from(Buffer.from(PY_SRC))) }, bridge);
+    const sp = new PySpider({ key: 'py', api: 'https://x/a.py', ext: '{"siteUrl":"https://s"}', jar: '', host: makeHost(Array.from(Buffer.from(PY_SRC))) }, bridge, makeScripts());
     await sp.homeContent(true);
     expect(calls.length).toBe(1);
     expect(calls[0].method).toBe('homeContent');
@@ -80,84 +132,72 @@ describe('PySpider — 方法→callPython 的参数契约', () => {
     expect(sent.ali).toBe('TK');
   });
 
+  it('defaults to the configured source timeout and preserves a tighter caller budget', async () => {
+    const cacheDir = tmpCache();
+    const calls: { pyPath: string; cls: string; method: string; args: string[]; timeoutMs?: number }[] = [];
+    const bridge = makeBridge(calls, cacheDir);
+    const spider = new PySpider({
+      key: 'py',
+      api: 'https://x/a.py',
+      ext: '',
+      jar: '',
+      timeoutMs: 4321,
+      host: makeHost(Array.from(Buffer.from(PY_SRC))),
+    }, bridge, makeScripts());
+
+    await spider.homeContent(true);
+    await spider.searchContent('query', false, 1250);
+
+    expect(calls.map(call => call.timeoutMs)).toEqual([4321, 1250]);
+  });
+
   it('className 缺省 Spider；name= 可覆盖', async () => {
     const cacheDir = tmpCache();
     const calls: { cls: string }[] = [];
     const bridge = makeBridge(calls as never, cacheDir);
-    const a = new PySpider({ key: 'a', api: 'https://x/a.py', ext: '', jar: '', host: makeHost(Array.from(Buffer.from(PY_SRC))) }, bridge);
+    const a = new PySpider({ key: 'a', api: 'https://x/a.py', ext: '', jar: '', host: makeHost(Array.from(Buffer.from(PY_SRC))) }, bridge, makeScripts());
     await a.homeContent(true);
     expect(calls[0].cls).toBe('Spider');
-    const b = new PySpider({ key: 'b', api: 'https://x/b.py?name=Spider2', ext: '', jar: '', host: makeHost(Array.from(Buffer.from(PY_SRC))) }, bridge);
+    const b = new PySpider({ key: 'b', api: 'https://x/b.py?name=Spider2', ext: '', jar: '', host: makeHost(Array.from(Buffer.from(PY_SRC))) }, bridge, makeScripts());
     await b.homeContent(true);
     expect(calls[1].cls).toBe('Spider2');
-  });
-
-  it('脚本下载 + 缓存命中：两次调用只下一次', async () => {
-    const cacheDir = tmpCache();
-    const calls: unknown[] = [];
-    const bridge = makeBridge(calls as never, cacheDir);
-    let httpCalls = 0;
-    const host = {
-      http: {
-        request: async () => {
-          httpCalls += 1;
-          return { status: 200, headers: {}, content: Array.from(Buffer.from(PY_SRC)), finalUrl: '' };
-        },
-      },
-      kv: {},
-      logger: NullLogger,
-      driveTokens: () => ({}),
-    } as unknown as EngineHost;
-    const sp = new PySpider({ key: 'py', api: 'https://x/a.py', ext: '', jar: '', host }, bridge);
-    await sp.homeContent(true);
-    await sp.homeContent(true);
-    expect(httpCalls).toBe(1);
   });
 
   it('脚本下载失败 → 直接抛错（A1，不再静默返回空串）', async () => {
     const cacheDir = tmpCache();
     const calls: unknown[] = [];
     const bridge = makeBridge(calls as never, cacheDir);
-    const host = {
-      http: { request: async () => { throw new Error('connect timeout'); } },
-      kv: {}, logger: NullLogger, driveTokens: () => ({}),
-    } as unknown as EngineHost;
-    const sp = new PySpider({ key: 'py', api: 'https://x/a.py', ext: '', jar: '', host }, bridge);
+    const scripts = makeScripts('C:/cache/source.py', async () => ({ status: 'failed', code: 'SCRIPT_DOWNLOAD_FAILED', detail: 'connect timeout' }));
+    const sp = new PySpider({ key: 'py', api: 'https://x/a.py', ext: '', jar: '', host: makeHost([]) }, bridge, scripts);
     await expect(sp.homeContent(true)).rejects.toThrow(/加载失败/);
     expect(calls.length).toBe(0);
+  });
+
+  it('cancels one search waiter without cancelling a shared script download for another call', async () => {
+    const cacheDir = tmpCache();
+    const calls: unknown[] = [];
+    const bridge = makeBridge(calls as never, cacheDir);
+    let finishDownload!: () => void;
+    const scripts = makeScripts('C:/cache/shared.py', () => new Promise(resolve => { finishDownload = () => resolve({ status: 'ready', path: 'C:/cache/shared.py' }); }));
+    const spider = new PySpider({ key: 'py', api: 'https://x/shared.py', ext: '', jar: '', host: makeHost([]) }, bridge, scripts);
+    const controller = new AbortController();
+    const cancelledSearch = spider.searchContent('old query', false, 1000, controller.signal);
+    const activeSearch = spider.searchContent('current query', false, 1000);
+
+    controller.abort(new Error('query superseded'));
+    await expect(cancelledSearch).rejects.toMatchObject({ name: 'AbortError' });
+
+    finishDownload();
+    await expect(activeSearch).resolves.toBe('{"list":[]}');
+    expect(calls).toHaveLength(1);
   });
 
   it('非 http 脚本地址 → 直接抛错（不下载）', async () => {
     const cacheDir = tmpCache();
     const calls: unknown[] = [];
     const bridge = makeBridge(calls as never, cacheDir);
-    const sp = new PySpider({ key: 'py', api: './a.py', ext: '', jar: '', host: makeHost([]) }, bridge);
+    const sp = new PySpider({ key: 'py', api: './a.py', ext: '', jar: '', host: makeHost([]) }, bridge, makeScripts('C:/cache/source.py', async () => ({ status: 'failed', code: 'INVALID_ADDRESS' })));
     await expect(sp.homeContent(true)).rejects.toThrow(/不是 http\(s\)/);
-  });
-
-  it('file:// 本地 .py 存在 → 直接用本地文件（不下载、不缓存副本）', async () => {
-    const cacheDir = tmpCache();
-    const calls: { pyPath: string; cls: string; method: string; args: string[] }[] = [];
-    const bridge = makeBridge(calls, cacheDir);
-    const local = join(tmpdir(), `pyfile-${Date.now()}.py`);
-    tmpDirs.push(local);
-    writeFileSync(local, PY_SRC);
-    const sp = new PySpider({ key: 'py', api: `file:///${local.replace(/\\/g, '/')}`, ext: '', jar: '', host: makeHost([]) }, bridge);
-    await sp.homeContent(true);
-    expect(calls.length).toBe(1);
-    expect(calls[0].pyPath).toBe(local);
-    expect(calls[0].method).toBe('homeContent');
-  });
-
-  it('file:// 本地 .py 不存在 → 抛 SourceProblemError 含「本地 .py 文件不存在」', async () => {
-    const cacheDir = tmpCache();
-    const calls: unknown[] = [];
-    const bridge = makeBridge(calls as never, cacheDir);
-    const sp = new PySpider(
-      { key: 'py', api: 'file:///C:/definitely-not-exist-xyz.py', ext: '', jar: '', host: makeHost([]) },
-      bridge,
-    );
-    await expect(sp.homeContent(true)).rejects.toThrow(/本地 \.py 文件不存在/);
     expect(calls.length).toBe(0);
   });
 
@@ -165,9 +205,10 @@ describe('PySpider — 方法→callPython 的参数契约', () => {
     const cacheDir = tmpCache();
     const calls: { method: string; args: string[] }[] = [];
     const bridge = makeBridge(calls as never, cacheDir);
-    const sp = new PySpider({ key: 'py', api: 'https://x/a.py', ext: '', jar: '', host: makeHost(Array.from(Buffer.from(PY_SRC))) }, bridge);
+    const sp = new PySpider({ key: 'py', api: 'https://x/a.py', ext: '', jar: '', host: makeHost(Array.from(Buffer.from(PY_SRC))) }, bridge, makeScripts());
     await sp.categoryContent('1', '2', true, { f1: 'v1' });
     await sp.detailContent(['id1', 'id2']);
+    await sp.searchContent('kw', false);
     await sp.searchContentPage('kw', true, '3');
     expect(calls[0].method).toBe('categoryContent');
     expect(calls[0].args[1]).toBe('1');
@@ -176,7 +217,8 @@ describe('PySpider — 方法→callPython 的参数契约', () => {
     expect(calls[1].method).toBe('detailContent');
     expect(JSON.parse(calls[1].args[1])).toEqual(['id1', 'id2']);
     expect(calls[2].method).toBe('searchContent');
-    expect(calls[2].args[1]).toBe('kw');
-    expect(calls[2].args[3]).toBe('3'); // pg 落到 PythonRunner 的 r2
+    expect(calls[2].args.slice(1)).toEqual(['kw', 'false']);
+    expect(calls[3].method).toBe('searchContent');
+    expect(calls[3].args.slice(1)).toEqual(['kw', 'true', '3']);
   });
 });

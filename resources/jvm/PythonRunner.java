@@ -68,11 +68,13 @@ public class PythonRunner {
         result = invoke(sp, "detailContent", parseJsonValue(pi, r0, "[]"));
       } else if ("searchContent".equals(method)) {
         PyString key = new PyString(r0);
-        PyBoolean quick = new PyBoolean(false);
-        if (!r2.isEmpty()) {
+        boolean hasQuick = "true".equalsIgnoreCase(r1) || "false".equalsIgnoreCase(r1);
+        PyBoolean quick = new PyBoolean(hasQuick && Boolean.parseBoolean(r1));
+        String page = hasQuick ? r2 : (!r2.isEmpty() ? r2 : r1);
+        if (!page.isEmpty()) {
           // searchContent(key, quick, pg) 优先，脚本无 3 参签名则回退 2 参
           try {
-            result = invoke(sp, "searchContent", key, quick, new PyString(r2));
+            result = invoke(sp, "searchContent", key, quick, new PyString(page));
           } catch (RuntimeException fallback) {
             result = invoke(sp, "searchContent", key, quick);
           }

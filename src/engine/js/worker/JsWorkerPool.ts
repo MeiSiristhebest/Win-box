@@ -8,10 +8,17 @@
 //   超时即 `terminate()` 杀掉重建（旧实现只能干等到 V8 返回）。
 import { Worker } from 'node:worker_threads';
 import { readFileSync } from 'node:fs';
-import type { EngineHost } from '../../ports';
 import type { KVStore, Logger } from '../../../shared/types';
-import type { JsSandboxLike, SpiderStyle } from '../JsSandbox';
+import type { JsSandboxHostPort, JsSpiderRuntimePort, SpiderStyle } from '../JsSandboxPort';
 import { SAB_HEADER, type HostCall, type WorkerReply, type WorkerTask } from './protocol';
+import { SourceProblemError } from '../../spider/errors';
+import { UnsupportedSourceError } from '../../util/errors';
+import { abortError, throwIfAborted } from '../../util/abort';
+
+interface QueuedWorkerTask {
+  start(): void;
+  cancel(): void;
+}
 
 /**
  * 池容量：★ 2026-10-17（B2）由 4 下调到 3（用户报「后台跑着五六个子进程、太臃肿」）。
@@ -28,7 +35,7 @@ interface PoolWorker {
   w: Worker;
   /** 该 worker 承载的源 key（粘性：同一源固定落同一 worker，保住沙箱内状态） */
   keys: Set<string>;
-  queue: Array<() => void>;
+  queue: QueuedWorkerTask[];
   running: boolean;
   /** ★ 2026-10-17（B2）：最近一次承接任务的时刻（空闲回收据此判断，见 reclaimIdle） */
   lastUsed: number;
@@ -39,9 +46,23 @@ interface PoolWorker {
   down: boolean;
 }
 
+class WorkerSandboxMissingError extends Error {}
+
+function workerFailureError(failure: Extract<WorkerReply, { t: 'err' }>['failure']): Error {
+  switch (failure.kind) {
+    case 'source-problem':
+      return new SourceProblemError(failure.code, failure.message, failure.detail);
+    case 'unsupported-source':
+      return new UnsupportedSourceError(failure.message, failure.reason);
+    case 'sandbox-missing': return new WorkerSandboxMissingError(failure.message);
+    case 'error':
+      return new Error(failure.message);
+  }
+}
+
 /** 与 JsSandbox 同形（JsSpider 只依赖这个面）—— 见 JsSandbox.ts 的 JsSandboxLike */
 
-class PooledSandbox implements JsSandboxLike {
+class PooledSandbox implements JsSpiderRuntimePort {
   readonly siteKey: string;
   spiderStyle: SpiderStyle = 'unknown';
   private ext: string;
@@ -57,24 +78,35 @@ class PooledSandbox implements JsSandboxLike {
     this.pool.fire(this.siteKey, { t: 'setExt', key: this.siteKey, ext: this.ext });
   }
 
-  async ensureLoaded(): Promise<void> {
+  async ensureLoaded(signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
     // ★ worker 被终止（打开/调用超时、崩溃）会连同其上的沙箱一起消失 —— 此时必须**重开**，
     //   否则后续调用永远报「沙箱未打开（key）」（实测：单源搜索 Cat_97 直接失败）。
     if (this.opened && this.pool.isOpen(this.siteKey)) return;
-    this.spiderStyle = (await this.pool.open(this.siteKey, this.api, this.ext)) as SpiderStyle;
+    const alreadyOpenStyle = this.pool.getOpenStyle(this.siteKey);
+    if (alreadyOpenStyle !== undefined) {
+      this.spiderStyle = alreadyOpenStyle;
+      this.opened = true;
+      return;
+    }
+    this.spiderStyle = (await this.pool.open(this.siteKey, this.api, this.ext, signal)) as SpiderStyle;
+    throwIfAborted(signal);
     this.opened = true;
   }
 
-  async callMethod(names: string[], args: unknown[], timeoutMs: number): Promise<unknown> {
-    await this.ensureLoaded();
+  async callMethod(names: string[], args: unknown[], timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
+    await this.ensureLoaded(signal);
     try {
-      return await this.pool.call(this.siteKey, names, args, timeoutMs);
+      const value = await this.pool.call(this.siteKey, names, args, timeoutMs, signal);
+      throwIfAborted(signal);
+      return value;
     } catch (e) {
+      throwIfAborted(signal);
       // 宿主 worker 在 open 与 call 之间被摘除（竞态）→ 重开一次再试；其余错误如实抛出
-      if (!/沙箱未打开/.test((e as Error).message || '')) throw e;
+      if (!(e instanceof WorkerSandboxMissingError)) throw e;
       this.opened = false;
-      await this.ensureLoaded();
-      return this.pool.call(this.siteKey, names, args, timeoutMs);
+      await this.ensureLoaded(signal);
+      return this.pool.call(this.siteKey, names, args, timeoutMs, signal);
     }
   }
 
@@ -92,16 +124,22 @@ export class JsWorkerPool {
   private route = new Map<string, PoolWorker>();
   /** key → 已成功 open 的 worker（沙箱生命周期与 worker 绑定；worker 摘除时同步失效） */
   private openedOn = new Map<string, PoolWorker>();
+  /** key → 已打开脚本的风格；底层 open 回执可能晚于已取消的调用方到达。 */
+  private openedStyle = new Map<string, SpiderStyle>();
 
   /** ★ 2026-10-17（B2）：空闲回收定时器（`unref`，不阻进程退出） */
   private reclaimTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
-    private readonly host: EngineHost,
+    private readonly host: JsSandboxHostPort,
     private readonly workerFile: string,
   ) {
     this.reclaimTimer = setInterval(() => this.reclaimIdle(), RECLAIM_INTERVAL_MS);
     this.reclaimTimer.unref?.();
+  }
+
+  createSandbox(init: { siteKey: string; api: string; ext: string }): JsSpiderRuntimePort {
+    return new PooledSandbox(this, init.siteKey, init.api, init.ext);
   }
 
   /** 懒读 worker 代码（打包态在 asar 内也能 readFileSync；用 eval 启动，避路径解析问题） */
@@ -176,7 +214,7 @@ export class JsWorkerPool {
         pw.pending.delete(msg.id);
         clearTimeout(task.timer);
         if (msg.t === 'ok') task.resolve(msg.value);
-        else task.reject(new Error(msg.message));
+        else task.reject(workerFailureError(msg.failure));
       }
     }
   }
@@ -210,7 +248,12 @@ export class JsWorkerPool {
     const i = this.workers.indexOf(pw);
     if (i >= 0) this.workers.splice(i, 1);
     for (const [k, w] of this.route.entries()) if (w === pw) this.route.delete(k);
-    for (const [k, w] of this.openedOn.entries()) if (w === pw) this.openedOn.delete(k);
+    for (const [k, w] of this.openedOn.entries()) {
+      if (w === pw) {
+        this.openedOn.delete(k);
+        this.openedStyle.delete(k);
+      }
+    }
     pw.keys.clear();
     this.host.logger.w(`js-worker 已摘除（${reason}），下次调用自动重建`);
   }
@@ -227,20 +270,74 @@ export class JsWorkerPool {
   }
 
   /** 同一 worker 内 FIFO（跨源互不干扰；沙箱内状态安全） */
-  private run<T>(pw: PoolWorker, fn: () => Promise<T>): Promise<T> {
+  private run<T>(pw: PoolWorker, fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const go = (): void => {
+      let started = false;
+      let callerSettled = false;
+      let entry: QueuedWorkerTask;
+      const removeAbortListener = (): void => signal?.removeEventListener('abort', cancel);
+      const cancel = (): void => {
+        if (callerSettled) return;
+        callerSettled = true;
+        if (!started) {
+          const index = pw.queue.indexOf(entry);
+          if (index >= 0) pw.queue.splice(index, 1);
+        }
+        removeAbortListener();
+        reject(signal ? abortError(signal) : new Error('操作已取消'));
+      };
+      const start = (): void => {
+        if (started || callerSettled) return;
+        if (signal?.aborted) {
+          cancel();
+          return;
+        }
+        started = true;
+        if (pw.down) {
+          callerSettled = true;
+          removeAbortListener();
+          reject(new Error('JS worker 已退出'));
+          return;
+        }
         pw.running = true;
         pw.lastUsed = Date.now(); // ★ 2026-10-17（B2）：刷新活跃时刻（空闲回收据此判断）
-        fn()
-          .then(resolve, reject)
+        Promise.resolve()
+          .then(() => callerSettled ? undefined as T : fn())
+          .then(
+            (value) => {
+              if (callerSettled) return;
+              callerSettled = true;
+              removeAbortListener();
+              resolve(value);
+            },
+            (error: unknown) => {
+              if (callerSettled) return;
+              callerSettled = true;
+              removeAbortListener();
+              reject(error);
+            },
+          )
           .finally(() => {
+            // An active worker call cannot be interrupted without killing sibling sandboxes.
+            // Keep the serialized slot until its real reply/timeout, even if the caller left.
+            removeAbortListener();
             pw.running = false;
-            pw.queue.shift()?.();
+            pw.queue.shift()?.start();
           });
       };
-      if (pw.running) pw.queue.push(go);
-      else go();
+      entry = { start, cancel };
+      if (signal?.aborted) {
+        cancel();
+        return;
+      }
+      signal?.addEventListener('abort', cancel, { once: true });
+      if (signal?.aborted) {
+        cancel();
+        return;
+      }
+      if (pw.running) {
+        pw.queue.push(entry);
+      } else start();
     });
   }
 
@@ -278,7 +375,8 @@ export class JsWorkerPool {
   }
 
   /** 调用蜘蛛方法（带超时；超时 → 杀掉该 worker） */
-  call(key: string, names: string[], args: unknown[], timeoutMs: number): Promise<unknown> {
+  call(key: string, names: string[], args: unknown[], timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
+    throwIfAborted(signal);
     const pw = this.pick(key);
     const budget = Math.max(3000, timeoutMs + 1000);
     return this.run(pw, () =>
@@ -286,9 +384,14 @@ export class JsWorkerPool {
         pw,
         budget,
         `调用超时（>${Math.round(budget / 1000)}s），沙箱已终止`,
-        new Error(`JS 蜘蛛调用超时（>${Math.round(timeoutMs / 1000)}s），已终止其沙箱`),
+        new SourceProblemError(
+          'SPIDER_TIMEOUT',
+          `JS 蜘蛛调用超时（>${Math.round(timeoutMs / 1000)}s），已终止其沙箱`,
+          { sourceKey: key, operation: names[0] || 'unknown' },
+        ),
         (id) => ({ t: 'call', id, key, names, args, timeoutMs }),
       ),
+      signal,
     );
   }
 
@@ -297,26 +400,40 @@ export class JsWorkerPool {
    * ★ 失败**必须 reject**（脚本 404/语法错/字节码…）：调用方（JsSpider.getSandbox）据此给该源
    *   一次性降级；此前失败回执落空 → 只能等 OPEN_TIMEOUT 杀 worker，表现为「JS 源连环打开超时」。
    */
-  open(key: string, api: string, ext: string): Promise<string> {
+  open(key: string, api: string, ext: string, signal?: AbortSignal): Promise<string> {
+    throwIfAborted(signal);
     const pw = this.pick(key);
     return this.run(pw, () =>
       this.invoke<string>(
         pw,
         OPEN_TIMEOUT,
         '打开超时（脚本加载/init 无响应）',
-        new Error(`JS 蜘蛛脚本打开超时（>${Math.round(OPEN_TIMEOUT / 1000)}s），已终止其沙箱`),
+        new SourceProblemError(
+          'SPIDER_TIMEOUT',
+          `JS 蜘蛛脚本打开超时（>${Math.round(OPEN_TIMEOUT / 1000)}s），已终止其沙箱`,
+          { sourceKey: key },
+        ),
         (id) => ({ t: 'open', id, key, api, ext }),
-      ).then((v) => String(v ?? 'unknown')),
-    ).then((style) => {
-      this.openedOn.set(key, pw); // 沙箱落在这台 worker 上（它被摘除时此记录同步失效 → 上层重开）
-      return style;
-    });
+      ).then((v) => {
+        const style = String(v ?? 'unknown') as SpiderStyle;
+        // 记录底层 worker 回执，而不是 run() 的调用方结果：调用方可先取消等待，
+        // 但已经开始的 open 仍会运行并占用该源的 worker 状态。
+        this.openedOn.set(key, pw);
+        this.openedStyle.set(key, style);
+        return style;
+      }),
+      signal,
+    );
   }
 
   /** 该 key 的沙箱当前是否活在某个 worker 上（PooledSandbox 据此决定是否重开） */
   isOpen(key: string): boolean {
     const w = this.openedOn.get(key);
     return !!w && !w.down && this.workers.includes(w);
+  }
+
+  getOpenStyle(key: string): SpiderStyle | undefined {
+    return this.isOpen(key) ? this.openedStyle.get(key) : undefined;
   }
 
   forget(key: string): void {
@@ -326,6 +443,7 @@ export class JsWorkerPool {
       this.route.delete(key);
     }
     this.openedOn.delete(key);
+    this.openedStyle.delete(key);
   }
 
   /**
@@ -357,14 +475,15 @@ export class JsWorkerPool {
     this.workers = [];
     this.route.clear();
     this.openedOn.clear();
+    this.openedStyle.clear();
   }
 }
 
 /** 「池化沙箱」工厂：注入到 EngineHost.jsSandboxFactory（测试/降级不注入 → 进程内 node:vm） */
 export function createPooledSandboxFactory(
-  host: EngineHost,
+  host: JsSandboxHostPort,
   workerFile: string,
-): (init: { siteKey: string; api: string; ext: string }) => JsSandboxLike {
+): (init: { siteKey: string; api: string; ext: string }) => JsSpiderRuntimePort {
   const pool = new JsWorkerPool(host, workerFile);
-  return (init) => new PooledSandbox(pool, init.siteKey, init.api, init.ext);
+  return (init) => pool.createSandbox(init);
 }

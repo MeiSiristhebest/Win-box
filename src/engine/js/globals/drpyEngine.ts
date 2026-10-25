@@ -9,13 +9,13 @@
 //   （失败不抛、返回空串/兜底值），与"脚本细节问题不该炸整源"的既有取向一致。
 //   （包内脚本的 `log` 一律自带本地定义，故不补。）
 import { createHash } from 'node:crypto';
-import type { EngineHost } from '../../ports';
+import type { JsSandboxHostPort } from '../JsSandboxPort';
 import { toRequest, type HttpOptions } from './SandboxHttp';
 
 /** batchFetch 单请求超时上限：脚本里 `timeout: 15000` 这类按**毫秒**书写的值会被 toRequest 当秒放大，这里封顶 */
 const BATCH_FETCH_MAX_MS = 30_000;
 
-export function createDrpyEngineGlobals(host: EngineHost): Record<string, unknown> {
+export function createDrpyEngineGlobals(host: JsSandboxHostPort): Record<string, unknown> {
   /** safeJSONParse(text, def?) —— 解析失败返回 def（缺省 null），脚本按真值继续 */
   const safeJSONParse = (text: unknown, def: unknown = null): unknown => {
     if (text == null) return def;

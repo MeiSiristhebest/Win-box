@@ -1,20 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JarSpider } from '../src/engine/spider/JarSpider';
-import type { JarSpiderBridge } from '../src/engine/spider/JarSpiderBridge';
+import type { JarSpiderRuntimePort } from '../src/engine/spider/JarSpiderPorts';
 import type { EngineHost } from '../src/engine/ports';
 import { NullLogger } from '../src/engine/util/logger';
 
 const url = 'https://example.com/spider.jar';
 function setup(jar = url) {
   const bridge = {
-    defaultJar: '', lastReason: '', peekConverted: vi.fn(() => ''),
+    defaultJar: '', peekConverted: vi.fn(() => ''),
     conversionFailure: vi.fn((_url: string) => ''), pendingConvert: vi.fn((): Promise<string> | null => null),
     conversionProgress: vi.fn((): { elapsedMs: number; attached: boolean; stage: 'download' | 'convert' } | null => null), warmup: vi.fn(async () => undefined),
     ensureConverted: vi.fn(async () => '/cache/spider.jar'),
-    resolvePaths: vi.fn(() => ['/cache/spider.jar']), call: vi.fn(async () => '{}'),
+    resolvePaths: vi.fn(() => ['/cache/spider.jar']), call: vi.fn<JarSpiderRuntimePort['call']>(async () => ({ ok: true, output: '{}', reason: '', failureKind: null, problemCode: null })),
   };
   const sp = new JarSpider({ key: 'test', api: 'csp_Test', ext: '', jar,
-    host: { logger: NullLogger } as EngineHost }, bridge as unknown as JarSpiderBridge);
+    host: { logger: NullLogger } as EngineHost }, bridge as unknown as JarSpiderRuntimePort);
   return { bridge, sp };
 }
 
@@ -76,6 +76,42 @@ describe('JarSpider runtimeState — 失败不是准备中', () => {
     expect(vi.getTimerCount()).toBe(0);
     expect(failed.bridge.call).not.toHaveBeenCalled();
     expect(bridge.call).toHaveBeenCalledTimes(1);
+  });
+
+  it('search cancellation detaches its waiter while shared jar conversion continues', async () => {
+    const { bridge, sp } = setup();
+    let resolveConversion!: (path: string) => void;
+    bridge.ensureConverted.mockReturnValue(new Promise<string>((resolve) => { resolveConversion = resolve; }));
+    const controller = new AbortController();
+    const cancelledSearch = sp.searchContent('keyword', false, 1000, controller.signal);
+
+    controller.abort(new Error('query superseded'));
+    await expect(cancelledSearch).rejects.toMatchObject({ name: 'AbortError' });
+    expect(bridge.call).not.toHaveBeenCalled();
+
+    resolveConversion('/cache/spider.jar');
+    await expect(sp.searchContent('keyword', false, 1000)).resolves.toBe('{}');
+    expect(bridge.ensureConverted).toHaveBeenCalledTimes(1);
+    expect(bridge.call).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a JVM invocation timeout typed at the public JarSpider boundary', async () => {
+    const { bridge, sp } = setup();
+    bridge.call.mockResolvedValue({
+      ok: false,
+      output: '',
+      reason: '蜘蛛调用超时',
+      failureKind: null,
+      problemCode: 'SPIDER_TIMEOUT',
+    });
+
+    await expect(sp.searchContent('slow query', false, 1234)).rejects.toMatchObject({
+      name: 'SourceProblemError',
+      code: 'SPIDER_TIMEOUT',
+      message: '蜘蛛调用超时',
+      detail: { sourceKey: 'test', operation: 'searchContent' },
+    });
+    expect(bridge.call.mock.calls[0]?.[4]).toBe(1234);
   });
 
   it('下载未结束时不冒充编译；8 秒放行后下载失败，下次立即显示真实原因', async () => {

@@ -246,7 +246,7 @@ describe('JarSpiderBridge.callPython — spawn python.exe runner.py', () => {
     expect(calls[0].argv.slice(1)).toEqual(['C:/cache/spider/py/abc.py', 'Spider', 'homeContent', '{"siteUrl":"https://s"}']);
     expect(calls[0].opts.env?.PYTHONIOENCODING).toBe('utf-8');
     expect(calls[0].opts.env?.WINBOX_PY_PROXY).toBe('http://127.0.0.1:9978/proxy?do=py&key=live%20%E6%BA%90');
-    expect(out).toBe('');
+    expect(out).toEqual({ ok: true, output: '', reason: '', failureKind: null, problemCode: null });
   });
 
   it('运行时未配置 → 直接抛错（不 spawn）', async () => {

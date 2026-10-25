@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { JarSpider } from '../src/engine/spider/JarSpider';
 import { mergeDriveTokens } from '../src/engine/spider/driveExt';
 import type { EngineHost } from '../src/engine/ports';
-import type { JarSpiderBridge } from '../src/engine/spider/JarSpiderBridge';
+import type { JarSpiderRuntimePort } from '../src/engine/spider/JarSpiderPorts';
 import { NullLogger } from '../src/engine/util/logger';
 
 describe('mergeDriveTokens — 宿主绑定 token 并入蜘蛛 init(Context,ext)', () => {
@@ -36,10 +36,10 @@ describe('JarSpider.proxy — 源内绑定调用链（SpiderRunner::proxy 分派
       resolvePaths: (urls: string[]) => urls,
       call: async (_jars: string[], _cls: string, method: string, args: string[]) => {
         calls.push({ method, args });
-        return '[]';
+        return { ok: true, output: '[]', reason: '', failureKind: null, problemCode: null };
       },
     };
-    return { bridge: bridge as unknown as JarSpiderBridge, calls };
+    return { bridge: bridge as unknown as JarSpiderRuntimePort, calls };
   }
 
   function makeHost(): EngineHost {
@@ -79,5 +79,34 @@ describe('JarSpider.proxy — 源内绑定调用链（SpiderRunner::proxy 分派
     await sp.proxy({});
     expect(calls[0].method).toBe('proxy');
     expect(JSON.parse(calls[0].args[1])).toEqual({});
+  });
+});
+
+describe('JarSpider.searchContent — JVM 搜索参数契约', () => {
+  it('透传 quick 标记及分页参数到 SpiderRunner', async () => {
+    const calls: { method: string; args: string[] }[] = [];
+    const bridge = {
+      defaultJar: 'https://cdn.example.com/spider.jar',
+      ensureConverted: async () => '/tmp/fake.jar',
+      resolvePaths: (urls: string[]) => urls,
+      call: async (_jars: string[], _cls: string, method: string, args: string[]) => {
+        calls.push({ method, args });
+        return { ok: true, output: '[]', reason: '', failureKind: null, problemCode: null };
+      },
+    };
+    const sp = new JarSpider(
+      { key: 'search', api: 'csp_Search', ext: '', jar: 'https://cdn.example.com/spider.jar', host: {
+        http: {}, kv: {}, logger: NullLogger, driveTokens: () => ({}),
+      } as unknown as EngineHost },
+      bridge as unknown as JarSpiderRuntimePort,
+    );
+
+    await sp.searchContent('title', true);
+    await sp.searchContentPage('title', false, '4');
+
+    expect(calls).toEqual([
+      { method: 'searchContent', args: ['', 'title', 'true'] },
+      { method: 'searchContent', args: ['', 'title', 'false', '4'] },
+    ]);
   });
 });

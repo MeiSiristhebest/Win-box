@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.LinkedHashMap;
+import com.github.catvod.crawler.Spider;
 
 /**
  * 桌面版 Spider 运行器 —— 等效 DexClassLoader 的宿主侧。
@@ -595,10 +596,10 @@ public class SpiderRunner {
   private static String dispatchMethod(Object sp, String method, String[] rest) throws Exception {
     String[] r = rest.length > 0 ? Arrays.copyOfRange(rest, 1, rest.length) : new String[0];
     if ("homeContent".equals(method)) {
-      return (String) sp.getClass().getMethod("homeContent", boolean.class).invoke(sp, true);
+      return (String) requireOverride(sp, method, boolean.class).invoke(sp, true);
     }
     if ("homeVideoContent".equals(method)) {
-      return (String) sp.getClass().getMethod("homeVideoContent").invoke(sp);
+      return (String) requireOverride(sp, method).invoke(sp);
     }
     if ("categoryContent".equals(method)) {
       HashMap<String, String> extend = new HashMap<String, String>();
@@ -614,32 +615,42 @@ public class SpiderRunner {
           }
         }
       }
-      return (String) sp.getClass().getMethod("categoryContent", String.class, String.class, boolean.class, HashMap.class)
+      return (String) requireOverride(sp, method, String.class, String.class, boolean.class, HashMap.class)
           .invoke(sp, r.length > 0 ? r[0] : "", r.length > 1 ? r[1] : "1", true, extend);
     }
     if ("detailContent".equals(method)) {
-      return (String) sp.getClass().getMethod("detailContent", List.class)
+      return (String) requireOverride(sp, method, List.class)
           .invoke(sp, Arrays.asList((r.length > 0 ? r[0] : "").split(",")));
     }
     if ("searchContent".equals(method)) {
       String wd = r.length > 0 ? r[0] : "";
-      try {
-        return (String) sp.getClass().getMethod("searchContent", String.class, boolean.class, String.class)
-            .invoke(sp, wd, false, r.length > 1 ? r[1] : "1");
-      } catch (NoSuchMethodException e) {
-        return (String) sp.getClass().getMethod("searchContent", String.class, boolean.class).invoke(sp, wd, false);
-      }
+      // Current wire format: [key, quick, page]. Accept the previous [key, page]
+      // format too so already-running bridges and older callers remain compatible.
+      boolean hasQuick = r.length > 1 && ("true".equalsIgnoreCase(r[1]) || "false".equalsIgnoreCase(r[1]));
+      boolean quick = hasQuick && Boolean.parseBoolean(r[1]);
+      String page = hasQuick
+          ? (r.length > 2 && !r[2].isEmpty() ? r[2] : "1")
+          : (r.length > 1 && !r[1].isEmpty() ? r[1] : "1");
+      Method paged = null;
+      try { paged = sp.getClass().getMethod("searchContent", String.class, boolean.class, String.class); }
+      catch (NoSuchMethodException ignored) { /* Older Spider API exposes only the two-argument overload. */ }
+      if (paged != null && paged.getDeclaringClass() != Spider.class) return (String) paged.invoke(sp, wd, quick, page);
+      Method basic = null;
+      try { basic = sp.getClass().getMethod("searchContent", String.class, boolean.class); }
+      catch (NoSuchMethodException ignored) { /* No supported search signature. */ }
+      if (basic != null && basic.getDeclaringClass() != Spider.class) return (String) basic.invoke(sp, wd, quick);
+      throw unsupportedOperation(method);
     }
     if ("playerContent".equals(method)) {
       List<String> vips = new ArrayList<String>();
       if (r.length > 2 && r[2] != null && !r[2].isEmpty()) {
         for (String v : r[2].split(",")) if (!v.trim().isEmpty()) vips.add(v.trim());
       }
-      return (String) sp.getClass().getMethod("playerContent", String.class, String.class, List.class)
+      return (String) requireOverride(sp, method, String.class, String.class, List.class)
           .invoke(sp, r.length > 0 ? r[0] : "", r.length > 1 ? r[1] : "", vips);
     }
     if ("liveContent".equals(method)) {
-      return (String) sp.getClass().getMethod("liveContent", String.class).invoke(sp, r.length > 0 ? r[0] : "");
+      return (String) requireOverride(sp, method, String.class).invoke(sp, r.length > 0 ? r[0] : "");
     }
     if ("proxy".equals(method)) {
       HashMap<String, String> params = new HashMap<String, String>();
@@ -669,5 +680,21 @@ public class SpiderRunner {
       return ret == null ? "" : new com.google.gson.Gson().toJson(ret);
     }
     throw new IllegalArgumentException("unknown method: " + method);
+  }
+
+  /** A compatibility stub inherited from Spider is not a capability; an override may validly return empty. */
+  private static Method requireOverride(Object spider, String operation, Class<?>... parameterTypes) throws Exception {
+    Method implementation;
+    try {
+      implementation = spider.getClass().getMethod(operation, parameterTypes);
+    } catch (NoSuchMethodException ignored) {
+      throw unsupportedOperation(operation);
+    }
+    if (implementation.getDeclaringClass() == Spider.class) throw unsupportedOperation(operation);
+    return implementation;
+  }
+
+  private static UnsupportedOperationException unsupportedOperation(String operation) {
+    return new UnsupportedOperationException("WINBOX_OPERATION_UNSUPPORTED:" + operation);
   }
 }

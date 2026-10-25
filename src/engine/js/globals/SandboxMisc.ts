@@ -1,7 +1,7 @@
 // src/engine/js/globals/SandboxMisc.ts
 // 沙箱杂项全局：console / setTimeout / getProxy / js2Proxy / s2t / t2s。
 // 语义对齐 ref/app__src__main__java__com__github__catvod__crawler__js__Global.java
-import type { EngineHost } from '../../ports';
+import type { JsSandboxHostPort } from '../JsSandboxPort';
 
 /** 日志格式化：Error 打 stack，对象打 JSON，其余 String() */
 function fmt(args: unknown[]): string {
@@ -19,7 +19,7 @@ function fmt(args: unknown[]): string {
 }
 
 /** console —— 转发到宿主 logger，前缀 js:<siteKey>（安卓 echo-QuJs 前缀的等价物） */
-export function createConsole(host: EngineHost, siteKey: string): Record<string, unknown> {
+export function createConsole(host: JsSandboxHostPort, siteKey: string): Record<string, unknown> {
   const p = `js:${siteKey}`;
   return {
     log: (...args: unknown[]): void => host.logger.i(`${p} ${fmt(args)}`),
@@ -46,7 +46,7 @@ export function createTimers(): Record<string, unknown> {
  * getProxy —— Global.java:41-43：Proxy.getUrl(local) + '?do=js'。
  * Proxy.getUrl 返回本地代理 base（9978），Windows 与安卓同端口。
  */
-export function createProxyFns(host: EngineHost): Record<string, unknown> {
+export function createProxyFns(host: JsSandboxHostPort): Record<string, unknown> {
   const base = host.proxyBase ?? 'http://127.0.0.1:9978/proxy';
   const getProxy = (_local?: boolean): string => `${base}?do=js`;
   /** js2Proxy —— Global.java:47-50 1:1（header/url 均 URLEncode） */

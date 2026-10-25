@@ -1,5 +1,4 @@
-import { EmbeddedPythonRuntime, PYTHON_RUNTIME_VERSION } from './EmbeddedPythonRuntime';
-import { NATIVE_RUNTIME_ARTIFACTS, NATIVE_RUNTIME_VERSION } from './nativeRuntimeAssets';
+import { EmbeddedPythonRuntime } from './EmbeddedPythonRuntime';
 // src/engine/spider/JarSpiderBridge.ts
 // ★ 等效 DexClassLoader 的 JVM 桥（Windows）。
 // 流程：jar(dex) URL → 下载 → 提取 classes.dex → dex2jar 转换 → JVM 子进程 SpiderRunner 反射调用。
@@ -8,33 +7,56 @@ import { NATIVE_RUNTIME_ARTIFACTS, NATIVE_RUNTIME_VERSION } from './nativeRuntim
 import { spawn } from 'node:child_process';
 import {
   mkdirSync, existsSync, readFileSync, writeFileSync, statSync,
-  renameSync, openSync, closeSync, readSync, rmSync, copyFileSync,
+  renameSync, rmSync, copyFileSync,
 } from 'node:fs';
 import { totalmem } from 'node:os';
 import { join, basename, resolve } from 'node:path';
-import type { EngineHost } from '../ports';
+import type { JarSpiderBridgeHost, JarResourceMergeLogger, JarSpiderRuntimePort } from './JarSpiderPorts';
 import { md5Hex } from '../util/md5';
 import { contentHashOf, recordContentKey, tryCloneByContent } from './jarContentIndex';
-import {
-  describeFailures,
-  fetchWithDisguise,
-  siteRootOf,
-  UA_OKHTTP,
-  type DisguiseAttempt,
-} from '../util/fetchWithDisguise';
-import { buildZip, listZipEntries, looksLikeZip, readZipEntries, zipEntrySizes, type ZipEntryData } from '../util/syncZip';
+import { buildZip, listZipEntries, looksLikeZip, readZipEntries } from '../util/syncZip';
 import { SpiderProcPool, poolEnabled, servePoolKey, WARM_METHOD, type PoolResult } from './SpiderProcPool';
 import { fixSelfSuperCallsInJarFile } from './classFix';
 // ★ 2026-10-14：补全蜘蛛 jar 自带的极简 com.github.catvod.spider.Proxy（补 getProxyUrlDo）——
 //   否则该类调用必 NoSuchMethodError（安卓端由 App dex 的同名完整类兜住，桌面端没有）。
 import { patchSpiderProxyInJarFile } from './appProxyStub';
+import {
+  DetachedDex2jarCoordinator,
+  DEX2JAR_TIMEOUT_MS,
+  type DetachedDex2jarPort,
+} from './DetachedDex2jar';
+import { formatDuration } from './formatDuration';
+import { normalizeJarUrl } from './jarSpiderUrl';
 // ★ 2026-10-14：部分蜘蛛按 **okhttp 4.x** 参数序调用 `RequestBody.create`，桌面端只有 3.14.9 ⇒
 //   必 NoSuchMethodError。修法 = 把「补了 4.x 重载的 RequestBody」打成小 jar 排在 -cp 最前
 //   （父加载器先命中者生效，覆盖一切来源的调用者，含 Java 侧 runtime-dex 产物；见 okhttp4Compat.ts）。
 import { OKHTTP4_COMPAT_JAR } from './okhttp4Compat';
 import { PREFS_SHIM_JAR } from './prefsShim';
-import { hasNativeMethods } from './nativeClass';
+import { NativeSpiderRuntime } from './NativeSpiderRuntime';
+import { createSpiderShellCompatibilityPorts, SpiderShellCompatibility } from './SpiderShellCompatibility';
+import { extractBridgeNotes } from './spiderDiagnostics';
+import { spiderCallFailed, spiderCallSucceeded, type SpiderCallResult } from './spiderCallResult';
+import type { PythonSpiderRuntimePort } from './PythonSpiderRuntimePort';
+import { PythonSpiderRuntimeAdapter } from './PythonSpiderRuntimeAdapter';
 import { LOCAL_PROXY_BASE } from '../../shared/constants';
+import {
+  NATIVE_CALL_MIN_TIMEOUT_MS as nativeCallMinimumTimeout,
+  d2jHeapMb as estimateD2jHeapMb,
+  isOomOutput as hasOutOfMemoryEvidence,
+  spiderProxyPort as deterministicSpiderProxyPort,
+  totalDexBytes as estimateTotalDexBytes,
+} from './jarBridgePolicy';
+import { isUsableConvertedJar as isUsableConvertedJarFile } from './convertedJarArtifact';
+import { ConversionInFlightError, JarConversionRegistry } from './JarConversionRegistry';
+import { JarClasspathResolver } from './JarClasspathResolver';
+import { normalizeSpiderRuntimeFailure } from './spiderRuntimeFailure';
+import { SourceProblemError } from './errors';
+import { abortError, throwIfAborted } from '../util/abort';
+import { spiderPoolTimeoutResult } from './spiderPoolFailure';
+import { Dex2jarConversion } from './Dex2jarConversion';
+import { JarArchiveDownloader } from './JarArchiveDownloader';
+import { mergeJarResourceEntries } from './jarResourceMerge';
+import { SpiderSubprocessRunner } from './SpiderSubprocessRunner';
 
 /**
  * ★ 转换产物格式版本（导出：单测与诊断用；**改变了「产物内容」就必须 +1**）。
@@ -48,6 +70,9 @@ import { LOCAL_PROXY_BASE } from '../../shared/constants';
  *       —— 旧产物里该类调用必 NoSuchMethodError，必须作废重转才生效
  */
 export const CONVERTED_CACHE_VERSION = 5;
+
+export { formatDuration } from './formatDuration';
+export { normalizeJarUrl } from './jarSpiderUrl';
 
 /** The Python archive is checked against the digest published by Python.org. */
 export { PYTHON_RUNTIME_VERSION, PYTHON_RUNTIME_EMBED_SHA256 } from './EmbeddedPythonRuntime';
@@ -95,6 +120,8 @@ export interface JarBridgeOptions {
    * 只用于换算 dex2jar 的堆上限（见 d2jHeapMb），单测注入以便稳定断言、不依赖跑测机器的内存。
    */
   totalMemBytes?: number;
+  /** Optional process boundary for detached dex2jar work, primarily for deterministic hosts. */
+  detachedDex2jar?: DetachedDex2jarPort;
 }
 
 /**
@@ -103,11 +130,6 @@ export interface JarBridgeOptions {
  *   而 100+ 源的大配置（摸鱼 / 18 类）**每个源都会来要一次转换** —— 不抑制就是「搜一次卡几分钟、
  *   大部分源全报错」。窗口内重复请求直接复用上次的失败原因，过期后允许重试（网络抖动可自愈）。
  */
-const CONVERT_FAIL_TTL_MS = 120_000;
-
-/** dex2jar 单次转换的最长等待（异步 spawn；到点杀进程并按失败缓存重复尝试） */
-const D2J_TIMEOUT_MS = 600_000;
-
 /**
  * ★★ 2026-09-27「关软件也要转完 + 等待有感知」：dex2jar 转换**脱离 App 进程**，靠三个陪伴文件协调 ★★
  *
@@ -125,46 +147,12 @@ const D2J_TIMEOUT_MS = 600_000;
  * 现在：转换由 **detached 子进程**跑完并落盘（App 关了也继续），下次启动**收编**产物（秒级），
  * 正在跑的则**接管等待**（不重复起第二个进程 —— 两个进程写同一个 part 会把产物写坏）。
  */
-interface ConvertLock {
-  /** 转换进程 pid（App 重启后用它判断「还在跑」；Windows 上 detached 子进程不会随父进程退出） */
-  pid: number;
-  /** 起转时间（ms；同时是「接管等待」的进度基准与僵死判据） */
-  startedAt: number;
-  /** 该次转换的堆上限（诊断用） */
-  heapMb: number;
-}
-
-/** 「接管等待」的轮询间隔（只做廉价完整性预判，不重扫整个 zip） */
-const ATTACH_POLL_MS = 1500;
-
-/** 转换进度落日志的间隔（用户等待期可感知；事后也能复盘「到底等了多久」） */
-const CONV_LOG_EVERY_MS = 15_000;
-
-/** zip 中央目录结束标记（EOCD）—— 转换写完整才会出现；见 ConvertLock 注释 */
-const EOCD_MAGIC = Buffer.from([0x50, 0x4b, 0x05, 0x06]);
-/** EOCD 尾窗（zip 注释最长 64KB + EOCD 22B；dex2jar/我们的合并产物都没有注释，70KB 足够） */
-const EOCD_TAIL_WINDOW = 70 * 1024;
-
-/** 把毫秒格式化成「1 分 32 秒 / 48 秒」（进度文案与日志共用） */
-export function formatDuration(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 60) return `${s} 秒`;
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return r === 0 ? `${m} 分钟` : `${m} 分 ${r} 秒`;
-}
-
 /**
  * ★ 2026-09-27：**后台转换仍在进行**（不是失败）。
- *   与「转换失败」的区别：不计入失败抑制窗口（CONVERT_FAIL_TTL_MS），
+ *   与「转换失败」的区别：不计入转换登记簿的失败抑制窗口，
  *   上层的自动重试/用户点一次就能立刻再问一次进度，而不是被窗口挡住两分钟。
  */
-export class ConversionInFlightError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ConversionInFlightError';
-  }
-}
+export { ConversionInFlightError };
 
 /**
  * ★★ 2026-09-26：蜘蛛 JVM 内「宿主代理」端口（确定性分配，勿随意改公式）★★
@@ -175,9 +163,7 @@ export class ConversionInFlightError extends Error {
  *   落在 19970~19999（避开 9978 本地代理与常见端口）。端口被占时 Java 侧会退化为临时端口（此时钉不住，仅影响回收保护）。
  */
 export function spiderProxyPort(loadCp: string, base = 19970, span = 30): number {
-  let h = 0;
-  for (let i = 0; i < loadCp.length; i++) h = (h * 31 + loadCp.charCodeAt(i)) | 0;
-  return base + ((h >>> 0) % span);
+  return deterministicSpiderProxyPort(loadCp, base, span);
 }
 
 /**
@@ -187,7 +173,7 @@ export function spiderProxyPort(loadCp: string, base = 19970, span = 30): number
  *   只对 nativeJars 非空的 jar 抬底；普通源（无 .so）行为完全不变。
  *   ★ 后续优化方向：减少壳内加密往返 / 缩短模拟器调用开销，届时可下调此值。
  */
-export const NATIVE_CALL_MIN_TIMEOUT_MS = 300_000;
+export const NATIVE_CALL_MIN_TIMEOUT_MS = nativeCallMinimumTimeout;
 
 /**
  * ★ 2026-09-25：**dex2jar 转换堆（MB）按 dex 体积自适应**。
@@ -206,23 +192,17 @@ export const NATIVE_CALL_MIN_TIMEOUT_MS = 300_000;
  * @param attempt      第几次尝试（OOM 后按 2× 重试）
  */
 export function d2jHeapMb(dexBytes: number, totalMemBytes: number, attempt = 1): number {
-  const dexMb = Math.max(0, dexBytes) / (1024 * 1024);
-  const capMb = Math.min(1792, Math.max(256, Math.floor(totalMemBytes / 4 / (1024 * 1024))));
-  const wantMb = Math.ceil(dexMb * 128) * Math.max(1, attempt);
-  return Math.min(capMb, Math.max(256, wantMb));
+  return estimateD2jHeapMb(dexBytes, totalMemBytes, attempt);
 }
 
 /** raw jar 内 `classes*.dex` 的解压体积合计；读不出（非 zip / 无 dex）时按 raw 体积 ×3 兜底 */
 function totalDexBytes(rawJar: Buffer): number {
-  const dex = zipEntrySizes(rawJar)
-    .filter((e) => /^classes\d*\.dex$/i.test(e.name))
-    .reduce((sum, e) => sum + e.size, 0);
-  return dex > 0 ? dex : rawJar.length * 3;
+  return estimateTotalDexBytes(rawJar);
 }
 
 /** 转换子进程输出里是否出现了「堆不够」的证据（dex2jar OOM 只在 stderr 留栈） */
 export function isOomOutput(output: string): boolean {
-  return /OutOfMemoryError|insufficient memory|内存不足/i.test(output || '');
+  return hasOutOfMemoryEvidence(output);
 }
 
 /**
@@ -238,62 +218,38 @@ export function isOomOutput(output: string): boolean {
  *   只读中央目录，不解析内容，开销可忽略。
  */
 export function isUsableConvertedJar(file: string): boolean {
-  try {
-    const fs = require('node:fs') as typeof import('node:fs');
-    if (!fs.existsSync(file)) return false;
-    const buf = fs.readFileSync(file);
-    if (!looksLikeZip(buf)) return false;
-    return listZipEntries(buf).some((n) => n.endsWith('.class'));
-  } catch {
-    return false;
-  }
+  return isUsableConvertedJarFile(file);
 }
 
 
-export class JarSpiderBridge {
+export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntimePort {
   private readonly jvmDir: string;
   private readonly cacheDir: string;
   private readonly callTimeoutMs: number;
-  private readonly shellShimClasses?: string;
-  private readonly pyRuntimeDir?: string;
-  private readonly pythonRuntime: EmbeddedPythonRuntime;
-  /** ★ ARM 原生桥运行时目录（见 JarBridgeOptions.nativeRuntimeDir） */
-  private readonly nativeRuntimeDir?: string;
+  private readonly shellCompatibility: SpiderShellCompatibility;
+  private readonly pythonRuntime: PythonSpiderRuntimeAdapter;
+  /** ARM .so 检测与按需运行时准备由独立服务负责。 */
+  private readonly nativeRuntime: NativeSpiderRuntime;
   /** ★ 网络代理注入点（宿主提供；空 = 不走代理） */
   private readonly proxyProvider?: () => { jvmArgs: string[]; env: Record<string, string> };
   /** ★ 机器总内存（dex2jar 堆上限的收口依据；见 d2jHeapMb） */
   private readonly totalMemBytes: number;
   /** jar URL → 转换后 jar 本地路径（进程内缓存） */
-  private converted = new Map<string, string>();
-  private convertLocks = new Map<string, Promise<string>>();
+  private readonly conversionRegistry = new JarConversionRegistry();
+  /** Missing entry classes are resolved through an isolated, content-aware classpath policy. */
+  private readonly classpathResolver: JarClasspathResolver;
   /** 多个源共用一只 jar 时，后台预热只挂一条完成/失败日志。 */
   private warmupLocks = new Map<string, Promise<void>>();
-  /** ★ 转换失败抑制表（jar URL → 最近一次失败原因 + 时间；见 CONVERT_FAIL_TTL_MS） */
-  private convertFailures = new Map<string, { at: number; message: string }>();
   /** 产物有效性缓存（路径 → `size:mtime`）：闸门判定每轮每源都要问一次，不能每次都重读整只 jar */
   private artifactOkCache = new Map<string, string>();
-  /** ★ 转换产物是否含 .so（= 需要原生桥）；按产物路径缓存，避免每次 spawn 重读 zip 目录 */
-  private nativeFlag = new Map<string, boolean>();
-  private classIndexes = new Map<string, { stamp: string; entries: Set<string>; hash: string }>();
-  private fallbackJars = new Map<string, { path: string; hash: string }>();
   /** 全局 spider jar（配置顶层 spider 字段），site.jar 优先 */
   private globalJar = '';
-  /**
-   * 最近一次 call() 中，蜘蛛自身打印的失败原因（来自子进程 stderr 的 SpiderLog 行）。
-   * 上层在结果为空时可读取它，把「蜘蛛返回空结果」细化为「源站连接超时 / 解析失败」等。
-   * 成功或无线索时为空串。
-   */
-  private lastSpiderReason = '';
-  /** 常驻 serve 进程 stderr 的尾部窗口（采集 SpiderLog 失败原因用，见 collectServeLog） */
-  private serveLogTail = '';
-  /** serve stderr 已消费的字节总数（判断「SpiderLog 是不是本次新增的」，见 collectServeLog） */
-  private serveLogTotal = 0;
   /** 已上屏过的原生桥消息（stderr 跨请求累积，去重防刷屏；见 noteBridgeLog） */
   private bridgeNotesSeen = new Set<string>();
   /** ★ 2026-09-29：已切到 shell-shim 真实实现路线的壳 jar（守卫空 NPE 兜底后记住，后续调用/预热同口径） */
   private readonly shimPreferred = new Set<string>();
-  /** 当前存活的 JVM 子进程（退出时统一终止，防止残留） */
-  private activeChildren = new Set<import('node:child_process').ChildProcess>();
+  /** One-shot child-process I/O and shutdown cleanup live at a dedicated adapter boundary. */
+  private readonly subprocessRunner: SpiderSubprocessRunner;
   /** ★ 本地代理端口 → 池 key（/proxy/<port> 被访问时据此钉住对应 JVM，见 spiderProxyPort） */
   private readonly proxyPortKeys = new Map<number, string>();
 
@@ -310,30 +266,80 @@ export class JarSpiderBridge {
   /** ★ 子进程常驻复用池（--serve/-serve；进程复用加速首页/搜索；单测与显式关闭时禁用） */
   private readonly pool: SpiderProcPool | null;
   private readonly poolReclaimTimer?: ReturnType<typeof setInterval>;
-  /** ★ 原生运行时（unidbg）在途准备任务：与 python 运行时同款「共享在途 + 幂等」 */
-  private nativeRuntimeTask: Promise<string[]> | null = null;
-  /**
-   * ★ 2026-09-27：原生运行时就绪结果**内存缓存**。
-   *   此前每次 ensureNativeRuntime 都重新 stat 17 个 jar 并各落一条「已就绪」——
-   *   真机日志一次会话刷 15+ 条同款噪音（且每次搜索/进源都走一遍这套 IO）。
-   */
-  private nativeRuntimeJars: string[] | null = null;
+  /** Detached JVM conversion lifecycle is isolated behind its process port. */
+  private readonly detachedDex2jar: DetachedDex2jarPort;
+  /** Owns adaptive heap sizing and OOM recovery for the conversion subprocess. */
+  private readonly dex2jarConversion: Dex2jarConversion;
+  /** Owns HTTP disguise retries and rejects non-archive responses before conversion. */
+  private readonly jarArchiveDownloader: JarArchiveDownloader;
   /**
    * ★ 2026-09-27：**转换进度表**（jar URL → 起转时间 + 是否「接管」上次会话的后台转换）。
    *   供上层在等待期显示「已等 X」——用户诉求「等待要有感知」（见 conversionProgress）。
    */
-  private convProgress = new Map<string, { startedAt: number; attached: boolean; stage: 'download' | 'convert' }>();
 
-  constructor(opts: JarBridgeOptions, private host?: EngineHost) {
+  constructor(opts: JarBridgeOptions, private host?: JarSpiderBridgeHost) {
     this.jvmDir = opts.jvmDir;
     this.cacheDir = opts.cacheDir;
+    this.jarArchiveDownloader = new JarArchiveDownloader(this.host ? {
+      http: this.host.http,
+      logAttempt: (message) => this.host?.logger.i(message),
+    } : undefined);
+    this.classpathResolver = new JarClasspathResolver(this.cacheDir);
     this.callTimeoutMs = opts.callTimeoutMs ?? 20000;
-    this.shellShimClasses = opts.shellShimClasses;
-    this.pyRuntimeDir = opts.pyRuntimeDir;
-    this.pythonRuntime = new EmbeddedPythonRuntime({ runtimeDir: opts.pyRuntimeDir, jvmDir: opts.jvmDir, archiveSha256: opts.pythonEmbedArchiveSha256 }, () => this.host);
-    this.nativeRuntimeDir = opts.nativeRuntimeDir;
+    this.shellCompatibility = new SpiderShellCompatibility(
+      this.jvmDir,
+      opts.shellShimClasses,
+      process.env['TVBOX_SHELL_SHIM_CLASSES'] ?? '',
+      createSpiderShellCompatibilityPorts(
+        (path) => readFileSync(path),
+        existsSync,
+        (message) => this.host?.logger.w(message),
+      ),
+    );
+    const embeddedPythonRuntime = new EmbeddedPythonRuntime(
+      { runtimeDir: opts.pyRuntimeDir, jvmDir: opts.jvmDir, archiveSha256: opts.pythonEmbedArchiveSha256 },
+      () => this.host,
+    );
+    this.nativeRuntime = new NativeSpiderRuntime({
+      jvmDir: opts.jvmDir,
+      runtimeDir: opts.nativeRuntimeDir,
+      ports: {
+        downloadArtifact: async (url) => {
+          if (!this.host) throw new Error('原生运行时下载需要 EngineHost');
+          const response = await this.host.http.request({ url, method: 'get', timeoutMs: 180000, buffer: 2 });
+          return Buffer.from(
+            Array.isArray(response.content)
+              ? (response.content as unknown as number[])
+              : Buffer.from(String(response.content), 'base64'),
+          );
+        },
+        logInfo: (message) => this.host?.logger.i(message),
+        logWarning: (message) => this.host?.logger.w(message),
+      },
+    });
     this.proxyProvider = opts.proxyProvider;
     this.totalMemBytes = opts.totalMemBytes ?? totalmem();
+    this.subprocessRunner = new SpiderSubprocessRunner({
+      spawn,
+      processEnvironment: () => process.env,
+      proxyEnvironment: () => this.proxyProvider?.().env ?? {},
+      logBridgeNotes: (text) => this.noteBridgeLog(text),
+      logError: (message) => this.host?.logger.e(message),
+      logWarning: (message) => this.host?.logger.w(message),
+      logInfo: (message) => this.host?.logger.i(message),
+    }, this.callTimeoutMs);
+    this.detachedDex2jar = opts.detachedDex2jar ?? new DetachedDex2jarCoordinator(this.cacheDir, {
+      info: (message) => this.host?.logger.i(message),
+    });
+    this.dex2jarConversion = new Dex2jarConversion(
+      this.detachedDex2jar,
+      this.totalMemBytes,
+      {
+        info: (message) => this.host?.logger.i(message),
+        warn: (message) => this.host?.logger.w(message),
+      },
+      (partPath) => { try { rmSync(partPath, { force: true }); } catch { /* ignore */ } },
+    );
     mkdirSync(this.cacheDir, { recursive: true });
     // ★ 老版本留下的转换产物可能缺 assets（v1 格式）→ 必须作废重转，否则本轮修复不生效
     this.ensureCacheVersion();
@@ -343,14 +349,12 @@ export class JarSpiderBridge {
         const child = spawn(spec.exe, spec.serveArgv, {
           windowsHide: true,
           // ★ serve 进程 stdout 走行协议（池按物理行分帧），stderr 必须**消费**而不是 'ignore'：
-          //   一是防 64KB 管道写满挂死蜘蛛，二是采集 SpiderLog 失败原因（空结果时上屏的人话提示）。
+          //   防止管道写满并记录桥接提示。没有请求身份的 stderr 不用来判定某次调用失败。
           stdio: ['pipe', 'pipe', 'pipe'],
           ...(spec.env ? { env: { ...process.env, ...spec.env } } : {}),
         });
         child.stderr?.setEncoding('utf-8');
-        child.stderr?.on('data', (d: string) => this.collectServeLog(String(d)));
-        this.activeChildren.add(child);
-        child.on('exit', () => this.activeChildren.delete(child));
+        child.stderr?.on('data', (d: string) => this.noteBridgeLog(String(d)));
         return child;
       });
       // 空闲进程每 15s 回收一次（同 key 只保留 1 个热进程，并行期多开的进程 30s 后回收）
@@ -358,28 +362,17 @@ export class JarSpiderBridge {
     } else {
       this.pool = null;
     }
-  }
-
-  /**
-   * 采集常驻 serve 进程 stderr 里的蜘蛛失败原因（与一次性路径同款抽取/翻译）。
-   * 只保留尾部窗口：常驻进程跨请求存活，日志会长时间累积。
-   */
-  private collectServeLog(chunk: string): void {
-    const before = this.serveLogTotal;
-    this.serveLogTotal += chunk.length;
-    this.serveLogTail = (this.serveLogTail + chunk).slice(-8192);
-    this.noteBridgeLog(chunk);
-    // ★ 2026-09-28：只有「本次新增的 chunk 里出现了 SpiderLog」才更新失败原因。
-    //   旧实现每次 chunk 都对**累积尾巴**重抽 → 上一请求留下的 SpiderLog 会被反复
-    //   当成当前请求的原因（实测：AppYsV2 的一次 `ArrayStoreException` 让后续多个
-    //   空结果源都报出 “java.lang.Object”）；而 call() 开头已清空原因，
-    //   两边合起来才是「一次调用一条原因」。
-    const idx = this.serveLogTail.lastIndexOf('SpiderLog:');
-    if (idx < 0) return;
-    const absIdx = this.serveLogTotal - this.serveLogTail.length + idx;
-    if (absIdx < before) return; // 命中的仍是旧日志（本次 chunk 没带来新原因）
-    const reason = extractSpiderReason(this.serveLogTail);
-    if (reason) this.lastSpiderReason = translateSpiderLog(reason);
+    this.pythonRuntime = new PythonSpiderRuntimeAdapter({
+      runtime: embeddedPythonRuntime,
+      runtimeDir: opts.pyRuntimeDir,
+      pool: this.pool,
+      proxyProvider: this.proxyProvider ? () => ({ env: this.proxyProvider!().env }) : undefined,
+      logInfo: (message) => this.host?.logger.i(message),
+      submitToPool: (exe, key, serveArgv, className, method, args, env, timeoutMs, preferredPort, signal) =>
+        this.poolSubmit(exe, key, serveArgv, className, method, args, env, timeoutMs, preferredPort, signal),
+      runSubprocess: (exe, argv, className, method, timeoutMs, env, signal) =>
+        this.subprocessRunner.run(exe, argv, className, method, timeoutMs, env, signal),
+    });
   }
 
   /** 原生桥消息上屏（子进程 stderr 跨请求累积 → 同一行只上屏一次；失败/降级类走 warn） */
@@ -409,20 +402,6 @@ export class JarSpiderBridge {
     this.proxyPortByTag.clear();
     this.detailProxyPortByTag.clear();
     this.proxyPortKeys.clear();
-  }
-
-  /** .py 蜘蛛本地脚本缓存目录（<spiderCache>/py），与转换产物(converted)同级兄弟。 */
-  get pyCacheDir(): string {
-    return join(this.cacheDir, '..', 'py');
-  }
-
-  /**
-   * 最近一次调用的"蜘蛛端原因"（可为空）。仅在结果为空时用于细化错误提示。
-   * 典型值：`Connect timed out`（源站不可达）/ `bound must be positive`（蜘蛛内部参数异常）
-   * / `A JSONObject text must begin with '{'`（接口返回非 JSON，多为源站已改版/停服）。
-   */
-  get lastReason(): string {
-    return this.lastSpiderReason;
   }
 
   /** 导入配置后由宿主设置全局 spider jar URL */
@@ -504,17 +483,7 @@ export class JarSpiderBridge {
   async ensureConverted(jarUrl: string): Promise<string> {
     const url = normalizeJarUrl(jarUrl);
     if (!url) throw new Error(`jar URL 为空: ${jarUrl}`);
-    const cached = this.converted.get(url);
-    if (cached) return cached;
-    // ★ 失败抑制（见 CONVERT_FAIL_TTL_MS）：窗口内直接复用上次失败原因，不再重跑昂贵转换。
-    const failure = this.conversionFailure(url);
-    if (failure) throw new Error(failure);
-    let lock = this.convertLocks.get(url);
-    if (!lock) {
-      lock = this.doConvert(url).finally(() => this.convertLocks.delete(url));
-      this.convertLocks.set(url, lock);
-    }
-    return lock;
+    return this.conversionRegistry.ensure(url, (path) => this.artifactOk(path), () => this.doConvert(url));
   }
 
   /**
@@ -588,10 +557,7 @@ export class JarSpiderBridge {
     const key = md5Hex(jarUrl);
     const target = join(this.cacheDir, `${key}.jar`);
     // ★ 有效性判定（不是「文件存在且 size>0」）：见 isUsableConvertedJar —— 空 zip 残骸必须重转
-    if (this.artifactOk(target)) {
-      this.converted.set(jarUrl, target);
-      return target;
-    }
+    if (this.artifactOk(target)) return target;
     try {
       return await this.doConvertUncached(jarUrl, key, target);
     } catch (e) {
@@ -600,11 +566,6 @@ export class JarSpiderBridge {
       try {
         rmSync(target, { force: true });
       } catch { /* ignore */ }
-      // ★「后台仍在转换」不是失败：不写失败抑制，让重试能立刻再问一次进度（见 ConversionInFlightError）
-      if (!(e instanceof ConversionInFlightError)) {
-        // ★ 记录失败（见 CONVERT_FAIL_TTL_MS）：避免 100+ 源的大配置每个源都重跑一次昂贵转换。
-        this.convertFailures.set(jarUrl, { at: Date.now(), message: (e as Error).message });
-      }
       throw e;
     }
   }
@@ -615,60 +576,24 @@ export class JarSpiderBridge {
     this.ensureCacheDir();
     // 下载也算在「用户等待」里：进度计时从这里开始（下载 + 转换是一条链）
     const startedAt = Date.now();
-    if (!this.convProgress.has(jarUrl)) this.convProgress.set(jarUrl, { startedAt, attached: false, stage: 'download' });
+    this.conversionRegistry.startProgressIfAbsent(jarUrl, { startedAt, attached: false, stage: 'download' });
     this.host?.logger.i(`jvm-bridge jar 准备开始（key=${key.slice(0, 8)}，下载阶段）`);
     try {
       const output = await this.doConvertStage(jarUrl, key, target);
       this.host?.logger.i(`jvm-bridge jar 准备完成（key=${key.slice(0, 8)}，总耗时 ${Date.now() - startedAt}ms）`);
       return output;
     } finally {
-      this.convProgress.delete(jarUrl);
+      this.conversionRegistry.clearProgress(jarUrl);
     }
   }
 
   private async doConvertStage(jarUrl: string, key: string, target: string): Promise<string> {
-    /**
-     * 1) 下载 jar（含「按 UA 分流」兜底）
-     *
-     * ★★ 2026-09-29：改用**统一伪装阶梯**（`fetchWithDisguise`，与订阅拉取同源，勿再各写一份）★★
-     *   实测 `http://47.120.41.246:8025/vip/jar/lubin.php`：按 UA 分流 —— 浏览器/默认 UA 得到
-     *   「影视仓 & OK影视 - 官方配置分发」HTML 页（17,307 B），只有 **okhttp UA** 才返回真 jar
-     *   （2,081,666 B，PK 魔数、内含 classes.dex）。
-     *   旧行为：订阅拉取有 UA 兜底、jar 下载没有 ⇒ 17KB HTML 被当成 jar 存盘 →
-     *   dex2jar `The source file is not a .dex or .zip file` → 该配置**所有源**一起报
-     *   「jar 转换失败，下载到的可能不是有效的 jar 文件」。
-     *   判据用**魔数**（zip `PK\x03\x04` / 裸 dex `dex\n`）而不是「像不像 HTML」：误判面最小。
-     *   档位：默认 UA → okhttp UA → okhttp UA + Referer（jar 路径不做 DoH，避免拖长）。
-     */
-    const attempts: DisguiseAttempt[] = [
-      { label: '默认 UA' },
-      { label: 'okhttp UA', ua: UA_OKHTTP },
-      { label: 'okhttp UA + Referer', ua: UA_OKHTTP, referer: siteRootOf(jarUrl) },
-    ];
-    const got = await fetchWithDisguise(this.host!.http, jarUrl, {
-      accept: (b) => isJarOrDex(b),
-      attempts,
-      retryWithCookie: true, // jinenge：首次 403 种 Cookie，再用同一 UA 请求即返回真 jar
-      timeoutMs: 60000,
-      totalTimeoutMs: 120000,
-      buffer: 2, // 沿用 jar 路径既有的 base64 语义（由 fetchWithDisguise 归一成 Buffer）
-      onTry: (t) => {
-        const feat = [t.status ? `HTTP ${t.status}` : '', t.sniff ? `${t.sniff.kind} ${t.sniff.size}B` : '', t.reason || '']
-          .filter(Boolean)
-          .join(' · ');
-        this.host?.logger.i(`jvm-bridge jar 下载尝试「${t.label}」${t.ok ? '命中' : '未命中'}：${feat} ← ${jarUrl}`);
-      },
-    });
-    // last 仅供诊断，绝不能把 HTML/403/404 错误页送进 dex2jar。
-    if (!got.buf || got.buf.length < 100) {
-      throw new Error(`jar 下载失败：未取得有效 jar/dex（已尝试：${describeFailures(got.tries)}）`);
-    }
-    const jarBytes = got.buf;
-    const progress = this.convProgress.get(jarUrl);
+    const { bytes: jarBytes, usedLabel } = await this.jarArchiveDownloader.download(jarUrl, isJarOrDex);
+    const progress = this.conversionRegistry.progressView(jarUrl);
     this.host?.logger.i(`jvm-bridge jar 下载完成（key=${key.slice(0, 8)}，${jarBytes.length}B，耗时 ${progress ? Date.now() - progress.startedAt : 0}ms）`);
-    if (progress) progress.stage = 'convert';
-    if (got.buf && got.used && got.used.label !== '默认 UA') {
-      this.host?.logger.i(`jvm-bridge jar 按「${got.used.label}」重试成功（首次响应未通过 jar 校验）: ${jarUrl}`);
+    this.conversionRegistry.setStage(jarUrl, 'convert');
+    if (usedLabel && usedLabel !== '默认 UA') {
+      this.host?.logger.i(`jvm-bridge jar 按「${usedLabel}」重试成功（首次响应未通过 jar 校验）: ${jarUrl}`);
     }
     // 下载是异步的，期间目录仍可能被外部删除 → 再次兜底
     this.ensureCacheDir();
@@ -706,14 +631,18 @@ export class JarSpiderBridge {
     }
 
     // 3) ★★ 后台已有转换在跑 → **接管等待**，绝不另起第二个进程 ★★
-    //    （两个 dex2jar 写同一个 part 会把产物写坏；见 ConvertLock 注释）
-    const lock = this.readConvertLock(key);
-    if (this.converterAlive(lock)) {
+    //    （两个 dex2jar 写同一个 part 会把产物写坏；见 DetachedDex2jar 进程生命周期约束）
+    const lock = this.detachedDex2jar.readLock(key);
+    if (this.detachedDex2jar.isAlive(lock)) {
       this.host?.logger.i(
         `jvm-bridge 检测到该 jar 的后台转换仍在进行（pid=${lock.pid}，已 ${formatDuration(Date.now() - lock.startedAt)}）→ 接管等待`,
       );
-      this.convProgress.set(jarUrl, { startedAt: lock.startedAt, attached: true, stage: 'convert' });
-      const ok = await this.waitAttachedConversion(key, rawJar, target, lock);
+      this.conversionRegistry.attachToProgress(jarUrl, lock.startedAt);
+      const ok = await this.detachedDex2jar.waitForAttached(
+        key,
+        lock,
+        () => this.adoptFinishedPart(key, rawJar, target, false),
+      );
       if (!ok) {
         throw new ConversionInFlightError(
           `该 jar 的后台转换仍在进行（已 ${formatDuration(Date.now() - lock.startedAt)}），稍后自动重试`,
@@ -723,7 +652,7 @@ export class JarSpiderBridge {
       return target;
     }
     // 锁指向的进程已经不在（或锁过期 = 僵死）→ 清掉残留，按「新转换」处理
-    if (lock) this.clearConvertLock(key);
+    if (lock) this.detachedDex2jar.clearLock(key);
 
     // 4) dex2jar 转换（dex2jar 可直接读含 classes.dex 的 jar/apk/zip，无需先解压）
     //
@@ -739,257 +668,33 @@ export class JarSpiderBridge {
     //    ③ `-XX:TieredStopAtLevel=1` 压低 JIT 线程/代码缓存开销（一次性任务，不需要 C2 峰值性能）。
     //    ④ **异步 spawn**（不再是 execFileSync）：大 jar 转换要几分钟，同步执行会把整个主进程
     //       （含 IPC / 搜索）冻住 —— 用户观感就是「搜一次卡半天」。
-    //    ⑤ ★ 2026-09-27：**detached + 输出落文件**（见 runDex2jar 与 ConvertLock 注释）——
+    //    ⑤ ★ 2026-09-27：**detached + 输出落文件**（见 DetachedDex2jar 进程生命周期约束）——
     //       关软件也转完；App 重启后走 2)/3) 收编或接管。
     const jdk = this.javaExe();
     const d2jCp = this.dirJars(join(this.jvmDir, 'd2j')).join(';');
     const dexBytes = totalDexBytes(jarBytes);
-    const memBytes = this.totalMemBytes;
-    let heapMb = d2jHeapMb(dexBytes, memBytes);
-    // ★ 上次遗留的转换日志里有 OOM 证据（那次会话被杀/崩了）→ 本次直接按 2× 堆起步，别在同一个坑里再掉一次
-    if (isOomOutput(this.readConvLog(key))) {
-      const next = d2jHeapMb(dexBytes, memBytes, 2);
-      if (next > heapMb) {
-        this.host?.logger.w(`jvm-bridge 上次转换疑似堆不足 → 本次直接按 -Xmx${next}m 起步（原 -Xmx${heapMb}m）`);
-        heapMb = next;
-      }
-    }
-    // ★ 大 jar 首次转换要数分钟：起转前落一条日志，便于「用户在等、日志能看懂」的排查
-    this.host?.logger.i(
-      `jvm-bridge dex2jar 开始转换：classes.dex ${(dexBytes / 1048576).toFixed(1)}MB，-Xmx${heapMb}m，raw ${(jarBytes.length / 1048576).toFixed(1)}MB`,
-    );
-    let r = await this.runDex2jar(jdk, d2jCp, heapMb, rawJar, key);
-    if (!r.ok && isOomOutput(r.output)) {
-      const next = d2jHeapMb(dexBytes, memBytes, 2);
-      if (next > heapMb) {
-        this.host?.logger.w(
-          `jvm-bridge dex2jar 堆不足（-Xmx${heapMb}m，classes.dex ${(dexBytes / 1048576).toFixed(1)}MB）→ 按 -Xmx${next}m 重试`,
-        );
-        heapMb = next;
-        r = await this.runDex2jar(jdk, d2jCp, heapMb, rawJar, key);
-      }
-    }
-    if (!r.ok) {
-      // 本次转换的 part 必然是残骸（进程已退出）→ 删掉，别让下次的「上次日志/残骸」误导判断
-      try { rmSync(this.partPath(key), { force: true }); } catch { /* ignore */ }
-      const dexMb = (dexBytes / 1048576).toFixed(1);
-      if (isOomOutput(r.output)) {
-        throw new Error(
-          `dex2jar 转换内存不足（classes.dex 约 ${dexMb}MB，已按 -Xmx${heapMb}m 重试仍失败）：` +
-            '该 jar 体积偏大，请在关闭其他占用内存的程序后清理缓存并重试',
-        );
-      }
-      const tail = r.output.trim().split(/\r?\n/).filter(Boolean).slice(-2).join(' ').slice(0, 240);
-      throw new Error(`dex2jar 转换失败（进程退出异常${r.timedOut ? '，转换超时' : ''}）：${tail || '无输出'}`);
-    }
+    await this.dex2jarConversion.convert({
+      executable: jdk,
+      classpath: d2jCp,
+      rawJar,
+      key,
+      dexBytes,
+      rawJarBytes: jarBytes.length,
+    });
     // 5) 校验 + 合并 raw 资源 + 原子改名 part → target（strict：本次刚跑完，失败必须报准原因）
     await this.adoptFinishedPart(key, rawJar, target, true);
     this.finishConvert(jarUrl, target, contentKey);
     return target;
   }
 
-  /**
-   * 转换成功后的统一收尾（含原生运行时预热 —— 见 jarNeedsNative）。
-   *
-   * ★ 2026-09-29：同时把「jar 内容哈希 → 本次产物键」记进内容索引 —— 下次同内容的 jar
-   *   即使换了 URL（缓存键不同）也能直接复用产物、跳过 dex2jar（见 jarContentIndex.ts）。
-   */
+  /** Publish conversion state only after the artifact has passed validation and atomic promotion. */
   private finishConvert(jarUrl: string, target: string, contentKey?: string): void {
-    // ★ 原生桥：产物内含 .so（加固壳）→ 后台预热 unidbg 运行时（首次约 39MB 下载），
-    //   把下载挪到「转换刚完成」这段用户已在等待的窗口，首次调用只需起桥。
     if (this.jarNeedsNative(target)) this.prewarmNativeRuntime();
-    this.converted.set(jarUrl, target);
-    this.convertFailures.delete(jarUrl);
     if (contentKey) recordContentKey(this.cacheDir, contentKey, md5Hex(jarUrl));
   }
 
-/**
-   * 跑一次 dex2jar（**detached + 输出落文件**，见 ConvertLock 注释）。
-   *
-   * ★ 2026-09-27（本函数是「关软件也要转完」的落地点，三条都别回退）：
-   *   ① `detached: true` —— 子进程自成进程组，**App 退出不带走它**（此前 App 一关，3 分钟转换白跑）；
-   *   ② stdio 接**文件**而不是管道 —— App 死后管道断裂会让 dex2jar 写 stdout 抛 IOException
-   *      （那等于亲手把「关窗也转完」这条链掐死）；顺带把日志留给下次会话做「收编/接管/堆判断」；
-   *   ③ **不登记 activeChildren** —— dispose() 会 kill 它们，而我们要的恰恰是「退出后继续跑」。
-   *
-   * 主进程在转换期间保持可响应：大 jar 首次转换可能数分钟，绝不能同步阻塞事件循环。
-   */
-  private runDex2jar(
-    jdk: string,
-    d2jCp: string,
-    heapMb: number,
-    rawJar: string,
-    key: string,
-  ): Promise<{ ok: boolean; output: string; timedOut?: boolean }> {
-    const part = this.partPath(key);
-    const logFile = this.convLogPath(key);
-    const argv = [
-      `-Xmx${heapMb}m`,
-      '-XX:+UseSerialGC',
-      '-XX:TieredStopAtLevel=1',
-      '-XX:ReservedCodeCacheSize=32m',
-      '-Dfile.encoding=UTF-8',
-      '-cp',
-      d2jCp,
-      'com.googlecode.dex2jar.tools.Dex2jarCmd',
-      rawJar,
-      '-o',
-      part,
-      '--force',
-    ];
-    return new Promise((resolve) => {
-      let fd = -1;
-      try {
-        // 每次起转清空日志：下次会话的「上次日志」判据（OOM 证据）必须是这一次的
-        writeFileSync(logFile, '');
-        fd = openSync(logFile, 'a');
-      } catch {
-        fd = -1;
-      }
-      let child: import('node:child_process').ChildProcess;
-      let out = '';
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      let progressTimer: ReturnType<typeof setInterval> | undefined;
-      const onData = (d: Buffer | string) => {
-        out = (out + String(d)).slice(-8000);
-      };
-      const done = (res: { ok: boolean; output: string; timedOut?: boolean }) => {
-        if (timer) clearTimeout(timer);
-        if (progressTimer) clearInterval(progressTimer);
-        // 本次转换结束（无论成败）：锁随之作废，下次会话不会再「接管」一个已经不在的进程
-        this.clearConvertLock(key);
-        resolve(res);
-      };
-      try {
-        child = spawn(jdk, argv, {
-          windowsHide: true,
-          detached: true, // ① 关软件也转完
-          stdio: fd >= 0 ? ['ignore', fd, fd] : 'ignore', // ② 输出落文件，不用管道
-        });
-      } catch (e) {
-        if (fd >= 0) { try { closeSync(fd); } catch { /* ignore */ } }
-        done({ ok: false, output: `spawn 失败: ${(e as Error).message}` });
-        return;
-      }
-      if (fd >= 0) { try { closeSync(fd); } catch { /* ignore */ } }
-      const startedAt = Date.now();
-      // ★ 锁先写（pid 已知）：App 崩在等结果的过程中，下次会话仍能凭它接管这次转换
-      this.writeConvertLock(key, { pid: child.pid ?? 0, startedAt, heapMb });
-      child.unref?.();
-      // ③ 刻意不加入 activeChildren（dispose 会 kill —— 那正好和本设计相反）
-      // 兼容测试桩（真实 spawn 传文件 stdio 时 stdout/stderr 为 null）
-      child.stdout?.on('data', onData);
-      child.stderr?.on('data', onData);
-      // 进度落日志：用户等待期（以及事后复盘）能看懂「等了多久、在干什么」
-      progressTimer = setInterval(() => {
-        this.host?.logger.i(
-          `jvm-bridge dex2jar 进行中：已 ${formatDuration(Date.now() - startedAt)}（-Xmx${heapMb}m，pid=${child.pid ?? 0}）`,
-        );
-      }, CONV_LOG_EVERY_MS);
-      progressTimer.unref?.();
-      timer = setTimeout(() => {
-        try {
-          child.kill();
-        } catch {
-          /* ignore */
-        }
-        done({ ok: false, output: this.readConvLog(key) || out, timedOut: true });
-      }, D2J_TIMEOUT_MS);
-      timer.unref?.();
-      child.on('error', (e) => done({ ok: false, output: `spawn 失败: ${e.message}\n${out}` }));
-      child.on('close', (code) => done({ ok: code === 0, output: out || this.readConvLog(key) }));
-    });
-  }
-
-  // ---------------- 转换陪伴文件（part / lock / log；见 ConvertLock 注释） ----------------
-
-  private partPath(key: string): string {
-    return join(this.cacheDir, `${key}.part.jar`);
-  }
-
-  private lockPath(key: string): string {
-    return join(this.cacheDir, `${key}.lock`);
-  }
-
-  private convLogPath(key: string): string {
-    return join(this.cacheDir, `${key}.d2j.log`);
-  }
-
-  private readConvertLock(key: string): ConvertLock | null {
-    try {
-      const j = JSON.parse(readFileSync(this.lockPath(key), 'utf8')) as ConvertLock;
-      return j && typeof j.pid === 'number' && typeof j.startedAt === 'number' ? j : null;
-    } catch {
-      return null;
-    }
-  }
-
-  private writeConvertLock(key: string, lock: ConvertLock): void {
-    try {
-      writeFileSync(this.lockPath(key), JSON.stringify(lock));
-    } catch { /* ignore */ }
-  }
-
-  private clearConvertLock(key: string): void {
-    try {
-      rmSync(this.lockPath(key), { force: true });
-    } catch { /* ignore */ }
-  }
-
-  /** 上次转换日志的尾部（OOM 判据 / 报错回显；没有则空串） */
-  private readConvLog(key: string): string {
-    try {
-      return readFileSync(this.convLogPath(key), 'utf8').slice(-8000);
-    } catch {
-      return '';
-    }
-  }
-
-  /**
-   * 锁是否指向一个**还活着**的转换进程。
-   * 判据：① pid 存活（`process.kill(pid, 0)`；Windows 上 detached 子进程与父进程同用户，可行）；
-   *       ② 起转时间未超过单次转换上限（防 pid 被系统复用后误判成「活着」）。
-   */
-  private converterAlive(lock: ConvertLock | null): lock is ConvertLock {
-    if (!lock || !(lock.startedAt > 0) || lock.pid <= 0) return false;
-    if (Date.now() - lock.startedAt > D2J_TIMEOUT_MS) return false;
-    try {
-      process.kill(lock.pid, 0);
-      return true;
-    } catch (e) {
-      return (e as NodeJS.ErrnoException)?.code === 'EPERM';
-    }
-  }
-
-  /**
-   * 廉价完整性预判：zip 末尾必须落中央目录（EOCD）。
-   * dex2jar 是流式写 part 的，**写完整才有 EOCD** —— 轮询等它时不重扫整个 zip（几 MB 读 × 每 1.5s 太浪费）。
-   */
-  private partLooksComplete(part: string): boolean {
-    let fd = -1;
-    try {
-      const len = statSync(part).size;
-      if (len < 32) return false;
-      fd = openSync(part, 'r');
-      const win = Math.min(EOCD_TAIL_WINDOW, len);
-      const buf = Buffer.alloc(win);
-      readSync(fd, buf, 0, win, len - win);
-      return buf.includes(EOCD_MAGIC);
-    } catch {
-      return false;
-    } finally {
-      if (fd >= 0) { try { closeSync(fd); } catch { /* ignore */ } }
-    }
-  }
-
-  /**
-   * 把「已经写完整的转换产物」正式收编：校验 → 合并 raw 资源 → 原子改名 part → target。
-   *
-   * @param strict 本次刚跑完的转换用 true；历史遗留用 false（不完整产物返回 false，修复失败仍抛原因）
-   * @returns 收编成功（target 已是可用产物）
-   */
   private async adoptFinishedPart(key: string, rawJar: string, target: string, strict: boolean): Promise<boolean> {
-    const part = this.partPath(key);
+    const part = this.detachedDex2jar.partPath(key);
     let size = 0;
     try {
       size = existsSync(part) ? statSync(part).size : 0;
@@ -1006,7 +711,7 @@ export class JarSpiderBridge {
     }
     // ★★ 把 raw jar 里 dex2jar「不认」的资源原样搬回转换产物 —— 加固/壳类蜘蛛的生死线 ★★
     //   见 copyJarResources 的详细说明（缺 assets/*.so 会让 DexNative.<clinit> 直接 NPE）。
-    copyJarResources(rawJar, part, this.host);
+    copyJarResources(rawJar, part, this.host?.logger);
     // R8 删除子类构造器后，dex2jar 会错误地 NEW 抽象祖先类。普通 JAR 与运行时载荷同样需要修复。
     await this.repairDexConstructors(rawJar, part);
     // ★★ 修补 dex2jar 的「super 调用被转成自递归 invokespecial」—— 否则调用即 StackOverflowError ★★
@@ -1032,44 +737,15 @@ export class JarSpiderBridge {
   }
 
   /**
-   * 接管等待：后台转换进程还活着时，等它把 part 写完（不另起第二个进程）。
-   * 等到「进程没了」或「超单次上限」为止；每轮只做廉价完整性预判（见 partLooksComplete）。
-   */
-  private async waitAttachedConversion(
-    key: string,
-    rawJar: string,
-    target: string,
-    lock: ConvertLock,
-  ): Promise<boolean> {
-    const deadline = Math.min(lock.startedAt + D2J_TIMEOUT_MS, Date.now() + D2J_TIMEOUT_MS);
-    let nextLog = Date.now() + CONV_LOG_EVERY_MS;
-    while (Date.now() < deadline) {
-      if (this.partLooksComplete(this.partPath(key)) && await this.adoptFinishedPart(key, rawJar, target, false)) return true;
-      if (!this.converterAlive(lock)) {
-        // 进程没了：要么刚好写完（下面这次收编会接住），要么失败 → 返回 false 让上层起新转换
-        return this.adoptFinishedPart(key, rawJar, target, false);
-      }
-      if (Date.now() >= nextLog) {
-        nextLog = Date.now() + CONV_LOG_EVERY_MS;
-        this.host?.logger.i(
-          `jvm-bridge dex2jar 后台转换进行中（接管等待）：已 ${formatDuration(Date.now() - lock.startedAt)}（pid=${lock.pid}）`,
-        );
-      }
-      await new Promise((r) => setTimeout(r, ATTACH_POLL_MS));
-    }
-    return this.adoptFinishedPart(key, rawJar, target, false);
-  }
-
-  /**
    * ★ 2026-09-27：某 jar 的转换进度（上层在「等待期」显示「已等 X」）。
    * @returns null = 当前没有转换在跑；attached = 正在接管上次会话遗留的后台转换
    */
   conversionProgress(jarUrl: string): { elapsedMs: number; attached: boolean; stage: 'download' | 'convert' } | null {
     const url = normalizeJarUrl(jarUrl);
     if (!url) return null;
-    const p = this.convProgress.get(url);
-    if (!p) return null;
-    return { elapsedMs: Math.max(0, Date.now() - p.startedAt), attached: p.attached, stage: p.stage };
+    const { elapsedMs, attached, stage } = this.conversionRegistry.progressView(url) ?? {};
+    if (elapsedMs === undefined || attached === undefined || stage === undefined) return null;
+    return { elapsedMs, attached, stage };
   }
 
   private dirJars(dir: string): string[] {
@@ -1102,21 +778,21 @@ export class JarSpiderBridge {
           '-cp', [resolve(bridgeJar), d2jCp].join(';'), 'com.winbox.nativebridge.DexJarRepair',
           resolve(rawJar), resolve(work), java, d2jCp,
         ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-        this.activeChildren.add(child);
+        this.subprocessRunner.track(child);
         let out = '';
         let settled = false;
         const finish = (error?: Error) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          this.activeChildren.delete(child);
+          this.subprocessRunner.release(child);
           if (error) reject(error);
           else resolveOutput(out);
         };
         const timer = setTimeout(() => {
           child.kill();
           finish(new Error('DEX 构造器修复超时'));
-        }, D2J_TIMEOUT_MS);
+        }, DEX2JAR_TIMEOUT_MS);
         timer.unref?.();
         const onData = (data: Buffer | string) => { out = (out + String(data)).slice(-8000); };
         child.stdout?.on('data', onData);
@@ -1168,12 +844,12 @@ export class JarSpiderBridge {
     const out: string[] = [];
     for (const u of urls) {
       const key = normalizeJarUrl(u);
-      const p = this.converted.get(key);
+      const p = this.conversionRegistry.convertedPath(key);
       if (!p) continue;
       if (existsSync(p) && this.artifactOk(p)) {
         out.push(p);
       } else {
-        this.converted.delete(key);
+        this.conversionRegistry.forgetConvertedPath(key);
         this.host?.logger.w(`jvm-bridge 转换产物已失效，已清除缓存条目: ${p}`);
       }
     }
@@ -1188,8 +864,9 @@ export class JarSpiderBridge {
   peekConverted(jarUrl: string): string {
     const url = normalizeJarUrl(jarUrl);
     if (!url) return '';
-    const cached = this.converted.get(url);
+    const cached = this.conversionRegistry.convertedPath(url);
     if (cached && existsSync(cached) && this.artifactOk(cached)) return cached;
+    if (cached) this.conversionRegistry.forgetConvertedPath(url);
     const p = join(this.cacheDir, `${md5Hex(url)}.jar`);
     // ★ 残骸（空 zip）不算「已转换」：否则闸门会把该源标成 ready，实际一调就类找不到
     return this.artifactOk(p) ? p : '';
@@ -1211,12 +888,15 @@ export class JarSpiderBridge {
     //   而池按 key 长期复用它（用户侧就是「装完第一次进源，每个源都提示蜘蛛返回空结果」）。
     //   现在：与 callJar **同口径**拼 argv（原生 jar + native props），且**运行时未就绪就不预热**
     //   —— 预热绝不生产「没有桥」的僵尸进程。
-    const shimClasses = this.shimWithFoni(className, this.shellShimClassesPath() || this.autoShellShim(jarPaths));
-    const shimJar = this.shellShimJarPath();
+    const shimClasses = this.shellCompatibility.includeFoniImplementation(
+      className,
+      this.shellCompatibility.classesPath() || this.shellCompatibility.resolveForJars(jarPaths),
+    );
+    const shimJar = this.shellCompatibility.shimJarPath();
     // ★ 2026-09-29（守卫空 NPE 兜底）：已切 shell-shim 路线的 jar 预热同样不启用原生桥（见 callImpl 注释）
     const preferShim = shimClasses !== '' && this.shimPreferred.has(jarPaths.join(';'));
     const needsNative = !preferShim && this.nativeNeeded(jarPaths);
-    const nativeJars = needsNative ? (this.nativeRuntimeJars ?? []) : [];
+    const nativeJars = needsNative ? (this.nativeRuntime.readyJars ?? []) : [];
     if (needsNative && nativeJars.length === 0) return 0;
     // ★ 与 callJar 同口径：-cp 只放运行时（stubs/libs/桥/unidbg），蜘蛛 jar/shim jar 只走加载器参数 ——
     //   否则父加载器抢占原始类，native 改写产物（子加载器最前）不生效。
@@ -1241,18 +921,7 @@ export class JarSpiderBridge {
    * 运行时/脚本任一未落盘 → 直接 0：预热**绝不触发**嵌入式 Python 下载（那是 11MB 级重活）。
    */
   prewarmPython(pyPath: string, clsName: string, count = 1, ext = '', siteKey = ''): number {
-    if (!this.pool || !this.pyRuntimeDir) return 0;
-    const dir = join(this.pyRuntimeDir, JarSpiderBridge.PY_VER);
-    const pyExe = join(dir, 'python.exe');
-    const runner = join(dir, 'runner.py');
-    if (!existsSync(pyPath) || !existsSync(pyExe) || !existsSync(runner)) return 0;
-    if (!this.pyRuntimeReady()) return 0;
-    this.pythonRuntime.placeRunnerFiles(dir);
-    const serveArgv = [runner, '-serve', pyPath, clsName];
-    const env = { PYTHONIOENCODING: 'utf-8', ...this.proxyProvider?.().env,
-      ...(siteKey ? { WINBOX_PY_PROXY: `${LOCAL_PROXY_BASE}/proxy?do=py&key=${encodeURIComponent(siteKey)}` } : {}) };
-    const key = servePoolKey(pyExe, serveArgv, env);
-    return this.pool.warm(key, { exe: pyExe, serveArgv, env, key }, count, { className: clsName, method: WARM_METHOD, args: [ext] });
+    return this.pythonRuntime.prewarmPython(pyPath, clsName, count, ext, siteKey);
   }
 
   /**
@@ -1273,7 +942,7 @@ export class JarSpiderBridge {
   }
 
   /** ★ 嵌入式 Python 运行时是否已落盘（同步判定，全源搜索就绪闸门用；**绝不触发下载**） */
-  pyRuntimeReady(): boolean { return this.pythonRuntime.ready(); }
+  pyRuntimeReady(): boolean { return this.pythonRuntime.pyRuntimeReady(); }
 
   /**
    * ★ 正在进行的转换/下载（未完成时返回 promise；已就绪或从未启动返回 null）。
@@ -1281,94 +950,14 @@ export class JarSpiderBridge {
    */
   pendingConvert(jarUrl: string): Promise<string> | null {
     const url = normalizeJarUrl(jarUrl);
-    if (!url || this.converted.has(url)) return null;
-    return this.convertLocks.get(url) ?? null;
+    if (!url || this.conversionRegistry.hasConvertedPath(url)) return null;
+    return this.conversionRegistry.pending(url);
   }
 
   /** 同步读取仍在抑制窗口内的失败；失败不等于「正在准备」，过期后允许重新尝试。 */
   conversionFailure(jarUrl: string): string {
     const url = normalizeJarUrl(jarUrl);
-    const failed = this.convertFailures.get(url);
-    if (!failed) return '';
-    if (Date.now() - failed.at >= CONVERT_FAIL_TTL_MS) {
-      this.convertFailures.delete(url);
-      return '';
-    }
-    return failed.message;
-  }
-
-  /**
-   * shell-shim（方案 A 影子类）真实实现路径；非空 = 启用，空串 = 默认关闭。
-   * 优先级：构造参数 shellShimClasses > 环境变量 TVBOX_SHELL_SHIM_CLASSES。
-   * Java 侧 DexNative 影子类自身也认这个环境变量（见 stubs-src/shell-shim/DexNative.java），
-   * 这里与之对齐，形成单一控制点 —— 只有拿到"真实实现"路径时才打断普通 classpath 顺序。
-   */
-  private shellShimClassesPath(): string {
-    const fromOpt = (this.shellShimClasses ?? '').trim();
-    if (fromOpt) return fromOpt;
-    return (process.env['TVBOX_SHELL_SHIM_CLASSES'] ?? '').trim();
-  }
-
-  private shellShimJarPath(): string {
-    return join(this.jvmDir, 'stubs', 'shell-shim.jar');
-  }
-
-  /** 识别壳 jar：返回 `assets/<X>.guard` 的壳名（如 ftyshinidie），非壳返回 null。 */
-  private detectShellGuard(jarPath: string): string | null {
-    try {
-      const buf = readFileSync(jarPath);
-      if (!looksLikeZip(buf)) return null;
-      for (const name of listZipEntries(buf)) {
-        const m = /^assets\/([^/]+)\.guard$/i.exec(name);
-        if (m) return m[1];
-      }
-    } catch { /* 非 zip / 读不到 → 不是壳 */ }
-    return null;
-  }
-
-  /** 壳名 → 内置真实实现 jar 的路径（`resources/jvm/shell-shim/real/<壳名>.jar`）。 */
-  private shellShimRealPath(guard: string): string {
-    return join(this.jvmDir, 'shell-shim', 'real', `${guard}.jar`);
-  }
-
-  /**
-   * 自动适配：遍历本次要加载的 jar，识别壳并返回对应的内置真实实现路径。
-   * - 命中且有内置真实实现 → 返回其路径（启用 shell-shim）；
-   * - 命中但无内置真实实现 → 记一条警告并返回空串（维持原「壳源无法运行」提示）；
-   * - 非壳 jar → 返回空串（普通源不受影响）。
-   * 这是「壳名 → 真实实现」可插拔映射的落地：未来解出新壳，只需把 dex2jar 产物
-   * 按壳名放进 `shell-shim/real/` 目录即可，无需改代码。
-   */
-  private autoShellShim(jarPaths: string[]): string {
-    for (const p of jarPaths) {
-      const guard = this.detectShellGuard(p);
-      if (!guard) continue;
-      const real = this.shellShimRealPath(guard);
-      if (existsSync(real)) return real;
-      this.host?.logger.w(`jvm-bridge 检测到壳 jar（guard=${guard}），但无内置真实实现: ${real}`);
-    }
-    return '';
-  }
-
-  /**
-   * ★ 2026-09-16 按蜘蛛类分派额外真实实现（foni-spider.jar 优先加载）。
-   *
-   *   背景：饭太硬官方版内置的 `spider.jar`（转成 `foni-spider.jar`）是**完整构建**
-   *   （short[] 数组齐全，AppSx/AppTT/AppSK 自带 blob ext 解密 tX.i），而历史抢收的
-   *   `ftyshinidie.jar` 是残缺构建（Rc short[] 越界）。但两套构建的混淆类**同名不同
-   *   结构**（Windows 大小写不敏感下 `rC`/`Rc` 甚至无法合并进同一 jar），全局混载会
-   *   互相遮蔽导致大量源退化（实测 46 源仅 19 OK）。
-   *
-   *   对策：只对 **AppSx/AppTT/AppSK**（blob ext 源：咕咕/播客/剧圈/神车/热播/港迷等）
-   *   追加 foni-spider.jar 并排在最前，让完整构建的解密/数组生效；其余源保持
-   *   ftyshinidie.jar 单实现，行为完全不变。
-   */
-  private shimWithFoni(className: string, baseShim: string): string {
-    if (!baseShim) return baseShim;
-    if (!/AppSx|AppTT|AppSK/.test(className)) return baseShim;
-    const foni = join(this.jvmDir, 'shell-shim', 'real', 'foni-spider.jar');
-    if (!existsSync(foni)) return baseShim;
-    return `${foni};${baseShim}`;
+    return this.conversionRegistry.failure(url);
   }
 
   /**
@@ -1384,19 +973,19 @@ export class JarSpiderBridge {
     args: string[],
     timeoutMs?: number,
     tag?: string,
-  ): Promise<string> {
-    this.lastSpiderReason = '';
+    signal?: AbortSignal,
+  ): Promise<SpiderCallResult> {
+    throwIfAborted(signal);
     const fallbackKey = jarPaths.join(';') + '\n' + className;
     const entry = className.replace(/\./g, '/') + '.class';
-    const remembered = this.fallbackJars.get(fallbackKey);
-    const rememberedIndex = remembered && this.jarClassIndex(remembered.path);
-    if (remembered && rememberedIndex?.hash === remembered.hash &&
-        !jarPaths.some((p) => this.jarClassIndex(p)?.entries.has(entry))) {
-      return this.callImpl([remembered.path], className, method, args, timeoutMs, tag);
+    const rememberedCandidate = this.classpathResolver.rememberedCandidate(fallbackKey, jarPaths, entry);
+    if (rememberedCandidate) {
+      return this.callImpl([rememberedCandidate], className, method, args, timeoutMs, tag, signal);
     }
-    this.fallbackJars.delete(fallbackKey);
-    const out = await this.callImpl(jarPaths, className, method, args, timeoutMs, tag);
-    if (out.trim()) return out; // 成功结果不能受其它并发调用的共享诊断字段影响。
+    const firstAttempt = await this.callImpl(jarPaths, className, method, args, timeoutMs, tag, signal);
+    throwIfAborted(signal);
+    const out = firstAttempt.output;
+    if (out.trim() && !firstAttempt.reason) return firstAttempt;
     // ★★ 2026-09-29（设备实证「切换部分源 NPE」的兜底，勿删）★★
     //   现象：加固壳的守卫类（csp_DouDouGuard / csp_T4Guard …）报
     //   `NullPointerException: Cannot invoke "com.github.catvod.crawler.Spider.init(android.content.Context, String)"`
@@ -1406,32 +995,31 @@ export class JarSpiderBridge {
     //   重试一次，并记住该 jar（后续 home/detail/play 与预热都走同一条路线，见 callImpl/prewarmJar 的 preferShim）。
     //   为什么可行：shell-shim 影子 DexNative 用真实实现 jar 直接回答 getLoader/getSpider，完全不依赖
     //   ARM 模拟/运行时 dex 转换（探针实测：DouDouGuard home 1.9s 拿到 10658B 数据）。
-    if (isGuardInnerSpiderNull(this.lastSpiderReason)) {
+    if (firstAttempt.failureKind === 'guard-inner-spider-null') {
       const jarKey = jarPaths.join(';');
-      const shim = this.shellShimClassesPath() || this.autoShellShim(jarPaths);
+      const shim = this.shellCompatibility.classesPath() || this.shellCompatibility.resolveForJars(jarPaths);
       // 影子 jar 不在就白试（callImpl 会打「未找到 shell-shim.jar」警告）→ 直接按原失败返回
-      if (shim && existsSync(this.shellShimJarPath()) && !this.shimPreferred.has(jarKey)) {
+      if (shim && existsSync(this.shellCompatibility.shimJarPath()) && !this.shimPreferred.has(jarKey)) {
         this.shimPreferred.add(jarKey);
         this.host?.logger.w(
           `jvm-bridge ${className}: 守卫内层蜘蛛为空（原生解密未产出加载器）→ 改用 shell-shim 真实实现重试：${shim}`,
         );
-        this.lastSpiderReason = '';
-        return this.callImpl(jarPaths, className, method, args, timeoutMs, tag);
+        return this.callImpl(jarPaths, className, method, args, timeoutMs, tag, signal);
       }
     }
-    if (!isSpiderClassMissing(this.lastSpiderReason)) return out;
+    if (firstAttempt.failureKind !== 'spider-class-missing') return firstAttempt;
     // 入口类本来存在：缺失的是内部依赖，混进其它版本并不能修复它。
-    if (jarPaths.some((p) => this.jarClassIndex(p)?.entries.has(entry))) return out;
-    const candidates = this.otherConvertedJars(jarPaths, entry);
+    if (this.classpathResolver.containsClass(jarPaths, entry)) return firstAttempt;
+    const candidates = this.classpathResolver.uniqueCandidates(jarPaths, entry);
     if (candidates.length !== 1) {
-      if (candidates.length > 1) this.lastSpiderReason = `蜘蛛类未找到；缓存中有 ${candidates.length} 个不同构建包含 ${className}，无法安全选择，请修正源 jar 配置`;
-      return out;
+      return candidates.length > 1
+        ? { ...firstAttempt, reason: `蜘蛛类未找到；缓存中有 ${candidates.length} 个不同构建包含 ${className}，无法安全选择，请修正源 jar 配置` }
+        : firstAttempt;
     }
     this.host?.logger.i(`jvm-bridge ${className}: 入口类只在一个缓存构建中存在 → 独立加载 ${basename(candidates[0])}（不混载其它订阅）`);
-    this.lastSpiderReason = '';
-    const result = await this.callImpl(candidates, className, method, args, timeoutMs, tag);
-    const index = this.jarClassIndex(candidates[0]);
-    if (result.trim() && index) this.fallbackJars.set(fallbackKey, { path: candidates[0], hash: index.hash });
+    const result = await this.callImpl(candidates, className, method, args, timeoutMs, tag, signal);
+    throwIfAborted(signal);
+    if (result.output.trim() && !result.reason) this.classpathResolver.remember(fallbackKey, candidates[0]);
     return result;
   }
 
@@ -1442,17 +1030,19 @@ export class JarSpiderBridge {
     args: string[],
     timeoutMs?: number,
     tag?: string,
-  ): Promise<string> {
+    signal?: AbortSignal,
+  ): Promise<SpiderCallResult> {
+    throwIfAborted(signal);
     // ★ shell-shim（方案 A 影子类，见 stubs-src/shell-shim/DexNative.java）——
     //   遇到加固/壳 jar（内含 native 版 DexNative）时，把 shell-shim.jar 排在
     //   classpath **最前**，靠类加载顺序覆盖壳里那个 native 版本，从而绕过
     //   ARM .so 加载（第十八轮结论 §六的应用侧接入）。
     //   默认关闭：只有拿到"真实实现 jar"路径（shellShimClasses 参数或
     //   TVBOX_SHELL_SHIM_CLASSES 环境变量）时才启用，普通源行为完全不变。
-    const shimClasses0 = this.shellShimClassesPath() || this.autoShellShim(jarPaths);
+    const shimClasses0 = this.shellCompatibility.classesPath() || this.shellCompatibility.resolveForJars(jarPaths);
     // ★ AppSx/AppTT/AppSK 系追加完整构建 foni-spider.jar（优先加载，见 shimWithFoni 注释）
-    const shimClasses = this.shimWithFoni(className, shimClasses0);
-    const shimJar = this.shellShimJarPath();
+    const shimClasses = this.shellCompatibility.includeFoniImplementation(className, shimClasses0);
+    const shimJar = this.shellCompatibility.shimJarPath();
     // ★★ 2026-09-29（守卫空 NPE 兜底，见 call()）：本 jar 已切到 shell-shim 路线后**不再启用原生桥** ——
     //   只要原生桥被启用，SpiderRunner 会把「改写产物目录」排在子加载器**最前**（实测 -verbose:class：
     //   DexNative 来自 *.jar.patched/），shell-shim.jar 里的影子 DexNative 永远抢不到 → 「有真实实现
@@ -1463,6 +1053,7 @@ export class JarSpiderBridge {
     //   并把桥 jar + 运行时 jar 拼进 classpath；工作/改写目录经 -Dtvbox.native.* 透传给运行器。
     //   普通源 nativeJars 为空 → classpath/argv 与历史完全一致。
     const nativeJars = !preferShim && this.nativeNeeded(jarPaths) ? await this.ensureNativeRuntime() : [];
+    throwIfAborted(signal);
     // ★★ 2026-09-26 修复（壳「守卫握手 / 加密路径」总闸，勿回退）★★
     //   此前 `cpParts = [stubs+libs, ...jarPaths, …]` 被**同时**喂给 `-cp`（父加载器 = 应用加载器）
     //   和 SpiderRunner 的加载器参数。父加载器先于子加载器解析 → jar 里的**原始类**永远赢，
@@ -1509,9 +1100,10 @@ export class JarSpiderBridge {
       const tmo = nativeJars.length ? Math.max(timeoutMs ?? this.callTimeoutMs, NATIVE_CALL_MIN_TIMEOUT_MS) : timeoutMs ?? this.callTimeoutMs;
       try {
         const preferredPort = tag && method === 'playerContent' ? this.detailProxyPortByTag.get(tag) : undefined;
-        const r = await this.poolSubmit(this.javaExe(), key, serveArgv, className, method, args, this.proxyProvider?.().env ?? {}, tmo, preferredPort);
+        const r = await this.poolSubmit(this.javaExe(), key, serveArgv, className, method, args, this.proxyProvider?.().env ?? {}, tmo, preferredPort, signal);
+        throwIfAborted(signal);
         // ★ 2026-09-28：信封 ok=false（蜘蛛自己抛）→ 传输层成功、不回退一次性，但必须
-        //   ①把错误落进 lastSpiderReason（翻译后上屏，代替笼统的「蜘蛛返回空结果」）
+        //   ①把翻译后的错误保留在本次返回值中
         //   ②让 call() 的「类缺失 → 缓存 jar 并集兜底重试」重新生效
         //   （旧行为把错误串当正常 data 直接返回，两条路都断了；见 PoolResult.error）。
         if (r.ok) {
@@ -1530,35 +1122,37 @@ export class JarSpiderBridge {
             }
             this.proxyPortKeys.set(r.proxyPort, key);
           }
-          if (r.error) {
-            const raw = String(r.error);
-            this.lastSpiderReason = translateSpiderLog(raw);
+          const rawError = r.error ? String(r.error) : '';
+          const runtimeFailure = rawError ? normalizeSpiderRuntimeFailure(rawError) : null;
+          const reason = runtimeFailure?.reason ?? '';
+          if (rawError) {
             // ★ 2026-10-08：人话旁边**并记原始报错** —— 人话规则命中（如「接口缺失」）会把「具体缺哪个
             //   类/方法」吞掉，没有原始串就无法定位该补哪个桩（用户报「配置中心」源时日志里只有一句中文）。
-            this.host?.logger.i(`jvm-bridge ${className}.${method} 失败原因: ${this.lastSpiderReason}｜原始: ${raw.slice(0, 300)}`);
+            this.host?.logger.i(`jvm-bridge ${className}.${method} 失败原因: ${reason}｜原始: ${rawError.slice(0, 300)}`);
           }
-          return r.data;
+          return runtimeFailure
+            ? spiderCallFailed(r.data, reason, runtimeFailure.failureKind, runtimeFailure.problemCode)
+            : spiderCallSucceeded(r.data);
         }
         // ★ 2026-09-23：**执行超时不回退一次性** —— 超时说明蜘蛛/源站卡住，
         //   立刻再跑一遍一次性只会再等一个满超时（实测死源从 15s 变 30s，全源搜索因此翻倍慢）。
-        if (r.reason === 'timeout') {
-          this.lastSpiderReason = `蜘蛛调用超时（>${Math.round(tmo / 1000)}s），源站可能无响应`;
-          this.host?.logger.i(`jvm-bridge ${className}.${method} 失败原因: ${this.lastSpiderReason}`);
-          return '';
-        }
+        const timeoutResult = spiderPoolTimeoutResult(r.reason, tmo);
         // ★ 2026-09-23 三轮：**排队超时也不回退一次性** —— 排队长说明「同时查询的源太多」，
         //   再 spawn 一个冷启动 JVM 只会让队列更长（用户侧表现为「越搜越慢」）。
         //   直接按「本源本次未取到」返回，并记下可读原因（健康调度会把该源排序到队尾+短预算）。
-        if (r.reason === 'queue-timeout') {
-          this.lastSpiderReason = '并发排队超时（同时查询的源太多），稍后重试该源即可';
-          this.host?.logger.w(`jvm-bridge ${className}.${method}: ${this.lastSpiderReason}`);
-          return '';
+        if (timeoutResult) {
+          if (r.reason === 'queue-timeout') this.host?.logger.w(`jvm-bridge ${className}.${method}: ${timeoutResult.reason}`);
+          else this.host?.logger.i(`jvm-bridge ${className}.${method} 失败原因: ${timeoutResult.reason}`);
+          return timeoutResult;
         }
+        if (r.reason === 'cancelled') throw signal ? abortError(signal) : new Error('搜索已取消');
       } catch {
+        if (signal?.aborted) throw abortError(signal);
         /* 池异常 → 回退一次性 */
       }
     }
-    return this.runSubprocess(this.javaExe(), argv, className, method, timeoutMs);
+    throwIfAborted(signal);
+    return this.subprocessRunner.run(this.javaExe(), argv, className, method, timeoutMs, undefined, signal);
   }
 
   /**
@@ -1569,27 +1163,8 @@ export class JarSpiderBridge {
    * （Lib/site-packages/base），已处理 embed 包 _pth 隔离。
    * ★ 中文 Windows Python 默认 stdout GBK → 必须显式 PYTHONIOENCODING=utf-8。
    */
-  async callPython(pyPath: string, clsName: string, method: string, args: string[], timeoutMs?: number, siteKey = ''): Promise<string> {
-    // 运行时缺失/下载失败 → ensurePythonRuntime 抛错，上层（PySpider）转 PY_UNSUPPORTED 上屏
-    const dir = await this.ensurePythonRuntime();
-    const pyExe = join(dir, 'python.exe');
-    const runner = join(dir, 'runner.py');
-    const argv = [runner, pyPath, clsName, method, ...args];
-    const pyEnv = { PYTHONIOENCODING: 'utf-8', ...this.proxyProvider?.().env,
-      ...(siteKey ? { WINBOX_PY_PROXY: `${LOCAL_PROXY_BASE}/proxy?do=py&key=${encodeURIComponent(siteKey)}` } : {}) };
-    // ★ 进程池：常驻 Python（-serve）跨请求复用（服务端循环；env 带 PYTHONIOENCODING）
-    //   语义同 JVM：仅传输层失败回退一次性，空结果是合法结果。
-    if (this.pool) {
-      const serveArgv = [runner, '-serve', pyPath, clsName];
-      const key = servePoolKey(pyExe, serveArgv, pyEnv);
-      try {
-        const r = await this.poolSubmit(pyExe, key, serveArgv, clsName, method, args, pyEnv, timeoutMs ?? 100000);
-        if (r.ok) return r.data;
-      } catch {
-        /* 池异常 → 回退一次性 */
-      }
-    }
-    return this.runSubprocess(pyExe, argv, clsName, method, timeoutMs ?? 100000, pyEnv);
+  async callPython(pyPath: string, clsName: string, method: string, args: string[], timeoutMs?: number, siteKey = '', signal?: AbortSignal): Promise<SpiderCallResult> {
+    return this.pythonRuntime.callPython(pyPath, clsName, method, args, timeoutMs, siteKey, signal);
   }
 
   /** 进程池提交：同类请求复用同一 serve 进程。ok=false 仅表示进程/传输层失败（调用方回退一次性）。 */
@@ -1603,39 +1178,19 @@ export class JarSpiderBridge {
     env?: Record<string, string>,
     timeoutMs?: number,
     preferredPort?: number,
+    signal?: AbortSignal,
   ): Promise<PoolResult> {
     if (!this.pool) return { ok: false, data: '' };
     const id = `${exe.includes('python') ? 'py' : 'jvm'}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     return new Promise<PoolResult>((resolve) => {
       void this.pool!
-        .submit(key, { exe, serveArgv, env, key }, { id, className, method, args }, timeoutMs, preferredPort)
+        .submit(key, { exe, serveArgv, env, key }, { id, className, method, args }, timeoutMs, preferredPort, signal)
         .then(resolve)
         .catch(() => resolve({ ok: false, data: '' }));
     });
   }
 
   /** Python runtime directory used by the bundled bridge. */
-  private static readonly PY_VER = PYTHON_RUNTIME_VERSION;
-  /**
-   * ★ 2026-09-26 原生桥运行期：unidbg（Windows x64 上模拟 AArch64/ARM32）+ ASM（改写字节码）。
-   *
-   * 依赖树依据 unidbg 0.9.9 的 POM 实拉核对：
-   *   unidbg-android → unidbg-api → unicorn（含 natives/windows_64/unicorn_java.dll）、capstone、keystone、
-   *   demumble、commons-io 等 commons 系列与 fastjson；另需显式补 unidbg-unicorn2（POM 里是 test scope，
-   *   但它是运行后端）、unidbg-dynarmic（2026-09-28 起为默认后端）、JNA 与 native-lib-loader（原生库加载）、
-   *   slf4j（日志）。共 18 个包约 39MB。
-   */
-  private static readonly NATIVE_VER = NATIVE_RUNTIME_VERSION;
-  /** 运行期 jar 合计体积（MB，仅用于日志；18 个包实测 39MB） */
-  private static readonly NATIVE_TOTAL_MB = 39;
-  private static readonly NATIVE_JARS = NATIVE_RUNTIME_ARTIFACTS;
-  /** Maven 镜像（按序回退；国内优先，最后官方源） */
-  private static readonly MAVEN_MIRRORS = [
-    'https://maven.aliyun.com/repository/public/',
-    'https://mirrors.cloud.tencent.com/nexus/repository/maven-public/',
-    'https://repo1.maven.org/maven2/',
-  ];
-
   /**
    * ★ 2026-09-24 后台预热嵌入式 Python 运行时（不阻塞、幂等）：
     * 由 SpiderHost 在配置就绪/清缓存后调用 —— 把「13MB embed 下载 + 解压 + wheel 安装」提前到
@@ -1643,125 +1198,40 @@ export class JarSpiderBridge {
    * 失败静默（首次正常调用时会重试并上屏真实原因）。
    */
   prewarmPythonRuntime(): Promise<string> {
-    return this.ensurePythonRuntime().catch(() => '');
+    return this.pythonRuntime.prewarmPythonRuntime();
   }
 
-  private ensurePythonRuntime(): Promise<string> { return this.pythonRuntime.ensure(); }
+  /** Kept as a private seam for runtime verification; ownership lives in the Python adapter. */
+  private ensurePythonRuntime(): Promise<string> {
+    return this.pythonRuntime.ensureRuntime();
+  }
 
   /**
-   * ★ 2026-09-26：**是否需要原生桥**（同步判定，避免在普通路径上引入 await —— 
+   * ★ 2026-09-26：**是否需要原生桥**（同步判定，避免在普通路径上引入 await ——
    * 否则 spawn 会被推迟到微任务，调用方「紧接着断言子进程」的既有行为会被打破）。
    * 条件：宿主配置了运行时目录 + 桥 jar 在 + 至少一只 jar 含 `.so` 或 native 声明。
    */
   private nativeNeeded(jarPaths: string[]): boolean {
-    if (!this.nativeRuntimeDir) return false;
-    if (!existsSync(join(this.jvmDir, 'native-bridge', 'native-bridge.jar'))) return false;
-    return jarPaths.some((p) => this.jarNeedsNative(p));
+    return this.nativeRuntime.shouldEnable(jarPaths);
   }
 
   /** 原生桥注入的 JVM 参数：工作目录（.so/rootfs）与改写产物目录，运行器据此启用桥 */
   private nativeProps(nativeJars: string[]): string[] {
-    if (nativeJars.length === 0 || !this.nativeRuntimeDir) return [];
-    return [
-      `-Dtvbox.native.work=${join(this.nativeRuntimeDir, 'work')}`,
-      `-Dtvbox.native.patch=${join(this.nativeRuntimeDir, 'patched')}`,
-    ];
+    return this.nativeRuntime.jvmProperties(nativeJars);
   }
 
   /** 包内 .so 或声明 native 方法（运行时下载库的壳）；按产物路径缓存。 */
   private jarNeedsNative(jarPath: string): boolean {
-    const hit = this.nativeFlag.get(jarPath);
-    if (hit !== undefined) return hit;
-    let has = false;
-    try {
-      const buf = readFileSync(jarPath);
-      has = looksLikeZip(buf) && listZipEntries(buf).some((n) => n.endsWith('.so'));
-      if (!has && looksLikeZip(buf)) {
-        has = readZipEntries(buf).some((e) => e.name.endsWith('.class') && hasNativeMethods(e.bytes));
-      }
-    } catch {
-      has = false;
-    }
-    this.nativeFlag.set(jarPath, has);
-    return has;
+    return this.nativeRuntime.containsNativeCode(jarPath);
   }
 
   /** 后台预热原生运行时（不阻塞、幂等；转换产物含 .so 时触发） */
   private prewarmNativeRuntime(): void {
-    if (!this.nativeRuntimeDir) return;
-    void this.ensureNativeRuntime().catch(() => [] as string[]);
+    this.nativeRuntime.prewarm();
   }
 
   private async ensureNativeRuntime(): Promise<string[]> {
-    // ★ 就绪结果内存缓存（见 nativeRuntimeJars）：一次会话只校验一次，也不再把「已就绪」刷满日志
-    if (this.nativeRuntimeJars) return this.nativeRuntimeJars;
-    // 在途任务共享：并发调用不重复下载
-    if (this.nativeRuntimeTask) {
-      const jars = await this.nativeRuntimeTask;
-      if (jars.length > 0) {
-        this.nativeRuntimeJars = jars;
-        return jars;
-      }
-    }
-    const task = this.prepareNativeRuntime();
-    this.nativeRuntimeTask = task
-      .catch(() => [] as string[])
-      .finally(() => {
-        this.nativeRuntimeTask = null;
-      });
-    try {
-      const jars = await task;
-      if (jars.length > 0) this.nativeRuntimeJars = jars;
-      return jars;
-    } catch (e) {
-      this.host?.logger.w(`native: 原生运行时不可用（该源按无原生桥降级）: ${(e as Error).message}`);
-      return [];
-    }
-  }
-
-  private async prepareNativeRuntime(): Promise<string[]> {
-    const dir = join(this.nativeRuntimeDir!, JarSpiderBridge.NATIVE_VER);
-    const bridgeJar = join(this.jvmDir, 'native-bridge', 'native-bridge.jar');
-    if (!existsSync(bridgeJar)) throw new Error(`缺少原生桥实现 jar: ${bridgeJar}`);
-    mkdirSync(dir, { recursive: true });
-    const missing = JarSpiderBridge.NATIVE_JARS.filter((j) => !this.fileOk(join(dir, j.file)));
-    if (missing.length > 0) {
-      this.host?.logger.i(
-        `native: 正在准备 ARM 原生运行时（unidbg ${JarSpiderBridge.NATIVE_VER}，${missing.length} 个包约 ${JarSpiderBridge.NATIVE_TOTAL_MB}MB；仅含 .so 的源需要）…`,
-      );
-    }
-    for (const j of missing) {
-      let lastErr = '';
-      for (const base of JarSpiderBridge.MAVEN_MIRRORS) {
-        try {
-          const res = await this.host!.http.request({ url: base + j.path, method: 'get', timeoutMs: 180000, buffer: 2 });
-          const buf = Buffer.from(
-            Array.isArray(res.content) ? (res.content as unknown as number[]) : Buffer.from(String(res.content), 'base64'),
-          );
-          if (buf.length < 4096) {
-            lastErr = `下载内容过小(${buf.length}B)`;
-            continue;
-          }
-          writeFileSync(join(dir, j.file), buf);
-          lastErr = '';
-          break;
-        } catch (e) {
-          lastErr = (e as Error).message;
-        }
-      }
-      if (lastErr) throw new Error(`原生运行时下载失败（${j.file}）：${lastErr}`);
-    }
-    this.host?.logger.i(`native: ARM 原生运行时已就绪 ${dir}`);
-    return [bridgeJar, ...JarSpiderBridge.NATIVE_JARS.map((j) => join(dir, j.file))];
-  }
-
-  /** 文件存在且非空（下载中断可能留下 0 字节残骸，必须能重下） */
-  private fileOk(p: string): boolean {
-    try {
-      return existsSync(p) && statSync(p).size > 4096;
-    } catch {
-      return false;
-    }
+    return this.nativeRuntime.ensure();
   }
 
   /** 生成 JVM 子进程的公共前置参数（旗标 + classpath），jar/python 模式共用。 */
@@ -1860,138 +1330,6 @@ export class JarSpiderBridge {
     if (key) this.pool?.pin(key, ttlMs);
   }
 
-  /** 统一 spawn + 收 stdout/stderr + 超时/退出码/lastReason 判定；jar(JVM) / py(CPython) 共用。 */
-  private runSubprocess(
-    exe: string,
-    argv: string[],
-    className: string,
-    method: string,
-    timeoutMs?: number,
-    env?: Record<string, string>,
-  ): Promise<string> {
-    return new Promise<string>((resolve) => {
-      // ★ 网络代理环境变量（Python 蜘蛛/子进程的 requests 等会读它；JVM 侧另由 -D 参数负责）
-      const proxyEnv = this.proxyProvider?.().env ?? {};
-      const child = spawn(exe, argv, {
-        windowsHide: true,
-        timeout: timeoutMs ?? this.callTimeoutMs,
-        env: { ...process.env, ...proxyEnv, ...env },
-      });
-      let out = '';
-      let err = '';
-      let timedOut = false;
-      this.activeChildren.add(child);
-      child.on('exit', () => this.activeChildren.delete(child));
-      child.stdout.on('data', (d) => (out += d));
-      child.stderr.on('data', (d) => (err += d));
-      child.on('error', (e) => {
-        this.host?.logger.e(`jvm-bridge spawn 失败: ${e.message}`);
-        this.lastSpiderReason = `运行器进程启动失败：${e.message}`;
-        resolve('');
-      });
-      // spawn 的 timeout 是 SIGTERM；用 killed/timedOut 标出，便于给出"超时"而非"空结果"
-      child.on('exit', (_code, signal) => {
-        if (signal === 'SIGTERM') timedOut = true;
-      });
-      child.on('close', (code) => {
-        // ★ 记录本次调用的"失败原因"，供上层在结果为空时给出精确提示。
-        //   优先级：进程级问题（超时/非零退出）> 蜘蛛自身日志（SpiderLog）> 空输出。
-        //   蜘蛛的 catch 分支会把真实原因打到日志（如 "Connect timed out" / "JSONObject
-        //   text must begin with..."），但默认只在 logger 里、UI 看不到 —— 用户因此只看到
-        //   笼统的「蜘蛛返回空结果」，无法判断是源站挂了、超时了，还是缺 ext。
-        const spiderLog = extractSpiderReason(err);
-        const spiderLogRaw = extractSpiderReasonRaw(err);
-        const runnerErr = err.match(/\[SpiderRunner\.ERROR\][^\n]*/)?.[0]?.trim() ?? '';
-        const outEmpty = !out.trim();
-        let reasonFromSpiderLog = false;
-        if (timedOut) {
-          this.lastSpiderReason = `蜘蛛调用超时（>${Math.round((timeoutMs ?? this.callTimeoutMs) / 1000)}s），源站可能无响应`;
-        } else if (!outEmpty) {
-          this.lastSpiderReason = ''; // 有正常输出，不算失败
-        } else if (spiderLog) {
-          this.lastSpiderReason = translateSpiderLog(spiderLog);
-          reasonFromSpiderLog = true;
-        } else if (runnerErr) {
-          // ★ 运行器异常同样要过一遍"说人话"翻译：这里的报错常是
-          //   UnsatisfiedLinkError / ExceptionInInitializerError / dalvik 相关类缺失 ——
-          //   全是"这个源在桌面端不成立"的信号，原样抛出用户完全看不懂。（也用同款
-          //   标签承接 PythonRunner 的 .py 错误 —— SyntaxError / ImportError 等。）
-          const raw = runnerErr.replace('[SpiderRunner.ERROR]', '').trim();
-          const abiMismatch = /Can't load this \.dll|machine code=0x[0-9a-f]+|wrong ELF class|not a valid Win32 application/i.test(err);
-          const androidShell = /DexNative|UnsatisfiedLinkError|dalvik[/.]system[/.]/.test(err);
-          this.lastSpiderReason = abiMismatch
-            ? 'ARM 原生库（.so）未通过兼容桥加载，请检查原生运行时下载和该源的桥接日志；不能直接由 x64 JVM 加载'
-            : androidShell
-              ? '安卓壳或原生调用失败，当前兼容桥未能执行该源，请检查该源依赖与桥接日志'
-              : `蜘蛛运行器异常：${translateSpiderLog(raw)}`;
-        } else if (code !== 0) {
-          const nativeCrash =
-            /insufficient memory|Native memory allocation|Out of Memory Error/i.test(err) ||
-            /hs_err_pid/i.test(err) ||
-            (code !== 0 && /SIGSEGV|EXCEPTION_ACCESS_VIOLATION/i.test(err));
-          this.lastSpiderReason = nativeCrash
-            ? '桌面 JVM 运行时内存不足（该源需要更大的转换内存），请反馈此源'
-            : `JVM 进程异常退出（code=${code}）`;
-        } else {
-          this.lastSpiderReason = '';
-        }
-
-        if (err) {
-          // 过滤 JVM 级噪声（-noverify 弃用警告等），只保留有诊断价值的行。
-          const cleaned = stripJvmNoise(err);
-          this.noteBridgeLog(err);
-          // 提取运行器错误：ERROR 行 + 前 3 帧，便于诊断缺哪个 stub / 脚本问题
-          const m = runnerErr;
-          const frames = m ? err.slice(err.indexOf(m)).split('\n').slice(1, 4).join(' | ') : '';
-          const line = m
-            ? `${m}${frames ? '  ↳ ' + frames : ''}`
-            : cleaned.split('\n')[0].slice(0, 120);
-          if (code !== 0) this.host?.logger.w(`jvm-bridge ${className}.${method}: ${line}`);
-          else if (m) this.host?.logger.w(`jvm-bridge ${className}.${method} (退出0但有日志): ${line}`);
-        }
-        if (this.lastSpiderReason) {
-          // ★ 2026-10-08：人话原因旁并记**原始 SpiderLog 行**（含 ` :: 异常` 尾巴）—— 翻译规则会把
-          //   「缺哪个类/方法」这类可行动信息吞掉；只在本次原因确实来自 SpiderLog 时附加，避免串台。
-          const rawSuffix = reasonFromSpiderLog && spiderLogRaw ? `｜原始: ${spiderLogRaw}` : '';
-          this.host?.logger.i(`jvm-bridge ${className}.${method} 失败原因: ${this.lastSpiderReason}${rawSuffix}`);
-        }
-        resolve(out.trim());
-      });
-    });
-  }
-
-  private jarClassIndex(path: string): { stamp: string; entries: Set<string>; hash: string } | null {
-    try {
-      const st = statSync(path), stamp = `${st.size}:${st.mtimeMs}`;
-      const cached = this.classIndexes.get(path);
-      if (cached?.stamp === stamp) return cached;
-      const buf = readFileSync(path);
-      const index = { stamp, entries: new Set(listZipEntries(buf)), hash: contentHashOf(buf) };
-      if (this.classIndexes.size >= 64) this.classIndexes.delete(this.classIndexes.keys().next().value!);
-      this.classIndexes.set(path, index);
-      return index;
-    } catch { this.classIndexes.delete(path); return null; }
-  }
-
-  /** 只取实际含入口类的构建，相同内容多 URL 去重，不按时间猜版本。 */
-  private otherConvertedJars(declared: string[], entry: string): string[] {
-    const skip = new Set(declared.map((p) => p.toLowerCase()));
-    const out = new Map<string, string>();
-    try {
-      const fs = require('node:fs') as typeof import('node:fs');
-      for (const f of fs.readdirSync(this.cacheDir)) {
-        // raw jar 是未转换的 dex 容器；part jar 是「转换中/待收编」的半成品
-        //   —— 两者都不能当兜底 classpath（见 C18 陪伴文件；半成品缺 raw 资源合并）
-        if (!f.endsWith('.jar') || f.endsWith('.raw.jar') || f.endsWith('.part.jar')) continue;
-        const p = join(this.cacheDir, f);
-        if (skip.has(p.toLowerCase())) continue;
-        const index = this.jarClassIndex(p);
-        if (index?.entries.has(entry) && !out.has(index.hash)) out.set(index.hash, p);
-      }
-    } catch { /* 缓存目录不存在 → 无兜底候选 */ }
-    return [...out.values()];
-  }
-
   /** 预热：下载+转换（导入配置后后台跑，避免首次点开卡住） */
   warmup(jarUrl: string): Promise<void> {
     const url = normalizeJarUrl(jarUrl);
@@ -2005,18 +1343,11 @@ export class JarSpiderBridge {
     return task;
   }
 
-  /** 终止所有存活 JVM 子进程 + 池（应用退出时调用，确保无残留进程/定时器） */
+  /** 停止进程池并终止桥接器启动的一次性 JVM/Python/DEX 子进程。 */
   dispose(): void {
     if (this.poolReclaimTimer) clearInterval(this.poolReclaimTimer);
     this.pool?.dispose();
-    for (const child of this.activeChildren) {
-      try {
-        child.kill();
-      } catch {
-        /* ignore */
-      }
-    }
-    this.activeChildren.clear();
+    this.subprocessRunner.dispose();
   }
 }
 
@@ -2065,175 +1396,26 @@ export class JarSpiderBridge {
  *
  * 兼容 `jar uf` 的等价做法（本函数就是它的进程内实现，省掉一次 JVM 启动 + 磁盘中转）。
  */
-export function copyJarResources(rawJar: string, convertedJar: string, host?: EngineHost): void {
+export function copyJarResources(rawJar: string, convertedJar: string, logger?: JarResourceMergeLogger): void {
   try {
     const fs = require('node:fs') as typeof import('node:fs');
     const raw = fs.readFileSync(rawJar);
     if (!looksLikeZip(raw)) return;
     const converted = fs.readFileSync(convertedJar);
+    const result = mergeJarResourceEntries(readZipEntries(converted), readZipEntries(raw));
+    if (result.addedResourceCount === 0) return;
 
-    const existing = new Set(listZipEntries(converted));
-    const carried: ZipEntryData[] = [];
-    for (const e of readZipEntries(raw)) {
-      // dex2jar 只输出 .class；`classes*.dex` 是壳的 dalvik 字节码，搬过去对 JVM 没意义
-      if (/\.dex$/i.test(e.name)) continue;
-      if (existing.has(e.name)) continue;
-      carried.push(e);
-    }
-    if (carried.length === 0) return;
-
-    // 为新增文件的父目录补目录条目（保持与 `jar` 工具一致的布局）
-    const dirs: ZipEntryData[] = [];
-    const seenDir = new Set<string>();
-    for (const e of carried) {
-      const parts = e.name.split('/');
-      for (let i = 1; i < parts.length; i++) {
-        const d = parts.slice(0, i).join('/') + '/';
-        if (!existing.has(d) && !seenDir.has(d)) {
-          seenDir.add(d);
-          dirs.push({ name: d, bytes: Buffer.alloc(0) });
-        }
-      }
-    }
-
-    const merged = buildZip([...readZipEntries(converted), ...dirs, ...carried]);
-    fs.writeFileSync(convertedJar, merged);
-    host?.logger.i(`jvm-bridge 已补齐转换产物中的非 dex 资源 ${carried.length} 项（加固壳必需）`);
+    fs.writeFileSync(convertedJar, buildZip(result.entries));
+    logger?.i(`jvm-bridge 已补齐转换产物中的非 dex 资源 ${result.addedResourceCount} 项（加固壳必需）`);
   } catch (e) {
     // 资源合并属于增强步骤：失败不能让一个"已成功转换"的 jar 变成"转换失败"
-    host?.logger.w(`jvm-bridge 资源合并失败（不影响普通 jar）: ${(e as Error).message}`);
+    logger?.w(`jvm-bridge 资源合并失败（不影响普通 jar）: ${(e as Error).message}`);
   }
 }
 
-
-/**
- * 「蜘蛛类缺失」判定 —— 类缺失兜底重试的触发条件。
- * 原始英文（`ClassNotFoundException: com.github.catvod.spider.Xxx`）与 translateSpiderLog
- * 翻译后的中文（「蜘蛛类未找到…」）两种形态都认。
- */
-export function isSpiderClassMissing(reason: string): boolean {
-  const s = reason || '';
-  if (!s) return false;
-  return /ClassNotFoundException:\s*com\.github\.catvod\.spider\./.test(s) || s.includes('蜘蛛类未找到');
-}
-
-/**
- * 把蜘蛛自己抛出的行话翻译成用户能懂的中文。
- *
- * 蜘蛛日志是给写蜘蛛的人看的（`Connect timed out` / `A JSONObject text must begin with '{'`），
- * 直接展示给普通用户等于没提示。这里做一层"人话映射"，命中不了则原样返回（不臆造）。
- */
-export function translateSpiderLog(log: string): string {
-  const s = (log || '').trim();
-  if (!s) return '';
-  const rules: Array<[RegExp, string | ((m: RegExpMatchArray) => string)]> = [
-    [/Connect timed out/i, '连接源站超时，站点可能已停服或网络不通'],
-    [/SocketTimeoutException|Read timed out|timeout/i, '请求源站超时，站点响应过慢或不可达'],
-    [/UnknownHostException/i, '源站域名无法解析，站点可能已更换网址'],
-    [/Connection refused/i, '源站拒绝连接，服务可能已下线'],
-    [/JSONObject text must begin|JSONArray text must start/i,
-      '源站返回的不是预期数据（多为站点已改版或停服，原接口已失效）'],
-    [/bound must be positive/i, '蜘蛛内部参数异常，通常需要为该源补充 ext 配置'],
-    [/Index \d+ out of bounds/i, '源站返回的数据结构与蜘蛛预期不符（站点可能已改版）'],
-    [/SSLHandshake|PKIX|certificate/i, '与源站建立安全连接失败（证书问题或站点异常）'],
-    // ---- ★ .py 蜘蛛（嵌入式 CPython3）专属 ----
-    [/SyntaxError|invalid syntax|f-string|EOL while scanning|unexpected EOF|IndentationError/i,
-      'python 蜘蛛脚本本身有语法/编码错误（Python3 解析失败），请检查源脚本'],
-    // ★ 2026-09-30：报错必须**点出缺哪个库**（此前一律给同一句泛泛的说明，用户无法判断该不该反馈）。
-    //   内置库清单见 EmbeddedPythonRuntime（首次用到会自动从 PyPI 镜像补齐）。
-    [/No module named\s+'?"?([A-Za-z_][\w.]*)/i,
-      (m) => `该 python 蜘蛛缺少第三方库「${m[1]}」—— 常用库（requests/urllib3/lxml/bs4/pyquery/Crypto/PIL…）会在首次使用时自动补齐，若持续报此错请反馈该库名`],
-    [/ImportError/i, '该 python 蜘蛛导入依赖失败（库名未在报错里给出，请反馈该源）'],
-    // ---- 桌面端架构性不兼容（对齐安卓原生能力缺失）----
-    // 这一类必须排在通用的 ClassNotFound/NoSuchField 规则之前，否则会被后者吞掉，
-    // 用户拿到的是一句"依赖缺失请反馈"，看不出「这个源在桌面端根本不成立」。
-    //
-    // ★ 第十二轮校正：加固壳的真实报错**不是**"找不到原生库"，而是
-    //   `UnsatisfiedLinkError: <path>: Can't load this .dll (machine code=0x34) on a AMD 64-bit platform`
-    //   —— 资源已经找对了（见 copyJarResources 补齐 assets 的说明），卡在 CPU 架构上。
-    //   所以「原生库 ABI 不匹配」必须自成一条，且排在「找不到原生库」之前。
-    [/Can't load this \.dll|machine code=0x[0-9a-f]+|wrong ELF class|not a valid Win32 application/i,
-      'ARM 原生库（.so）未通过兼容桥加载，请检查原生运行时下载和该源的桥接日志；不能直接由 x64 JVM 加载'],
-    [/UnsatisfiedLinkError|native method .* not found|no .* in java\.library\.path/i,
-      '安卓原生库（.so）或 JNI 方法调用失败，当前兼容桥未能执行该源；请检查原生运行时和依赖日志'],
-    [/dalvik[./]system[./]|DexClassLoader|NoClassDefFoundError: dalvik/i,
-      '安卓动态 dex 加载失败，请检查转换产物、类路径与兼容桥；该错误不代表所有 dex 源均不支持'],
-    // DEX 头部魔数：加载器把 dex 当类文件读时会给出这个字节序列
-    [/dex\n?035|invalid dex|DexFile/i,
-      '该源携带 dalvik 字节码（dex），桌面 JVM 无法执行（架构限制）'],
-    // ---- ★ 蜘蛛"自身类"找不到 ≠ 桌面版缺接口 ----
-    //   `com.github.catvod.spider.Xxx` 是蜘蛛 jar 里的类，找不到它只可能是
-    //   "这只 jar 没加载成功"（缓存丢失/下载失败/配置里的 jar 与 api 不匹配），
-    //   跟"桌面版缺 android.* 接口"完全是两回事。这条必须排在通用的
-    //   ClassNotFound 规则之前，否则用户会被误导成"兼容性问题请反馈"，
-    //   进而反复反馈一个根本不用修的问题（实测：缓存目录被外部清理后，
-    //   95 个源全部报这一句）。
-    [/ClassNotFoundException: ?com\.github\.catvod\.spider\./i,
-      '蜘蛛类未找到：该源指向的 jar 没有加载成功（配置与 jar 不匹配，或 jar 资源已失效）'],
-    // ★ 2026-10-08（用户报「配置中心」源）：这类报错**具体缺哪个类/方法/字段**才是可行动信息 ——
-    //   旧文案一律「请反馈」，且调用处只落人话、原始异常被吞（用户日志里拿不到符号名，无法定位该补哪个桩）。
-    //   这里把符号名抠出来上屏；调用处已同步补「原始: …」落日志（见 call() 两处）。
-    //   注意保留「桌面版缺失」「请反馈」措辞 —— 既有测试与用户认知都按这句对齐。
-    [/NoSuchMethodError: ?'?([\w.$<>[\]]+)/,
-      (m) => `桌面版缺失方法「${m[1]}」（属兼容性问题，请反馈）`],
-    [/NoSuchFieldError: ?'?([\w.$]+)/,
-      (m) => `桌面版缺失字段「${m[1]}」（属兼容性问题，请反馈）`],
-    [/ClassNotFoundException: ?([\w.$]+)/,
-      (m) => `桌面版缺失类「${m[1]}」（属兼容性问题，请反馈）`],
-    [/ClassNotFoundException|NoSuchMethodError|NoSuchFieldError/i,
-      '蜘蛛依赖的接口在桌面版缺失（属兼容性问题，请反馈）'],
-    [/ExceptionInInitializerError/i,
-      '蜘蛛静态初始化失败（内部依赖在桌面版缺失，请反馈此源）'],
-    // ★ 2026-09-29：加固壳「守卫内层蜘蛛为空」（`BaseSpiderGuard.<init>` → `Init.getSpider` 拿到 null）
-    //   的原始报错是 `NullPointerException: Cannot invoke "…Spider.init(Context, String)"`，
-    //   必须**排在通用规则之后**才不抢别人的匹配，但排在原样兜底之前 —— 否则用户只看到一句截断的英文 NPE。
-    [/crawler\.Spider\.init\(android\.content\.Context|守卫内层蜘蛛为空|加固壳内部蜘蛛未就绪/,
-      '加固壳内部蜘蛛未就绪（原生解密未产出加载器）—— 已自动改用内置真实实现；仍失败请重进该源或反馈'],
-  ];
-  for (const [re, human] of rules) {
-    const m = s.match(re);
-    if (!m) continue;
-    return typeof human === 'function' ? human(m) : human;
-  }
-  return s.slice(0, 120);
-}
-
-/**
- * ★★ 2026-09-29（设备实证）：判断失败原因是不是「守卫壳的内层蜘蛛为空」。
- *
- * 加固壳的 `BaseSpiderGuard.<init>` 会调 `Init.getSpider(this.getClass().getName())`，把返回的真实
- * 蜘蛛存进字段；任何一环没接上（原生桥 `DexNative.getLoader` 没返回加载器 / 运行时 dex 产物异常 /
- * shell-shim 真实实现缺失）字段就是 null，随后第一个 `init()` 抛
- * `NullPointerException: Cannot invoke "com.github.catvod.crawler.Spider.init(android.content.Context, String)"`。
- * 注意：上屏前的原因会按 120 字符截断（截到 `because "…"` 附近），所以判据只取方法签名部分。
- */
-export function isGuardInnerSpiderNull(reason: string): boolean {
-  const s = reason || '';
-  return /crawler\.Spider\.init\(android\.content\.Context/.test(s)
-    || /加固壳内部蜘蛛未就绪|守卫内层蜘蛛为空/.test(s);
-}
 
 /** 转义正则特殊字符（文件名用于 RegExp 构造时防误解析） */
 
-
-/**
- * 规范化 jar URL：剥离 `;md5;xxxx` 等后缀，只保留真正的 URL 段。
- *
- * 上游 TVBox 约定 `jar` / `spider` 字段可写成 `URL;md5;校验值` 或 `URL1|URL2`（多备选）。
- * 下载/转换只应针对 URL 段，`md5` 是完整性校验元数据、不是 URL 的一部分。
- *
- * 对照：`JarSpider.jarUrls()` 早就做了 `.split(';')[0]`，但 `warmup` 路径曾直接
- * 传入原始串 —— 两条路径不一致会让同一个 jar 产生两个不同缓存键，其中一个
- * 下载到的是错误页。此处收敛为唯一实现，任何入口都得到同一结果。
- */
-export function normalizeJarUrl(raw: string): string {
-  const v = (raw || '').trim();
-  if (!v) return '';
-  // 多备选 URL 用 `|` 分隔，取第一个（与 JarSpider.jarUrls 的语义一致）
-  const first = v.split('|')[0].trim();
-  // 取分号前的主 URL 段；`;md5;xxx`、`;timeout;xxx` 等后缀一律丢弃
-  return first.split(';')[0].trim();
-}
 
 /**
  * 「下载到的内容是不是 jar / 裸 dex」—— jar 下载 UA 兜底的判定（见 doConvertStage）。
@@ -2246,107 +1428,4 @@ export function isJarOrDex(buf: Buffer): boolean {
   return buf.length >= 8 && buf.subarray(0, 4).toString('latin1') === 'dex\n';
 }
 
-/**
- * 从子进程 stderr 中提取"蜘蛛自身报告的原因"。
- *
- * 蜘蛛在 catch 分支里通常用 `SpiderLog.e(msg, throwable)` 打印，桌面端由
- * `android.util.Log` stub 落到 stderr（形如 `[android.Log.D] SpiderLog: <原因> :: <异常>`）。
- * 这里取**最后一条** SpiderLog（越靠后越接近真实出口），并压成一行短文本。
- * 找不到返回空串（不臆造原因）。
- */
-export function extractSpiderReason(stderr: string): string {
-  return lastFailureSpiderLog(stderr)?.msg.slice(0, 120) ?? '';
-}
-
-/**
- * ★ 2026-10-08：取同一条 SpiderLog 的**原文**（含 ` :: 异常` 尾巴，截断 300）。
- * 人话翻译会把尾巴里的关键信息吞掉（如 NoSuchMethodError 缺的具体符号），
- * 供「失败原因」日志旁并记原始串，便于定位该补哪个桩 / 该反馈什么。
- */
-export function extractSpiderReasonRaw(stderr: string): string {
-  return lastFailureSpiderLog(stderr)?.raw.slice(0, 300) ?? '';
-}
-
-/** 找最后一条「真实失败」SpiderLog（成功/加载类日志不算）；返回消息与含异常尾巴的原文 */
-function lastFailureSpiderLog(stderr: string): { raw: string; msg: string } | null {
-  if (!stderr) return null;
-  const lines = stderr.split(/\r?\n/);
-  // 从后往前找 SpiderLog 行（蜘蛛的失败原因通常最后打印）
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i];
-    const idx = line.indexOf('SpiderLog:');
-    if (idx < 0) continue;
-    const raw = line.slice(idx + 'SpiderLog:'.length).trim();
-    let msg = raw;
-    // 去掉 " :: <异常类>: <详细>" 尾巴，只留人可读的前半句
-    const sep = msg.indexOf(' :: ');
-    if (sep > 0) msg = msg.slice(0, sep).trim();
-    // ★ 只保留「真正的失败原因」。以下日志前缀属蜘蛛成功路径/启动路径的提示，不是失败：
-    //   - `自定义爬虫代码加载成功`（简/繁两种写法都有，繁体曾漏过滤导致 28 条假失败）
-    //   - `获取到源码--> ...`（蜘蛛已成功取到源站正文，随后解析，属成功日志）
-    if (msg && !/^(自定义爬虫代码加载成功|自定義爬蟲代碼載入成功|获取到源码-->)/.test(msg)) return { raw, msg };
-  }
-  return null;
-}
-
-/**
- * 过滤 JVM 级噪声，只留下有诊断价值的 stderr 行。
- *
- * 已知噪声（不代表蜘蛛失败）：
- * - `-noverify` / `-Xverify:none` 在 JDK13+ 的 deprecation warning
- * - 混淆蜘蛛内部的反射探测噪声（`NoSuchMethodException` / `NoSuchFieldException`），
- *   它们被蜘蛛自己的 try/catch 吞掉，属于"探测能力存在与否"的正常流程
- * - `Picked up JAVA_TOOL_OPTIONS` 之类的环境提示
- *
- * 注意：**不要**过滤 `[SpiderRunner.ERROR]`，那是真实失败信号。
- */
-export function stripJvmNoise(stderr: string): string {
-  if (!stderr) return '';
-  return stderr
-    .split(/\r?\n/)
-    .filter((l) => {
-      const t = l.trim();
-      if (!t) return false;
-      if (/were deprecated in JDK 13 and will likely be removed/.test(t)) return false;
-      if (t.startsWith('java.lang.NoSuchMethodException:')) return false;
-      if (t.startsWith('java.lang.NoSuchFieldException:')) return false;
-      if (/^Picked up .*OPTIONS/.test(t)) return false;
-      if (/^at (java\.base\/)?java\.lang\.Class\.(getMethod|getDeclaredMethod|getField|getDeclaredField)\b/.test(t)) return false;
-      if (/^at (java\.base\/)?jdk\.internal\.reflect\./.test(t)) return false;
-      return true;
-    })
-    .join('\n');
-}
-
-/**
- * 抽取原生桥（ARM .so）在子进程里的说话行 —— 用于把「静默降级」可见化：
- * 桥的成败只打在子进程 stderr 上，而 stderr 平时只用于提取 SpiderLog 失败原因，
- * 于是「桥失败 → 按无原生桥降级」在界面与主日志里毫无线索（真机实测：只能靠手工探针才查出来）。
- * 识别两类：桥自己打的 `[native-bridge] …`，与运行器转发的 `[SpiderRunner] 原生桥…`。
- */
-export function extractBridgeNotes(stderr: string): string[] {
-  if (!stderr) return [];
-  const out: string[] = [];
-  for (const raw of stderr.split(/\r?\n/)) {
-    const t = raw.trim();
-    if (!t) continue;
-    if (t.startsWith('[native-bridge]')) out.push(t);
-    else if (t.startsWith('[SpiderRunner]') && /原生桥|改写|注册 native/.test(t)) out.push(t);
-    // ★ 2026-09-27（载荷层排障）：这三类前缀此前被过滤掉，导致「载荷解密/运行时转换/壳 Init」
-    //   的失败在应用日志里完全不可见（用户只看到「蜘蛛返回空结果」）——一律保留。
-    //   注：`[SpiderRunner.ERROR]` 不在此列（一次性路径已单独提取上屏，池路径由 extractSpiderReason 兜），
-    //   避免同一条错误重复上屏。
-    else if (t.startsWith('[runtime-dex]') || t.startsWith('[dexjar-repair]') || t.startsWith('[Init]')) out.push(t);
-    // ★ 2026-09-29：shell-shim 影子 DexNative 的说话行（真实实现加载失败/命中与否）——此前只在
-    //   -Dtvbox.shellShim.debug=true 时才打印，设备上「守卫内层蜘蛛为空」时拿不到任何线索，一并上屏。
-    else if (t.startsWith('[ShellShim]')) out.push(t);
-    else if (t.startsWith('[SpiderRunner] 警告')) out.push(t);
-    // ★ 2026-10-09（.8 探针「无输出」真因，勿删）：宿主代理与 baidu-state 探针的说话行不在
-    //   白名单里，serve 进程 stderr 中被静默丢弃 —— 本地直跑 stubs.jar 能看到探针输出、
-    //   真机上却「无 [baidu-state]」，第十轮日志因此误判为孤儿 JVM。池/一次性两条路径都经
-    //   本函数，加白名单即全覆盖（noteBridgeLog 有整行去重，高频「请求处理失败」不会刷屏）。
-    else if (t.startsWith('[host-proxy]')) out.push(t);
-    else if (t.startsWith('[baidu-state]')) out.push(t);
-  }
-  return out;
-}
+export { extractBridgeNotes, extractSpiderReason, extractSpiderReasonRaw, isGuardInnerSpiderNull, isSpiderClassMissing, stripJvmNoise, translateSpiderLog } from './spiderDiagnostics';

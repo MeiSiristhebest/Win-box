@@ -9,7 +9,7 @@
 //
 // 本测试锁死"任何入口的同一 jar 必须得到同一规范化结果"。
 import { describe, it, expect } from 'vitest';
-import { normalizeJarUrl } from '../src/engine/spider/JarSpiderBridge';
+import { normalizeJarUrl } from '../src/engine/spider/jarSpiderUrl';
 import { createHash } from 'node:crypto';
 import { parseSiteConfigWithBase } from '../src/engine/config/ApiConfigParser';
 

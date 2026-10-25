@@ -1,11 +1,15 @@
 // src/engine/spider/JarSpider.ts
-// jar(dex) 蜘蛛的引擎适配器：把 Spider 接口调用转发到 JarSpiderBridge（JVM 子进程）。
+// jar(dex) 蜘蛛适配器：通过 JarSpiderRuntimePort 调用 JVM 运行能力。
 // 上游约定：site.api = "csp_Doll" → 类名 com.github.catvod.spider.Doll；
 //           site.jar = "URL" 或 "URL;md5;xxx"（分号分隔，取第一段）。
 import { Spider, type SpiderInit } from './Spider';
-import { normalizeJarUrl, formatDuration, type JarSpiderBridge } from './JarSpiderBridge';
+import { normalizeJarUrl } from './jarSpiderUrl';
+import { formatDuration } from './formatDuration';
+import type { JarSpiderRuntimePort } from './JarSpiderPorts';
 import { SourceProblemError } from './errors';
 import { enrichExt } from './driveExt';
+import { spiderCallOutput } from './spiderCallResult';
+import { awaitWithAbort, throwIfAborted } from '../util/abort';
 
 /** 首次使用该源时「jar 未转换」的最长等待（超过就先放行，让后台继续转换，用户稍后重试） */
 const PREPARE_WAIT_MS = 8000;
@@ -33,13 +37,14 @@ export function jarLoadError(msg: string): string {
 }
 
 export class JarSpider extends Spider {
-  private bridge: JarSpiderBridge;
+  private runtime: JarSpiderRuntimePort;
   private clsName: string;
   private ready = false;
+  private preparation: Promise<boolean> | null = null;
 
-  constructor(init: SpiderInit, bridge: JarSpiderBridge) {
+  constructor(init: SpiderInit, runtime: JarSpiderRuntimePort) {
     super(init);
-    this.bridge = bridge;
+    this.runtime = runtime;
     // csp_Xxx → com.github.catvod.spider.Xxx
     const api = init.api;
     this.clsName = api.startsWith('csp_')
@@ -51,22 +56,34 @@ export class JarSpider extends Spider {
 
   /**
    * 运行时解析 jar URL：site.jar 优先（"URL;md5;xxx" 取首段），否则全局 spider jar。
-   * 注意：此处只做"取 URL 段"，完整规范化由 JarSpiderBridge.normalizeJarUrl 收口；
+   * 注意：URL 规范化由 jarSpiderUrl 的纯函数收口；
    * 两者语义必须一致（都是先按 `;` 剥后缀、再按 `|` 取备选）。
    */
   private jarUrls(): string[] {
-    const raw = this.jar && this.jar.trim() ? this.jar.trim() : this.bridge.defaultJar || '';
+    const raw = this.jar && this.jar.trim() ? this.jar.trim() : this.runtime.defaultJar || '';
     return normalizeJarUrl(raw)
       .split('|')
       .map((s) => s.trim())
       .filter(Boolean);
   }
 
-  /** 本实例自身的失败原因（jar 加载/准备阶段），优先于 bridge 的调用期原因 */
+  /** 本实例的加载/准备状态；调用期失败随本次调用传播。 */
   private loadError = '';
 
-  private async ensureReady(): Promise<boolean> {
-    if (this.ready) return true;
+  private ensureReady(): Promise<boolean> {
+    if (this.ready) return Promise.resolve(true);
+    if (this.preparation) return this.preparation;
+
+    const preparation = this.prepareRuntime();
+    this.preparation = preparation;
+    const clearPreparation = (): void => {
+      if (this.preparation === preparation) this.preparation = null;
+    };
+    void preparation.then(clearPreparation, clearPreparation);
+    return preparation;
+  }
+
+  private async prepareRuntime(): Promise<boolean> {
     const urls = this.jarUrls();
     if (urls.length === 0) {
       this.loadError = `该源未指定 jar 地址（api=${this.api || '空'}），无法加载蜘蛛`;
@@ -81,7 +98,7 @@ export class JarSpider extends Spider {
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         await Promise.race([
-          Promise.all(urls.map((u) => this.bridge.ensureConverted(u))),
+        Promise.all(urls.map((u) => this.runtime.ensureConverted(u))),
           new Promise((_res, rej) => { timer = setTimeout(() => rej(new Error('__PREPARING__')), PREPARE_WAIT_MS); }),
         ]);
       } finally {
@@ -126,7 +143,7 @@ export class JarSpider extends Spider {
     let attached = false;
     let downloading = false;
     for (const u of this.jarUrls()) {
-      const p = this.bridge.conversionProgress(u);
+      const p = this.runtime.conversionProgress(u);
       if (!p) continue;
       elapsed = Math.max(elapsed, p.elapsedMs);
       attached = attached || p.attached;
@@ -138,20 +155,23 @@ export class JarSpider extends Spider {
     return `首次使用该源：正在后台编译蜘蛛运行时（${waited}${hint}大 jar 首次约需数分钟，完成后会自动加载）`;
   }
 
-  private async call(method: string, args: string[] = [], timeoutMs?: number): Promise<string> {
-    if (!(await this.ensureReady())) {
+  private async call(method: string, args: string[] = [], timeoutMs?: number, signal?: AbortSignal): Promise<string> {
+    throwIfAborted(signal);
+    const ready = await awaitWithAbort(this.ensureReady(), signal);
+    throwIfAborted(signal);
+    if (!ready) {
       // A1：准备期失败（jar 下载/转换/缓存缺失）不再静默返回空串，直接抛错上屏，
       //   避免上层误走「homeVideoContent/分类兜底」浪费一次 JVM 调用再报空结果。
       throw new SourceProblemError('SPIDER_ERROR', this.loadError, { sourceKey: this.siteKey });
     }
-    let paths = this.bridge.resolvePaths(this.jarUrls());
+    let paths = this.runtime.resolvePaths(this.jarUrls());
     // ★ 解析不到本地 jar 路径 → **就地重建一次**（重新下载+转换）再试：
     //   `ready` 是进程内一次性标记，而转换产物随时可能被「清理缓存」按钮/杀软/外部清理删掉；
     //   不重置 ready 就会**永远**报「jar 本地路径不可用（缓存可能已被清理），请重试」——
     //   用户"重试"也没用，只能重启应用或重新导入配置（0.84.0 实机日志里出现过这一串）。
     if (paths.length === 0) {
       this.ready = false;
-      if (await this.ensureReady()) paths = this.bridge.resolvePaths(this.jarUrls());
+      if (await this.ensureReady()) paths = this.runtime.resolvePaths(this.jarUrls());
     }
     // 重建后仍拿不到路径 → 绝不继续调用（否则 SpiderRunner 收到空 jar 参数，
     // 所有蜘蛛类都报 ClassNotFoundException，看起来像"桌面版缺接口"，把排查方向带偏）。
@@ -160,7 +180,10 @@ export class JarSpider extends Spider {
       this.host.logger.w(`jar-spider ${this.siteKey}: ${this.loadError}`);
       throw new SourceProblemError('SPIDER_ERROR', this.loadError, { sourceKey: this.siteKey });
     }
-    return this.bridge.call(paths, this.clsName, method, [this.enrichedExt(), ...args], timeoutMs ?? this.timeoutMs, this.siteKey);
+    throwIfAborted(signal);
+    const result = await this.runtime.call(paths, this.clsName, method, [this.enrichedExt(), ...args], timeoutMs ?? this.timeoutMs, this.siteKey, signal);
+    throwIfAborted(signal);
+    return spiderCallOutput(result, this.siteKey, method);
   }
 
   /**
@@ -168,17 +191,14 @@ export class JarSpider extends Spider {
    * 供宿主把 jar 产出的 `127.0.0.1:9978/proxy?…` 播放地址改写成 `/proxy/<port>` 进 JVM 自解链。
    */
   proxyPort(): number | null {
-    return this.bridge.proxyPortForTag(this.siteKey);
+    return this.runtime.proxyPortForTag(this.siteKey);
   }
 
   /**
-   * 最近一次调用的"蜘蛛端原因"（空串表示无线索）。
-   * 优先返回本实例的准备期错误（jar 加载失败 —— 用户看到"无法加载"的主因），
-   * 否则回落到 bridge 采集的调用期原因（超时/源站返回异常等）。
-   * SourceViewModel 在结果为空时用它把笼统的「蜘蛛返回空结果」细化为具体原因。
+   * 运行时准备状态，供搜索就绪探测使用；不存储任何调用期错误。
    */
   get lastReason(): string {
-    return this.loadError || this.bridge.lastReason;
+    return this.loadError;
   }
 
   /**
@@ -194,8 +214,8 @@ export class JarSpider extends Spider {
     }
     // 先检查失败，不能把抑制窗口内已经停止的任务重新标成准备中。
     for (const u of urls) {
-      if (this.bridge.peekConverted(u)) continue;
-      const failure = this.bridge.conversionFailure(u);
+      if (this.runtime.peekConverted(u)) continue;
+      const failure = this.runtime.conversionFailure(u);
       if (failure) {
         this.loadError = jarLoadError(failure);
         return 'unavailable';
@@ -203,9 +223,9 @@ export class JarSpider extends Spider {
     }
     let anyPreparing = false;
     for (const u of urls) {
-      if (this.bridge.peekConverted(u)) continue;
+      if (this.runtime.peekConverted(u)) continue;
       // 只有在途任务或本次新启动任务才算 preparing；已失败的任务在上面单独处理。
-      if (!this.bridge.pendingConvert(u)) this.bridge.warmup(u).catch(() => undefined);
+      if (!this.runtime.pendingConvert(u)) this.runtime.warmup(u).catch(() => undefined);
       anyPreparing = true;
     }
     this.loadError = anyPreparing ? this.preparingMessage() : '';
@@ -215,7 +235,7 @@ export class JarSpider extends Spider {
   /** ★ 等待本轮正在进行的转换（供全源搜索「预备阶段」调用；返回 null 表示无需等待） */
   pendingRuntime(): Promise<unknown> | null {
     const urls = this.jarUrls();
-    const waiters = urls.map((u) => this.bridge.pendingConvert(u)).filter((p): p is Promise<string> => !!p);
+    const waiters = urls.map((u) => this.runtime.pendingConvert(u)).filter((p): p is Promise<string> => !!p);
     return waiters.length > 0 ? Promise.all(waiters.map((p) => p.catch(() => ''))) : null;
   }
 
@@ -232,10 +252,10 @@ export class JarSpider extends Spider {
   prewarm(count = 1): number {
     const urls = this.jarUrls();
     if (urls.length === 0) return 0;
-    const paths = urls.map((u) => this.bridge.peekConverted(u)).filter((p) => !!p);
+    const paths = urls.map((u) => this.runtime.peekConverted(u)).filter((p) => !!p);
     if (paths.length !== urls.length) return 0; // 有 jar 还没转换过 → 跳过（不下载）
     // ★ 深度预热：把 ext 一起传进去 → 子进程侧**加载蜘蛛类 + 预建实例（含 init(ext)）**，首次进源免付这两笔
-    return this.bridge.prewarmJar(paths, this.clsName, count, this.enrichedExt());
+    return this.runtime.prewarmJar(paths, this.clsName, count, this.enrichedExt());
   }
 
   /**
@@ -267,11 +287,11 @@ export class JarSpider extends Spider {
    * 搜索：timeoutMs 由调用方（聚合搜索/单源搜索）传入的更紧预算；缺省用源声明 timeout。
    * ★ 全源搜索里死源会占满整个超时，收紧这个值直接决定「搜索结果多久出得来」。
    */
-  searchContent(key: string, _quick: boolean, timeoutMs?: number): Promise<string> {
-    return this.call('searchContent', [key], timeoutMs);
+  searchContent(key: string, quick: boolean, timeoutMs?: number, signal?: AbortSignal): Promise<string> {
+    return this.call('searchContent', [key, String(quick)], timeoutMs, signal);
   }
-  searchContentPage(key: string, quick: boolean, pg: string, timeoutMs?: number): Promise<string> {
-    return this.call('searchContent', [key, pg], timeoutMs);
+  searchContentPage(key: string, quick: boolean, pg: string, timeoutMs?: number, signal?: AbortSignal): Promise<string> {
+    return this.call('searchContent', [key, String(quick), pg], timeoutMs, signal);
   }
   playerContent(flag: string, id: string, vipFlags: string[]): Promise<string> {
     // A2：vipFlags 透传给 SpiderRunner（拼逗号串，Java 侧还原成 List），供蜘蛛判断是否需解析

@@ -80,17 +80,21 @@ def _fail(err):
     sys.exit(1)
 
 
+class _UnsupportedSpiderOperation(Exception):
+    pass
+
+
 def _invoke(sp, name, *args):
     fn = getattr(sp, name, None)
     if fn is None:
-        raise AttributeError('method not found: %s' % name)
+        raise _UnsupportedSpiderOperation('WINBOX_OPERATION_UNSUPPORTED:' + name)
     return fn(*args)
 
 
 def _invoke_variants(sp, name, variants):
     fn = getattr(sp, name, None)
     if fn is None:
-        raise AttributeError('method not found: %s' % name)
+        raise _UnsupportedSpiderOperation('WINBOX_OPERATION_UNSUPPORTED:' + name)
     signature = inspect.signature(fn)
     for args in variants:
         try:
@@ -145,8 +149,20 @@ def _call_method(sp, method, rest):
         return _invoke(sp, 'detailContent', ids_obj)
     if method == 'searchContent':
         key = rest[0] if len(rest) > 0 else ''
-        pg = rest[2] if len(rest) > 2 and rest[2].strip() else '1'
-        return _invoke_variants(sp, 'searchContent', [(key, False, pg), (key, False), (key,)])
+        quick_arg = rest[1].strip().lower() if len(rest) > 1 else ''
+        has_quick = quick_arg in ('true', 'false')
+        quick = quick_arg == 'true' if has_quick else False
+        # New format is [key, quick, page]. Keep compatibility with the old Python
+        # adapter's [key, '', page] and page-only [key, page] forms.
+        if has_quick:
+            pg = rest[2] if len(rest) > 2 and rest[2].strip() else '1'
+        elif len(rest) > 2 and rest[2].strip():
+            pg = rest[2]
+        elif len(rest) > 1 and rest[1].strip():
+            pg = rest[1]
+        else:
+            pg = '1'
+        return _invoke_variants(sp, 'searchContent', [(key, quick, pg), (key, quick), (key,)])
     if method == 'playerContent':
         flag = rest[0] if len(rest) > 0 else ''
         pid = rest[1] if len(rest) > 1 else ''

@@ -1,27 +1,31 @@
 // src/engine/js/JsSpider.ts
 // type=3 且 api 以 .js 结尾的蜘蛛 —— 把 Spider 基类调用转发到 JsSandbox 里的蜘蛛对象。
-// 惰性初始化：第一次任一方法调用才加载脚本建沙箱；加载/执行失败 → 本 spider 降级为
-// UnsupportedSpider 行为（返回空 + 一次性日志），绝不抛出、绝不崩进程。
+// 惰性初始化：第一次任一方法调用才加载脚本建沙箱；缺少操作、加载失败、执行失败和超时
+// 通过 SourceProblemError 保留各自原因，合法空结果仍按引擎字符串契约返回空字符串。
 //
 // 方法名映射说明（重要）：安卓 JsSpider.java 里引擎调用的是 JS 侧的
 //   init / home / homeVod / category / detail / search / play / live（见 JsSpider.java:176-239）；
 // 而 libmedia "cat" 生态新式蜘蛛导出 homeContent / categoryContent / detailContent / ...
 // 两套命名都支持（callJs 传候选名列表），并以"方法名探测"日志记录实际命中的风格。
 import { Spider, type SpiderInit } from '../spider/Spider';
-import type { EngineHost } from '../ports';
-import { JsSandbox, type JsSandboxLike } from './JsSandbox';
+import { JsSandbox } from './JsSandbox';
+import type { JsSpiderRuntimePort } from './JsSandboxPort';
+import type { JsSpiderHostPort } from '../spider/SpiderPorts';
 import { enrichExt } from '../spider/driveExt';
+import { SourceProblemError, sourceProblemCodeForReason } from '../spider/errors';
+import { UnsupportedSourceError } from '../util/errors';
+import { abortError, throwIfAborted } from '../util/abort';
 
 /** 调用超时：首页/分类 20s，其它 15s（任务书约定） */
 const TIMEOUT_HOME = 20000;
 const TIMEOUT_OTHER = 15000;
 
-export class JsSpider extends Spider {
-  private sandbox: JsSandboxLike | null = null;
-  /** 降级原因（非 null 后所有调用直接返回空） */
-  private failure: string | null = null;
+type JsSpiderInit = Omit<SpiderInit, 'host'> & { host: JsSpiderHostPort };
 
-  constructor(init: SpiderInit) {
+export class JsSpider extends Spider {
+  private sandbox: JsSpiderRuntimePort | null = null;
+
+  constructor(init: JsSpiderInit) {
     super(init);
     // ★ 网盘绑定凭据并入 ext（与 JarSpider.enrichedExt 同一实现）：
     //   JS 蜘蛛的 ext 仅在沙箱首次加载时经 init 转发给蜘蛛（JsSandbox.forwardInit），
@@ -40,7 +44,7 @@ export class JsSpider extends Spider {
         api: init.api,
         ext: this.ext,
         host: init.host,
-        jsLibDir: (init.host as EngineHost).jsLibDir ?? '',
+        jsLibDir: init.host.jsLibDir ?? '',
       });
     }
   }
@@ -51,35 +55,42 @@ export class JsSpider extends Spider {
     this.sandbox?.setExt(this.ext);
   }
 
-  /** 惰性获取沙箱；加载失败永久降级 */
-  private async getSandbox(): Promise<JsSandboxLike | null> {
-    if (this.failure || !this.sandbox) return null;
+  /** 惰性获取沙箱；每次加载失败保留类型和来源身份，瞬时错误允许沙箱重试。 */
+  private async getSandbox(signal?: AbortSignal): Promise<JsSpiderRuntimePort> {
+    throwIfAborted(signal);
+    if (!this.sandbox) {
+      throw new SourceProblemError('SPIDER_ERROR', 'JS 沙箱不可用', { sourceKey: this.siteKey });
+    }
     try {
-      await this.sandbox.ensureLoaded();
+      await this.sandbox.ensureLoaded(signal);
+      throwIfAborted(signal);
       return this.sandbox;
     } catch (e) {
-      // ★ 2026-09-29：UnsupportedSourceError 的 (message, reason) 是「错误码 + 细节」——
-      //   旧写法只记 message，细节（脚本执行失败原因）丢了，drpy/壳类源排障时只剩一个 SCRIPT_ERROR。
-      const err = e as { name?: string; message?: string; reason?: string };
-      this.failure = `${err.name || 'Error'}: ${err.message || String(e)}${err.reason ? `（${err.reason}）` : ''}`;
-      this.host.logger.w(`spider js:${this.siteKey} JS 蜘蛛降级（${this.failure}）api=${this.api}`);
-      return null;
+      if (signal?.aborted) throw abortError(signal);
+      if (e instanceof SourceProblemError) throw e;
+      if (e instanceof UnsupportedSourceError) {
+        const code = sourceProblemCodeForReason(e.message);
+        throw new SourceProblemError(code, e.reason || e.message, { sourceKey: this.siteKey });
+      }
+      const message = e instanceof Error ? e.message : String(e);
+      this.host.logger.e(`spider js:${this.siteKey} 执行器加载失败（${message}）api=${this.api}`);
+      throw new SourceProblemError('SPIDER_ERROR', message, { sourceKey: this.siteKey });
     }
   }
 
   /** 调用一组候选名并字符串化结果 */
   private async callStr(names: string[], args: unknown[], timeoutMs: number): Promise<string> {
     const sb = await this.getSandbox();
-    if (!sb) return '';
     return this.stringify(await sb.callMethod(names, args, timeoutMs));
   }
 
-  /** 搜索：先按 3 参（key, quick, pg）调用，抛错再按 2 参重试（任务书约定） */
-  private async callSearch(key: string, quick: boolean, pg: string): Promise<string> {
-    const sb = await this.getSandbox();
-    if (!sb) return '';
-    let r = await sb.callMethod(['searchContent', 'search'], [key, quick, pg], TIMEOUT_OTHER);
-    if (r === undefined) r = await sb.callMethod(['searchContent', 'search'], [key, quick], TIMEOUT_OTHER);
+  /** 多传的分页参数会被 JS 忽略；不能根据合法 undefined 结果重复执行带副作用的搜索。 */
+  private async callSearch(key: string, quick: boolean, pg: string, timeoutMs = TIMEOUT_OTHER, signal?: AbortSignal): Promise<string> {
+    const sb = await this.getSandbox(signal);
+    const r = signal
+      ? await sb.callMethod(['searchContent', 'search'], [key, quick, pg], timeoutMs, signal)
+      : await sb.callMethod(['searchContent', 'search'], [key, quick, pg], timeoutMs);
+    throwIfAborted(signal);
     return this.stringify(r);
   }
 
@@ -117,12 +128,18 @@ export class JsSpider extends Spider {
     return this.callStr(['detailContent', 'detail'], [ids?.[0] ?? ''], TIMEOUT_OTHER);
   }
 
-  override async searchContent(key: string, quick: boolean): Promise<string> {
-    return this.callSearch(key, quick, '1');
+  override async searchContent(key: string, quick: boolean, timeoutMs?: number, signal?: AbortSignal): Promise<string> {
+    return this.callSearch(key, quick, '1', timeoutMs, signal);
   }
 
-  override async searchContentPage(key: string, quick: boolean, pg: string): Promise<string> {
-    return this.callSearch(key, quick, pg);
+  override async searchContentPage(
+    key: string,
+    quick: boolean,
+    pg: string,
+    timeoutMs?: number,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    return this.callSearch(key, quick, pg, timeoutMs, signal);
   }
 
   /**
@@ -146,10 +163,14 @@ export class JsSpider extends Spider {
     return false;
   }
 
-  /** action —— 返回类型用 any 承接异步结果（基类签名 string|null，调用方 await Promise.resolve） */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  override action(action: string): any {
-    return this.callStr(['action'], [action], TIMEOUT_OTHER).then((s) => (s ? s : null));
+  /** 脚本 action 与基类使用同一可等待结果契约。 */
+  override action(action: string): Promise<string | null> {
+    return this.callStr(['action'], [action], TIMEOUT_OTHER)
+      .then((s) => (s ? s : null))
+      .catch((error: unknown) => {
+        if (error instanceof SourceProblemError && error.code === 'OPERATION_UNSUPPORTED') return null;
+        throw error;
+      });
   }
 
   /**
@@ -157,15 +178,19 @@ export class JsSpider extends Spider {
    * 安卓有 from=catvod 的 cat 协议分支（proxy2，JsSpider.java:590-608），v1 未做——
    * 上游用该协议代理图片/m3u8 的源会降级，已在回传报告中说明。
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  override proxyLocal(params: Record<string, string>): any {
+  override proxyLocal(params: Record<string, string>): Promise<unknown[] | null> {
     return this.callProxy(params);
   }
 
   private async callProxy(params: Record<string, string>): Promise<unknown[] | null> {
     const sb = await this.getSandbox();
-    if (!sb) return null;
-    const r = await sb.callMethod(['localProxy', 'proxy', 'proxyLocal'], [params ?? {}], TIMEOUT_OTHER);
+    let r: unknown;
+    try {
+      r = await sb.callMethod(['localProxy', 'proxy', 'proxyLocal'], [params ?? {}], TIMEOUT_OTHER);
+    } catch (error) {
+      if (error instanceof SourceProblemError && error.code === 'OPERATION_UNSUPPORTED') return null;
+      throw error;
+    }
     if (Array.isArray(r) && r.length >= 2) {
       // 沙箱蜘蛛常返回 [mimeType, content] 或 [status, contentType, content, header?]
       if (r.length >= 3 && typeof r[0] === 'number') return [r[1], r[2]];

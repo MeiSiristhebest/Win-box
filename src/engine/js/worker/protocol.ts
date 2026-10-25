@@ -11,6 +11,7 @@
 // 约定：`sab` 通道的数据布局 = [0]=状态(0 未就绪/1 完成, Int32) [1]=字节长度(Int32) [8..]=UTF-8 JSON。
 
 import type { HttpRequest, HttpResponse } from '../../../shared/types';
+import type { SourceProblemCode } from '../../spider/errors';
 
 /** SAB 数据区起点（前 8 字节是两个 Int32 控制位） */
 export const SAB_HEADER = 8;
@@ -36,7 +37,14 @@ export type WorkerTask =
 /** worker → 主进程（任务结果）：ok/err 按 id 配对（open 的成功值 = 方法名风格） */
 export type WorkerReply =
   | { t: 'ok'; id: number; value?: unknown }
-  | { t: 'err'; id: number; message: string };
+  | { t: 'err'; id: number; failure: WorkerFailure };
+
+/** Worker 边界仅传输可序列化的错误身份，不把错误压扁成自由文本。 */
+export type WorkerFailure =
+  | { kind: 'source-problem'; code: SourceProblemCode; message: string; detail?: { sourceKey?: string; operation?: string } }
+  | { kind: 'unsupported-source'; message: string; reason: string }
+  | { kind: 'sandbox-missing'; message: string }
+  | { kind: 'error'; message: string };
 
 /** 主进程 → worker 的宿主回执（异步 http） */
 export type HostReply = { t: 'httpRes'; id: number; res: HttpResponse } | { t: 'httpErr'; id: number; message: string };

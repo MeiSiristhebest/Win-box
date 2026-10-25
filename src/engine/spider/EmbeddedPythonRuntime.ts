@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import type { EngineHost } from '../ports';
 import { looksLikeZip, readZipEntries } from '../util/syncZip';
+import type { JarSpiderBridgeHost } from './JarSpiderPorts';
 
 export const PYTHON_RUNTIME_VERSION = '3.15.0';
 export const PYTHON_RUNTIME_EMBED_SHA256 = 'a6999bcbcbe56f937159ef79c2630260eca99f65f7860bc5cd20430324079a44';
@@ -11,7 +11,7 @@ export const PYTHON_RUNTIME_EMBED_SHA256 = 'a6999bcbcbe56f937159ef79c2630260eca9
 export class EmbeddedPythonRuntime {
   private static readonly PY_VER = PYTHON_RUNTIME_VERSION;
   private pyRuntimeTask: Promise<string> | null = null;
-  constructor(private readonly options: { runtimeDir?: string; jvmDir: string; archiveSha256?: string }, private readonly getHost: () => EngineHost | undefined) {}
+  constructor(private readonly options: { runtimeDir?: string; jvmDir: string; archiveSha256?: string }, private readonly getHost: () => JarSpiderBridgeHost | undefined) {}
   private get pyRuntimeDir() { return this.options.runtimeDir; }
   private get jvmDir() { return this.options.jvmDir; }
   private get pythonEmbedArchiveSha256() { return this.options.archiveSha256 ?? PYTHON_RUNTIME_EMBED_SHA256; }
