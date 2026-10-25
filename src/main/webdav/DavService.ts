@@ -1,9 +1,7 @@
 // src/main/webdav/DavService.ts — WebDAV 存储服务：服务器管理 + 目录浏览（PROPFIND）。
 // 只读；播放不走这里（由 /play 中继 + davAuth 注入 Authorization 取流）。
-import { HttpClient } from '../net/HttpClient';
-import type { Logger } from '../../shared/types';
 import type { DavEntry, DavServer, DavBrowseResult } from '../../shared/webdav';
-import type { DavStore } from '../store/DavStore';
+import type { DavHttpPort, DavLoggerPort, DavServerRepositoryPort } from './DavServicePorts';
 import {
   PROPFIND_BODY,
   davBasicAuth,
@@ -19,8 +17,11 @@ export function looksVideo(name: string): boolean {
 }
 
 export class DavService {
-  private http = new HttpClient();
-  constructor(private store: DavStore, private logger: Logger) {}
+  constructor(
+    private http: DavHttpPort,
+    private store: DavServerRepositoryPort,
+    private logger: DavLoggerPort,
+  ) {}
 
   list(): DavServer[] {
     return this.store.list();
@@ -76,6 +77,7 @@ export class DavService {
       headers,
       body: PROPFIND_BODY,
       timeoutMs: 20000,
+      redirect: 0,
     });
     if (res.status !== 207 && res.status !== 200) {
       throw new Error(`服务器返回 HTTP ${res.status}（WebDAV 需返回 207 Multi-Status；请确认地址指向 /dav）`);

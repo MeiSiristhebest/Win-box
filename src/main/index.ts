@@ -87,10 +87,8 @@ const torrent = new TorrentPlay(fileLogger, () => playerSettings.settings.btExte
  * ★ 2026-09-29 WebDAV 存储（用户选定「WebDAV 直连」）：服务器与凭据加密落盘，
  * 浏览走 PROPFIND、播放走 `/play?dav=<id>` 由中继注入 Authorization（凭据绝不进 URL）。
  */
-const dav = new DavService(
-  new DavStore(new JsonStore(join(userDataDir(), 'webdav-servers.json')), fileLogger, safeStorageDriveCodec()),
-  fileLogger,
-);
+const davStore = new DavStore(new JsonStore(join(userDataDir(), 'webdav-servers.json')), fileLogger, safeStorageDriveCodec());
+const dav = new DavService(hostInfrastructure.http, davStore, fileLogger);
 /** ★ 2026-09-29 DLNA 投屏（SSDP 发现 + AVTransport 三动作；对位 CatClaw Dlna.cs = TVBox osc/dlna） */
 const dlna = new DlnaService(fileLogger);
 /**
