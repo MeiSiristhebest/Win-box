@@ -72,8 +72,11 @@ export function StorageSettingsView({ model, actions }: StorageSettingsViewProps
           <button type="button" disabled={model.refreshing || model.busy} onClick={() => void actions.refresh()}>{model.refreshing ? '正在刷新…' : '刷新列表'}</button>
         </div>
         {model.loadState === 'loading' ? <div className="empty">正在读取存储列表…</div>
-          : model.loadState === 'error' ? <div className="empty"><span className="err" role="alert">{model.message?.text ?? '存储列表读取失败'}</span> <button type="button" onClick={() => void actions.refresh()}>重新读取</button></div>
-            : <ServerTable servers={model.servers} busy={model.busy} onEdit={actions.edit} onRemove={(server) => void actions.remove(server)} />}
+          : model.loadState === 'error' ? <div className="empty"><span className="err" role="alert">{model.listError ?? '存储列表读取失败'}</span> <button type="button" onClick={() => void actions.refresh()}>重新读取</button></div>
+            : <>
+              {model.listError && <p className="err" role="alert">{model.listError}</p>}
+              <ServerTable servers={model.servers} busy={model.busy} onEdit={actions.edit} onRemove={(server) => void actions.remove(server)} />
+            </>}
       </div>
     </>
   );

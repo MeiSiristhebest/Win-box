@@ -22,6 +22,7 @@ export function useStorageSettingsPresenter(
   confirmRemoval: ConfirmStorageRemoval,
 ) {
   const [loadState, setLoadState] = useState<StorageSettingsViewModel['loadState']>('loading');
+  const [listError, setListError] = useState<string | null>(null);
   const [servers, setServers] = useState<DavServer[]>([]);
   const [draft, setDraft] = useState<DavServer>({ ...EMPTY_SERVER });
   const [message, setMessage] = useState<StorageSettingsViewModel['message']>(null);
@@ -38,11 +39,12 @@ export function useStorageSettingsPresenter(
       if (!current || requestRevision !== listRevision.current) return;
       setServers(next);
       setLoadState('ready');
+      setListError(null);
       setMessage(null);
     }).catch((error: unknown) => {
       if (!current || requestRevision !== listRevision.current) return;
       setLoadState('error');
-      setMessage({ text: `存储列表读取失败：${errorMessage(error)}`, kind: 'err' });
+      setListError(`存储列表读取失败：${errorMessage(error)}`);
     });
     return () => { current = false; };
   }, [active, port]);
@@ -58,10 +60,11 @@ export function useStorageSettingsPresenter(
       if (requestRevision !== listRevision.current) return;
       setServers(next);
       setLoadState('ready');
+      setListError(null);
       setMessage({ text: '存储列表已刷新', kind: 'ok' });
     } catch (error) {
       if (requestRevision !== listRevision.current) return;
-      setMessage({ text: `列表刷新失败：${errorMessage(error)}`, kind: 'err' });
+      setListError(`列表刷新失败：${errorMessage(error)}`);
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -96,12 +99,15 @@ export function useStorageSettingsPresenter(
       // refresh failure cannot make the user believe the write failed or retry it.
       setServers((current) => upsertServer(current, saved));
       setLoadState('ready');
+      setListError(null);
       setDraft({ ...EMPTY_SERVER });
       try {
         setServers(await port.listServers());
         setLoadState('ready');
+        setListError(null);
         setMessage({ text: `已保存「${saved.name}」`, kind: 'ok' });
       } catch (error) {
+        setListError(`列表刷新失败：${errorMessage(error)}`);
         setMessage({ text: `已保存「${saved.name}」，但列表刷新失败；当前列表已保留本次更改。可点击“刷新列表”重试：${errorMessage(error)}`, kind: 'warn' });
       }
     } catch (error) {
@@ -126,12 +132,15 @@ export function useStorageSettingsPresenter(
       ++listRevision.current;
       setServers((current) => current.filter((item) => item.id !== server.id));
       setLoadState('ready');
+      setListError(null);
       setDraft((current) => current.id === server.id ? { ...EMPTY_SERVER } : current);
       try {
         setServers(await port.listServers());
         setLoadState('ready');
+        setListError(null);
         setMessage({ text: `已删除「${server.name}」`, kind: 'ok' });
       } catch (error) {
+        setListError(`列表刷新失败：${errorMessage(error)}`);
         setMessage({ text: `已删除「${server.name}」，但列表刷新失败；当前列表已移除此项。可点击“刷新列表”重试：${errorMessage(error)}`, kind: 'warn' });
       }
     } catch (error) {
@@ -159,7 +168,7 @@ export function useStorageSettingsPresenter(
   }, [draft, port]);
 
   return {
-    model: { loadState, servers, draft, message, busy, refreshing } satisfies StorageSettingsViewModel,
+    model: { loadState, listError, servers, draft, message, busy, refreshing } satisfies StorageSettingsViewModel,
     actions: { updateDraft, edit, clearDraft, save, remove, test, refresh },
   };
 }

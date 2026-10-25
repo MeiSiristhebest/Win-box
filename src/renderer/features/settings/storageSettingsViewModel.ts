@@ -2,6 +2,7 @@ import type { DavServer } from '../../../shared/webdav';
 
 export interface StorageSettingsViewModel {
   loadState: 'loading' | 'ready' | 'error';
+  listError: string | null;
   servers: DavServer[];
   draft: DavServer;
   message: { text: string; kind: 'ok' | 'err' | 'warn' } | null;
