@@ -898,6 +898,8 @@
 
 - **确认并修复的边界：** 原 `renderer/lib/theme.ts` 同时负责主题用例协调、文档 DOM/token 写入、偏好持久化、插件 CSS 注入和 React 外部 store 订阅。现拆为 React-free 的 `themeApplication`（通过偏好、注册表、文档和事件端口协调）、`themeDocumentAdapter`（DOM/token/CSS）、`useThemeStore`（React 订阅）及 renderer composition runtime；页面和设置调用点已迁移，旧混合模块已删除。
 - **行为覆盖：** 新增主题应用用例测试，覆盖主题应用与写入顺序、启动读取不回写、注册表加载中的保留行为，以及皮肤移除后归一化并持久化默认主题。既有主题应用、外观设置和注册表测试继续通过。
-- **本轮增量验证：** 主题及架构边界 5 个测试文件、245 项通过；`pnpm run typecheck` 的 main、renderer、test 三套检查通过。全量 Vitest、lint、生产构建与桌面视觉验收尚未在本轮变更后执行。
+- **本轮全量验证：** `pnpm test` 完成，420 个测试文件通过、3 个跳过；3631 项通过、5 项跳过。`pnpm run typecheck` 的 main、renderer、test 三套检查和 `pnpm run lint`（含架构边界、React/perf、JSX a11y）通过；`pnpm run build` 的 main 与 renderer 生产构建通过。
+- **回归修复：** 全量测试发现两个失败项：JVM/Python cwd 测试依赖已删除的 `JarSpiderBridge.runSubprocess` 私有入口，现改为直接验证共享 `SpiderSubprocessRunner`；存储初始读取失败同时显示在表单和列表，现把 `listError` 与操作反馈分开。两项定向复测通过，随后全量 Vitest 通过。
+- **构建提示：** 生产构建成功，但 Vite 仍提示 HLS chunk 约 574 KB、超过 500 KB 阈值；本轮没有做 bundle 拆分优化。桌面视觉验收仍未执行。
 - **原则影响与限制：** 此次关闭主题设置链路中 #1、#5、#6、#7、#8、#14 的一处具体职责与可替换性缺口；它不改变全仓 14 项总评。JS/Worker/JVM/Python 共同行为矩阵、播放器真实状态所有权审查、余下 UI/IPC 依赖分类、Atomic Design/全窗口视觉验收仍开放。
-- **提交：** `zqm` — `refactor:split-theme-application-boundaries`。`libnc.so` 保持独立、未提交。
+- **提交：** `zqm`（主题职责拆分）、`nmm`（lint 清理）、`tvx`（Python runner 测试）、`wvz`（存储错误展示）、`lmv`（主题状态记录）。`libnc.so` 保持独立、未提交。
