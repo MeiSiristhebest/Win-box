@@ -1,0 +1,483 @@
+@layer legacy {
+/* 说明页（免责声明与项目主页） */
+/* ---- 说明页（免责声明）----
+   ★ 2026-09-29（用户报「文本只占半边、还要下滑」）：① **整块居中**；② 宽屏**两列平铺**（左右都铺开、
+   高度近乎减半，1080p 基本一屏放下）；③ 窄屏自动回单列，条款不被跨列断开。 */
+.about { max-width: min(1180px, 94vw); margin: 0 auto; line-height: 1.75; font-size: 13px; padding-bottom: 20px; }
+.about > .page-heading { column-span: all; }
+@media (min-width: 1080px) {
+  .about { column-count: 2; column-gap: 44px; }
+}
+.about-sec { margin-bottom: 14px; break-inside: avoid; }
+.about-sec h3 { font-size: 14px; margin: 0 0 6px; }
+.about-sec p { margin: 0 0 8px; }
+.about-links { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 10px; }
+.about-link { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); color: var(--text); font-size: 13px; }
+.about-link:hover { border-color: var(--text-accent, var(--accent)); color: var(--text-accent); }
+.sp-hot-score { flex: 0 0 auto; font-size: 12px; margin-left: auto; }
+.about-link:focus-visible { outline: var(--focus-ring); outline-offset: 3px; }
+:root[data-theme][data-player-fullscreen] .app.pwin .titlebar { display: none; }
+/* Theme-wide button rules must not add padding or a background to window controls. */
+:root[data-theme][data-theme] .titlebar .tb-btn {
+  padding: 0; margin: 0; border: none; box-sizing: border-box; box-shadow: none;
+}
+:root[data-theme][data-theme] .titlebar .tb-btn:not(:hover):not(.tb-pin-on) { background: transparent; }
+/* Mouse focus is not a selected state. Preserve a visible ring only for keyboard navigation. */
+:root[data-theme][data-theme] button:focus:not(:focus-visible) { outline: none; }
+
+/* ============================================================================
+   ★★ 2026-10-16（用户要求）：播放器窗口**顶部标题栏** —— 去掉 38px 实心「边框」，改为
+   **无边框浮层**（视频铺满到顶，标题栏浮在画面上），窗口按钮使用不透明深色表面，
+   不模糊视频，并与底部控制条**同一份显隐状态**（`ui` 由 VideoPlayer 镜像到
+   `:root[data-pwin-ui]`）——播放中鼠标静止后一起淡出，鼠标移到顶部即显形。
+   ★ 只在真正的播放器窗口生效（`.app.pvwin`）；详情/搜索辅助窗口（`.app.pwin` 无 `pvwin`）不受影响。
+   ★ 用 `:not([data-mpv])` 排除 MPV 内核（其透明链敏感、已有自己的顶层浮层规则），零回归。
+   ★ 全屏：播放器窗口的两种内核都用**主进程原生窗口全屏**（HTML5 亦然，2026-10-17 起，见
+     VideoPlayer `nativeFs`）——标题栏由 `[data-player-fullscreen]` 规则 `display:none` 隐藏；
+     `:fullscreen` 规则仍保留，仅供主窗口（直播 / WebDAV）的元素全屏使用。
+   ============================================================================ */
+/* ★★ 特异度：四皮肤在 2026-10-16 大改里各自写了
+   `:root[data-theme='X']:not([data-mpv]) .app.pwin.pvwin .titlebar {...}`（(0,7,0)，浅色白顶栏）
+   —— 本组必须用 `:root[data-theme][data-theme]` + `.app.pwin.pvwin` 提到 (0,8,0)+ 才能压过它们
+   （同本文件既有的 `:root[data-theme][data-theme]` 提权手法）。 */
+:root[data-theme][data-theme] .app.pwin.pvwin .main { position: relative; }
+:root[data-theme][data-theme]:not([data-mpv]) .app.pwin.pvwin .titlebar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 6;
+  height: 46px; padding: 0 14px;
+  background: transparent; border-bottom: none; box-shadow: none;
+  opacity: 1; transition: opacity .2s ease;
+}
+/* 播放中静止（底部控制条已隐）→ 顶部一并淡出；鼠标移到顶部（悬停）即显形，避免交互中途消失 */
+:root[data-theme][data-theme]:not([data-mpv])[data-pwin-ui='0'] .app.pwin.pvwin .titlebar { opacity: 0; }
+:root[data-theme][data-theme]:not([data-mpv])[data-pwin-ui='0'] .app.pwin.pvwin .titlebar:hover { opacity: 1; }
+:root[data-theme][data-theme]:not([data-mpv]) .app.pwin.pvwin .titlebar .tb-title { color: #fff; text-shadow: 0 1px 5px rgba(0, 0, 0, .55); }
+/* Solid titlebar controls remain legible on changing video frames. */
+:root[data-theme][data-theme]:not([data-mpv]) .app.pwin.pvwin .titlebar .tb-btn {
+  width: 38px; height: 38px; margin-left: 6px; border-radius: 10px;
+  color: #fff;
+  background: #111419ed;
+  border: 1px solid #ffffff68;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: none;
+  transition: background .13s, color .13s, transform .13s, border-color .13s;
+}
+:root[data-theme][data-theme]:not([data-mpv]) .app.pwin.pvwin .titlebar .tb-btn:hover {
+  background: #242a33; color: #fff; border-color: #ffffff88;
+}
+:root[data-theme][data-theme]:not([data-mpv]) .app.pwin.pvwin .titlebar .tb-btn:active { transform: scale(.94); }
+:root[data-theme][data-theme]:not([data-mpv]) .app.pwin.pvwin .titlebar .tb-btn.tb-close:hover {
+  background: #e81123; border-color: transparent; color: #fff;
+}
+/* 置顶开启态：accent 高亮（须压过上面的玻璃底，故再点一次 tb-pin-on） */
+:root[data-theme][data-theme]:not([data-mpv]) .app.pwin.pvwin .titlebar .tb-btn.tb-pin-on {
+  color: #d5e4ff; background: #17202d; border-color: #83aaff;
+  box-shadow: inset 0 -2px #83aaff;
+}
+
+/* ---- 外挂字幕渲染（原生 TextTrack + VTTCue，用 CSS 变量控制字号/位置） ---- */
+.vplayer video::cue { font-size: var(--sub-font, 20px); font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  color: #fff; background: rgba(0,0,0,.55); text-shadow: 0 1px 2px #000; line-height: 1.4; }
+.vplayer video::-webkit-media-text-track-container { bottom: var(--sub-bottom, 40px) !important; }
+/* 字幕面板 */
+.vp-subdot { position: absolute; top: 2px; right: 2px; width: 7px; height: 7px; border-radius: 50%; background: #5be08b; }
+.vp-subpanel { position: absolute; right: 12px; bottom: 60px; width: 340px; max-height: 280px; overflow: auto; z-index: 20;
+  color: var(--text); background: var(--surface-glass, rgba(18,20,26,.94)); border: 1px solid var(--border); border-radius: 10px; padding: 10px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+.vp-popup-anchor { position: relative; display: inline-flex; align-items: center; flex: none; }
+.vp-panelhost { position: absolute; left: 50%; bottom: 100%; padding-bottom: 8px; z-index: 20; }
+.vp-panelhost .vp-subpanel { position: static; box-sizing: border-box; max-width: 100%; max-height: min(380px, calc(100vh - 140px)); }
+.vsp-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.vsp-label { font-size: 12px; width: 34px; }
+.vsp-input { flex: 1; min-width: 0; font-size: 12px; padding: 4px 8px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--surface-2); color: var(--text); }
+.vsp-input:focus { outline: none; border-color: var(--text-accent, var(--accent)); box-shadow: 0 0 0 2px var(--accent-soft); }
+.vsp-btn { all: unset; cursor: pointer; font-size: 12px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); background: var(--surface-2); }
+.vsp-btn:hover { border-color: var(--text-accent, var(--accent)); }
+.vsp-btn.active { border-color: var(--text-accent, var(--accent)); color: var(--text-accent, var(--accent)); background: var(--accent-soft); }
+.vsp-btn.primary { background: linear-gradient(135deg,#315caf,#4a3fb3); color: #fff; border-color: transparent; padding: 3px 12px; }
+.vsp-btn:disabled { color: var(--text-disabled, var(--text-dim)); opacity: 1; cursor: not-allowed; }
+/* 播放器面板选中态不复用页面筛选 chip：主题覆盖次序曾让「开/关」文字和选中底色失去对比。 */
+.vp-subpanel .vp-panel-toggle {
+  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+  min-height: 34px; padding: 5px 12px; border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); background: var(--surface-2); font-size: 12px; font-weight: 650; cursor: pointer;
+}
+.vp-subpanel .vp-panel-toggle:hover { border-color: var(--text-accent, var(--accent)); }
+.vp-subpanel .vp-panel-toggle:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+:root .vp-subpanel .vp-panel-toggle.active,
+:root .vp-subpanel .vsp-btn.active {
+  border-color: var(--text-accent, var(--accent)); color: var(--text-accent); background: var(--accent-soft);
+}
+/* ★ 2026-09-26：画面比例面板（比字幕/弹幕面板窄，选项两列排布）
+   ★ 2026-09-28（用户要求）：改「悬停开 / 鼠标离开即收」（与音量条一致）——
+   host 常驻并承担 8px 间隙的悬停桥接（直接给 .vp-subpanel 加 ::after 会被它的 overflow:auto 裁掉） */
+.vp-fithost { position: absolute; bottom: 100%; right: 0; padding-bottom: 8px; z-index: 20;
+  opacity: 0; pointer-events: none; transform: translateY(4px); transition: opacity .16s ease, transform .16s ease; }
+.vp-fithost.open { opacity: 1; pointer-events: auto; transform: translateY(0); }
+.vp-subpanel.vp-fitpanel { position: static; width: 268px; }
+/* ★ 2026-09-28（用户要求）：弹幕面板加宽（原本 340px，长剧名读不全）；候选名最多两行 */
+.vp-subpanel.vp-dmpanel { width: 438px; max-height: 380px; }
+/* ★ 2026-10-08（用户要求）：跳过片头片尾面板 / 进度条右键菜单 / 跳过提示 */
+.vp-subpanel.vp-skippanel { width: 320px; }
+.vp-skipmenu { position: fixed; z-index: 40; width: 236px; padding: 6px;
+  background: var(--surface-glass, rgba(18,20,26,.96)); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.55); display: flex; flex-direction: column; gap: 2px; }
+.vp-skipmenu-title { font-size: 12px; color: var(--text-secondary, var(--text-dim)); padding: 2px 6px 6px; border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 4px; }
+.vp-skipmenu-item { all: unset; cursor: pointer; font-size: 12px; padding: 6px 8px; border-radius: 6px; color: var(--text); }
+.vp-skipmenu-item:hover { background: rgba(255,255,255,.10); }
+.vp-skipmenu-item:disabled { color: var(--text-disabled, var(--text-dim)); opacity: 1; cursor: not-allowed; }
+.vp-skipmenu-item:disabled:hover { background: none; }
+.vp-skipmenu-cancel { color: var(--muted, #9aa3b2); }
+/* ★ 2026-10-15（用户要求）：播放器右键菜单（复用 .vp-skipmenu 观感，宽度自适应内容） */
+.vp-ctxmenu { width: auto; min-width: 132px; }
+/* ★ 2026-10-15（用户要求）：右键「详情信息」→ 画面右上角浮层（紧凑、不拦截鼠标）
+   ★ 2026-10-15 二次修改（用户要求「不要背景框，字号稍微再大点」）：去掉底色/模糊/内边距那一层框，
+     直接压在画面上，靠描边（text-shadow）保证在亮画面下也能读；字号 12 → 13.5。 */
+.vp-info { position: absolute; top: 12px; right: 12px; z-index: 27; pointer-events: none;
+  max-width: min(52%, 300px); text-align: right; color: #fff;
+  font-size: 13.5px; line-height: 1.5; font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgba(0,0,0,.9), 0 0 8px rgba(0,0,0,.65); }
+.vp-info-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-info-row { opacity: .92; }
+/* ★ 2026-10-17（阶段3b，用户要求）：**MPV 内核专属**信息浮层 —— 「播放统计」（左上角，技术详情）
+   与「快捷键」（左下角，中文一览）。二者皆为可钉住的只读浮层（关闭键为自绘，不受皮肤 button 规则影响）。 */
+.vp-stats, .vp-keys {
+  position: absolute; left: 12px; z-index: 27;
+  max-width: min(64%, 420px); padding: 10px 12px;
+  color: #fff; font-size: 12.5px; line-height: 1.5; font-variant-numeric: tabular-nums;
+  background: rgba(12, 14, 20, .66); border: 1px solid rgba(255, 255, 255, .14); border-radius: 10px;
+  -webkit-backdrop-filter: blur(14px) saturate(1.5); backdrop-filter: blur(14px) saturate(1.5);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .5);
+  animation: vpBadgeIn .2s ease-out both;
+}
+.vp-stats { top: 12px; }
+.vp-keys { bottom: 74px; }
+.vp-inf-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.vp-inf-title { flex: 1 1 auto; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+.vp-inf-x { all: unset; cursor: pointer; flex: 0 0 auto; width: 20px; height: 20px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center; color: rgba(255,255,255,.75);
+  font-size: 14px; line-height: 1; transition: background .13s var(--ease-standard, ease), color .13s; }
+.vp-inf-x:hover { background: rgba(255,255,255,.16); color: #fff; }
+.vp-inf-empty { font-size: 12px; color: rgba(255,255,255,.6); }
+/* 两列表格（display:contents 让每个 row 直接参与父级 grid 排布，标签/取值对齐） */
+.vp-stats-body { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; max-height: min(52vh, 320px); overflow: auto; }
+.vp-stats-row { display: contents; }
+.vp-stats-k { color: rgba(255,255,255,.55); white-space: nowrap; }
+.vp-stats-v { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-keys-body { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; align-items: center; }
+.vp-keys-row { display: contents; }
+.vp-keys-kbd { justify-self: start; font: inherit; font-size: 12px; padding: 2px 7px; border-radius: 5px;
+  color: #fff; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.16); white-space: nowrap; }
+.vp-keys-desc { color: rgba(255,255,255,.85); }
+.vp-toast { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); z-index: 26; pointer-events: none;
+  padding: 8px 16px; border-radius: 999px; background: rgba(0,0,0,.72); color: #fff; font-size: 13px;
+  border: 1px solid rgba(255,255,255,.14); }
+.vp-toast.vp-command-error { max-width: min(560px, calc(100% - 32px)); border-color: #ffb3ad; background: #6b1f1f; color: #fff; text-align: center; }
+.vp-dmpanel .vsp-item-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.vsp-fits { display: flex; flex-wrap: wrap; gap: 6px; }
+.vsp-fits .vsp-btn { flex: 0 0 calc(50% - 3px); text-align: center; box-sizing: border-box; }
+.vsp-hint { font-size: 12px; color: var(--text-warn, var(--warn)); margin-top: 4px; }
+.vsp-err { font-size: 12px; color: var(--text-danger, var(--danger)); margin-top: 4px; }
+.vsp-list { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; border-top: 1px solid var(--border-soft); padding-top: 6px; }
+.vsp-item { text-align: left; display: flex; flex-direction: column; gap: 2px; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 8px; cursor: pointer; }
+.vsp-item:hover { border-color: var(--text-accent, var(--accent)); }
+.vsp-item-name { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vsp-item .muted { font-size: 12px; }
+/* ★ 2026-09-26：弹幕源面板（接口开关清单 + 自定义接口输入） */
+.vsp-dmsrc { margin: 2px 0 6px; }
+.vsp-dmsrc-list { display: flex; flex-wrap: wrap; gap: 2px 10px; max-height: 132px; overflow: auto;
+  border: 1px solid var(--border-soft); border-radius: 6px; padding: 6px 8px; }
+.vsp-dmsrc-item { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;
+  max-width: 100%; }
+.vsp-dmsrc-item input { margin: 0; }
+.vsp-dmsrc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+.vsp-dmsrc-text { width: 100%; box-sizing: border-box; margin-top: 6px; font-size: 12px; resize: vertical;
+  background: var(--surface-2); color: inherit; border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
+.vsp-dmsrc-tag { display: inline-block; margin-right: 6px; padding: 0 5px; border-radius: 4px; font-size: 12px;
+  color: var(--text-accent, var(--accent)); background: var(--accent-soft); vertical-align: 1px; }
+.player-wrap { display: contents; }
+.layout-2 { display: flex; gap: 14px; height: 100%; min-height: 0; }
+.layout-2 .left { width: 216px; overflow: auto; border-right: 1px solid var(--border-soft); padding-right: 6px; flex-shrink: 0; }
+.layout-2 .right { flex: 1; overflow: auto; min-width: 0; }
+/* ★ 2026-09-27（用户报「直播界面播放器消失」）：播放器的 `.vplayer` 高度只来自 flex 父级（flex:1），
+   直播页此前把它直接放进 block 容器 `.right` → flex 失效 + 子元素全为绝对定位 → 高度折成 0。
+   这里给出「定比 + 视口上限」的 flex 宿主，`.vplayer` 的 flex:1 重新生效（宽度显式取 min 以同时满足两约束）。 */
+.live-player { width: min(100%, calc(62vh * 16 / 9)); aspect-ratio: 16 / 9; display: flex; }
+/* ★ 2026-09-29 WebDAV 存储页：面包屑 / 目录行 / 播放器宿主（与直播页同「定比 + 视口上限」口径） */
+.dav-crumb { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-bottom: 8px; font-size: 12.5px; }
+.dav-crumb-item { cursor: pointer; }
+.dav-crumb-item:hover { color: var(--text-accent); }
+.dav-player { width: min(100%, calc(48vh * 16 / 9)); aspect-ratio: 16 / 9; display: flex; margin-bottom: 8px; }
+.dav-list { display: flex; flex-direction: column; }
+.dav-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: var(--radius-sm);
+  width: 100%; cursor: pointer; font-size: 12.5px; border-bottom: 1px solid var(--border); }
+.dav-row:last-child { border-bottom: none; }
+.dav-row:hover { background: var(--surface-2); }
+.dav-ico { flex: none; width: 18px; text-align: center; }
+.dav-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dav-size { flex: none; width: 76px; text-align: right; }
+.dav-time { flex: none; width: 124px; text-align: right; }
+/* ★ 2026-09-29 EPG：当前 / 下一档一行（仅当该频道有节目单时渲染） */
+.live-epg { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 8px; font-size: 12.5px; }
+.live-epg > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.live-epg b { font-weight: 600; color: var(--text-dim); margin-right: 4px; }
+.live-epg-now { color: var(--text); }
+.ep-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+.ep { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 7px; cursor: pointer;
+  font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard), border-color var(--dur-quick) var(--ease-standard); }
+.ep:hover { border-color: var(--text-accent, var(--accent)); color: var(--text); }
+.ep.active { border-color: var(--text-accent, var(--accent)); color: var(--text-accent); background: var(--accent-soft); }
+
+/* ★ 2026-10-13 启动更新提示：发现新版本时展示说明与「立即更新 / 暂不更新」选项 */
+.upd-blur { pointer-events: none; filter: blur(2px); opacity: .35; }
+.upd-overlay { position: fixed; inset: 0; z-index: 5000; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .72); backdrop-filter: blur(8px); }
+.upd-card { width: 480px; max-width: 92vw; max-height: 90vh; overflow: auto; }
+.upd-vers { font-size: 12.5px; margin-bottom: 18px; }
+.upd-hint { font-size: 12px; line-height: 1.6; margin-bottom: 14px; }
+.upd-notes-title { font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px; }
+.upd-notes { max-height: 180px; overflow: auto; white-space: pre-wrap; line-height: 1.65; font-size: 12.5px; color: var(--text); padding: 10px 12px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border-soft); }
+.upd-bar { height: 8px; border-radius: 6px; background: rgba(127, 127, 127, .25); overflow: hidden; }
+.upd-fill { height: 100%; width: 2%; border-radius: 6px; background: var(--accent); transition: width .25s ease; }
+.upd-status { display: flex; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: 12.5px; }
+.upd-speed { margin-top: 4px; font-size: 12px; }
+.upd-err { font-size: 13px; color: var(--text-danger); line-height: 1.7; }
+.upd-actions { justify-content: flex-end; margin-top: 20px; }
+
+/* ---- 滚动条 ---- */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2b3242; border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #3a4358; background-clip: content-box; border: 2px solid transparent; }
+
+/* ---- 响应式 ---- */
+@media (max-width: 1000px) {
+  :root { --side-w: 62px; }
+  .nav-txt, .sidebar .logo { display: none; }
+  .nav-item { justify-content: center; padding: 11px; }
+  .side-foot { display: none; }
+  .content { padding: 12px; }
+}
+@media (max-width: 720px) {
+  .grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+  .topbar { flex-wrap: wrap; padding: 8px 12px; min-height: auto; }
+  table { font-size: 12px; }
+  .layout-2 { flex-direction: column; }
+  .layout-2 .left { width: 100%; border-right: none; border-bottom: 1px solid var(--border-soft); max-height: 150px; }
+}
+
+.tb-ico { width: 18px; height: 18px; border-radius: 5px; object-fit: contain; flex: none; }
+
+/* ★★ 2026-10-08（用户要求「所有风格里的选项开关全部改成这种」）：**全皮肤统一的「药丸开关」**。
+   外观：胶囊轨道 + 白色圆钮；开启 = 皮肤强调色轨道（网飝红 / 哔哔粉 / 大果蓝 / 大豆豆绿），
+   关闭 = 半透明中性轨道（color-mix 跟随各皮肤文字色，深浅皮肤都能看清）。
+   实现：`appearance:none` 自绘；Chromium 不给 input 渲染伪元素 → 圆钮用**背景层**（radial-gradient）画，
+   `background-origin: content-box` + 2px padding 让圆钮内缩；0%↔100% 两端位置可平滑过渡（滑钮动画）。
+   ★★ 特异度（勿改回单写）：各皮肤有 `:root[data-theme='X'] input { background/border… }`（0,3,1），
+     这里**双写 [data-theme]** 取 (0,4,1) 才压得住（同 §C54/§C60 教训：底样式压不过皮肤就双写拉特异度）。 */
+:root[data-theme][data-theme] input[type='checkbox'] {
+  appearance: none; -webkit-appearance: none; flex: none;
+  width: 40px; height: 22px; margin: 0; padding: 2px; border: none; border-radius: 999px;
+  box-sizing: border-box; cursor: pointer; vertical-align: middle;
+  background-color: color-mix(in srgb, var(--text) 26%, transparent);
+  background-image: radial-gradient(circle at 50% 50%, #fff 0 6.4px, rgba(0, 0, 0, .16) 6.4px 7.4px, transparent 7.4px);
+  background-size: 18px 18px; background-position: 0% 50%; background-repeat: no-repeat;
+  background-origin: content-box;
+  transition: background-color .22s cubic-bezier(.2, 0, 0, 1), background-position .22s cubic-bezier(.2, 0, 0, 1);
+}
+:root[data-theme][data-theme] input[type='checkbox']:hover { background-color: color-mix(in srgb, var(--text) 34%, transparent); }
+:root[data-theme][data-theme] input[type='checkbox']:checked {
+  background-color: var(--text-accent, var(--accent));
+  background-position: 100% 50%;
+}
+:root[data-theme][data-theme] input[type='checkbox']:checked:hover { background-color: var(--text-accent, var(--accent)); filter: brightness(1.06); }
+:root[data-theme][data-theme] input[type='checkbox']:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+/* 例外①：嵌在胶囊 chip 里的多选（配置页「合并档案」芯片）保持原生小方框 —— 开关尺寸放不进 chip。 */
+:root[data-theme][data-theme] .tag input[type='checkbox'] {
+  appearance: auto; -webkit-appearance: auto; width: auto; height: auto; padding: 0; background: none;
+}
+/* 例外②：**列表里的「选择 / 多选」是勾选框语义，不是开关** —— ★ 2026-10-14 用户指令：
+   「配置-订阅与源-我的源列表，前面应该是选择框，而我们现在的样式是胶囊开关，胶囊开关应该用在
+     开关类的设置中，而不是这里」。故该表（表头全选 + 每行选择）保持原生小方框；
+   用 `.sel-box` **显式标记**（不依赖表格结构，任何列表里的多选都能复用）。 */
+:root[data-theme][data-theme] input[type='checkbox'].sel-box {
+  appearance: auto; -webkit-appearance: auto; width: auto; height: auto; padding: 0; background: none;
+}
+
+/* ============================================================================
+   ★★ 2026-10-08（用户要求「整体重做界面视觉与动效交互」）：全皮肤**交互态 / 动效 / 载入态**系统。
+   规划口径（参考开源规范 Material 3 + Expressive 的动效令牌，见 :root 里的 --ease-* / --dur-*）：
+     ① 焦点可见（无障碍）② 路由进场 ③ 弹层进场 ④ 对话框进场 ⑤ 按压反馈 ⑥ 载入/空态 ⑦ 数字等宽 ⑧ 减弱动效。
+   每一条都要"有理由"：要么补上缺失的反馈（按压/进场），要么修掉可读性/无障碍缺口。
+   ★ 特异度：按压反馈要压过各皮肤的 `:hover`（0,3,0~0,4,0），故沿用双写 `[data-theme][data-theme]`（§C54 教训）。
+   ============================================================================ */
+
+/* ① 键盘可见焦点：全站统一焦点环（鼠标点击不出现，键盘 Tab 才亮 —— 不影响鼠标观感） */
+:root[data-theme] :focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+:root[data-theme] .card-media:focus-visible { outline-offset: 3px; border-radius: var(--radius); }
+
+/* ② 路由进场：交叉淡入 + 上浮 + 极轻缩放（M3 进场曲线；企鹅式硬切改成有编排的登场） */
+.page-anim { animation: pageIn var(--dur-page) var(--ease-enter) both; }
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(14px) scale(.994); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ③ 弹层进场（搜索面板 / 换源弹层 / 歌单类浮层）：挂载即播放；★ 2026-10-16：换源弹层按用户要求
+     另补了「常驻 3s → 回缩」的**出场**动画（见下方 popOut / popDown），其余弹层仍是即时卸载。 */
+.sp-panel, .srcpick-pop { animation: popIn var(--dur-panel) var(--ease-enter) both; transform-origin: top center; }
+.srcpick-pop-side { transform-origin: bottom center; animation-name: popUp; }
+@keyframes popIn { from { opacity: 0; transform: translateY(-7px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes popUp { from { opacity: 0; transform: translateY(7px) scale(.97); } to { opacity: 1; transform: none; } }
+/* ★ 2026-10-16（用户要求「换源下拉框常驻 3s 后动画回缩」）：换源弹层的**出场**动画 ——
+   朝锚点缩放淡出（`transform-origin` 沿用上面进场那条：顶栏入口 = top center、侧栏入口 = bottom center，
+   视觉上就是「缩回按钮里」）。★ 必须写在第 1030 行那条之后：`.srcpick-pop-side` 也是 (0,2,0)，
+   同特异度靠后加载者胜。时长与 SourcePicker 的 `CLOSE_ANIM_MS`(280ms) 对齐 —— JS 等动画播完才卸载。 */
+.srcpick-pop.srcpick-closing { animation: popOut var(--dur-panel) var(--ease-exit) both; }
+@keyframes popOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.96) translateY(-4px); } }
+.srcpick-pop-side.srcpick-closing { animation-name: popDown; }
+@keyframes popDown { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(.96) translateY(4px); } }
+
+/* ④ 对话框进场（遮罩淡入 + 卡片上浮缩放）：免责声明 / 网盘绑定 / 更新门禁 */
+.modal-scrim { animation: scrimIn var(--dur-panel) var(--ease-standard) both; }
+@keyframes scrimIn { from { opacity: 0; } to { opacity: 1; } }
+.card.modal-in, .upd-card { animation: modalIn var(--dur-panel) var(--ease-enter) both; }
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(10px) scale(.965); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ⑤ 按压反馈：按下要有"按到了"的即时反馈（100ms 内到位）；卡片用极轻回弹曲线 */
+:root[data-theme][data-theme] .card-media:active { transform: none; transition-duration: var(--dur-instant); }
+:root[data-theme][data-theme] .card-media:active .card { transform: none; transition-duration: var(--dur-instant); }
+:root[data-theme][data-theme] .tag:active,
+:root[data-theme][data-theme] .ep:active,
+:root[data-theme][data-theme] .list-item:active,
+:root[data-theme][data-theme] .srcpick-item:active,
+:root[data-theme][data-theme] .sp-item:active { transform: scale(.97); }
+button:active { transition-duration: var(--dur-instant); }
+
+/* ⑥ 载入态 / 空态：通用转圈 + 空态居中淡入（原先只有一行灰字，等半天不知道在不在动） */
+.spinner {
+  width: 18px; height: 18px; flex: none; border-radius: 50%; box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, var(--text) 18%, transparent); border-top-color: var(--text-accent, var(--accent));
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  animation: fadeIn var(--dur-panel) var(--ease-standard) both;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ⑦ 数字对齐：时间 / 进度 / 速度用等宽数字（跳秒、进度推进时不再左右抖） */
+.vp-time, .vp-htip, .aud-time, .upd-speed, .vp-vpct, .vp-load-speed, .hist-time, .dav-size, .dav-time { font-variant-numeric: tabular-nums; }
+
+/* ⑧ 减弱动效：默认**跟随系统**（`prefers-reduced-motion`），载入转圈保留但放慢（信息性动画不消失）。
+   ★ 2026-10-08 实测：本机 Windows「动画效果」是关的 → 系统偏好 = reduce → 一切动效被折叠（用户看不到任何动画）。
+     故加应用内三态偏好（配置 → 外观 → 界面动效）：`<html data-motion>`：
+       · 无属性（auto，默认）→ 跟随系统（下面这段生效）
+       · data-motion="on"    → 无视系统、始终开启（选择器写 :not([data-motion='on'])，此段自然不生效）
+       · data-motion="off"   → 无论系统如何一律关闭（第二段，媒体查询之外） */
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion='on']) *,
+  html:not([data-motion='on']) *::before,
+  html:not([data-motion='on']) *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+  html:not([data-motion='on']) .spinner { animation: spin 2.4s linear infinite !important; }
+  html:not([data-motion='on']) .vp-spin { animation: vspin 2.4s linear infinite !important; }
+}
+html[data-motion='off'] *,
+html[data-motion='off'] *::before,
+html[data-motion='off'] *::after {
+  animation-duration: .01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .01ms !important;
+}
+html[data-motion='off'] .spinner { animation: spin 2.4s linear infinite !important; }
+html[data-motion='off'] .vp-spin { animation: vspin 2.4s linear infinite !important; }
+
+/* ============================================================================
+   ★★ 2026-10-16（用户要求「四套皮肤绝对大改」）：**环境光背景场**（全站最底层氛围层）。
+   四套外壳**共用同一份 DOM 与同一套漂移动作**（3 个光斑 + 1 张噪点），各皮肤只覆盖
+   「配色 / 强度 / 噪点浓度」——于是「一套动作语言 × 四套材质」，协调性来自结构而非巧合。
+   实现要点（踩坑记录）：
+     · 氛围层 `position: fixed` 挂在**视口**上：内容区（.content）自身滚动，氛围不随之滚走，
+       才有影院幕布那种「画面在动、幕布不动」的纵深；
+     · 外壳各级（.main / .ap-body / .db-main / .content / .db-head）必须**背景透明**，
+       并把自身 z-index 抬到 1（氛围层是 z-index:0 的 fixed 元素）——
+       静态内容默认绘制层级低于定位元素，不抬会被整片氛围盖住（整页看不见内容）。
+     · 噪点 = SVG feTurbulence 内联 data URI，零额外请求；给纯色大底加「胶片颗粒」，避免塑料感。
+   ============================================================================ */
+.app-ambient { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.app-ambient .amb-blob {
+  position: absolute; display: block; border-radius: 50%;
+  filter: blur(70px); will-change: transform;
+}
+.app-ambient .amb-blob-1 { width: 60vw; height: 60vw; top: -24vw; left: -14vw; animation: ambDrift1 36s var(--ease-standard) infinite alternate; }
+.app-ambient .amb-blob-2 { width: 52vw; height: 52vw; bottom: -22vw; right: -16vw; animation: ambDrift2 44s var(--ease-standard) infinite alternate; }
+.app-ambient .amb-blob-3 { width: 38vw; height: 38vw; top: 30%; left: 40%; animation: ambDrift3 52s var(--ease-standard) infinite alternate; }
+.app-ambient .amb-grain {
+  position: absolute; inset: 0; opacity: .26; mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+@keyframes ambDrift1 { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(7vw, 5vh, 0) scale(1.16); } }
+@keyframes ambDrift2 { from { transform: translate3d(0, 0, 0) scale(1.08); } to { transform: translate3d(-6vw, -6vh, 0) scale(1); } }
+@keyframes ambDrift3 { from { transform: translate3d(-4vw, 2vh, 0) scale(.94); } to { transform: translate3d(5vw, -4vh, 0) scale(1.2); } }
+
+/* ---- 首屏聚光卡（发现页）· 结构骨架（四皮肤共用；材质与配色由各皮肤覆盖） ----
+   层次：.spot-art（海报放大模糊 → 环境色底）/ .spot-veil（暗幕，保文字可读）/
+        .spot-body（文案 + 行动）/ .spot-stage（清晰海报主体 + 预告叠角）/ .spot-dots（轮播点）。 */
+.spot {
+  position: relative; display: flex; align-items: center; gap: 26px;
+  min-height: 340px; margin: 2px 0 22px; padding: 26px 30px; box-sizing: border-box;
+  border-radius: 24px; overflow: hidden;
+}
+.spot-art { position: absolute; inset: -10%; z-index: 0; }
+.spot-art-layer {
+  position: absolute; inset: 0; background-size: cover; background-position: center 22%;
+  transform: scale(1.22); transition: opacity 900ms var(--ease-standard);
+}
+/* ★ 2026-10-16：没有横版剧照时的回退 —— 竖版海报（2:3）直接铺宽幅简报板会只剩一团生硬裁切，
+   故模糊成「色场」当氛围底（.spot-art-blur 由 DiscoverSpotlight 在无 backdrop 时挂上）。 */
+.spot-art-layer.spot-art-blur { filter: blur(30px) saturate(1.5) brightness(.72); transform: scale(1.4); }
+.spot-veil { position: absolute; inset: 0; z-index: 1; }
+.spot-body { position: relative; z-index: 3; flex: 1 1 auto; min-width: 0; max-width: 58%; }
+.spot-kicker {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase;
+}
+.spot-kicker-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.spot-title {
+  margin: 10px 0 9px; font-size: 40px; line-height: 1.05; font-weight: 800; letter-spacing: -.025em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.spot-meta { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+.spot-acts { display: flex; align-items: center; gap: 10px; margin-top: 18px; }
+.spot-stage { position: relative; z-index: 2; flex: 0 0 auto; width: 186px; height: 279px; }
+.spot-poster {
+  position: absolute; inset: 0; background-size: cover; background-position: center;
+  border-radius: 16px; display: flex; align-items: center; justify-content: center;
+}
+.spot-poster-none { font-size: 12px; color: rgba(255, 255, 255, .5); }
+.spot-poster-ghost { transform: translate(30px, 12px) rotate(6deg) scale(.93); z-index: -1; }
+.spot-dots { position: absolute; left: 30px; bottom: 20px; z-index: 4; display: flex; align-items: center; gap: 6px; }
+.spot-dot { all: unset; cursor: pointer; width: 7px; height: 7px; border-radius: 999px; transition: width 220ms var(--ease-spring), background 220ms var(--ease-standard); }
+.spot-dot.active { width: 20px; }
+@media (max-width: 900px) {
+  .spot { flex-direction: column; align-items: stretch; gap: 18px; min-height: 0; }
+  .spot-body { max-width: none; }
+  .spot-stage { width: 128px; height: 192px; align-self: flex-end; }
+  .spot-title { font-size: 30px; }
+  .spot-dots { position: static; margin-top: 14px; }
+}
+
+}

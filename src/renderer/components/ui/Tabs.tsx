@@ -1,4 +1,6 @@
-import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
+import { Tab as FluentTab, TabList as FluentTabList } from '@fluentui/react-components';
+import { Checkmark16Regular } from '@fluentui/react-icons';
 import styles from './Tabs.module.css';
 
 export interface TabItem<Value extends string> {
@@ -13,57 +15,59 @@ export interface TabsProps<Value extends string> {
   onChange: (value: Value) => void;
   label: string;
   idPrefix: string;
+  panelId?: string;
   className?: string;
   orientation?: 'horizontal' | 'vertical';
 }
 
-export function Tabs<Value extends string>({ items, value, onChange, label, idPrefix, className, orientation = 'horizontal' }: TabsProps<Value>) {
-  const refs = useRef<Array<HTMLButtonElement | null>>([]);
+export function Tabs<Value extends string>({ items, value, onChange, label, idPrefix, panelId, className, orientation = 'horizontal' }: TabsProps<Value>) {
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (items.length < 2) return;
+    const target = event.target as Element;
+    const selectedTab = target.closest<HTMLElement>('[role="tab"]');
+    if (!selectedTab) return;
+    const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'));
+    const currentIndex = tabs.indexOf(selectedTab);
+    if (currentIndex < 0) return;
 
-  const moveFocus = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
-    if (items.length === 0) return;
     let nextIndex: number;
-    switch (event.key) {
-      case 'ArrowRight': if (orientation !== 'horizontal') return; nextIndex = (index + 1) % items.length; break;
-      case 'ArrowLeft': if (orientation !== 'horizontal') return; nextIndex = (index - 1 + items.length) % items.length; break;
-      case 'ArrowDown': if (orientation !== 'vertical') return; nextIndex = (index + 1) % items.length; break;
-      case 'ArrowUp': if (orientation !== 'vertical') return; nextIndex = (index - 1 + items.length) % items.length; break;
-      case 'Home': nextIndex = 0; break;
-      case 'End': nextIndex = items.length - 1; break;
-      default: return;
-    }
+    if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = items.length - 1;
+    else if (orientation === 'vertical' && event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % items.length;
+    else if (orientation === 'vertical' && event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + items.length) % items.length;
+    else if (orientation === 'horizontal' && event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % items.length;
+    else if (orientation === 'horizontal' && event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + items.length) % items.length;
+    else return;
+
     event.preventDefault();
-    const next = items[nextIndex];
-    if (!next) return;
-    onChange(next.id);
-    refs.current[nextIndex]?.focus();
+    event.stopPropagation();
+    tabs[nextIndex].focus();
+    onChange(items[nextIndex].id);
   };
 
   return (
-    <div className={[styles.root, className].filter(Boolean).join(' ')}>
-      <div className={styles.list} role="tablist" aria-label={label} aria-orientation={orientation}>
-        {items.map((item, index) => {
-          const selected = item.id === value;
-          const tabId = `${idPrefix}-tab-${item.id}`;
-          return (
-            <button
-              key={item.id}
-              ref={(element) => { refs.current[index] = element; }}
-              id={tabId}
-              className={styles.tab}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              aria-controls={`${idPrefix}-panel`}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => onChange(item.id)}
-              onKeyDown={(event) => moveFocus(event, index)}
-            >
-              {item.icon}{item.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <FluentTabList
+      className={[styles.root, orientation === 'vertical' ? styles.vertical : styles.horizontal, className].filter(Boolean).join(' ')}
+      aria-label={label}
+      vertical={orientation === 'vertical'}
+      selectedValue={value}
+      onTabSelect={(_event, data) => onChange(data.value as Value)}
+      onKeyDown={onKeyDown}
+      appearance="subtle"
+    >
+      {items.map((item) => (
+        <FluentTab
+          key={item.id}
+          id={`${idPrefix}-tab-${item.id}`}
+          aria-controls={panelId}
+          className={[styles.tab, orientation === 'vertical' ? styles.verticalTab : ''].filter(Boolean).join(' ')}
+          value={item.id}
+          icon={item.icon ? <>{item.icon}</> : undefined}
+        >
+          {item.label}
+          {item.id === value && <span className={styles.selectedMarker} aria-hidden="true"><Checkmark16Regular /></span>}
+        </FluentTab>
+      ))}
+    </FluentTabList>
   );
 }

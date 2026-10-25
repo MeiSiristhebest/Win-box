@@ -1,0 +1,214 @@
+import { readdir, readFile } from 'node:fs/promises';
+import { describe, expect, it } from 'vitest';
+
+interface Color {
+  red: number;
+  green: number;
+  blue: number;
+  alpha: number;
+}
+
+interface ThemeTokens {
+  [name: string]: string;
+}
+
+const stylesDirectory = new URL('../src/renderer/styles/', import.meta.url);
+const themes = [
+  { name: 'Netflix dark', file: 'netflix.css', selector: ":root[data-theme='netflix']" },
+  { name: 'Bilibili light', file: 'bilibili.css', selector: ":root[data-theme='bilibili']" },
+  { name: 'Apple light', file: 'apple.css', selector: ":root[data-theme='apple']" },
+  { name: 'Douban light', file: 'douban.css', selector: ":root[data-theme='douban']" },
+  { name: 'Desktop dark', file: 'desktop.css', selector: ":root[data-ui='desktop']" },
+  { name: 'Desktop light', file: 'desktop.css', selector: ":root[data-ui='desktop'][data-theme='light']" },
+] as const;
+
+const textTokens = [
+  '--text',
+  '--text-dim',
+  '--text-faint',
+  '--text-disabled',
+  '--text-accent',
+  '--text-accent-secondary',
+  '--text-danger',
+  '--text-warn',
+  '--text-success',
+] as const;
+const surfaceTokens = ['--surface-0', '--surface-1', '--surface-2', '--surface-3'] as const;
+
+function readRootTokens(css: string, selector: string): ThemeTokens {
+  const start = css.indexOf(`${selector} {`);
+  if (start < 0) throw new Error(`Missing theme token block: ${selector}`);
+  const bodyStart = css.indexOf('{', start) + 1;
+  let depth = 1;
+  let end = bodyStart;
+
+  for (; end < css.length && depth > 0; end += 1) {
+    if (css[end] === '{') depth += 1;
+    if (css[end] === '}') depth -= 1;
+  }
+
+  const body = css.slice(bodyStart, end - 1).replace(/\/\*[\s\S]*?\*\//g, '');
+  const tokens: ThemeTokens = {};
+  for (const declaration of body.split(';')) {
+    const separator = declaration.indexOf(':');
+    if (separator < 0) continue;
+    const name = declaration.slice(0, separator).trim();
+    if (name.startsWith('--')) tokens[name] = declaration.slice(separator + 1).trim();
+  }
+  return tokens;
+}
+
+function parseColor(value: string | undefined): Color | null {
+  if (!value) return null;
+  const hex = value.match(/^#([\da-f]{3}|[\da-f]{6}|[\da-f]{8})$/i)?.[1];
+  if (hex) {
+    const expanded = hex.length === 3 ? [...hex].map((digit) => digit + digit).join('') : hex;
+    const rgb = expanded.slice(0, 6);
+    const alpha = expanded.length === 8 ? Number.parseInt(expanded.slice(6, 8), 16) / 255 : 1;
+    return {
+      red: Number.parseInt(rgb.slice(0, 2), 16),
+      green: Number.parseInt(rgb.slice(2, 4), 16),
+      blue: Number.parseInt(rgb.slice(4, 6), 16),
+      alpha,
+    };
+  }
+
+  const channels = value.match(/^rgba?\(([^)]+)\)$/i)?.[1].split(',').map((part) => Number.parseFloat(part.trim()));
+  if (!channels || channels.length < 3 || channels.some((channel) => !Number.isFinite(channel))) return null;
+  return { red: channels[0], green: channels[1], blue: channels[2], alpha: channels[3] ?? 1 };
+}
+
+function composite(foreground: Color, background: Color): Color {
+  const alpha = foreground.alpha;
+  return {
+    red: foreground.red * alpha + background.red * (1 - alpha),
+    green: foreground.green * alpha + background.green * (1 - alpha),
+    blue: foreground.blue * alpha + background.blue * (1 - alpha),
+    alpha: 1,
+  };
+}
+
+function luminance(color: Color): number {
+  const linear = [color.red, color.green, color.blue].map((channel) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2];
+}
+
+function contrastRatio(first: Color, second: Color): number {
+  const firstLuminance = luminance(first);
+  const secondLuminance = luminance(second);
+  return (Math.max(firstLuminance, secondLuminance) + 0.05) / (Math.min(firstLuminance, secondLuminance) + 0.05);
+}
+
+describe('theme text contrast tokens', () => {
+  for (const theme of themes) {
+    it(`${theme.name} meets WCAG AA contrast for text on every base surface`, async () => {
+      const css = await readFile(new URL(theme.file, stylesDirectory), 'utf8');
+      const tokens = readRootTokens(css, theme.selector);
+      const baseSurface = parseColor(tokens['--surface-0']);
+      expect(baseSurface, `${theme.name} needs an opaque base surface token`).not.toBeNull();
+
+      for (const textToken of textTokens) {
+        const rawText = parseColor(tokens[textToken]);
+        expect(rawText, `${theme.name} needs a concrete ${textToken} token`).not.toBeNull();
+        for (const surfaceToken of surfaceTokens) {
+          const rawSurface = parseColor(tokens[surfaceToken]);
+          expect(rawSurface, `${theme.name} needs a concrete ${surfaceToken} token`).not.toBeNull();
+          const surface = composite(rawSurface!, baseSurface!);
+          const text = composite(rawText!, surface);
+          const ratio = contrastRatio(text, surface);
+          expect(ratio, `${theme.name}: ${textToken} on ${surfaceToken} is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    });
+
+    it(`${theme.name} keeps accent foreground readable`, async () => {
+      const css = await readFile(new URL(theme.file, stylesDirectory), 'utf8');
+      const tokens = readRootTokens(css, theme.selector);
+      const accent = parseColor(tokens['--accent']);
+      const onAccent = parseColor(tokens['--on-accent']);
+      expect(accent, `${theme.name} needs an accent token`).not.toBeNull();
+      expect(onAccent, `${theme.name} needs an on-accent token`).not.toBeNull();
+      expect(contrastRatio(onAccent!, accent!), `${theme.name} --on-accent contrast`).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it(`${theme.name} keeps functional boundaries visible on every base surface`, async () => {
+      const css = await readFile(new URL(theme.file, stylesDirectory), 'utf8');
+      const tokens = readRootTokens(css, theme.selector);
+      const baseSurface = parseColor(tokens['--surface-0']);
+      const boundary = parseColor(tokens['--border']);
+      expect(baseSurface, `${theme.name} needs an opaque base surface token`).not.toBeNull();
+      expect(boundary, `${theme.name} needs a concrete --border token`).not.toBeNull();
+
+      for (const surfaceToken of surfaceTokens) {
+        const rawSurface = parseColor(tokens[surfaceToken]);
+        expect(rawSurface, `${theme.name} needs a concrete ${surfaceToken} token`).not.toBeNull();
+        const surface = composite(rawSurface!, baseSurface!);
+        const visibleBoundary = composite(boundary!, surface);
+        const ratio = contrastRatio(visibleBoundary, surface);
+        expect(ratio, `${theme.name}: --border on ${surfaceToken} is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+      }
+    });
+
+    it(`${theme.name} keeps keyboard focus visible on every base surface`, async () => {
+      const css = await readFile(new URL(theme.file, stylesDirectory), 'utf8');
+      const tokens = readRootTokens(css, theme.selector);
+      const baseSurface = parseColor(tokens['--surface-0']);
+      const focusRing = parseColor(tokens['--focus-ring-color']) ?? parseColor(tokens['--text-accent']);
+      expect(baseSurface, `${theme.name} needs an opaque base surface token`).not.toBeNull();
+      expect(focusRing, `${theme.name} needs a concrete focus ring or accent token`).not.toBeNull();
+
+      for (const surfaceToken of surfaceTokens) {
+        const rawSurface = parseColor(tokens[surfaceToken]);
+        expect(rawSurface, `${theme.name} needs a concrete ${surfaceToken} token`).not.toBeNull();
+        const surface = composite(rawSurface!, baseSurface!);
+        const visibleFocusRing = composite(focusRing!, surface);
+        const ratio = contrastRatio(visibleFocusRing, surface);
+        expect(ratio, `${theme.name}: focus ring on ${surfaceToken} is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+      }
+    });
+  }
+});
+
+describe('global focus ring token', () => {
+  it('provides a theme-aware focus color when a theme does not override it', async () => {
+    const css = await readFile(new URL('global-tokens.css', stylesDirectory), 'utf8');
+    const tokens = readRootTokens(css, ':root');
+    expect(tokens['--focus-ring-color']).toBe('var(--text-accent)');
+  });
+});
+
+describe('shell semantic warning colors', () => {
+  it('uses the theme-aware warning text token for the sidebar banner', async () => {
+    const css = await readFile(new URL('shell-sidebar.css', stylesDirectory), 'utf8');
+    const banner = css.match(/:root\[data-shell='sidebar'\] \.banner\s*\{([^}]*)\}/);
+
+    expect(banner, 'sidebar warning banner rule').not.toBeNull();
+    expect(banner![1]).toContain('color: var(--text-warn)');
+    expect(banner![1]).not.toMatch(/color:\s*#[\da-f]{3,8}/i);
+  });
+});
+
+describe('disabled control readability', () => {
+  it('does not dim disabled controls with element opacity', async () => {
+    const files = (await readdir(stylesDirectory)).filter((file) => file.endsWith('.css'));
+    const dimmedRules: string[] = [];
+
+    for (const file of files) {
+      const css = (await readFile(new URL(file, stylesDirectory), 'utf8')).replace(/\/\*[\s\S]*?\*\//g, '');
+      for (const [, rawSelector, declarations] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        const selector = rawSelector.replace(/:not\([^)]*\)/g, '');
+        if (!/:disabled\b/.test(selector)) continue;
+
+        const opacity = declarations.match(/\bopacity\s*:\s*([\d.]+)/i)?.[1];
+        if (opacity !== undefined && Number(opacity) < 1) {
+          dimmedRules.push(`${file}: ${rawSelector.trim()} uses opacity ${opacity}`);
+        }
+      }
+    }
+
+    expect(dimmedRules).toEqual([]);
+  });
+});

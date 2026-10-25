@@ -1,0 +1,74 @@
+/* Fluent tabs use library defaults unless their foreground and surface tokens are
+   supplied by the host. Keep this focused override after theme and component CSS. */
+:root[data-theme] .drive-bind-dialog .drive-provider-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+  margin-block: 12px 14px;
+}
+
+:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab'] {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 7px 10px;
+  color: var(--text-primary, var(--text));
+  background: var(--surface-2, var(--surface-1));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: none;
+  opacity: 1;
+  text-align: left;
+}
+
+:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab']:hover:not(:disabled) {
+  color: var(--text-primary, var(--text));
+  background: var(--surface-elevated, var(--surface-3));
+  border-color: var(--focus-ring-color);
+}
+
+:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab'][aria-selected='true'],
+:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab'][data-selected='true'] {
+  color: var(--on-accent);
+  background: var(--color-accent, var(--accent));
+  border-color: var(--color-accent, var(--accent));
+  font-weight: 650;
+}
+
+:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab'][aria-selected='true'] .drive-provider-name,
+:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab'][aria-selected='true'] .drive-provider-state,
+:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab'][data-selected='true'] .drive-provider-name,
+:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab'][data-selected='true'] .drive-provider-state {
+  color: inherit;
+}
+
+:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab']:is([aria-selected='true'], [data-selected='true']) .drive-provider-bound-icon,
+:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab']:is([aria-selected='true'], [data-selected='true']) .drive-provider-unbound-icon {
+  color: inherit;
+}
+
+:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab']:focus-visible {
+  outline: 2px solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
+.drive-bind-dialog .drive-provider-name,
+.drive-bind-dialog .drive-provider-state {
+  display: block;
+  color: inherit;
+  line-height: 1.35;
+}
+
+.drive-bind-dialog .drive-provider-name { font-weight: 600; }
+.drive-bind-dialog .drive-provider-state { font-size: 11px; }
+.drive-bind-dialog .drive-provider-bound-icon { color: var(--text-success); }
+.drive-bind-dialog .drive-provider-unbound-icon { color: var(--text-secondary, var(--text-dim)); }
+
+@media (max-width: 420px) {
+  :root[data-theme] .drive-bind-dialog .drive-provider-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

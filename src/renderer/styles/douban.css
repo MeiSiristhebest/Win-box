@@ -15,14 +15,21 @@
   --accent-strong: #1F7A1B;                       /* 主色深档（hover / 按下） */
   --accent-container: #DCF2D8;                    /* M3 primary container：浅绿容器底 */
   --accent-soft: rgba(46, 150, 41, .13);          /* 状态层 / 焦点环（原浅绿 hover 底并入） */
-  --on-accent: #ffffff;                           /* 主色之上的前景色 */
+  --on-accent: #101318;                           /* 深色前景在主色上保持可读 */
+  --on-danger: #ffffff;                           /* 白字在豆瓣红上达到 AA 对比度 */
   --accent-2: #F0641E;                            /* ★ 豆瓣橙（点缀：remarks / 评分 / 开启态） */
   /* ---- 文本 ---- */
   --text: #1A1D19;                                /* M3 on-surface */
   --text-dim: #5F675D;                            /* M3 on-surface-variant（灰绿） */
   --text-faint: #5f675d;                          /* 三级 / 占位文本 */
+  --text-accent: #1b6b18;
+  --text-accent-secondary: #b3480f;
+  --text-danger: #a11c14;
+  --text-warn: #714700;
+  --text-success: #176747;
+  --text-disabled: #596474;
   /* ---- 分隔与语义色 ---- */
-  --border: #E0E5DC;                              /* M3 outline（暖绿灰） */
+  --border: #757D72;                              /* 控件与卡片边界；低对比分隔线继续使用 border-soft */
   --border-soft: rgba(26, 32, 25, .095);
   --hairline: rgba(26, 32, 25, .095);
   --danger: #D93025;

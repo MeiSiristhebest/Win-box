@@ -1,0 +1,111 @@
+@layer components {
+  :where(button, a, input, select, textarea, [role='button'], dialog, .sp-panel, .srcpick-pop) { -webkit-app-region: no-drag; }
+  :where(input, select, textarea):focus-visible { border-color: var(--color-accent); outline: var(--focus-ring); outline-offset: 2px; box-shadow: none; }
+  .linkbtn.danger { background: var(--surface); color: var(--text-danger); border: 1px solid transparent; }
+  .linkbtn.danger:hover { border-color: var(--text-danger); }
+  .vp-cpanel:not(.open), .vp-fithost:not(.open), .vp-vol:not(.open) > .vp-vpanel, .vp-eppanel:not(.open) { visibility: hidden; }
+  .vplayer:focus-within .vp-controls { opacity: 1; }
+  .vplayer:focus-within .vp-big { opacity: 1; pointer-events: auto; }
+  .vp-live { color: #ff8086; }
+  .vp-subpanel, .vp-cpanel, .vp-vpanel, .vp-skipmenu {
+    background: linear-gradient(var(--surface-elevated), var(--surface-elevated)), var(--surface);
+    color: var(--text-primary); border-color: var(--border-subtle);
+  }
+  .vp-cpanel .vp-citem { background: var(--surface-raised); color: var(--text-primary); }
+  .vp-cpct, .vp-cmsg, .vp-crefresh { color: var(--text-secondary); }
+  .vp-vpct { color: var(--text-primary); }
+  .vplayer .vsp-btn.active { color: var(--text-accent); }
+  .vplayer .vsp-btn.primary { background: var(--color-accent); color: var(--on-accent); border-color: transparent; }
+  .vplayer .vp-loading { color: var(--on-media); text-shadow: 0 1px 3px #000; }
+  .vp-loading .vp-load-text {
+    padding: 5px 10px; border: 1px solid rgba(255, 255, 255, .24); border-radius: 999px;
+    background: rgba(0, 0, 0, .88); color: var(--on-media); line-height: 1.4; text-shadow: none;
+  }
+  .ivi { touch-action: none; overscroll-behavior: contain; }
+  .ivi:focus-within .ivi-hide { opacity: 1; pointer-events: auto; }
+  .sp-panel { overflow-y: auto; overscroll-behavior: contain; -webkit-app-region: no-drag; }
+  .srcpick-pop { -webkit-app-region: no-drag; overscroll-behavior: contain; }
+  .srcpick-search, .srcpick-pop-tip { flex: 0 0 auto; }
+  .srcpick-col-sub, .srcpick-col-src, .sp-list, .sp-hist-list, .sp-rank-list { overscroll-behavior: contain; scrollbar-gutter: stable; }
+  .import-report-details { margin-top: 8px; font-size: var(--fs-sm); }
+  .import-report-details summary { cursor: pointer; color: var(--text-accent); }
+  .import-report-details p { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+  .table-scroll { max-width: 100%; overflow: auto; overscroll-behavior-x: contain; }
+  .table-scroll:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+
+.app-dialog:not([open]) { display: none; }
+.app-dialog {
+  position: fixed; inset: 0; display: block; box-sizing: border-box; margin: auto;
+  width: min(480px, calc(100vw - 32px)); max-width: none; max-height: min(82vh, 680px);
+  overflow: auto; overscroll-behavior: contain; padding: 22px; color: var(--text-primary);
+  -webkit-app-region: no-drag;
+  background: linear-gradient(var(--surface-elevated), var(--surface-elevated)), var(--surface);
+  border: 1px solid color-mix(in srgb, var(--border) 55%, var(--text) 45%);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg), 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent);
+}
+.disclaimer-dialog { width: min(520px, calc(100vw - 32px)); max-height: min(80vh, 640px); }
+.drive-bind-dialog { width: min(520px, calc(100vw - 32px)); max-height: 90vh; }
+.disclaimer-dialog h2 { margin: 0; font-size: var(--fs-xl); }
+.disclaimer-lead { margin-bottom: 12px; font-size: var(--fs-sm); }
+.disclaimer-copy { font-size: var(--fs-md); line-height: 1.8; }
+.disclaimer-copy p { margin: 0 0 8px; }
+.disclaimer-copy p:last-child { margin-bottom: 0; }
+.disclaimer-actions { justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.disclaimer-actions button { flex: 0 0 auto; }
+.app-dialog::backdrop { background: rgba(7, 9, 14, .58); backdrop-filter: blur(4px); }
+.app-dialog-heading {
+  display: flex; align-items: center; gap: 12px; margin: 0 0 16px; padding-bottom: 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, var(--text) 30%);
+}
+.app-dialog-heading h2, .app-dialog-heading h3 {
+  flex: 1; min-width: 0; margin: 0; color: var(--text); font-size: var(--fs-xl); font-weight: 700; line-height: 1.3;
+}
+.app-dialog-mark {
+  display: grid; place-items: center; width: 32px; height: 32px; flex: 0 0 32px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border) 66%);
+  border-radius: 10px; color: var(--text-accent); background: var(--accent-soft); font-weight: 750;
+}
+.app-dialog-danger .app-dialog-mark {
+  color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 14%, var(--surface-3));
+  border-color: color-mix(in srgb, var(--color-danger) 42%, var(--border));
+}
+.app-dialog .app-dialog-close {
+  flex: 0 0 auto; margin-left: auto; padding: 6px 8px; border: 0; background: transparent;
+  box-shadow: none; color: var(--text-dim);
+}
+.app-dialog .app-dialog-close:hover:not(:disabled) {
+  border: 0; background: var(--accent-soft); box-shadow: none; color: var(--text);
+}
+.app-dialog-message { margin: 0; color: var(--text-dim); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+.app-dialog .app-dialog-actions {
+  display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px;
+  margin-top: 20px; padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, var(--text) 30%);
+}
+.app-dialog .app-dialog-actions > button { min-height: 36px; }
+.app-dialog .app-dialog-action-secondary {
+  border-color: color-mix(in srgb, var(--border) 65%, var(--text) 35%);
+  background: var(--surface-2); color: var(--text);
+}
+.app-dialog .app-dialog-action-secondary:hover:not(:disabled) {
+  border-color: var(--text-accent, var(--accent)); background: var(--accent-soft); color: var(--text); box-shadow: none;
+}
+.app-dialog button.primary { background: var(--color-accent, var(--accent)); border-color: transparent; color: var(--on-accent); }
+.app-dialog button.primary:hover:not(:disabled) {
+  filter: brightness(1.06); box-shadow: 0 4px 14px color-mix(in srgb, var(--color-accent, var(--accent)) 32%, transparent);
+}
+.app-dialog-form { width: min(460px, calc(100vw - 32px)); }
+.app-dialog-input { width: 100%; box-sizing: border-box; margin-bottom: 14px; }
+.app-dialog-input:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.app-dialog-error { margin-bottom: 12px; }
+
+  button.card-media-button, button.card-media-button:hover, button.card-media-button:active {
+    appearance: none; display: block; width: 100%; padding: 0; border: 0; border-radius: 0;
+    background: transparent; color: inherit; font: inherit; text-align: left; box-shadow: none; transform: none; overflow: visible;
+  }
+  .card-media .badge { background: var(--surface-elevated); color: var(--text-primary); }
+  .vp-kernel-notice { position: absolute; z-index: 8; top: 12px; left: 12px; right: 12px; padding: 8px 12px; border-radius: var(--radius-control); background: rgba(24, 24, 24, .9); color: #fff; font-size: 12px; }
+  #cfg-plugin-engines, .plugin-settings-panel { padding: 12px; margin-bottom: 16px; }
+  .plugin-settings-panel .row { gap: 10px; margin-block: 8px; }
+}

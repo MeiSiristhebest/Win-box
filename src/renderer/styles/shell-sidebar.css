@@ -1,0 +1,937 @@
+@layer legacy {
+/* ================= 外壳结构：sidebar · 玻璃侧边栏（大果） —— 迁移自 apple.css（2026-10-18） ================= */
+/* apple.css — Win-Box 皮肤：Apple（macOS · Liquid Glass）风格 —— 结构规则抽取（迁移归档）
+   ★ 2026-10-18（统一皮肤标准）：本文件收纳原 skin 文件里「令牌声明以外」的全部规则，
+     仅供结构合并 / 比对（宿主结构层见 global.css）；令牌声明已迁回 src/renderer/styles/apple.css。
+   ★ 2026-10-16 现代化打磨（impeccable 口径：配色 / 动效 / 风格协调统一）：
+     · Liquid Glass 再提纯：工具栏/侧边栏玻璃折射高光 + 内容上浮「浮在玻璃下」的层次；
+     · 侧边栏选中弹跳、卡片弹簧上浮 + 封面慢推变焦 + 逐个错开入场、按钮按压回弹；
+     · 控件统一走全站动效令牌（全局 ease/dur 令牌），四皮肤同一手感（只换配色）。
+   原规范：Liquid Glass（macOS Tahoe）半透明材质 + Apple TV app 布局 + HIG 侧边栏。
+   ★ 本皮肤**不复用**经典/Netflix 骨架：布局为「全宽统一工具栏（交通灯左置）＋ 玻璃侧边栏 ＋ 内容区」。
+   ★ 作用域：外壳规则限定在 data-shell='sidebar'；详情排版类限定在 data-detail='glass'；
+     发现页内容栏类限定在 data-discover='shelfWide'；其余主题 / 外壳不受影响。
+   ★ 宿主已统一的 body / a / .muted / h2-h4 规则保留在下方仅供比对（现行以 global.css 为准）。 */
+
+/* ---- 全局：桌面底 + SF 字体栈 ---- */
+:root[data-shell='sidebar'] body {
+  background: linear-gradient(180deg, #fbfbfd 0%, #f5f5f7 46%, #eef0f4 100%);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC",
+    "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: .005em;
+}
+:root[data-shell='sidebar'] a { color: var(--text-accent); }
+:root[data-shell='sidebar'] .muted { color: var(--text-dim); }
+:root[data-shell='sidebar'] h2,
+:root[data-shell='sidebar'] h3,
+:root[data-shell='sidebar'] h4 { font-weight: 600; letter-spacing: -.01em; }
+
+/* ================= 外壳：全宽工具栏 + 玻璃侧边栏 + 内容区 ================= */
+:root[data-shell='sidebar'] .app.ap-app { flex-direction: column; background: transparent; }
+
+/* ---- 统一工具栏：可拖拽整窗；交通灯左置（Liquid Glass 玻璃条） ---- */
+:root[data-shell='sidebar'] .ap-toolbar {
+  -webkit-app-region: drag;
+  flex: none; height: var(--nav-h); display: flex; align-items: center; gap: 10px;
+  padding: 0 16px 0 14px; z-index: 40;
+  background: rgba(248, 248, 250, .72);
+  backdrop-filter: blur(34px) saturate(180%);
+  -webkit-backdrop-filter: blur(34px) saturate(180%);
+  border-bottom: 1px solid var(--hairline);
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .7), inset 0 -.5px 0 rgba(255, 255, 255, .22);
+}
+:root[data-shell='sidebar'] .ap-toolbar button,
+:root[data-shell='sidebar'] .ap-toolbar .srcpick,
+:root[data-shell='sidebar'] .ap-toolbar input { -webkit-app-region: no-drag; }
+:root[data-shell='sidebar'] .ap-spacer { flex: 1; }
+:root[data-shell='sidebar'] .ap-toolbar-title {
+  font-size: var(--fs-lg); font-weight: 600; letter-spacing: -.01em; color: var(--text);
+  padding-left: 2px; white-space: nowrap;
+}
+/* 返回箭头（macOS 窗口导航） */
+:root[data-shell='sidebar'] .ap-navbtn {
+  all: unset; -webkit-app-region: no-drag; flex: none;
+  width: 26px; height: 26px; border-radius: 7px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; color: #3a3a3c;
+}
+:root[data-shell='sidebar'] .ap-navbtn:hover { background: rgba(60, 60, 67, .08); }
+:root[data-shell='sidebar'] .ap-navbtn:active { background: rgba(60, 60, 67, .14); }
+:root[data-shell='sidebar'] .ap-navbtn:disabled { color: var(--text-disabled, var(--text-dim)); opacity: 1; cursor: not-allowed; }
+
+/* ---- 标题栏（mac 交通灯变体）：只保留三个圆点 ---- */
+:root[data-shell='sidebar'] .titlebar.ap-titlebar {
+  all: unset; -webkit-app-region: drag; flex: none;
+  display: flex; align-items: center; height: 100%;
+}
+:root[data-shell='sidebar'] .ap-lights { display: flex; align-items: center; gap: 8px; padding-right: 8px; }
+:root[data-shell='sidebar'] .ap-light {
+  all: unset; -webkit-app-region: no-drag; cursor: default;
+  width: 12px; height: 12px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: rgba(0, 0, 0, .55);
+  box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .12);
+  transition: filter .12s;
+}
+:root[data-shell='sidebar'] .ap-light svg { opacity: 0; transition: opacity .12s; }
+:root[data-shell='sidebar'] .ap-lights:hover .ap-light svg { opacity: .6; }
+:root[data-shell='sidebar'] .ap-light-close { background: var(--danger); }
+:root[data-shell='sidebar'] .ap-light-min { background: var(--warn); }
+:root[data-shell='sidebar'] .ap-light-zoom { background: var(--success); }
+:root[data-shell='sidebar'] .ap-light:active { filter: brightness(.88); }
+
+/* ---- 双栏体：玻璃侧边栏 + 内容区 ---- */
+:root[data-shell='sidebar'] .ap-body { flex: 1; min-height: 0; display: flex; }
+:root[data-shell='sidebar'] .ap-sidebar {
+  width: var(--side-w); flex: none; padding: 8px 10px 12px;
+  display: flex; flex-direction: column; gap: 1px;
+  background: rgba(240, 240, 243, .6);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border-right: 1px solid var(--hairline);
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .7), inset 0 -.5px 0 rgba(255, 255, 255, .22);
+}
+:root[data-shell='sidebar'] .ap-brand { display: flex; align-items: center; gap: 8px; padding: 8px 8px 12px; }
+:root[data-shell='sidebar'] .ap-brand-ico { width: 22px; height: 22px; border-radius: 6px; object-fit: contain; }
+:root[data-shell='sidebar'] .ap-brand-dot {
+  width: 20px; height: 20px; border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+:root[data-shell='sidebar'] .ap-brand-name { font-size: var(--fs-lg); font-weight: 700; letter-spacing: -.01em; }
+/* HIG：分组标签简短 + 图标随强调色 */
+:root[data-shell='sidebar'] .ap-group-label {
+  font-size: var(--fs-xs); font-weight: 600; color: var(--text-dim);
+  padding: 12px 9px 5px; letter-spacing: .01em;
+}
+:root[data-shell='sidebar'] .ap-nav {
+  display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: 8px;
+  color: #2c2c2e; font-size: var(--fs-md); font-weight: 500;
+  transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
+    box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring);
+}
+:root[data-shell='sidebar'] .ap-nav:hover { background: rgba(60, 60, 67, .06); color: var(--text); }
+:root[data-shell='sidebar'] .ap-nav:active { transform: scale(.97); }
+:root[data-shell='sidebar'] .ap-nav.active {
+  background: var(--accent); color: var(--on-accent); font-weight: 600;
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 55%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .3);
+  animation: apPop var(--dur-state) var(--ease-spring);
+}
+/* 选中弹跳（NavLink 切换 class 时重放，给「选中了」一个弹性确认） */
+@keyframes apPop { 0% { transform: scale(.92); } 100% { transform: scale(1); } }
+:root[data-shell='sidebar'] .ap-nav-ico { display: inline-flex; flex: none; color: var(--text-accent); transition: color var(--dur-quick) var(--ease-standard); }
+:root[data-shell='sidebar'] .ap-nav.active .ap-nav-ico { color: var(--on-accent); }
+:root[data-shell='sidebar'] .ap-side-spacer { flex: 1; }
+:root[data-shell='sidebar'] .ap-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+:root[data-shell='sidebar'] .ap-main .content { padding: 20px 26px 30px; }
+/* 页面内小工具栏（详情/直播等）：融进内容区，只留玻璃返回胶囊 */
+:root[data-shell='sidebar'] .topbar {
+  background: transparent; border-bottom: none; backdrop-filter: none;
+  min-height: 46px; padding: 8px 26px 0;
+}
+:root[data-shell='sidebar'] .topbar button { flex: 0 0 auto; white-space: nowrap; }
+:root[data-shell='sidebar'] .back-btn {
+  background: rgba(255, 255, 255, .82); border: 1px solid var(--hairline); color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
+}
+:root[data-shell='sidebar'] .back-btn:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--text-accent); }
+
+/* ================= 通用控件（Liquid Glass 观感） ================= */
+/* 次要按钮：灰色填充胶囊/圆角块（macOS 推拉按钮） */
+:root[data-shell='sidebar'] button {
+  background: rgba(120, 120, 128, .12); border: 1px solid transparent; color: var(--text);
+  border-radius: 8px; font-weight: 500; padding: 6px 14px;
+  transition: background var(--dur-state) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
+    box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring);
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .5);
+}
+:root[data-shell='sidebar'] button:hover { background: rgba(120, 120, 128, .2); color: var(--text); box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .5); }
+:root[data-shell='sidebar'] button:active { transform: scale(.96); opacity: .92; }
+/* 主行动：系统蓝胶囊（Apple 的主按钮） */
+:root[data-shell='sidebar'] button.primary {
+  background: var(--accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
+  border-radius: 999px; padding: 7px 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .1), inset 0 .5px 0 rgba(255, 255, 255, .28);
+}
+:root[data-shell='sidebar'] button.primary:hover {
+  background: var(--color-accent); color: var(--on-accent); box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 28%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .28);
+}
+:root[data-shell='sidebar'] button:disabled { color: var(--text-disabled, var(--text-dim)); opacity: 1; box-shadow: none; cursor: not-allowed; }
+:root[data-shell='sidebar'] .linkbtn { background: none; border: none; box-shadow: none; color: var(--text-accent); padding: 1px 6px; }
+:root[data-shell='sidebar'] .linkbtn:hover { background: var(--accent-soft); color: var(--text-accent); box-shadow: none; }
+:root[data-shell='sidebar'] .linkbtn.danger { color: var(--text-danger); }
+:root[data-shell='sidebar'] .linkbtn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+/* 输入控件：白底 + 发丝边 + 聚焦蓝色光晕 */
+:root[data-shell='sidebar'] input,
+:root[data-shell='sidebar'] select,
+:root[data-shell='sidebar'] textarea {
+  background: #fff; border: 1px solid rgba(60, 60, 67, .18); border-radius: 9px; color: var(--text);
+  box-shadow: inset 0 .5px 0 rgba(0, 0, 0, .02);
+}
+:root[data-shell='sidebar'] input:focus,
+:root[data-shell='sidebar'] select:focus,
+:root[data-shell='sidebar'] textarea:focus {
+  border-color: var(--text-accent, var(--accent)); box-shadow: 0 0 0 3.5px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+:root[data-shell='sidebar'] input[type='checkbox'] { accent-color: var(--text-accent, var(--accent)); }
+:root[data-shell='sidebar'] ::placeholder { color: var(--text-faint); }
+
+/* 工具条上的搜索/换源入口：玻璃胶囊 */
+:root[data-shell='sidebar'] .ap-toolbar .srcpick-name {
+  background: rgba(255, 255, 255, .7); border: 1px solid var(--hairline); border-radius: 999px;
+  color: var(--text); font-size: 13px; padding: 5px 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04), inset 0 .5px 0 rgba(255, 255, 255, .6);
+  backdrop-filter: blur(20px) saturate(160%);
+}
+:root[data-shell='sidebar'] .ap-toolbar .srcpick-name:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+:root[data-shell='sidebar'] .srcpick-caret { color: var(--text-faint); }
+/* 弹出层（换源 / 搜索）：Liquid Glass 浮层 */
+:root[data-shell='sidebar'] .srcpick-pop,
+:root[data-shell='sidebar'] .sp-panel {
+  background: rgba(252, 252, 253, .82);
+  backdrop-filter: blur(44px) saturate(180%);
+  -webkit-backdrop-filter: blur(44px) saturate(180%);
+  border: 1px solid var(--hairline); border-radius: var(--radius);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, .22), inset 0 .5px 0 rgba(255, 255, 255, .7), inset 0 -.5px 0 rgba(255, 255, 255, .22);
+}
+:root[data-shell='sidebar'] .srcpick-item,
+:root[data-shell='sidebar'] .sp-item { border-radius: 8px; }
+:root[data-shell='sidebar'] .srcpick-item:hover,
+:root[data-shell='sidebar'] .sp-item:hover { background: var(--accent-soft); }
+:root[data-shell='sidebar'] .srcpick-item.active { color: var(--text-accent); font-weight: 600; }
+/* ★ 2026-09-29：热搜排名徽标 / 搜索历史删除按钮（Apple 皮肤配色对齐 HIG） */
+:root[data-shell='sidebar'] .sp-rank-no.top { background: var(--accent); }
+:root[data-shell='sidebar'] .sp-clear { border-color: var(--hairline); color: var(--text-faint); }
+/* 侧边栏底部「当前源」：低调的玻璃行 */
+:root[data-shell='sidebar'] .srcpick-side { margin: 6px 2px 0; }
+:root[data-shell='sidebar'] .srcpick-side .srcpick-name {
+  background: rgba(255, 255, 255, .55); border: 1px solid var(--hairline); border-radius: 9px;
+  padding: 7px 10px; font-size: 12.5px;
+}
+:root[data-shell='sidebar'] .srcpick-label { font-size: 12px; }
+
+/* 标签（分类 / 剧集类型）：白底发丝胶囊；选中 = 系统蓝实心 */
+:root[data-shell='sidebar'] .tag {
+  background: rgba(255, 255, 255, .9); border: 1px solid var(--hairline); border-radius: 999px;
+  color: #3a3a3c; padding: 4px 13px; font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+  transition: background var(--dur-state) var(--ease-standard), border-color var(--dur-state) var(--ease-standard),
+    color var(--dur-quick) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='sidebar'] .tag:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--text-accent); }
+:root[data-shell='sidebar'] .tag.active {
+  background: var(--accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 55%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .3);
+  animation: apPop var(--dur-state) var(--ease-spring);
+}
+/* 浏览器表面也要是设计的一部分：选中色 / 插入符 */
+:root[data-shell='sidebar'] ::selection { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+:root[data-shell='sidebar'] input, :root[data-shell='sidebar'] textarea { caret-color: var(--text-accent, var(--accent)); }
+
+/* ================= 发现页：精选轮播 + 内容栏（Apple TV Home） ================= */
+:root[data-shell='sidebar'] .ap-hero {
+  position: relative; overflow: hidden; border-radius: 20px;
+  height: min(50vh, 430px); min-height: 240px; margin-bottom: 26px;
+  background: #000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .1), 0 20px 48px rgba(0, 0, 0, .2);
+}
+:root[data-shell='sidebar'] .ap-hero .nf-hero-bg { background-position: center 30%; }
+:root[data-shell='sidebar'] .ap-hero::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, .8) 0%, rgba(0, 0, 0, .38) 32%, rgba(0, 0, 0, .06) 60%, transparent 100%);
+}
+:root[data-shell='sidebar'] .ap-hero-body {
+  position: relative; z-index: 2; height: 100%; display: flex; flex-direction: column;
+  justify-content: flex-end; padding: 26px 30px 40px; color: #fff;
+  animation: apHeroIn .5s cubic-bezier(.22, .61, .36, 1) both;
+}
+@keyframes apHeroIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { :root[data-shell='sidebar'] .ap-hero-body { animation: none; } }
+:root[data-shell='sidebar'] .ap-hero-kicker {
+  font-size: var(--fs-xs); font-weight: 700; letter-spacing: .18em; text-transform: uppercase;
+  color: rgba(255, 255, 255, .72); margin-bottom: 9px;
+}
+:root[data-shell='sidebar'] .ap-hero-title {
+  margin: 0 0 10px; font-size: 40px; line-height: 1.04; font-weight: 700; letter-spacing: -.022em;
+  text-shadow: 0 2px 22px rgba(0, 0, 0, .5); max-width: 72%;
+}
+:root[data-shell='sidebar'] .ap-hero-meta {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: 13px; color: rgba(255, 255, 255, .84); margin-bottom: 16px;
+}
+:root[data-shell='sidebar'] .ap-hero-match { color: #fff; font-weight: 600; }
+:root[data-shell='sidebar'] .ap-hero-actions { display: flex; align-items: center; gap: 10px; }
+/* 精选卡上的播放键：白底胶囊（Apple TV 的播放键） */
+:root[data-shell='sidebar'] .ap-play-btn {
+  background: #fff !important; color: #000 !important; font-weight: 700 !important;
+  border-radius: 999px !important; padding: 9px 24px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .28) !important;
+}
+:root[data-shell='sidebar'] .ap-play-btn:hover { background: rgba(255, 255, 255, .85) !important; }
+:root[data-shell='sidebar'] .ap-btn-2 {
+  background: rgba(255, 255, 255, .22); color: #fff; border: 1px solid rgba(255, 255, 255, .28);
+  border-radius: 999px; padding: 9px 20px; font-weight: 500;
+  backdrop-filter: blur(20px) saturate(160%);
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .4);
+}
+:root[data-shell='sidebar'] .ap-btn-2:hover { background: rgba(255, 255, 255, .32); color: #fff; }
+/* 页码圆点（点选切换主推片） */
+:root[data-shell='sidebar'] .ap-hero-dots {
+  position: absolute; left: 0; right: 0; bottom: 14px; z-index: 3;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+}
+:root[data-shell='sidebar'] .ap-dot {
+  width: 7px; height: 7px; border-radius: 999px; cursor: pointer;
+  background: rgba(255, 255, 255, .42); transition: background .18s ease, width .18s ease;
+}
+:root[data-shell='sidebar'] .ap-dot:hover { background: rgba(255, 255, 255, .7); }
+:root[data-shell='sidebar'] .ap-dot.active { width: 20px; background: #fff; }
+:root[data-shell='sidebar'] .ap-dot:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+
+/* 内容栏（Apple TV 的 shelf）：标题加粗 + 横向缩略图；**不显示滚动条** */
+:root[data-discover='shelfWide'] .ap-row { margin-bottom: 30px; }
+:root[data-discover='shelfWide'] .ap-row-title {
+  font-size: 21px; font-weight: 700; letter-spacing: -.015em; color: var(--text);
+  margin: 0 0 12px;
+}
+:root[data-discover='shelfWide'] .ap-row-scroll {
+  display: flex; gap: 18px; overflow-x: auto; padding: 2px 2px 10px;
+  scrollbar-width: none;
+}
+:root[data-discover='shelfWide'] .ap-row-scroll::-webkit-scrollbar { display: none; }
+
+/* ================= 卡片（缩略图 + 标题）：悬停上浮 + 播放徽标 ================= */
+:root[data-shell='sidebar'] .card {
+  background: rgba(255, 255, 255, .95);
+  border: 1px solid var(--hairline); border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .06);
+}
+:root[data-shell='sidebar'] .card-media .card { border-radius: var(--radius); overflow: hidden; transition: border-color .12s ease, background-color .12s ease; }
+:root[data-shell='sidebar'] .card-media { transition: transform var(--dur-state) var(--ease-spring); }
+:root[data-shell='sidebar'] .card-media:hover { transform: none; }
+:root[data-shell='sidebar'] .card-media:hover .card {
+  transform: none; border-color: rgba(60, 60, 67, .08);
+  box-shadow: none;
+}
+:root[data-shell='sidebar'] .card-media img { transition: none; }
+:root[data-shell='sidebar'] .card-media:hover img { transform: none; }
+/* 海报墙逐个错开入场（前 12 张；与全局 pageIn 同节奏，列表现身为列表） */
+:root[data-shell='sidebar'] .grid > * { animation: apCardIn var(--dur-page) var(--ease-enter) both; }
+:root[data-shell='sidebar'] .grid > :nth-child(1) { animation-delay: 0ms; }
+:root[data-shell='sidebar'] .grid > :nth-child(2) { animation-delay: 26ms; }
+:root[data-shell='sidebar'] .grid > :nth-child(3) { animation-delay: 52ms; }
+:root[data-shell='sidebar'] .grid > :nth-child(4) { animation-delay: 78ms; }
+:root[data-shell='sidebar'] .grid > :nth-child(5) { animation-delay: 104ms; }
+:root[data-shell='sidebar'] .grid > :nth-child(6) { animation-delay: 130ms; }
+:root[data-shell='sidebar'] .grid > :nth-child(7) { animation-delay: 156ms; }
+:root[data-shell='sidebar'] .grid > :nth-child(8) { animation-delay: 182ms; }
+:root[data-shell='sidebar'] .grid > :nth-child(9) { animation-delay: 208ms; }
+:root[data-shell='sidebar'] .grid > :nth-child(10) { animation-delay: 234ms; }
+:root[data-shell='sidebar'] .grid > :nth-child(11) { animation-delay: 260ms; }
+:root[data-shell='sidebar'] .grid > :nth-child(n+12) { animation-delay: 280ms; }
+@keyframes apCardIn { from { opacity: 0; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: none; } }
+/* 内容栏（横向 shelf）：行内卡片横滑入场（前 8 张） */
+:root[data-discover='shelfWide'] .ap-row-scroll > * { animation: apShelfIn var(--dur-page) var(--ease-enter) both; }
+:root[data-discover='shelfWide'] .ap-row-scroll > :nth-child(2) { animation-delay: 40ms; }
+:root[data-discover='shelfWide'] .ap-row-scroll > :nth-child(3) { animation-delay: 80ms; }
+:root[data-discover='shelfWide'] .ap-row-scroll > :nth-child(4) { animation-delay: 120ms; }
+:root[data-discover='shelfWide'] .ap-row-scroll > :nth-child(5) { animation-delay: 160ms; }
+:root[data-discover='shelfWide'] .ap-row-scroll > :nth-child(6) { animation-delay: 200ms; }
+:root[data-discover='shelfWide'] .ap-row-scroll > :nth-child(7) { animation-delay: 240ms; }
+:root[data-discover='shelfWide'] .ap-row-scroll > :nth-child(n+8) { animation-delay: 280ms; }
+@keyframes apShelfIn { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+:root[data-shell='sidebar'] .card-media .meta { padding: 9px 11px 11px; }
+:root[data-shell='sidebar'] .card-media .name { font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--text); }
+:root[data-shell='sidebar'] .card-media .remarks { color: var(--text-dim); font-weight: 500; }
+:root[data-shell='sidebar'] .card-media .badge {
+  background: rgba(255, 255, 255, .86); color: var(--text); font-weight: 600; border-radius: 999px;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+:root[data-shell='sidebar'] .no-cover { background: rgba(120, 120, 128, .08); color: var(--text-secondary); }
+/* 悬停播放徽标（Apple TV 缩略图观感）：默认隐藏，悬停淡入 */
+:root[data-shell='sidebar'] .grid { gap: 18px; }
+:root[data-shell='sidebar'] .list-item {
+  background: rgba(255, 255, 255, .92); border: 1px solid var(--hairline); border-radius: 12px;
+  transition: box-shadow .18s ease, transform .18s ease;
+}
+:root[data-shell='sidebar'] .list-item:hover {
+  border-color: var(--hairline); transform: translateY(-1px); box-shadow: 0 8px 22px rgba(0, 0, 0, .1);
+}
+:root[data-shell='sidebar'] .list-item img { border-radius: 6px; }
+/* 相关推荐横条（详情页）：复用同一套卡片观感 */
+:root[data-shell='sidebar'] .rec-row { gap: 16px; }
+
+/* ================= 详情页（Apple TV 条目页）：剧照头图 + 信息 + 选集 ================= */
+:root[data-detail='glass'] .ap-detail-backdrop {
+  position: relative; height: min(38vh, 320px); border-radius: var(--radius-lg); overflow: hidden;
+  margin: 0 0 22px; background: #000;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .12), 0 16px 40px rgba(0, 0, 0, .18);
+}
+:root[data-detail='glass'] .ap-detail-backdrop .nf-hero-bg { background-position: center 28%; }
+:root[data-detail='glass'] .ap-detail-wrap h2 { font-size: 32px; font-weight: 700; letter-spacing: -.02em; }
+:root[data-detail='glass'] .ap-detail-wrap .ep-list { gap: 8px; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); }
+:root[data-detail='glass'] .ap-detail-wrap .row { row-gap: 10px; }
+:root[data-shell='sidebar'] .ep {
+  background: #fff; border: 1px solid var(--hairline); border-radius: var(--radius-sm);
+  color: var(--text); font-weight: 500; padding: 8px 10px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+  transition: border-color var(--dur-state) var(--ease-standard), background var(--dur-state) var(--ease-standard),
+    color var(--dur-quick) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='sidebar'] .ep:hover { border-color: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--text-accent); background: #fff; }
+:root[data-shell='sidebar'] .ep.active {
+  background: var(--accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 55%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .3);
+  animation: apPop var(--dur-state) var(--ease-spring);
+}
+
+/* ================= 点播 / 历史 / 直播 / 配置 / 说明 ================= */
+:root[data-shell='sidebar'] .layout-2 .left { border-right: 1px solid var(--hairline); }
+:root[data-shell='sidebar'] .layout-2 .left .nav-item,
+:root[data-shell='sidebar'] .layout-2 .left > div:hover { border-radius: 8px; }
+:root[data-shell='sidebar'] .live-player { border-radius: var(--radius); overflow: hidden; }
+:root[data-shell='sidebar'] table, :root[data-shell='sidebar'] th, :root[data-shell='sidebar'] td { border-color: var(--hairline); }
+:root[data-shell='sidebar'] tr.selectable:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+:root[data-shell='sidebar'] tr.active-row { background: var(--accent-soft) !important; outline: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+:root[data-shell='sidebar'] .banner {
+  background: color-mix(in srgb, var(--warn) 10%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent); border-radius: 12px; color: var(--text-warn);
+}
+:root[data-shell='sidebar'] .empty { color: var(--text-dim); }
+:root[data-shell='sidebar'] .hist-undo {
+  background: rgba(255, 255, 255, .92); border: 1px solid var(--hairline); border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
+}
+:root[data-shell='sidebar'] .about-link {
+  background: rgba(255, 255, 255, .92); border: 1px solid var(--hairline); border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+}
+:root[data-shell='sidebar'] .about-link:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--text-accent); }
+/* 配置页：卡片即「系统设置」的分组面板 */
+:root[data-shell='sidebar'] .content > .card { padding: 14px 16px; }
+:root[data-shell='sidebar'] .content > h4 { font-size: 13px; color: var(--text-dim); font-weight: 600; }
+
+/* ================= 播放器（独立窗口 / 内嵌）：暗色舞台 + 系统蓝进度 ================= */
+/* 舞台直角已由**基类**统一决定（见 global.css 的 `.vplayer` 注释），皮肤不要再加圆角
+   （`overflow:hidden` + 圆角会切掉视频画面自身的四角）。 */
+:root[data-shell='sidebar'] .vplayer { background: #000; }
+:root[data-shell='sidebar'] .vp-controls {
+  background: linear-gradient(to top, rgba(0, 0, 0, .86) 0%, rgba(0, 0, 0, .45) 58%, transparent 100%);
+  padding: 22px 18px 12px;
+}
+:root[data-shell='sidebar'] .vp-progress { height: 6px; background: rgba(255, 255, 255, .26); border-radius: 3px; }
+:root[data-shell='sidebar'] .vp-buffer { background: rgba(255, 255, 255, .4); border-radius: 3px; }
+:root[data-shell='sidebar'] .vp-played { background: var(--accent); border-radius: 3px; }
+:root[data-shell='sidebar'] .vp-thumb {
+  width: 9px; height: 9px; background: #fff;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent), 0 1px 4px rgba(0, 0, 0, .4);
+}
+:root[data-shell='sidebar'] .vp-ctl { color: #fff; transition: color var(--dur-quick) var(--ease-standard), background var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring); }
+:root[data-shell='sidebar'] .vp-ctl:hover { color: var(--text-accent, var(--accent)); background: rgba(255, 255, 255, .14); }
+/**
+ * ★★ 2026-10-15（用户报「大果播放器按钮太大，功能变多已挤占文字空间」）★★
+ *   同 Netflix 那条：本皮肤通用 `button` 规则（`:root[data-shell='sidebar'] button`：灰胶囊底 + `padding: 6px 14px`
+ *   ＋ 0.67px 边框，特异度 (0,2,1)）压过基类 `.vp-ctl` 的 `all: unset`，实测按钮被撑成 **55×39**
+ *   （大豆皮肤同位置 26×26）。这里恢复图标按钮「无底无框无内边距」→ 26×26。
+ */
+:root[data-shell='sidebar'] .vp-ctl,
+:root[data-shell='sidebar'] .mini-btn { background: none; border: none; padding: 0; box-shadow: none; }
+:root[data-shell='sidebar'] .vp-ctl:hover,
+:root[data-shell='sidebar'] .mini-btn:hover { background: rgba(255, 255, 255, .14); }
+:root[data-shell='sidebar'] .vp-next { background: rgba(28, 28, 30, .82); border-radius: var(--radius); backdrop-filter: blur(20px); }
+:root[data-shell='sidebar'] .vp-next button { background: var(--accent); }
+:root[data-shell='sidebar'] .vp-vpanel {
+  background: rgba(28, 28, 30, .78); border: 1px solid rgba(255, 255, 255, .12); border-radius: 12px;
+  backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+:root[data-shell='sidebar'] .vp-vfill { background: var(--accent); }
+/* 播放器窗口（独立 BrowserWindow）：★ 2026-10-15（用户要求「大果的播放器外壳也应该是白色的」）——
+   与大豆 / 哔哔**同口径**：外壳（窗口壳 / 标题栏 / 小窗条）用浅色，只有视频舞台 `.vplayer` 保持暗色。
+   此前这里写成 `.app.pwin`（无 `pvwin` 限定）⇒ 连**独立详情窗口**也被涂黑，且与另两套浅色皮肤不一致。
+   `pvwin` 只挂在真正的播放器窗口上（App.tsx 的 isPlayerWin 分支），详情窗口是 `app pwin`。 */
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin,
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .main { background: #fff; }
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .titlebar {
+  background: #fff; border-bottom: 1px solid var(--hairline); box-shadow: none;
+}
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .tb-title { color: var(--text); }
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .tb-btn { color: var(--text-dim); }
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .tb-btn:hover { background: rgba(120, 120, 128, .12); color: var(--text); }
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .tb-btn.tb-close:hover { background: var(--danger); color: var(--on-danger); }
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .tb-btn.tb-pin-on { color: var(--text-accent, var(--accent)); background: var(--accent-soft); }
+/* 非 MPV 小窗口使用浅底，因此按钮悬停态也使用主题强调色。 */
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .mini-strip { background: rgba(255, 255, 255, .92); color: var(--text-dim); }
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .mini-btn { color: var(--text-dim); }
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .mini-btn:hover { background: var(--accent-soft); color: var(--text-accent, var(--accent)); }
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .mini-strip-close:hover { background: var(--danger); color: var(--on-danger); }
+/* mpv 内核：外壳转透明（global.css 同款），此处只保证浮层上的字色仍是浅色 */
+:root[data-shell='sidebar'][data-mpv] .app.pwin.pvwin .tb-title { color: #f2f2f7; }
+:root[data-shell='sidebar'][data-mpv] .app.pwin.pvwin .tb-btn { color: #8e8e93; }
+
+/* ================= 滚动条（macOS overlay 观感） ================= */
+:root[data-shell='sidebar'] ::-webkit-scrollbar { width: 11px; height: 11px; }
+:root[data-shell='sidebar'] ::-webkit-scrollbar-track { background: transparent; }
+:root[data-shell='sidebar'] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, .22); border-radius: 999px;
+  border: 3.5px solid transparent; background-clip: content-box;
+}
+:root[data-shell='sidebar'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, .38); border: 3.5px solid transparent; background-clip: content-box;
+}
+
+/* ================= 响应式：窄窗收窄侧边栏（HIG：空间不足时让位内容） ================= */
+@media (max-width: 1000px) {
+  :root[data-shell='sidebar'] { --side-w: 64px; }
+  :root[data-shell='sidebar'] .ap-nav-txt,
+  :root[data-shell='sidebar'] .ap-brand-name,
+  :root[data-shell='sidebar'] .ap-group-label { display: none; }
+  :root[data-shell='sidebar'] .ap-nav { justify-content: center; padding: 9px 6px; }
+  :root[data-shell='sidebar'] .ap-brand { justify-content: center; padding: 10px 0 12px; }
+  :root[data-shell='sidebar'] .ap-sidebar .srcpick-label,
+  :root[data-shell='sidebar'] .ap-sidebar .srcpick-text { display: none; }
+  :root[data-shell='sidebar'] .ap-hero-title { font-size: 32px; max-width: 88%; }
+  :root[data-shell='sidebar'] .ap-main .content { padding: 16px 18px 24px; }
+}
+
+@media (max-width: 620px) {
+  :root[data-shell='sidebar'] .ap-toolbar { gap: 6px; padding: 0 10px; }
+  :root[data-shell='sidebar'] .ap-hero { min-height: 300px; }
+  :root[data-shell='sidebar'] .ap-hero-body { padding: 20px 18px 34px; }
+  :root[data-shell='sidebar'] .ap-hero-title { font-size: 26px; }
+}
+
+/* ============================================================================
+   ★★ 2026-10-16 第二代外观（**结构级重做**；用户口径：「绝对的好看，绝对的大改」）
+   ----------------------------------------------------------------------------
+   为什么要有第二代：第一代只改了 hover / 选中色 / 滚动条这类**微观交互态** ——
+   它们在截图与整体观感里几乎为零，用户评价「没看出来变化在哪」。这一代改的是**宏观视觉层**：
+     ① 环境 → 全站**环境光背景场**（系统蓝 / 靛蓝柔光 + 极淡中性光；骨架见 global.css）＋ 浅色打底光；
+     ② 层序 → 外壳（.ap-body / .ap-main / .content）**背景透明并抬到 z-index:1**，
+              氛围（z-index:0 的 fixed 层）才透得出来、内容才盖得住氛围（否则整页被氛围层盖住）；
+     ③ 形态 → 工具栏玻璃再提纯（内高光 + 发丝分隔线）；侧栏导航玻璃悬停 + 品牌渐变方块标；
+     ④ 分类 → 「散装 chips」→ **白玻璃容器 + 弱化小标签 + 胶囊 chips（选中系统蓝）**；
+     ⑤ 排版 → 行标题 → **带蓝色光条的大字号**；
+     ⑥ 卡片 → 「裸图」→ **白玻璃卡**（描边 + 双层阴影 + shine 扫光 + 悬停浮出的蓝色播放钮）；
+     ⑦ 按钮 → 主行动系统蓝胶囊 + 次要按钮玻璃胶囊（增量收敛既有规则）；
+     ⑧ 首屏 → 发现页**浅色聚光卡**（.spot：模糊海报环境色底 + 浅色纱幕 + 清晰海报主体 + 大字标题）。
+   ★ 历史守卫全部保留：`.vp-ctl` 26×26 重置、`.vp-big:active` 位移守卫、pvwin 白壳 / mpv 例外、
+     交通灯 .ap-light*、`.titlebar.ap-titlebar` 的 all:unset —— 本块**只追加**，不改任何既有规则。
+   ============================================================================ */
+
+/* ---- ① 环境：浅色底光 + 系统蓝 / 靛蓝柔光 + 极淡中性光（苹果式的克制，不花哨） ---- */
+:root[data-shell='sidebar'] .app-ambient .amb-blob-1 {
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 17%, transparent), color-mix(in srgb, var(--accent) 0%, transparent) 70%);
+}
+:root[data-shell='sidebar'] .app-ambient .amb-blob-2 {
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent-2) 14%, transparent), color-mix(in srgb, var(--accent-2) 0%, transparent) 70%);
+}
+:root[data-shell='sidebar'] .app-ambient .amb-blob-3 {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .85), rgba(255, 255, 255, 0) 72%);
+}
+:root[data-shell='sidebar'] .app-ambient .amb-grain { opacity: .12; }
+/* 浅色打底光：左上系统蓝余光 + 右上靛蓝余光，压在原有浅灰渐变之上（**不是黑底**）；后加载压过 `.app.ap-app` 的透明 */
+:root[data-shell='sidebar'] .app.ap-app {
+  background:
+    radial-gradient(1150px 540px at 6% -12%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 62%),
+    radial-gradient(1050px 500px at 100% 2%, color-mix(in srgb, var(--accent-2) 10%, transparent), transparent 60%),
+    linear-gradient(180deg, #fbfbfd 0%, #f5f5f7 48%, #eef0f4 100%);
+}
+
+/* ---- ② 外壳透明化 + 抬层（关键原理）：氛围是 z-index:0 的 fixed 层，静态内容不抬到 z-index:1 会被整片盖住 ---- */
+:root[data-shell='sidebar'] .ap-body { background: transparent; position: relative; z-index: 1; }
+:root[data-shell='sidebar'] .ap-main { background: transparent; position: relative; z-index: 1; }
+:root[data-shell='sidebar'] .ap-main .content { background: transparent; }
+/* ★ .ap-toolbar 仍是 z-index:40（见文件上方），稳压在 z-index:1 的 .ap-body 之上 —— 工具栏玻璃不被内容遮挡 */
+
+/* ---- ③ 工具栏 / 侧栏：玻璃再提纯（内高光 + 发丝分隔线）+ 品牌渐变方块标 + 导航玻璃悬停 ---- */
+:root[data-shell='sidebar'] .ap-toolbar {
+  background: rgba(252, 252, 254, .62);
+  backdrop-filter: blur(42px) saturate(190%);
+  -webkit-backdrop-filter: blur(42px) saturate(190%);
+  border-bottom: 1px solid var(--border-soft);
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .7), inset 0 -.5px 0 rgba(255, 255, 255, .22), 0 1px 0 rgba(255, 255, 255, .55), 0 8px 30px -20px rgba(31, 41, 55, .38);
+}
+:root[data-shell='sidebar'] .ap-sidebar {
+  background: rgba(250, 250, 252, .5);
+  backdrop-filter: blur(46px) saturate(190%);
+  -webkit-backdrop-filter: blur(46px) saturate(190%);
+  border-right: 1px solid rgba(255, 255, 255, .6);
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .7), inset 0 -.5px 0 rgba(255, 255, 255, .22), 1px 0 0 rgba(60, 60, 67, .06);
+}
+/* 品牌方块标（无 appIcon 时是 .ap-brand-dot）：渐变更饱满 + 玻璃高光 + 悬停轻转；有图标时给同尺寸玻璃底板 */
+:root[data-shell='sidebar'] .ap-brand-dot {
+  width: 24px; height: 24px; border-radius: 7px;
+  background: linear-gradient(145deg, #4aa8ff, #0071e3 52%, var(--accent-2));
+  box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--accent) 75%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .5);
+  transition: transform var(--dur-state) var(--ease-spring), box-shadow var(--dur-state) var(--ease-standard);
+}
+:root[data-shell='sidebar'] .ap-brand:hover .ap-brand-dot {
+  transform: scale(1.06) rotate(-3deg);
+  box-shadow: 0 6px 20px -3px color-mix(in srgb, var(--accent) 90%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .65);
+}
+:root[data-shell='sidebar'] .ap-brand-ico {
+  width: 24px; height: 24px; border-radius: 7px;
+  box-shadow: 0 2px 8px -2px rgba(31, 41, 55, .3), inset 0 .5px 0 rgba(255, 255, 255, .6);
+}
+/* 导航项：玻璃悬停 + 选中蓝胶囊（沿用既有 apPop 弹跳，不重写关键帧） */
+:root[data-shell='sidebar'] .ap-nav:hover {
+  background: rgba(255, 255, 255, .62); color: var(--text);
+  box-shadow: 0 1px 2px rgba(31, 41, 55, .06), inset 0 .5px 0 rgba(255, 255, 255, .85);
+}
+:root[data-shell='sidebar'] .ap-nav.active {
+  background: linear-gradient(180deg, #2196ff, #0071e3);
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 70%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .45);
+}
+
+/* ---- ④ 分类条：白玻璃容器 + 弱化小标签 + 胶囊 chips（选中系统蓝） ---- */
+:root[data-shell='sidebar'] .cascade {
+  padding: 12px 15px; margin-bottom: 22px; border-radius: 16px;
+  background: rgba(255, 255, 255, .58); border: 1px solid rgba(255, 255, 255, .7);
+  backdrop-filter: blur(26px) saturate(170%); -webkit-backdrop-filter: blur(26px) saturate(170%);
+  box-shadow: 0 1px 2px rgba(31, 41, 55, .04), 0 14px 36px -22px rgba(31, 41, 55, .4),
+    inset 0 .5px 0 rgba(255, 255, 255, .8);
+}
+:root[data-shell='sidebar'] .cascade-row + .cascade-row {
+  border-top: 1px solid rgba(60, 60, 67, .08); padding-top: 8px;
+}
+:root[data-shell='sidebar'] .cascade-label {
+  color: var(--text-faint); font-size: 12px; font-weight: 700; letter-spacing: .12em; margin-right: 8px;
+}
+:root[data-shell='sidebar'] .tag {
+  box-shadow: 0 1px 2px rgba(31, 41, 55, .05), inset 0 .5px 0 rgba(255, 255, 255, .75);
+}
+:root[data-shell='sidebar'] .tag.active {
+  background: linear-gradient(180deg, #2196ff, #0071e3);
+  box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--accent) 65%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .4);
+}
+
+/* ---- ⑤ 行标题：大字号 + 品牌蓝光条（::before 竖条 + 光晕） ---- */
+:root[data-discover='shelfWide'] .ap-row-title {
+  display: flex; align-items: center; gap: 11px; margin: 0 0 14px;
+  font-size: 23px; font-weight: 800; letter-spacing: -.02em; color: var(--text);
+}
+:root[data-discover='shelfWide'] .ap-row-title::before {
+  content: ''; flex: none; width: 4px; height: 21px; border-radius: 3px;
+  background: linear-gradient(180deg, #4aa8ff, #0071e3);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+:root[data-discover='shelfWide'] .ap-row-scroll { padding: 8px 4px 16px; gap: 16px; }
+
+/* ---- ⑥ 卡片：白玻璃卡（描边 + 双层阴影 + 16px 圆角）+ shine 扫光 + 悬停浮出的蓝色播放钮 ---- */
+:root[data-shell='sidebar'] .card-media { transition: transform var(--dur-state) var(--ease-spring); }
+:root[data-shell='sidebar'] .card-media:hover { transform: none; z-index: auto; }
+:root[data-shell='sidebar'] .card-media .card {
+  background: rgba(255, 255, 255, .92); border: 1px solid rgba(255, 255, 255, .75);
+  border-radius: 16px; overflow: hidden;
+  box-shadow: none;
+  transition: border-color var(--dur-state) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard);
+}
+:root[data-shell='sidebar'] .card-media:hover .card {
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  box-shadow: none;
+}
+/* 封面区（.card 的第一个子元素 = 海报容器）：承载 shine 扫光，并裁掉扫光溢出 */
+:root[data-shell='sidebar'] .card-media .card > :first-child { position: relative; overflow: hidden; }
+/* 播放钮：**保留既有 .ap-card-play 元素并样式化它**（不新增 ::before，避免一卡出现两个播放钮），换成系统蓝玻璃圆钮 */
+
+/* ---- ⑦ 按钮：次要按钮玻璃胶囊（增量收敛）+ 主行动系统蓝胶囊（既有，仅强化光泽） ---- */
+:root[data-shell='sidebar'] button {
+  border-radius: 999px; padding: 6px 15px;
+  background: rgba(120, 120, 128, .12); border: 1px solid var(--border-soft); color: var(--text); font-weight: 500;
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .55);
+}
+:root[data-shell='sidebar'] button:hover {
+  background: rgba(120, 120, 128, .2); border-color: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--text);
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .55);
+}
+:root[data-shell='sidebar'] button:active { transform: scale(.96); opacity: .92; }
+:root[data-shell='sidebar'] button.primary {
+  background: var(--accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(31, 41, 55, .12), inset 0 .5px 0 rgba(255, 255, 255, .3);
+}
+:root[data-shell='sidebar'] button.primary:hover {
+  background: var(--color-accent); color: var(--on-accent);
+  box-shadow: 0 6px 18px -4px color-mix(in srgb, var(--accent) 50%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .3);
+}
+/* ★ 历史守卫重申：通用 button 规则特异度 (0,2,1) 本就压不过 `.vp-ctl` (0,3,0)；此处再断言一次，
+   确保图标按钮仍是 26×26「无底无框无内边距」（2026-10-15 实测曾被撑成 55×39）。 */
+:root[data-shell='sidebar'] .vp-ctl,
+:root[data-shell='sidebar'] .mini-btn { background: none; border: none; padding: 0; box-shadow: none; }
+
+/* ★ 2026-10-16（用户要求）：**配置页选项卡改为「圆角长方形」**（参考 Netflix 的页签形态），不要半圆药丸。
+   `.cfg-tab` 是 ConfigPage 的 `<button>`，其**内联样式只把下两角压成 0**，上两角仍吃通用
+   `button { border-radius: 999px }`(0,2,1) ⇒ 顶上是半圆。这里上两角收成皮肤小圆角令牌、下两角平齐于
+   分类行底边线（内联已是 0）→ 与 netflix 的页签同形。特异度 (0,3,0) > (0,2,1)（§C54 教训）。 */
+:root[data-shell='sidebar'] .cfg-tab {
+  border-top-left-radius: var(--radius-sm);
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* ---- ⑧ 首屏聚光卡：浅色纱幕 + 蓝色品牌点 + 系统蓝 CTA（大果 = 果汁玻璃质感的「浅色聚光卡」） ---- */
+:root[data-shell='sidebar'] .spot {
+  border: 1px solid rgba(255, 255, 255, .7);
+  background: linear-gradient(135deg, rgba(255, 255, 255, .6), rgba(244, 246, 250, .44));
+  box-shadow: 0 30px 66px -34px rgba(31, 41, 55, .5), inset 0 .5px 0 rgba(255, 255, 255, .9),
+    inset 0 -70px 100px -70px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+/* 模糊海报只当环境色底：**提亮去饱和**（浅色皮肤不做暗底） */
+:root[data-shell='sidebar'] .spot-art-layer { filter: blur(52px) saturate(1.35) brightness(1.55); }
+/* ★ 浅色纱幕：**默认必须有** —— 白/浅灰高 alpha 渐变压在模糊海报上，深色标题才读得清（左白、右略透出花色） */
+:root[data-shell='sidebar'] .spot-veil {
+  background: linear-gradient(100deg, rgba(252, 252, 254, .9) 0%, rgba(250, 250, 253, .8) 40%,
+    rgba(245, 246, 250, .52) 70%, rgba(252, 252, 254, .74) 100%);
+}
+:root[data-shell='sidebar'] .spot-kicker { color: var(--text-accent); }
+:root[data-shell='sidebar'] .spot-kicker-dot { background: var(--accent); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 80%, transparent); }
+:root[data-shell='sidebar'] .spot-title { color: var(--text); text-shadow: 0 1px 0 rgba(255, 255, 255, .7); }
+:root[data-shell='sidebar'] .spot-meta { color: var(--text-dim); }
+:root[data-shell='sidebar'] .spot-year { color: var(--text-accent, var(--accent)); font-weight: 700; }
+:root[data-shell='sidebar'] .spot-sep { color: var(--text-faint); }
+:root[data-shell='sidebar'] .spot-rank { color: var(--text-accent); font-weight: 700; letter-spacing: .06em; }
+:root[data-shell='sidebar'] .spot-go { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; }
+:root[data-shell='sidebar'] .spot-next {
+  background: rgba(255, 255, 255, .72); border: 1px solid rgba(60, 60, 67, .14); color: var(--text); font-weight: 600;
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .7);
+}
+:root[data-shell='sidebar'] .spot-next:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text-accent, var(--accent)); }
+:root[data-shell='sidebar'] .spot-poster {
+  box-shadow: 0 24px 50px -20px rgba(31, 41, 55, .55), 0 0 0 1px rgba(255, 255, 255, .8),
+    0 0 60px -14px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+:root[data-shell='sidebar'] .spot-poster-none { color: var(--text-faint); }
+:root[data-shell='sidebar'] .spot-poster-ghost {
+  filter: saturate(.7) brightness(1.1); opacity: .9;
+  box-shadow: 0 18px 36px -18px rgba(31, 41, 55, .45), 0 0 0 1px rgba(255, 255, 255, .55);
+}
+:root[data-shell='sidebar'] .spot-dot { background: rgba(60, 60, 67, .24); }
+:root[data-shell='sidebar'] .spot-dot:hover { background: rgba(60, 60, 67, .42); }
+:root[data-shell='sidebar'] .spot-dot.active { background: var(--accent); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 70%, transparent); }
+
+/* ============================================================================
+   ★★ 2026-10-16 第三代（**大果差异化**）：把「同一套结构换四色」的残留逐项换成
+   Apple TV app / App Store「Today」卡片的**材质与解剖** —— 克制、大留白、大圆角、Liquid Glass。
+   ★ 四套皮肤的结构级差异点（互不相同，不再「换色」）：
+     netflix = 满幅 billboard + 裸海报放大 + 贴底渐隐长条；
+     哔哔    = 双行专属头 + 扁平白卡 + 悬浮药丸 dock；
+     大豆    = M3 色调容器 + 大圆钮；
+     大果    = **保留玻璃侧栏** + **Today 大卡首屏** + **mac 原生贴底发丝玻璃条**（本条）。
+   ★ 历史守卫全部保留：`.vp-ctl` 无底无框无内边距（2026-10-15 实测曾被撑成 55×39）、
+     `.vp-big` 的 translate(-50%,-50%) 位移守卫、pvwin 白壳 / mpv 例外、交通灯 .ap-light*、
+     `.titlebar.ap-titlebar` 的 all:unset —— 本块**只追加**，不改任何既有规则。
+   ============================================================================ */
+
+/* ---- ⑨ 环境光：系统蓝 / 靛蓝 / 极淡中性白（克制，苹果不花哨）+ 浅色打底光 ---- */
+:root[data-shell='sidebar'] .app-ambient .amb-blob-1 {
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, var(--accent) 0%, transparent) 68%);
+}
+:root[data-shell='sidebar'] .app-ambient .amb-blob-2 {
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent-2) 13%, transparent), color-mix(in srgb, var(--accent-2) 0%, transparent) 68%);
+}
+:root[data-shell='sidebar'] .app-ambient .amb-blob-3 {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .9), rgba(255, 255, 255, 0) 72%);
+}
+:root[data-shell='sidebar'] .app-ambient .amb-grain { opacity: .12; }
+:root[data-shell='sidebar'] .app.ap-app {
+  background:
+    radial-gradient(1100px 520px at 4% -14%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 60%),
+    radial-gradient(1000px 480px at 102% 0%, color-mix(in srgb, var(--accent-2) 10%, transparent), transparent 58%),
+    linear-gradient(180deg, #fbfbfd 0%, #f5f5f7 48%, #eef0f4 100%);
+}
+
+/* ---- ⑩ 外壳层序：透明 + 抬到 z-index:1（氛围是 z-index:0 的 fixed 层，不抬层会被整片盖住） ---- */
+:root[data-shell='sidebar'] .ap-body { background: transparent; position: relative; z-index: 1; }
+:root[data-shell='sidebar'] .ap-main { background: transparent; position: relative; z-index: 1; }
+:root[data-shell='sidebar'] .ap-main .content { background: transparent; position: relative; z-index: 1; }
+/* ★ .ap-toolbar 仍是 z-index:40（见文件上方），稳压在 z-index:1 的 .ap-body 之上 */
+
+/* ---- ⑪ 工具栏 / 侧栏：玻璃再提纯（玻璃高光 内高光 + 发丝分隔线）+ 品牌渐变方块标 ---- */
+:root[data-shell='sidebar'] .ap-toolbar {
+  background: rgba(252, 252, 254, .6);
+  backdrop-filter: blur(44px) saturate(190%);
+  -webkit-backdrop-filter: blur(44px) saturate(190%);
+  border-bottom: 1px solid var(--border-soft);
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .7), inset 0 -.5px 0 rgba(255, 255, 255, .22), 0 8px 30px -22px rgba(31, 41, 55, .4);
+}
+:root[data-shell='sidebar'] .ap-sidebar {
+  background: rgba(250, 250, 252, .46);
+  border-right: 1px solid rgba(255, 255, 255, .6);
+}
+:root[data-shell='sidebar'] .ap-brand-dot {
+  background: linear-gradient(145deg, #4aa8ff, #0071e3 52%, var(--accent-2));
+  box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--accent) 75%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .5);
+}
+:root[data-shell='sidebar'] .ap-nav { border-radius: var(--radius-sm); }
+/* 玻璃悬停（选中态蓝胶囊 + apPop 弹跳沿用既有，不重写关键帧） */
+:root[data-shell='sidebar'] .ap-nav:hover {
+  background: rgba(255, 255, 255, .6); color: var(--text);
+  box-shadow: 0 1px 2px rgba(31, 41, 55, .06), inset 0 .5px 0 rgba(255, 255, 255, .8);
+}
+:root[data-shell='sidebar'] .ap-nav.active {
+  background: linear-gradient(180deg, #2196ff, #0071e3);
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--accent) 70%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .45);
+}
+
+/* ---- ⑫ 分类条：白色磨砂分段容器（大圆角 + 发丝边 + 极轻阴影）+ 胶囊 chips ---- */
+:root[data-shell='sidebar'] .cascade {
+  padding: 12px 16px; margin-bottom: 24px; border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, .56); border: 1px solid rgba(255, 255, 255, .72);
+  backdrop-filter: blur(28px) saturate(170%); -webkit-backdrop-filter: blur(28px) saturate(170%);
+  box-shadow: 0 1px 2px rgba(31, 41, 55, .04), 0 16px 40px -26px rgba(31, 41, 55, .45),
+    inset 0 .5px 0 rgba(255, 255, 255, .85);
+}
+:root[data-shell='sidebar'] .cascade-row + .cascade-row {
+  border-top: 1px solid rgba(60, 60, 67, .08); padding-top: 8px;
+}
+:root[data-shell='sidebar'] .cascade-label {
+  color: var(--text-faint); font-size: 12px; font-weight: 700; letter-spacing: .12em; margin-right: 8px;
+}
+:root[data-shell='sidebar'] .tag {
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(31, 41, 55, .05), inset 0 .5px 0 rgba(255, 255, 255, .7);
+}
+:root[data-shell='sidebar'] .tag.active {
+  background: var(--color-accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
+  box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--accent) 65%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .4);
+  animation: apPop var(--dur-state) var(--ease-spring);
+}
+
+/* ---- ⑬ 章节标题：flex + 品牌蓝光条（::before 竖条 + 光晕），23px / 800 ---- */
+:root[data-discover='shelfWide'] .ap-row-title {
+  display: flex; align-items: center; gap: 11px; margin: 0 0 14px;
+  font-size: 23px; font-weight: 800; letter-spacing: -.02em; color: var(--text);
+}
+:root[data-discover='shelfWide'] .ap-row-title::before {
+  content: ''; flex: none; width: 4px; height: 21px; border-radius: 3px;
+  background: linear-gradient(180deg, #4aa8ff, #0071e3);
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+:root[data-discover='shelfWide'] .ap-row-scroll { padding: 8px 4px 16px; gap: 16px; }
+
+/* ---- ⑭ 首屏 = App Store「Today」卡片：白玻璃整卡（22px 大圆角 + 大留白）
+     左 = kicker + 超大标题 + 元信息 + 蓝色胶囊 CTA；右 = 放大的竖版海报卡（236×354） ----
+   ★ 这是大果**专属**的首屏构图（netflix 全出血 billboard / 哔哔 彩色横幅 / 大豆 M3 容器皆不同）。 */
+:root[data-shell='sidebar'] .spot {
+  border: 1px solid rgba(255, 255, 255, .8); border-radius: 22px;
+  padding: 36px 42px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, .84), rgba(246, 248, 252, .68));
+  backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%);
+  box-shadow: 0 34px 74px -40px rgba(31, 41, 55, .55), inset 0 .5px 0 rgba(255, 255, 255, .95);
+}
+/* 海报模糊滤镜：恢复饱和 + 明亮 —— 上一版 saturate(.6) 把底洗成了灰泥，玻璃失去「透出色」 */
+:root[data-shell='sidebar'] .spot-art-layer { filter: blur(48px) saturate(1.35) brightness(1.32); }
+/* ★ 右半幅氛围（与哔哔/大豆同一手法）：深色海报的颜色只在海报身后晕开，左侧保持干净玻璃 */
+:root[data-shell='sidebar'] .spot-art {
+  inset: 0 0 0 44%;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 38%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 38%);
+}
+/* ★ 浅色纱幕：**默认必须覆盖**（基类 .spot-veil 无底色）——只在文字区压薄白，氛围色从右侧透上来 */
+:root[data-shell='sidebar'] .spot-veil {
+  background: linear-gradient(100deg, rgba(252, 252, 254, .78) 0%, rgba(250, 251, 254, .4) 34%, rgba(250, 251, 254, 0) 60%);
+}
+:root[data-shell='sidebar'] .spot-kicker { color: var(--text-accent); font-weight: 800; letter-spacing: .18em; }
+:root[data-shell='sidebar'] .spot-kicker-dot {
+  width: 7px; height: 7px; background: var(--accent); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 85%, transparent);
+}
+:root[data-shell='sidebar'] .spot-title {
+  margin: 12px 0 10px; font-size: clamp(30px, 3.6vw, 46px); font-weight: 800; letter-spacing: -.03em;
+  color: var(--text); text-shadow: 0 1px 0 rgba(255, 255, 255, .8);
+}
+:root[data-shell='sidebar'] .spot-meta { color: var(--text-dim); font-size: var(--fs-md); gap: 10px; }
+:root[data-shell='sidebar'] .spot-year { color: var(--text-accent, var(--accent)); font-weight: 700; }
+:root[data-shell='sidebar'] .spot-sep { color: var(--text-faint); }
+:root[data-shell='sidebar'] .spot-rank { color: var(--text-accent); font-weight: 700; letter-spacing: .06em; }
+:root[data-shell='sidebar'] .spot-go { display: inline-flex; align-items: center; gap: 7px; font-size: 14.5px; padding: 10px 24px; }
+:root[data-shell='sidebar'] .spot-next {
+  background: rgba(255, 255, 255, .74); border: 1px solid rgba(60, 60, 67, .14); color: var(--text); font-weight: 600;
+  box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .7);
+}
+:root[data-shell='sidebar'] .spot-next:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text-accent, var(--accent)); }
+/* 右侧放大的海报卡：236×354 / 圆角 20px / 柔和长阴影 + 顶部玻璃高光 */
+:root[data-shell='sidebar'] .spot-stage { width: 236px; height: 354px; }
+:root[data-shell='sidebar'] .spot-poster {
+  border-radius: 20px;
+  box-shadow: 0 34px 62px -26px rgba(31, 41, 55, .6), 0 0 0 1px rgba(255, 255, 255, .8),
+    inset 0 .5px 0 rgba(255, 255, 255, .5);
+}
+:root[data-shell='sidebar'] .spot-poster-none { color: var(--text-faint); }
+:root[data-shell='sidebar'] .spot-poster-ghost {
+  filter: saturate(.6) brightness(1.12); opacity: .85;
+  box-shadow: 0 20px 40px -22px rgba(31, 41, 55, .5), 0 0 0 1px rgba(255, 255, 255, .5);
+}
+:root[data-shell='sidebar'] .spot-dot { background: rgba(60, 60, 67, .22); }
+:root[data-shell='sidebar'] .spot-dot:hover { background: rgba(60, 60, 67, .4); }
+:root[data-shell='sidebar'] .spot-dot.active { background: var(--accent); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 70%, transparent); }
+
+/* ---- ⑮ 卡片：大圆角玻璃卡（18px，极淡发丝边）+ 柔和多层阴影；hover 轻微上浮 + 浮出蓝色播放钮
+     ★ 不做 shine 扫光（第二代给封面加的 ::after 扫光在此**明确关闭**，大果不是扫光风） ---- */
+:root[data-shell='sidebar'] .card-media { transition: transform var(--dur-state) var(--ease-spring); }
+:root[data-shell='sidebar'] .card-media:hover { transform: none; z-index: auto; }
+:root[data-shell='sidebar'] .card-media .card {
+  background: rgba(255, 255, 255, .88); border: 1px solid rgba(60, 60, 67, .06);
+  border-radius: var(--radius-lg); overflow: hidden;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  box-shadow: none;
+  transition: border-color var(--dur-state) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard);
+}
+:root[data-shell='sidebar'] .card-media:hover .card {
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  box-shadow: none;
+}
+/* 播放钮：**沿用既有 .ap-card-play 元素**（不再加 ::before 造成双钮），做成系统蓝玻璃圆钮 */
+
+/* ---- ⑯ 播放器 = macOS 原生风控制条：**贴底全宽细发丝玻璃条**（无圆角，像 macOS 窗口底栏）
+     ★ 与另三套架构互不相同：netflix 贴底渐隐长条 / 哔哔 悬浮药丸 dock / 大豆 M3 状态层。 ---- */
+:root[data-shell='sidebar'] .vplayer { background: #000; }
+:root[data-shell='sidebar'] .vp-controls {
+  left: 0; right: 0; bottom: 0; border-radius: 0;
+  padding: 8px 20px 10px;
+  background: rgba(28, 28, 30, .42);
+  border-top: 1px solid rgba(255, 255, 255, .12);
+  backdrop-filter: blur(28px) saturate(1.6); -webkit-backdrop-filter: blur(28px) saturate(1.6);
+  box-shadow: none;
+}
+/* 进度条做成**极细**（track 2px / 播放段 2px 系统蓝）+ 小圆点（10px 白点，悬停 14px） */
+/* ★ 2026-10-17（同 netflix/哔哔）：早期块给 `.vp-progress` 上了 `background: rgba(255,255,255,.26)`
+   （apple.css §播放器·早期），本块把高度拉到 12px ⇒ 已播线/细轨道外面多一条半透明包裹底。显式置空。 */
+:root[data-shell='sidebar'] .vp-progress { height: 12px; margin-bottom: 2px; background: none; }
+:root[data-shell='sidebar'] .vp-progress::before { height: 2px; border-radius: 999px; background: rgba(255, 255, 255, .22); }
+:root[data-shell='sidebar'] .vp-buffer { height: 2px; border-radius: 999px; background: rgba(255, 255, 255, .34); }
+:root[data-shell='sidebar'] .vp-played { height: 2px; border-radius: 999px; background: var(--accent); }
+:root[data-shell='sidebar'] .vp-thumb {
+  width: 10px; height: 10px; background: #fff;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent), 0 1px 4px rgba(0, 0, 0, .5);
+  transition: width var(--dur-quick) var(--ease-standard), height var(--dur-quick) var(--ease-standard);
+}
+:root[data-shell='sidebar'] .vp-progress:hover .vp-thumb { width: 14px; height: 14px; }
+:root[data-shell='sidebar'] .vp-bar { gap: 12px; }
+/* 图标按钮 32×32 圆角 8px 白；hover 白底 12%；开启态蓝底白字（重置「无底无框无内边距」仍在更上方生效） */
+:root[data-shell='sidebar'] .vp-ctl { width: 32px; height: 32px; border-radius: 8px; color: #fff; }
+:root[data-shell='sidebar'] .vp-ctl:hover { color: #fff; background: rgba(255, 255, 255, .12); }
+:root[data-shell='sidebar'] .vp-ctl.vp-on { color: var(--on-accent); background: var(--accent); }
+:root[data-shell='sidebar'] .vp-ctl.vp-on:hover { color: #fff; background: #0a84ff; }
+:root[data-shell='sidebar'] .vp-time { color: #98989d; font-size: var(--fs-sm); font-weight: 500; }
+/* 中央播放/暂停键保持 40px 实底，无模糊玻璃层。 */
+:root[data-shell='sidebar'] .vp-big {
+  width: 40px; height: 40px; box-sizing: border-box; border-radius: 10px;
+  background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .5); color: #fff;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+  box-shadow: none;
+  transition: transform var(--dur-state) var(--ease-spring), background var(--dur-state) var(--ease-standard);
+  min-height: 40px;
+}
+/* ★ hover / active **必须**保留 translate(-50%,-50%)（元素 left/top:50% 定位；缺了会跳半个身位） */
+:root[data-shell='sidebar'] .vp-big:hover { transform: translate(-50%, -50%); background: rgba(255, 255, 255, .24); }
+:root[data-shell='sidebar'] .vp-big:active { transform: translate(-50%, -50%); }
+
+/* ---- 窄窗：收窄 Today 卡内边距与海报卡（本块 .spot-stage 特异度高于 global 的 900px 覆盖，需自行让位） ---- */
+@media (max-width: 900px) {
+  :root[data-shell='sidebar'] .spot { padding: 26px 24px; }
+  :root[data-shell='sidebar'] .spot-stage { width: 150px; height: 225px; }
+}
+
+}

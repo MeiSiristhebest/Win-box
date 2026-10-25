@@ -17,14 +17,21 @@
   --accent-strong: #0095cc;
   --accent-container: #00aeec;
   --accent-soft: rgba(0, 174, 236, .1);
-  --on-accent: #ffffff;
+  --on-accent: #08232c;
   --accent-2: #fb7299;
   /* ===== 文本 ===== */
   --text: #18191c;
   --text-dim: #61666d;
-  --text-faint: #9499a0;
+  --text-faint: #62666d;
+  --text-accent: #006b94;
+  --text-accent-secondary: #ab2450;
+  --text-danger: #a11c14;
+  --text-warn: #815100;
+  --text-success: #176747;
+  --text-disabled: #5f6875;
   /* ===== 分隔与语义色 ===== */
-  --border: #e3e5e7;
+  /* Functional control/card boundary; keep the softer decorative rules below separate. */
+  --border: #747a80;
   --border-soft: rgba(227, 229, 231, .9);
   --hairline: rgba(227, 229, 231, .9);
   --danger: #f56c6c;
@@ -35,8 +42,4 @@
   --radius: 12px;
   --radius-sm: 8px;
   --shadow: 0 2px 6px rgba(24, 25, 28, .05), 0 10px 24px -10px rgba(24, 25, 28, .12);
-}
-
-@layer tokens {
-  :root[data-theme='bilibili'] { --on-accent: #08232c; }
 }

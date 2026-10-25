@@ -1,0 +1,24 @@
+@layer tokens {
+  :root {
+    --surface: var(--surface-0);
+    --text-accent: color-mix(in srgb, var(--color-accent) 55%, var(--text-primary));
+    --text-danger: color-mix(in srgb, var(--color-danger) 65%, var(--text-primary));
+    --text-warn: color-mix(in srgb, var(--warn) 55%, var(--text-primary));
+    --text-success: color-mix(in srgb, var(--success) 55%, var(--text-primary));
+    --focus-ring-color: var(--text-accent);
+    --on-light: #141414;
+    --on-media: #ffffff;
+    --surface-raised: var(--surface-2);
+    --surface-elevated: var(--surface-3);
+    --text-primary: var(--text);
+    --text-secondary: var(--text-dim);
+    --color-accent: var(--accent);
+    --on-accent: #fff;
+    --color-danger: var(--danger);
+    --on-danger: #111;
+    --border-subtle: var(--border-soft);
+    --backdrop: var(--surface-glass);
+    --radius-control: var(--radius-sm);
+    --radius-container: var(--radius);
+  }
+}

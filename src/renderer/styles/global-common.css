@@ -1,0 +1,438 @@
+@layer legacy {
+/* ---- 返回按钮 ---- */
+.back-btn { display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 5px 11px 5px 8px;
+  border-radius: 999px; color: var(--text-dim); background: transparent; border: 1px solid transparent; }
+.back-btn:hover { color: var(--text-accent); border-color: var(--border); background: var(--surface-2); }
+.back-btn svg { flex: none; }
+
+/* ---- 自定义标题栏（无边框窗口） ---- */
+.titlebar { height: 38px; flex: none; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 4px 0 14px; background: linear-gradient(180deg, var(--surface-2), transparent);
+  border-bottom: 1px solid var(--border-soft); -webkit-app-region: drag; user-select: none; }
+.tb-title { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--text); letter-spacing: .2px;
+  flex: 1; min-width: 0; overflow: hidden; }
+.tb-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-dot { width: 9px; height: 9px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 0 8px rgba(91,140,255,.6); }
+.quick-picks { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.quick-picks .tag { cursor: pointer; flex: 0 0 auto; }
+.quick-picks .tag:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.ui-action { appearance: none; border: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; cursor: pointer; }
+.hist-group { margin-bottom: 24px; }
+.hist-group h3 { margin: 0 0 12px; font-size: 15px; }
+.hist-group h3 .muted { font-size: 12px; font-weight: 400; }
+.tb-sub { color: var(--text-secondary); font-weight: 400; font-size: 12px; }
+.tb-controls { display: flex; gap: 2px; -webkit-app-region: no-drag; height: 100%; align-items: center; flex: none; }
+.tb-btn { all: unset; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 100%;
+  color: var(--text-dim); cursor: pointer; transition: background .13s, color .13s; border-radius: 6px; }
+.tb-btn:hover { background: var(--surface-3); color: var(--text); box-shadow: none; }
+.tb-btn.tb-close:hover { background: #e81123; color: #fff; }
+.tb-btn:active { transform: none; }
+/* ★ 2026-10-08（用户要求「置顶按钮挪到最小化按钮旁边」）：标题栏置顶按钮开启态（accent 高亮 + 淡底）。
+   带 `:root[data-theme]` 前缀压过皮肤（`.app.pwin .tb-btn:hover` 等），同 §C54 教训。 */
+:root[data-theme] .tb-btn.tb-pin-on { color: var(--text-accent); background: rgba(255, 255, 255, .12); }
+:root[data-theme] .tb-btn.tb-pin-on:hover { color: var(--text-accent); background: rgba(255, 255, 255, .18); }
+
+/* ---- 小窗口（mini）细拖拽条 ----
+   小窗不再渲染完整标题栏（38px 的标题栏在 216px 高的窗口里就是"边框"），
+   改为 18px 半透明条：整条可拖拽、双击还原；整条文字保持清晰，按钮只在悬停时强调。 */
+.mini-strip { height: 18px; flex: none; display: flex; align-items: center; gap: 6px; padding: 0 2px 0 8px;
+  background: rgba(10, 12, 16, .72); color: var(--on-media, #fff);
+  -webkit-app-region: drag; user-select: none; }
+.mini-strip-title { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; letter-spacing: .2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-strip-btns { display: flex; gap: 1px; flex: none; -webkit-app-region: no-drag; }
+.mini-btn { all: unset; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 16px;
+  border-radius: 4px; color: inherit; cursor: pointer; transition: background .13s, color .13s; }
+.mini-btn:hover { background: var(--accent-soft); color: var(--text-accent, var(--accent)); }
+.mini-strip-close:hover { background: var(--danger); color: var(--on-danger); }
+
+/* ---- 布局骨架 ---- */
+.app { display: flex; height: 100vh; }
+/* 独立播放器窗口：暗色背景承载视频，避免半透明 Mica 干扰观看 */
+.app.pwin { background: var(--surface-0); }
+.app.pwin .main { background: var(--surface-0); }
+.sidebar {
+  width: var(--side-w); background: linear-gradient(180deg, var(--surface-2), var(--surface-1));
+  border-right: 1px solid var(--border-soft); display: flex; flex-direction: column;
+  padding: 14px 10px; gap: 4px; backdrop-filter: blur(8px);
+}
+.sidebar .logo { font-size: 19px; font-weight: 800; letter-spacing: .3px; padding: 10px 12px 18px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm);
+  color: var(--text-dim); transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard); }
+.nav-item:hover { background: var(--surface-2); color: var(--text); }
+.nav-item.active { background: var(--accent-soft); color: var(--text-accent); font-weight: 600; }
+.nav-item.ui-action { width: 100%; }
+.nav-ico { width: 20px; text-align: center; font-size: 15px; }
+.side-foot { margin-top: auto; padding: 12px; font-size: 12px; color: var(--text-secondary, var(--text-dim)); line-height: 1.5; }
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.shell-body { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
+/* ★ 2026-09-29 缺陷修复（用户报「点播页换源列表被封面遮挡」）：
+   真因 = 层序。`.topbar` 被 backdrop-filter 提升为**堆叠上下文**，但它 position:static、z-index:auto
+   ⇒ 与 `.card-media`（`position: relative`、z-index:auto）**同属「定位元素/堆叠上下文（z-index:auto）」绘制层**，
+   而封面在 DOM 里靠后 ⇒ 后绘制 ⇒ 盖住顶栏里弹出的换源列表（实测弹层内 3 个采样点有 2 个命中封面 IMG）。
+   修：顶栏显式 `position: relative; z-index: 30` → 整棵子树进入**正 z-index 层**，稳定压在内容之上
+   （顶栏与内容不重叠，视觉零变化；顶栏内的弹层/下拉从此都不再被封面压住）。 */
+.topbar { position: relative; z-index: 30; min-height: 54px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 10px;
+  padding: 0 18px; background: var(--surface-1); backdrop-filter: blur(6px); }
+/* ★ 2026-09-24：顶栏按钮固定「横板」形状 —— 此前长提示文字会把它压成竖排异形（文字折成两三行） */
+.topbar button { flex: 0 0 auto; white-space: nowrap; }
+/* 顶栏里的说明文字可被压缩并省略号截断（给右侧按钮让位） */
+.topbar > .muted { min-width: 0; }
+.content { flex: 1; overflow: auto; padding: 18px; scrollbar-gutter: stable; }
+
+/* ---- ★ 2026-09-24（用户定稿）：页面切换过渡动画（轻微淡入 + 上移） ----
+   做法：App 里给路由容器加 key=pathname → 切页时容器重建 → 触发一次入场动画。
+   ★ 2026-10-08：动画本体与关键帧统一挪到文件末尾的「交互态/动效系统」里（走 --dur-page / --ease-enter 令牌）。
+   注意：动画结束后 transform 回到 none（不构成 fixed 定位的包含块），页面内弹窗仍按视口定位。 */
+.page-anim {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; min-height: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* ★ 2026-10-08：尊重应用内「界面动效 = 始终开启」的覆盖（data-motion='on' 时不关页面动画） */
+  html:not([data-motion='on']) .page-anim { animation: none; }
+}
+
+/* ---- ★ 2026-10-15（用户要求「伪墓碑」）：单页内跳转时上一个页面**保持挂载、仅隐藏** ----
+   新页面只替换可见内容，返回时零重载（滚动/分类/搜索态原样保留）。
+   隐藏页不参与布局与命中测试（display:none），页面内的懒加载/观察器也随之停摆。 */
+.page-anim.keep-page[data-active='0'] { display: none; }
+
+/* ---- ★ 2026-09-24：换源（手机 TVBox 式：源名纯文字，长按/右键弹列表）与顶栏搜索面板 ---- */
+.srcpick { position: relative; flex: 0 0 auto; }
+.srcpick-name {
+  display: inline-flex; align-items: center; gap: 6px; cursor: default; user-select: none;
+  padding: 4px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2);
+  color: var(--text); font-size: 12px; white-space: nowrap; max-width: 220px;
+}
+.srcpick-name:hover { border-color: var(--text-accent, var(--accent)); }
+.srcpick-name.disabled { color: var(--text-secondary); opacity: 1; }
+.srcpick-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srcpick-caret { color: var(--text-dim); font-size: 12px; }
+.srcpick-side { margin: 6px 8px 10px; }
+.srcpick-side .srcpick-name { border-radius: var(--radius-sm); max-width: none; width: 100%; justify-content: space-between; }
+/* ★ 2026-09-29 缺陷修复（用户报「侧边换源列表向下展开什么都看不到」）：
+   侧栏的换源入口就在窗口**底部**，向下展开必然被窗口下沿裁掉（实测弹层 bottom 962 > 视口 800）。
+   修：侧栏变体的列表**向上展开**（`top:auto` + `bottom:100%+6px`）。 */
+.srcpick-pop-side { top: auto; bottom: calc(100% + 6px); }
+.srcpick-label { color: var(--text-dim); font-size: 12px; }
+.srcpick-pop {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60; min-width: 200px; max-width: 320px;
+  max-height: 360px; display: flex; flex-direction: column; overflow: hidden; padding: 6px;
+  background: var(--surface-glass, rgba(18,20,26,.94)); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5); backdrop-filter: blur(8px);
+}
+.srcpick-pop-tip { color: var(--text-dim); font-size: 12px; padding: 4px 8px 6px; border-bottom: 1px solid var(--border-soft); margin-bottom: 4px; }
+/* ★ 2026-09-30（用户要求）：弹层加宽为「左订阅 / 右源」双栏；右侧空间不足时右锚（由组件量测后加类） */
+.srcpick-pop-wide { min-width: 380px; max-width: 440px; }
+.srcpick-pop-right { left: auto; right: 0; }
+/* 源名实时检索：随输入过滤当前订阅下的源 */
+.srcpick-search { width: 100%; height: 28px; font-size: 12px; padding: 0 8px; margin-bottom: 6px; box-sizing: border-box; }
+.srcpick-cols { display: flex; gap: 0; flex: 1 1 auto; min-height: 0; max-height: 296px; }
+.srcpick-col-sub {
+  flex: 0 0 112px; max-width: 112px; overflow-y: auto; padding-right: 4px; margin-right: 4px;
+  border-right: 1px solid var(--border-soft);
+}
+.srcpick-col-src { flex: 1 1 auto; min-width: 0; overflow-y: auto; }
+.srcpick-item { width: 100%; padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.srcpick-item:hover { background: var(--accent-soft, rgba(120,170,255,.12)); }
+.srcpick-item.active { color: var(--text-accent); font-weight: 650; }
+/* ★ 2026-10-09（用户要求「删除换源下拉里调源位置的功能，不美观」）：源行回到「纯源名」——
+   行内管理按钮（⤒/↑/↓/✕）已从 SourcePicker 删除，相关样式一并移除；源管理只在配置页保留。 */
+.srcpick-col-src .srcpick-item { display: flex; align-items: center; gap: 6px; }
+.srcpick-sname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 左栏订阅项：当前生效订阅加圆点标记（悬停 title 里带源数；行内 ::before，保证 ellipsis 作用在整行） */
+.srcpick-sub.cur::before { content: '● '; color: var(--text-accent-secondary, var(--accent-2)); font-size: 12px; vertical-align: 2px; }
+.srcpick-sub.active { background: var(--accent-soft, rgba(120,170,255,.12)); font-weight: 600; }
+/* 顶栏搜索按钮与面板 */
+.sp-btn { cursor: pointer; }
+.sp-panel {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 70; width: 520px; padding: 12px;
+  background: var(--surface-glass, rgba(18,20,26,.94)); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5); backdrop-filter: blur(8px);
+}
+.sp-row { display: flex; gap: 8px; }
+/* ★ 2026-09-29（用户要求「搜索框做大一点」）：加高加大输入框 */
+.sp-input { flex: 1; min-width: 0; height: 38px; font-size: 14px; padding: 0 12px; }
+.sp-list { margin-top: 8px; max-height: 300px; overflow: auto; }
+.sp-item { display: flex; justify-content: space-between; gap: 10px; padding: 7px 8px; border-radius: 6px; font-size: 13px; cursor: default; }
+.sp-item:hover { background: var(--accent-soft, rgba(120,170,255,.12)); }
+.sp-meta { font-size: 12px; flex: 0 0 auto; }
+.sp-hot-tip { font-size: 12px; margin: 2px 0 6px; }
+/* ★ 2026-09-29（用户要求）：左列 = 搜索历史；右列 = 热搜排名榜 */
+.sp-cols { display: flex; gap: 14px; margin-top: 10px; align-items: flex-start; }
+.sp-hist { flex: 1 1 54%; min-width: 0; }
+.sp-rank { flex: 1 1 46%; min-width: 0; border-left: 1px solid var(--border-soft); padding-left: 14px; }
+.sp-hist-list, .sp-rank-list { max-height: 268px; overflow: auto; }
+.sp-hist-item { align-items: center; font-size: 12.5px; padding: 5px 6px; gap: 4px; }
+.sp-hist-txt, .sp-rank-txt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-hist-del {
+  all: unset; cursor: pointer; flex: 0 0 auto; color: var(--text-dim); font-size: 12px;
+  padding: 2px 5px; border-radius: 4px; line-height: 1;
+}
+.sp-hist-del:hover { color: var(--danger, #ff6b6b); background: var(--accent-soft, rgba(120,170,255,.12)); }
+.sp-clear {
+  all: unset; cursor: pointer; display: block; box-sizing: border-box; width: 100%; text-align: center;
+  margin-top: 6px; padding: 5px 0; font-size: 12px; color: var(--text-dim);
+  border: 1px dashed var(--border); border-radius: 6px;
+}
+.sp-clear:hover { color: var(--danger, #ff6b6b); border-color: var(--danger, #ff6b6b); }
+.sp-rank-item { display: flex; width: 100%; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px; font-size: 12.5px; cursor: pointer; text-align: left; }
+.sp-rank-item:hover { background: var(--accent-soft, rgba(120,170,255,.12)); }
+.sp-rank-no {
+  flex: 0 0 18px; text-align: center; font-size: 12px; color: var(--text-dim); line-height: 16px;
+}
+.sp-rank-no.top { color: #fff; font-weight: 700; border-radius: 4px; background: linear-gradient(135deg, #4f86ff, #6a5cff); }
+h2, h3, h4 { font-weight: 650; letter-spacing: .2px; }
+/* ★ 2026-10-08：标题与卡片文字统一走排版级差令牌（各皮肤仍可按需覆盖） */
+h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text); }
+
+/* ---- 通用组件 ---- */
+.card { background: linear-gradient(180deg, var(--surface-2), var(--surface-1)); border: 1px solid color-mix(in srgb, var(--border) 72%, var(--text) 28%);
+  border-radius: var(--radius); box-shadow: var(--shadow); }
+.banner { background: rgba(255,194,94,.08); border: 1px solid rgba(255,194,94,.25); border-radius: var(--radius-sm);
+  padding: 9px 12px; margin: 8px 0; color: var(--text-warn); font-size: 12px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.muted { color: var(--text-dim); }
+.err { color: var(--text-danger); }
+.status { color: var(--text-dim); font-size: 12px; }
+
+/* Keyboard interaction: keep the focus indicator visible without adding a permanent outline. */
+:where(button, input, select, textarea, [role='button'], [role='option'], .card-media):focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+.card-media[role='button'] { outline-offset: 4px; }
+
+/* Theme selection uses compact buttons; the setting should stay scannable. */
+.theme-switcher { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* The Apple hero dots are buttons for keyboard access, not browser-default buttons. */
+:root[data-shell='sidebar'] .ap-dot { display: block; margin: 0; padding: 0; border: 0; box-shadow: none; }
+
+/* 亮色外壳的浮层必须不透明（否则下方文字/封面会透上来）：哔哔 / 大果 / 大豆 三种外壳 */
+:root[data-shell='dualbar'] .sp-panel,
+:root[data-shell='dualbar'] .srcpick-pop,
+:root[data-shell='sidebar'] .sp-panel,
+:root[data-shell='sidebar'] .srcpick-pop,
+:root[data-shell='pillbar'] .sp-panel,
+:root[data-shell='pillbar'] .srcpick-pop { background: var(--surface-3); }
+
+@media (max-width: 760px) {
+  .sp-panel { width: min(520px, calc(100vw - 24px)); right: -6px; }
+  .srcpick-pop-wide { min-width: min(440px, calc(100vw - 24px)); max-width: calc(100vw - 24px); }
+  .srcpick-pop-right { right: -6px; }
+  .sp-cols { gap: 8px; }
+  .sp-rank { padding-left: 8px; }
+}
+
+@media (max-width: 460px) {
+  .sp-cols { flex-direction: column; }
+  .sp-rank { width: 100%; border-top: 1px solid var(--border-soft); border-left: 0; padding: 8px 0 0; }
+  .srcpick-pop-wide { min-width: min(360px, calc(100vw - 16px)); }
+}
+.tag { display: inline-block; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px;
+  padding: 3px 11px; font-size: var(--fs-sm); margin: 2px; cursor: pointer;
+  transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard), border-color var(--dur-quick) var(--ease-standard); }
+.tag:hover { border-color: var(--text-accent, var(--accent)); }
+.tag.active { border-color: var(--text-accent, var(--accent)); color: var(--text-accent, var(--text-secondary)); background: var(--accent-soft); }
+
+/**
+ * ★ 2026-10-16：「已保存配置」芯片里的行内按钮（改名 / 删）。
+ *   各皮肤 `.tag.active` 的底色多为浅色或主题色（netflix 白底、bilibili/apple/douban 主题色底），
+ *   而 `.linkbtn` 用的是各自的主题色 → 白字白底 / 蓝字蓝底，按钮**看不见也点不到**（用户要求「生效档案
+ *   也要能删」，按钮必须先看得见）。这里用 `:root[data-theme][data-theme]` 双前缀（§C54 教训：皮肤
+ *   选择器特异度更高）统一收敛：普通按钮跟随芯片文字色、删除按钮保持各皮肤的红。
+ */
+:root[data-theme][data-theme] .tag.active .linkbtn { color: inherit; }
+:root[data-theme][data-theme] .tag.active .linkbtn.danger { color: var(--text-danger); }
+
+/* ---- 级联分类条（★ 2026-10-15：逐级点击才展开下级；豆风走 .db-filters 组，其余皮肤走这里） ---- */
+.cascade { display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px; }
+.cascade-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; min-height: 22px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.cascade-label { flex: 0 0 auto; color: var(--text-dim); font-size: 12px; margin-right: 6px; }
+.cascade-row + .cascade-row { border-top: 1px solid var(--border-soft); padding-top: 4px; }
+.empty { color: var(--text-dim); text-align: center; padding: 64px 20px; }
+
+/* ---- 点播网格 ---- */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(138px, 1fr)); gap: 14px; }
+/* ★ 2026-09-30（瀑布模式，防卡顿）：离开视口的卡片**跳过渲染与布局**（Chromium content-visibility）——
+   瀑布连翻十几页时 DOM 里会有上千张卡，这一条让滚动/追加的开销只花在可视区上。
+   contain-intrinsic-size 是「未渲染时的占位尺寸」（≈ 138 宽列下的卡高 240），只影响滚动条长度估算。 */
+.grid .card-media { content-visibility: auto; contain-intrinsic-size: 138px 240px; }
+.grid .history-card-media { contain-intrinsic-size: 138px 300px; }
+/* 站级 style=list 的列表式布局 */
+.list { display: flex; flex-direction: column; gap: 8px; }
+.list-item { display: flex; align-items: center; gap: 10px; background: linear-gradient(180deg, var(--surface-2), var(--surface-1)); border: 1px solid var(--border-soft); border-radius: var(--radius); padding: 6px 10px; cursor: pointer; position: relative; }
+.list-item:hover { border-color: rgba(91,140,255,.6); }
+.list-item img { width: 42px; height: 58px; object-fit: cover; border-radius: 4px; background: var(--surface-3); flex: 0 0 auto; }
+.list-item .li-name { flex: 1 1 auto; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-item .badge { position: static; margin-left: auto; flex: 0 0 auto; }
+.card-media { position: relative; overflow: visible; }
+.card-media-button { display: block; width: 100%; padding: 0; text-align: left; }
+.card-media .card { background: none; box-shadow: none; border: 1px solid var(--border-soft); border-radius: var(--radius); overflow: hidden;
+  transition: border-color .12s ease, background-color .12s ease; }
+.card-media:hover .card { transform: none; border-color: rgba(91,140,255,.6); box-shadow: none; }
+.card-media img { width: 100%; aspect-ratio: 2/3; object-fit: cover; display: block; background: var(--surface-3); }
+/* ★ 2026-09-24：无封面占位（搜索未命中 + 源图坏 → 不留坏图图标/灰影） */
+.no-cover { width: 100%; aspect-ratio: 2/3; display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary); font-size: 12px; background: var(--surface-3); }
+.card-media .badge { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,.55); color: var(--text-accent-secondary, var(--accent-2));
+  font-size: var(--fs-xs); padding: 1px 7px; border-radius: 999px; backdrop-filter: none; }
+.card-media .meta { padding: 7px 9px; }
+.card-media .name { font-size: var(--fs-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-media .remarks { font-size: var(--fs-xs); color: var(--text-accent-secondary, var(--text-secondary)); }
+
+/* ---- ★ 2026-09-24：相关推荐横条（详情页）—— 封面尺寸强约束统一（此前个别图会被撑大） ---- */
+.rec-row { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; align-items: flex-start; }
+.rec-row > .card-media { flex: 0 0 132px; width: 132px; max-width: 132px; }
+.rec-row > .card-media img { width: 132px; height: 198px; aspect-ratio: 2 / 3; object-fit: cover; }
+.rec-row > .card-media .no-cover { width: 132px; height: 198px; aspect-ratio: 2 / 3; }
+.rec-row > .card-media .name { max-width: 132px; }
+
+/* History and favorite actions share one in-flow strip below the poster; no destructive action floats over artwork. */
+.hist-media { overflow: visible; }
+.hist-media .card { position: relative; }
+.hist-media .hist-ops,
+.history-card-media .hist-actions {
+  position: static; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start;
+  gap: 6px; margin: 8px 0 0; padding: 5px; border: 1px solid var(--border-soft);
+  border-radius: 10px; background: var(--surface-raised, var(--surface-2));
+  opacity: 1; transform: none; pointer-events: auto; box-shadow: none; backdrop-filter: none;
+}
+.hist-media .hist-ops button,
+.history-card-media .hist-actions button {
+  appearance: none; box-sizing: border-box; cursor: pointer; display: inline-flex; flex: 1 1 0;
+  align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 36px; padding: 0 7px;
+  border: 1px solid transparent; border-radius: 8px; background: transparent;
+  color: var(--text-secondary, var(--text-dim)); font: inherit; font-size: 12px; font-weight: 600;
+  line-height: 1.2; white-space: nowrap; transform: none; backdrop-filter: none;
+  transition: background var(--dur-state) var(--ease-standard), color var(--dur-state) var(--ease-standard), border-color var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+.hist-media .hist-ops button svg,
+.history-card-media .hist-actions button svg { flex: none; }
+.hist-media .hist-ops button:hover,
+.history-card-media .hist-actions button:hover {
+  background: var(--surface-elevated, var(--surface-2)); border-color: var(--border-soft); transform: translateY(-1px);
+}
+.hist-media .hist-ops button:first-child,
+.history-card-media .hist-actions .hist-detail-action {
+  color: var(--text-accent, var(--text-secondary)); background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border-soft));
+}
+.hist-media .hist-ops button[title='移除收藏'],
+.history-card-media .hist-actions .hist-remove-action {
+  color: var(--text-danger, var(--text-secondary));
+  background: color-mix(in srgb, var(--color-danger, var(--danger)) 8%, var(--surface-raised, var(--surface-2)));
+  border-color: color-mix(in srgb, var(--color-danger, var(--danger)) 24%, var(--border-soft));
+}
+.hist-media .hist-ops button[title='移除收藏']:hover,
+.history-card-media .hist-actions .hist-remove-action:hover {
+  color: var(--text-danger, var(--text-secondary));
+  background: color-mix(in srgb, var(--color-danger, var(--danger)) 14%, var(--surface-raised, var(--surface-2)));
+  border-color: color-mix(in srgb, var(--color-danger, var(--danger)) 50%, var(--border-soft));
+}
+.hist-media .hist-ops button:focus-visible,
+.history-card-media .hist-actions button:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+
+/* 收藏卡片的海报角标与移除按钮保持间距。 */
+.card-media .hist-corner {
+  position: absolute; top: 6px; right: 68px; z-index: 6;
+  display: flex; align-items: center; gap: 5px;
+}
+/* 角标改为随 flex 流式排布（原 .card-media .badge 是绝对定位） */
+.card-media .hist-corner .badge { position: static; top: auto; right: auto; }
+.history-card-media .hist-corner { right: 6px; }
+.card-media .hist-del {
+  all: unset; position: absolute; top: 6px; right: 6px; z-index: 7; cursor: pointer; flex: none;
+  min-height: 26px; padding: 3px 8px; border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  background: rgba(0,0,0,.62); color: #dfe2ea;
+  border: 1px solid rgba(255,255,255,.24); backdrop-filter: none; font-size: 12px; font-weight: 650; line-height: 1.2;
+  transition: background .14s, color .14s, border-color .14s, transform .14s;
+}
+.card-media .hist-del:hover { background: #e5484d; color: #fff; border-color: #e5484d; transform: none; }
+.card-media .hist-del:focus-visible { outline: var(--focus-ring); outline-offset: 1px; }
+.card-media .hist-card-action { display: block; width: 100%; padding: 0; text-align: left; }
+
+/* 单条移除后的撤销条（跨整宽，贴在内容区顶部） */
+.hist-undo {
+  display: flex; align-items: center; gap: 10px;
+  margin: 8px 14px 0; padding: 7px 12px;
+  background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: var(--radius);
+  font-size: 12px; color: var(--text-dim);
+}
+.hist-undo .linkbtn { margin-left: auto; }
+.hist-undo .muted-btn { margin-left: 0; color: var(--text-dim); }
+
+/* ---- ★ 2026-10-16（用户要求）：点播页「筛选」开关（右上角）----
+   ★ 2026-10-16 二次调整（用户要求）：「**分类那一列始终显示**，并与「筛选」按钮**同一水平线**；
+     点「筛选」后**下面**再弹出其余全部筛选组」—— 所以
+     · `.home-filter-row` = 一行 flex：左「分类」级（占满剩余宽度，chips 内部换行）+ 右「筛选」按钮（靠 `margin-left:auto`）；
+     · `.home-filters-more` = 下面弹出的其余筛选组（带轻微上浮淡入）。
+   ★ 开启态按钮**右下角带一个对号**角标（`.hf-check`），样式与「收藏」按钮同款口径
+     （`:root[data-theme]` 前缀压过各皮肤 button 规则，§C54 教训）。 */
+.home-filter-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+/* 「分类」那一级撑满剩余宽度；按钮靠右且始终停在第一行 */
+.home-filter-row .cascade { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+.home-filter-row .home-filter-btn { margin-left: auto; flex: 0 0 auto; }
+/* 大豆（卡片筛选条）：这一行只剩「分类」一级 ⇒ 去掉 `.db-filters` 那层白卡（避免"卡里只有一行、按钮在卡外"） */
+:root[data-filter='card'] .home-filter-row .db-filters {
+  background: none; border: none; box-shadow: none; border-radius: 0; padding: 0; margin-bottom: 0;
+}
+/* 点「筛选」后弹出的其余筛选组：轻微上浮淡入（`popUp` 关键帧在下方进场系统里定义） */
+.home-filters-more { animation: popUp var(--dur-panel) var(--ease-enter) both; }
+.home-filter-btn { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.home-filter-btn svg { flex: 0 0 auto; }
+:root[data-theme] .home-filter-btn.active { color: var(--text-accent); border-color: var(--text-accent, var(--accent)); background: var(--accent-soft); }
+:root[data-theme] .home-filter-btn.active:hover { color: var(--text-accent); border-color: var(--text-accent, var(--accent)); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* 开启态对号：贴在按钮**右下角**、略微外挂（不需要描边环也能与按钮分离） */
+.home-filter-btn .hf-check {
+  position: absolute; right: -5px; bottom: -5px;
+  display: flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-size: 12px; line-height: 1; font-weight: 700;
+}
+
+/* ---- ★ 2026-10-16（用户要求「瀑布模式下增加回到顶部按钮」「翻页增加输入页码快速跳页」）----
+   模式切换已挪到「配置 → 外观」（点播页不再放切换按钮）：
+   · 瀑布模式：右下角「回到顶部」浮钮（下滚一定距离才出现，见 HomePage 的 scroll 监听）；
+   · 翻页模式：翻页行内的窄输入框 + 「跳页」（复用既有的整页 replace 路径与页码语义）。 */
+/* ★ 特异度：各皮肤有 `:root[data-theme='X'] button {…}`（0,2,1）、`…:hover`（0,3,1）——
+   这里带 `:root[data-theme]` 前缀（0,3,0 / hover 0,4,0）稳压它们（§C54 教训）。 */
+.btn-to-top, :root[data-theme] .btn-to-top {
+  position: fixed; right: 22px; bottom: 22px; z-index: 45;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 42px; height: 42px; padding: 0; border-radius: 50%;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim);
+  box-shadow: var(--shadow); cursor: pointer;
+  animation: popUp var(--dur-state) var(--ease-standard);
+}
+:root[data-theme] .btn-to-top:hover { color: var(--text-accent); border-color: var(--text-accent, var(--accent)); background: var(--accent-soft); box-shadow: var(--shadow), 0 0 0 3px var(--accent-soft); }
+:root[data-theme] .btn-to-top:active { transform: translateY(1px); }
+/* 跳页输入框：窄、数字居中（其余输入框样式沿用 global 的 input 规则） */
+.pg-jump, :root[data-theme] .pg-jump { width: 64px; text-align: center; padding: 7px 8px; }
+
+/* ---- ★ 2026-10-17（用户要求「详情页加收藏按钮 + 收藏列表」）---- */
+/* 详情页操作区的收藏按钮（与「▶ 播放选中」同一行） */
+.fav-btn { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+/* 皮肤里针对 button / .tag 的选择器特异度更高 → 带 `:root[data-theme]` 前缀保证「已收藏」态生效（§C54 教训） */
+:root[data-theme] .fav-btn.active { color: var(--text-accent); border-color: var(--text-accent, var(--accent)); background: var(--accent-soft); }
+:root[data-theme] .fav-btn.active:hover { color: var(--text-accent); border-color: var(--text-accent, var(--accent)); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* 收藏页：备注行（点击即编辑）与卡片内行内编辑面板 */
+.fav-note {
+  margin-top: 4px; font-size: 12px; color: var(--text-accent-secondary, var(--text-secondary)); cursor: text;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fav-edit { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-top: 1px solid var(--border-soft); }
+.fav-edit input { font-size: 12px; padding: 5px 7px; width: 100%; }
+
+/* ---- 表格 ---- */
+table { border-collapse: collapse; }
+th { font-weight: 600; }
+th, td { padding: 8px 10px; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
+tr.selectable { cursor: pointer; transition: background .12s; }
+tr.selectable:hover { background: var(--surface-2); }
+tr.active-row { background: var(--accent-soft) !important; outline: 1px solid rgba(91,140,255,.45); outline-offset: -1px; }
+
+}

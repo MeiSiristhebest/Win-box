@@ -1,10 +1,24 @@
 import type { ComponentType, ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
-import TitleBar from '../components/TitleBar';
+import { Nav, NavItem, NavSectionHeader } from '@fluentui/react-components';
+import {
+  Clock20Regular,
+  HardDrive20Regular,
+  Home20Regular,
+  Info20Regular,
+  PlayCircle20Regular,
+  Settings20Regular,
+  Star20Regular,
+  Trophy20Regular,
+  Wifi120Regular,
+} from '@fluentui/react-icons';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import WindowTitleBar from './WindowTitleBar';
 import AppAmbient from '../components/AppAmbient';
 import SearchPanel from '../components/SearchPanel';
 import SourcePicker from '../components/SourcePicker';
 import { ProfileSwitcher } from '../features/subscriptions/ProfileSwitcher';
+import { profileSwitcherAdapter } from '../features/subscriptions/adapters/profileSwitcherAdapter';
+import { sourcePickerAdapter } from '../features/subscriptions/adapters/sourcePickerAdapter';
 import type { Theme } from '../lib/themeTokens';
 import type { ShellPresentation } from '../lib/themeTokens';
 
@@ -83,6 +97,18 @@ const APP_ICONS: Record<string, ReactNode> = {
   ),
 };
 
+const DESKTOP_NAV_ICONS: Record<string, ReactNode> = {
+  '/': <Home20Regular />,
+  '/boards': <Trophy20Regular />,
+  '/home': <PlayCircle20Regular />,
+  '/history': <Clock20Regular />,
+  '/favorites': <Star20Regular />,
+  '/live': <Wifi120Regular />,
+  '/storage': <HardDrive20Regular />,
+  '/config': <Settings20Regular />,
+  '/about': <Info20Regular />,
+};
+
 export const APP_NAV_GROUPS: AppNavGroup[] = [
   { label: '媒体', items: NAV.filter((item) => ['/', '/boards', '/home', '/history', '/favorites', '/live', '/storage'].includes(item.to)) },
   { label: '其他', items: NAV.filter((item) => ['/config', '/about'].includes(item.to)) },
@@ -121,7 +147,7 @@ function DesktopHeader({ pageTitle, onBack, backDisabled }: ShellChromeProps) {
   return (
     <header className="desktop-topbar">
       <div className="desktop-brand">
-        <span className="desktop-brand-mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 5v14l12-7L6 5Z" fill="currentColor" /></svg></span>
+        <span className="desktop-brand-mark"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" /><circle cx="12" cy="12" r="2.1" fill="currentColor" /><circle cx="12" cy="6.8" r="1" fill="currentColor" /><circle cx="16.5" cy="9.4" r="1" fill="currentColor" /><circle cx="16.5" cy="14.6" r="1" fill="currentColor" /><circle cx="12" cy="17.2" r="1" fill="currentColor" /><circle cx="7.5" cy="14.6" r="1" fill="currentColor" /><circle cx="7.5" cy="9.4" r="1" fill="currentColor" /></svg></span>
         <span>Win-Box</span>
       </div>
       <button type="button" className="desktop-back" aria-label="返回" title="返回（Alt + ←）" disabled={backDisabled} onClick={onBack}>
@@ -130,40 +156,66 @@ function DesktopHeader({ pageTitle, onBack, backDisabled }: ShellChromeProps) {
       <span className="desktop-location"><span>媒体库</span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m6 4 4 4-4 4" /></svg>{pageTitle === '配置' ? '设置' : pageTitle}</span>
       <SearchPanel bar />
       <span className="desktop-topbar-space" />
-      <TitleBar />
+<WindowTitleBar />
     </header>
   );
 }
 
 function DesktopSidebar({ navItems }: ShellChromeProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const groups = [
     { label: '浏览', routes: ['/', '/boards', '/home', '/live', '/storage'] },
     { label: '资料库', routes: ['/history', '/favorites'] },
   ];
-  const renderLink = (item: AppNavItem) => (
-    <NavLink key={item.to} to={item.to} end={item.end} title={item.label} aria-label={item.label} className={({ isActive }) => 'desktop-nav-item' + (isActive ? ' active' : '')}>
-      <span className="desktop-nav-icon">{APP_ICONS[item.to]}</span>
-      <span className="desktop-nav-label">{item.label}</span>
-    </NavLink>
-  );
+  const route = /^\/(detail|search|play)(\/|$)/.test(location.pathname) ? '/home' : location.pathname;
+  const selected = navItems.find((item) => item.end ? route === item.to : route === item.to || route.startsWith(`${item.to}/`))?.to;
+  const sections = groups.flatMap((group) => {
+    const items = navItems.filter((item) => group.routes.includes(item.to));
+    return items.length ? [
+      <NavSectionHeader className="desktop-nav-section" key={`section-${group.label}`}>{group.label}</NavSectionHeader>,
+      ...items.map((item) => (
+        <NavItem
+          key={item.to}
+          value={item.to}
+          icon={<>{DESKTOP_NAV_ICONS[item.to]}</>}
+          className="desktop-nav-item"
+          title={item.label}
+        >
+          {item.label}
+        </NavItem>
+      )),
+    ] : [];
+  });
+  const appItems = navItems.filter((item) => ['/config', '/about'].includes(item.to));
   return (
     <>
-      <nav className="desktop-navigation" aria-label="主导航">
-        {groups.map(group => (
-          <div className="desktop-nav-group" key={group.label}>
-            <div className="desktop-group-label">{group.label}</div>
-            {navItems.filter(item => group.routes.includes(item.to)).map(renderLink)}
-          </div>
-        ))}
-      </nav>
+      <Nav
+        className="desktop-navigation desktop-fluent-nav"
+        aria-label="主导航"
+        selectedValue={selected}
+        onNavItemSelect={(_event, data) => navigate(String(data.value))}
+      >
+        {sections}
+      </Nav>
       <section className="desktop-context" aria-label="当前内容来源">
         <div className="desktop-group-label">内容来源</div>
-        <ProfileSwitcher />
-        <SourcePicker variant="sidebar" />
+        <ProfileSwitcher port={profileSwitcherAdapter} />
+        <SourcePicker port={sourcePickerAdapter} variant="sidebar" />
       </section>
-      <nav className="desktop-secondary" aria-label="应用管理">
-        {navItems.filter(item => ['/config', '/about'].includes(item.to)).map(renderLink)}
-      </nav>
+      <Nav
+        className="desktop-secondary desktop-fluent-nav"
+        aria-label="应用管理"
+        selectedValue={selected}
+        onNavItemSelect={(_event, data) => navigate(String(data.value))}
+      >
+        {appItems.length > 0 && <NavSectionHeader className="desktop-nav-section">应用</NavSectionHeader>}
+        {appItems.map((item) => (
+          <NavItem key={item.to} value={item.to} icon={<>{DESKTOP_NAV_ICONS[item.to]}</>} className="desktop-nav-item" title={item.label}>
+            {item.label}
+          </NavItem>
+        ))}
+      </Nav>
     </>
   );
 }
@@ -181,9 +233,9 @@ function IntegratedNavHeader({ navItems }: ShellChromeProps) {
       </div>
       <span className="nf-spacer" />
       <SearchPanel />
-      <ProfileSwitcher />
-      <SourcePicker />
-      <TitleBar />
+      <ProfileSwitcher port={profileSwitcherAdapter} />
+      <SourcePicker port={sourcePickerAdapter} />
+<WindowTitleBar />
     </nav>
   );
 }
@@ -195,9 +247,9 @@ function BilibiliHeader({ navItems }: ShellChromeProps) {
         <span className="bb-brand" title="Win-Box"><span className="bb-brand-mark" aria-hidden="true">b</span>WIN-BOX</span>
         <SearchPanel bar />
         <span className="bb-spacer" />
-        <ProfileSwitcher />
-        <SourcePicker />
-        <TitleBar />
+        <ProfileSwitcher port={profileSwitcherAdapter} />
+          <SourcePicker port={sourcePickerAdapter} />
+        <WindowTitleBar />
       </div>
       <nav className="bb-tabs">
         {navItems.map((item) => <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => 'bb-tab' + (isActive ? ' active' : '')}>{item.label}</NavLink>)}
@@ -209,7 +261,7 @@ function BilibiliHeader({ navItems }: ShellChromeProps) {
 function AppleToolbar({ pageTitle, onBack, backDisabled }: ShellChromeProps) {
   return (
     <header className="ap-toolbar">
-      <TitleBar variant="mac" />
+<WindowTitleBar variant="mac" />
       <button className="ap-navbtn" title="返回" aria-label="返回" disabled={backDisabled} onClick={onBack}>
         <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M9.8 3.4 5.2 8l4.6 4.6" />
@@ -218,8 +270,8 @@ function AppleToolbar({ pageTitle, onBack, backDisabled }: ShellChromeProps) {
       <span className="ap-toolbar-title">{pageTitle}</span>
       <span className="ap-spacer" />
       <SearchPanel />
-      <ProfileSwitcher />
-      <SourcePicker />
+      <ProfileSwitcher port={profileSwitcherAdapter} />
+      <SourcePicker port={sourcePickerAdapter} />
     </header>
   );
 }
@@ -243,7 +295,7 @@ function AppleSidebar({ appleGroups, appIcon }: ShellChromeProps) {
         </div>
       ))}
       <div className="ap-side-spacer" />
-      <SourcePicker variant="sidebar" />
+      <SourcePicker port={sourcePickerAdapter} variant="sidebar" />
     </>
   );
 }
@@ -259,9 +311,9 @@ function DoubanHeader({ navItems, appIcon, pageTitle }: ShellChromeProps) {
         <span className="db-title">{pageTitle}</span>
         <SearchPanel bar />
         <span className="db-spacer" />
-        <ProfileSwitcher />
-        <SourcePicker />
-        <TitleBar />
+        <ProfileSwitcher port={profileSwitcherAdapter} />
+        <SourcePicker port={sourcePickerAdapter} />
+<WindowTitleBar />
       </div>
       <nav className="db-nav">
         {navItems.map((item) => (

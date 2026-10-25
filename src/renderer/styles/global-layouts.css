@@ -1,0 +1,13 @@
+@layer layouts {
+  .nf-links { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 0 1 auto; padding-block: 4px; }
+  @media (max-width: 1120px) {
+    .nf-nav { flex-wrap: wrap; row-gap: 4px; padding-block: 8px; }
+    .nf-links { order: 1; flex: 1 0 100%; overflow-x: auto; scrollbar-width: thin; gap: 20px; -webkit-app-region: no-drag; }
+  }
+  @media (max-width: 800px) {
+    .nf-logo { font-size: 0; gap: 0; }
+    .bb-top, .db-topbar, .ap-toolbar { gap: 6px; padding-inline: 8px; }
+    .bb-brand { font-size: 0; gap: 0; }
+    .srcpick-text { max-width: 100px; }
+  }
+}

@@ -19,9 +19,16 @@
   /* ---- 文本 ---- */
   --text: #ffffff;
   --text-dim: #b3b3b3;
-  --text-faint: #808080;
+  --text-faint: #a3a3a3;
+  --text-accent: #ff858a;
+  --text-accent-secondary: #ffaaaa;
+  --text-danger: #ff9292;
+  --text-warn: #ffd287;
+  --text-success: #83e2bc;
+  --text-disabled: #b3b3b3;
   /* ---- 分隔与语义色 ---- */
-  --border: #2a2a2d;
+  /* Functional control/card boundary; keep the softer decorative rules below separate. */
+  --border: #707176;
   --border-soft: rgba(255, 255, 255, .1);
   --hairline: rgba(255, 255, 255, .12);
   --danger: #eb3942;

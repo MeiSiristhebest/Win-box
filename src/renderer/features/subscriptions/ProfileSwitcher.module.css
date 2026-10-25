@@ -1,6 +1,6 @@
 @layer components {
 .trigger { display: inline-flex; align-items: center; gap: 6px; max-width: 210px; flex: 0 1 auto; padding: 5px 10px; -webkit-app-region: no-drag; }
-.triggerLabel { color: var(--text-secondary); font-size: 11px; white-space: nowrap; }
+.triggerLabel { color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
 .current { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dialog[open] { display: flex; flex-direction: column; width: min(640px, calc(100vw - 48px)); color: var(--text); }
 .heading, .footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }

@@ -1,0 +1,157 @@
+@layer legacy {
+/* 基础控件和插件可选的展示结构。
+   内置浅深外观及统一桌面布局由 desktop.css 定义。
+   旧展示结构保留用于插件，不再作为内置外观提供。 */
+:root {
+  /* ===== 表面与层级 ===== */
+  --surface-0: #0a0c10;
+  --surface-1: rgba(15, 18, 24, .85);
+  --surface-2: rgba(20, 24, 31, .82);
+  --surface-3: rgba(27, 32, 42, .82);
+  --surface-glass: rgba(9, 11, 15, .9);
+  /* ===== 品牌与强调 ===== */
+  --accent: #5b8cff;
+  --accent-strong: #4d7fff;
+  --accent-container: #5b8cff;
+  --accent-soft: rgba(91, 140, 255, .14);
+  --on-accent: #0a0c10;
+  --accent-2: #63e6be;
+  /* ===== 文本 ===== */
+  --text: #e8ecf4;
+  --text-dim: #8a93a6;
+  --text-faint: #8a93a6;
+  --text-accent: #a9c4ff;
+  --text-accent-secondary: #91e6cb;
+  --text-danger: #ff9292;
+  --text-warn: #ffd287;
+  --text-success: #83e2bc;
+  --text-disabled: #a5afbe;
+  /* ===== 分隔与语义色 ===== */
+  --border: #262c3b;
+  --border-soft: rgba(38, 44, 59, .5);
+  --hairline: rgba(38, 44, 59, .5);
+  --danger: #ff6b6b;
+  --warn: #ffc25e;
+  --success: #63e6be;
+  --info: #5b8cff;
+  /* ===== 形状与光影 ===== */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --shadow: 0 8px 24px rgba(0, 0, 0, .35);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, .5);
+  /* ===== 动效（全皮肤共用节奏，皮肤只可微调） =====
+     动效曲线/时长取开源规范 **Material 3**（Standard / Emphasized 三档 + Expressive 快档曲线），
+     时长按 M1「桌面端比移动端更短」的口径收紧（状态 200ms / 面板 280ms / 页面 440ms）。 */
+  --ease-standard: cubic-bezier(.2, 0, 0, 1);     /* M3 Standard：起止都在屏内的状态切换 */
+  --ease-enter: cubic-bezier(.05, .7, .1, 1);     /* M3 Emphasized decelerate：进场（全速入、缓停） */
+  --ease-exit: cubic-bezier(.3, 0, .8, .15);      /* M3 Emphasized accelerate：出场（比进场快） */
+  --ease-spring: cubic-bezier(.31, .94, .34, 1);  /* M3 Expressive 快档：按压/悬停等反馈 */
+  --dur-instant: .1s;   /* 输入确认：按压、开关翻转 */
+  --dur-quick: .15s;    /* 微交互：颜色/边框 */
+  --dur-state: .2s;     /* 状态变化：悬停、选中、浮层 */
+  --dur-panel: .28s;    /* 面板/对话框：展开收起 */
+  --dur-page: .44s;     /* 页面进场 */
+  /* ===== 字级（紧凑桌面档：12 / 12 / 13.5 / 15 / 18 / 22） ===== */
+  --fs-xs: 12px;
+  --fs-sm: 12px;
+  --fs-md: 13.5px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 22px;
+  /* ===== 宿主自用（**不在皮肤词表内**）：布局度量 + 字体栈 + 焦点环 =====
+     布局度量由 `layout` 声明的 navHeight / sideWidth / cardWidth 写入（见 lib/theme.ts）。 */
+  --nav-h: 54px;
+  --side-w: 208px;
+  --card-w: 132px;
+  --font-ui: -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  --focus-ring: 2px solid var(--text-accent);
+}
+
+/* ===== 亮色基线：`base='light'` 的皮肤（含插件皮肤）在此之上覆盖令牌 ===== */
+:root[data-base='light'] {
+  --surface-0: #f5f5f7;
+  --surface-1: rgba(255, 255, 255, .8);
+  --surface-2: rgba(255, 255, 255, .92);
+  --surface-3: #ffffff;
+  --surface-glass: rgba(250, 250, 252, .85);
+  --accent: #0069d9;
+  --accent-strong: #0057ba;
+  --accent-container: #0069d9;
+  --accent-soft: rgba(0, 105, 217, .12);
+  --on-accent: #ffffff;
+  --accent-2: #5e5ce6;
+  --text: #1d1d1f;
+  --text-dim: #6e6e73;
+  --text-faint: #596474;
+  --text-accent: #174f9c;
+  --text-accent-secondary: #5d478c;
+  --text-danger: #a11c14;
+  --text-warn: #714700;
+  --text-success: #176747;
+  --text-disabled: #596474;
+  --border: rgba(60, 60, 67, .16);
+  --border-soft: rgba(60, 60, 67, .1);
+  --hairline: rgba(60, 60, 67, .12);
+  --danger: #ff3b30;
+  --warn: #ff9500;
+  --success: #28c840;
+  --info: #0069d9;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-lg: 18px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 10px 30px rgba(0, 0, 0, .07);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, .06), 0 24px 60px rgba(0, 0, 0, .12);
+}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  background:
+    radial-gradient(1200px 500px at 85% -10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 60%),
+    radial-gradient(900px 420px at -10% 110%, color-mix(in srgb, var(--accent-2) 8%, transparent), transparent 55%),
+    var(--surface-glass);
+  color: var(--text);
+  font: 14px/1.55 -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  overflow: hidden;
+  -webkit-user-select: none; user-select: none;
+}
+a { color: var(--text-accent); text-decoration: none; }
+button {
+  font: inherit; cursor: pointer; color: var(--text);
+  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 6px 13px; transition: border-color var(--dur-quick) var(--ease-standard), transform var(--dur-instant) var(--ease-spring), box-shadow var(--dur-state) var(--ease-standard), color var(--dur-quick) var(--ease-standard);
+}
+button:hover { border-color: var(--text-accent, var(--accent)); color: var(--text); box-shadow: 0 0 0 3px var(--accent-soft); }
+button:active { transform: translateY(1px); }
+button.primary { background: linear-gradient(135deg, #4f86ff, #6a5cff); border-color: transparent; color: #fff; }
+button.primary:hover { box-shadow: 0 4px 16px rgba(90, 110, 255, .35); }
+button:disabled {
+  color: var(--text-disabled, var(--text-dim));
+  opacity: 1;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.cfg-tab-header {
+  align-items: flex-end;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+.cfg-tab-control { border: 0; flex: 1 1 600px; margin: 0; min-width: 0; }
+.cfg-panel:focus-visible { outline: var(--focus-ring); outline-offset: 3px; }
+.linkbtn { background: none; border: none; color: var(--text-accent); padding: 1px 5px; font-size: 12px; border-radius: 4px; }
+.linkbtn:hover { background: var(--accent-soft); color: var(--text-accent); box-shadow: none; }
+.linkbtn.danger { color: var(--text-danger); }
+.linkbtn.danger:hover { background: rgba(255,107,107,.12); }
+input, select, textarea {
+  font: inherit; background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 11px; transition: border-color var(--dur-quick) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard);
+}
+input:hover, select:hover, textarea:hover { border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--text-accent, var(--accent)); box-shadow: 0 0 0 3px var(--accent-soft); }
+::placeholder { color: var(--text-secondary); opacity: 1; }
+
+}

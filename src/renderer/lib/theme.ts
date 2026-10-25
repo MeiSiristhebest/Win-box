@@ -1,18 +1,17 @@
 import { useSyncExternalStore } from 'react';
-import { client } from '../api/client';
 import { readPreference, subscribePreference, writePreference } from './preferenceStore';
+import { UI_PREFERENCE_KEYS } from './uiPreferenceMapping';
 import { DEFAULT_THEME, allSkins, normalizeTheme, registerPluginSkins, skinBase, skinLayout, themes, SEMANTIC_TOKEN_NAMES, type Theme } from './themeTokens';
-import type { ThemeLayout } from '../../shared/plugin';
+import type { ThemeLayout, ThemeSkinView } from '../../shared/plugin';
 
 export type { Theme };
-const KEY = 'winbox-theme';
+const KEY = UI_PREFERENCE_KEYS.theme;
 const STYLE_ID = 'winbox-plugin-themes';
 const UNSAFE_VALUE = /[;{}<>]|url\s*\(|expression\s*\(|@import|\/\*/i;
 const SAFE_NAME = /^--[a-z0-9-]+$/i;
 export const THEME_EVENT = 'winbox:theme-changed';
 export const THEMES_EVENT = 'winbox:themes-changed';
 let registryRevision = 0;
-let registryRequest = 0;
 const pluginAliases = { surface: 'var(--surface-0)', 'surface-raised': 'var(--surface-2)', 'surface-elevated': 'var(--surface-3)', 'text-primary': 'var(--text)', 'text-secondary': 'var(--text-dim)', 'color-accent': 'var(--accent)', 'on-accent': 'var(--text)', 'color-danger': 'var(--danger)', 'on-danger': '#111111', 'border-subtle': 'var(--border-soft)', backdrop: 'var(--surface-glass)', 'radius-control': 'var(--radius-sm)', 'radius-container': 'var(--radius)' };
 
 function applyLayoutVars(layout: ThemeLayout): void {
@@ -96,15 +95,9 @@ function injectPluginSkinCss(): void {
 
 
 
-export async function loadSkinRegistry(): Promise<void> {
-  const request = ++registryRequest;
-  let ready = false;
-  try {
-    const skins = await client.pluginThemes();
-    if (request !== registryRequest) return;
-    registerPluginSkins(skins);
-    ready = true;
-  } catch { if (request !== registryRequest) return; }
+export function synchronizePluginThemeRegistry(skins?: ThemeSkinView[]): void {
+  const ready = skins !== undefined;
+  if (skins) registerPluginSkins(skins);
   injectPluginSkinCss();
   const raw = readPreference(KEY);
   const theme = normalizeTheme(raw);
@@ -116,7 +109,6 @@ export async function loadSkinRegistry(): Promise<void> {
 
 export function initTheme(): Theme {
   applyThemeToDocument(normalizeTheme(readPreference(KEY)));
-  void loadSkinRegistry();
   return currentTheme();
 }
 

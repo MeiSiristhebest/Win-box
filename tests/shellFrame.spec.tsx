@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { APP_NAV_GROUPS, NAV, ShellFrame } from '../src/renderer/layouts/ShellLayouts';
 import type { ShellFrameProps } from '../src/renderer/layouts/ShellLayouts';
 
-vi.mock('../src/renderer/components/TitleBar', () => ({ default: () => null }));
+vi.mock('../src/renderer/layouts/WindowTitleBar', () => ({ default: () => null }));
 vi.mock('../src/renderer/components/SearchPanel', () => ({ default: () => null }));
 vi.mock('../src/renderer/components/SourcePicker', () => ({ default: () => null }));
 

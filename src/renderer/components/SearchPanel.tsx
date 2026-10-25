@@ -1,242 +1,38 @@
-// src/renderer/components/SearchPanel.tsx
-// ★ 2026-09-24（用户定稿）：TopNav 皮肤（Netflix / 哔哩哔哩）把搜索改成**右上角搜索按钮** ——
-//   点击展开面板：默认展示百度电影热搜（独立榜单，保留排名和指数），
-//   输入时 250ms 防抖查**自动联想**（TMDB / 豆瓣，随「元数据来源策略」），
-//   回车或点击任一条 → 跳 /search?agg=<关键词>（复用 HomePage 的全源搜索入口）。
-// ★ 2026-09-29（用户要求）：搜索框做大；热搜做成**右侧排名榜**；左侧下方为**搜索历史**
-//   （逐条可删 ✕、下方「清空搜索记录」、上限 10 条，第 11 条顶掉第 1 条）。
-import { useEffect, useId, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { useAnchoredPanel } from './useAnchoredPanel';
-import { client } from '../api/client';
-import { openSearchWindow } from '../lib/searchWin';
-import { isNativeModalOpen } from '../lib/modalScope';
+import { useMemo } from 'react';
+import { createSearchPanelAdapters } from '../features/search/adapters/searchPanelAdapters';
+import { useSearchPanelPresenter } from '../features/search/useSearchPanelPresenter';
 import { useAppDialog } from './AppDialog';
-import type { MetaSuggestion } from '../../shared/meta';
-import type { MovieHotList } from '../../shared/types';
-import {
-  clearSearchHistory,
-  loadSearchHistory,
-  pushSearchTerm,
-  removeSearchTerm,
-  saveSearchHistory,
-} from '../lib/searchHistory';
+import { SearchPanelView } from './SearchPanelView';
 
-const DEBOUNCE_MS = 250;
-/** 热搜榜展示条数（右侧排名列） */
-const HOT_RANK_MAX = 10;
-
-/**
- * ★ 2026-10-08（用户要求「豆风要大改布局」）：`bar` 变体 —— 豆风皮肤顶栏把搜索做成
- *   **M3 搜索条**（宽胶囊 + 占位文案），其余皮肤保持原来的「🔍 搜索」小胶囊（零影响）。
- */
+/** Composition point for search recommendations, local history and search-window navigation. */
 export default function SearchPanel({ bar = false }: { bar?: boolean }) {
   const dialog = useAppDialog();
-  const [open, setOpen] = useState(false);
-  const [q, setQ] = useState('');
-  const [hot, setHot] = useState<MovieHotList | null>(null);
-  const [hotLoading, setHotLoading] = useState(false);
-  const [hotAttempt, setHotAttempt] = useState(0);
-  const [sug, setSug] = useState<MetaSuggestion[]>([]);
-  const [busy, setBusy] = useState(false);
-  /** ★ 2026-09-29：搜索历史（localStorage，最多 10 条） */
-  const [hist, setHist] = useState<string[]>([]);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const timerRef = useRef<number | null>(null);
-  const panelId = useId();
-  const panelRef = useRef<HTMLElement | null>(null);
-  const panelPosition = useAnchoredPanel(open, triggerRef, panelRef, 520);
+  const ports = useMemo(() => createSearchPanelAdapters(), []);
+  const presenter = useSearchPanelPresenter(ports);
 
-  /** 每次打开读主进程缓存；过期后台更新，下次打开即可看到更新后的真实榜单。 */
-  useEffect(() => {
-    if (!open) return;
-    let alive = true;
-    client
-      .metaMovieHot()
-      .then((result) => { if (alive) setHot(result); })
-      .catch(() => undefined)
-      .finally(() => { if (alive) setHotLoading(false); });
-    return () => { alive = false; };
-  }, [open, hotAttempt]);
-
-  // 打开时聚焦输入框；外部点击 / Esc 关闭
-  useEffect(() => {
-    if (!open) return;
-    inputRef.current?.focus();
-    const onDoc = (e: MouseEvent): void => {
-      if (!wrapRef.current?.contains(e.target as Node) && !panelRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: globalThis.KeyboardEvent): void => {
-      if (isNativeModalOpen()) return;
-      if (e.key === 'Escape' && !e.isComposing) {
-        e.preventDefault();
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  // 联想：250ms 防抖（过期请求按代际丢弃，避免回填错词）
-  useEffect(() => {
-    let cancelled = false;
-    if (timerRef.current !== null) clearTimeout(timerRef.current);
-    const term = q.trim();
-    if (!open || !term) return;
-    timerRef.current = window.setTimeout(() => {
-      client
-        .metaSuggest(term)
-        .then((list) => {
-          if (!cancelled) setSug(list || []);
-        })
-        .catch(() => { if (!cancelled) setSug([]); })
-        .finally(() => { if (!cancelled) setBusy(false); });
-    }, DEBOUNCE_MS);
-    return () => {
-      cancelled = true;
-      if (timerRef.current !== null) clearTimeout(timerRef.current);
-    };
-  }, [q, open]);
-
-  const go = (kw: string): void => {
-    const t = (kw || '').trim();
-    if (!t) return;
-    // ★ 2026-09-29：任何入口（回车/联想/热搜/历史）都记入搜索历史（上限 10，FIFO）
-    const next = pushSearchTerm(loadSearchHistory(), t);
-    saveSearchHistory(next);
-    setHist(next);
-    setOpen(false);
-    setQ('');
-    setSug([]);
-    setBusy(false);
-    void openSearchWindow(t).catch((e) => void dialog.alert(`无法打开搜索窗口：${e instanceof Error ? e.message : String(e)}`, { title: '无法打开搜索窗口' }));
-  };
-
-  /** 删除一条搜索历史（不影响列表其它条目） */
-  const delHist = (t: string): void => {
-    const next = removeSearchTerm(hist, t);
-    setHist(next);
-    saveSearchHistory(next);
-  };
-
-  /** 清空搜索历史 */
-  const clearHist = (): void => {
-    clearSearchHistory();
-    setHist([]);
+  const search = (term: string): void => {
+    void presenter.search(term).catch((cause) => {
+      void dialog.alert(`无法打开搜索窗口：${cause instanceof Error ? cause.message : String(cause)}`, { title: '无法打开搜索窗口' });
+    });
   };
 
   return (
-    <div className={`srcpick${bar ? ' sp-bar-wrap' : ''}`} ref={wrapRef}
-      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget) && !panelRef.current?.contains(event.relatedTarget)) setOpen(false); }}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`srcpick-name sp-btn ui-action${bar ? ' sp-bar' : ''}`}
-        aria-expanded={open}
-        aria-controls={panelId}
-        title="搜索（全源搜索，结果边搜边出）"
-        onClick={() => {
-          if (open) { setOpen(false); return; }
-          setHist(loadSearchHistory());
-          setHotLoading(true);
-          setSug([]);
-          setBusy(Boolean(q.trim()));
-          setOpen(true);
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" /><path d="m13 13 4 4" /></svg>
-        {bar ? <span className="sp-bar-hint">搜索影片、剧集、演员</span> : '搜索'}
-      </button>
-      {open && createPortal(
-        <section ref={panelRef} id={panelId} className="sp-panel" style={panelPosition} aria-label="搜索建议">
-          <div className="sp-row">
-            <input
-              ref={inputRef}
-              className="sp-input"
-              aria-label="搜索影片"
-              placeholder="输入片名，按回车搜索全部来源"
-              value={q}
-              onChange={(e) => { setQ(e.target.value); setSug([]); setBusy(Boolean(e.target.value.trim())); }}
-              onKeyDown={(e) => {
-                // ★ 2026-09-26（用户反馈「搜奥特曼却按迪迦奥特曼搜」）：回车**永远搜输入的词** ——
-                //   此前是 `go(sug[0]?.title || q)`，联想列表首条会**悄悄替掉**用户输入
-                //   （输「奥特曼」→ TMDB 首条是「迪迦奥特曼」→ 实际搜的是迪迦）。
-                //   想用联想词请直接点该条。
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) go(q);
-              }}
-            />
-          </div>
-          {q.trim() ? (
-            <div className="sp-list">
-              {busy && <div className="sp-item muted">联想中…</div>}
-              {!busy && sug.length === 0 && <div className="sp-item muted">无联想结果，回车直接全源搜索「{q.trim()}」</div>}
-              {sug.map((s) => (
-                <button type="button" key={`${s.mediaType}:${s.title}:${s.year}`} className="sp-item ui-action" onClick={() => go(s.title)}>
-                  <span>{s.title}</span>
-                  <span className="muted sp-meta">
-                    {s.mediaType === 'tv' ? '剧集' : '电影'}
-                    {s.year ? ` · ${s.year}` : ''}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            /* ★ 2026-09-29（用户要求）：左列 = 搜索历史（可逐条删 + 清空），右列 = 热搜排名榜 */
-            <div className="sp-cols">
-              <div className="sp-hist">
-                <div className="sp-hot-tip muted">搜索历史{hist.length ? `（${hist.length}/${10}）` : ''}</div>
-                {hist.length === 0 ? (
-                  <div className="sp-item muted">暂无搜索记录</div>
-                ) : (
-                  <div className="sp-hist-list">
-                    {hist.map((t) => (
-                      <div key={t} className="sp-item sp-hist-item">
-                        <button type="button" className="sp-hist-txt ui-action" title={t} onClick={() => go(t)}>{t}</button>
-                        <button
-                          className="sp-hist-del"
-                          aria-label={`删除搜索记录 ${t}`}
-                          onClick={(e) => { e.stopPropagation(); delHist(t); }}
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {hist.length > 0 && (
-                  <button type="button" className="sp-clear" onClick={clearHist}>清空搜索记录</button>
-                )}
-              </div>
-              <div className="sp-rank">
-                <div className="sp-hot-tip muted">百度电影热搜榜{hot?.stale && hot.items.length ? ' · 上次缓存' : ''}</div>
-                {hot?.fetchedAt ? <div className="muted">获取于 {new Date(hot.fetchedAt).toLocaleString('zh-CN')}</div> : null}
-                {!hot?.items.length ? (
-                  <div className="sp-item muted">
-                    {hotLoading ? '正在加载热搜…' : <>热搜暂时获取失败，仍可直接搜索 <button onClick={() => { setHotLoading(true); setHotAttempt(n => n + 1); }}>重试</button></>}
-                  </div>
-                ) : (
-                  <div className="sp-rank-list">
-                    {hot.items.slice(0, HOT_RANK_MAX).map((item) => (
-                      <button type="button" key={item.title} className="sp-rank-item ui-action" onClick={() => go(item.title)} title={`${item.title} · 热搜指数 ${item.score}`}>
-                        <span className={`sp-rank-no${item.rank <= 3 ? ' top' : ''}`}>{item.rank}</span>
-                        <span className="sp-rank-txt">{item.title}</span>
-                        <span className="muted sp-hot-score">{item.score}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </section>, document.body,
-      )}
-    </div>
+    <SearchPanelView
+      bar={bar}
+      open={presenter.open}
+      query={presenter.query}
+      hotList={presenter.hotList}
+      hotLoading={presenter.hotLoading}
+      suggestions={presenter.suggestions}
+      suggestionsLoading={presenter.suggestionsLoading}
+      history={presenter.history}
+      onShow={presenter.show}
+      onClose={presenter.close}
+      onSearch={search}
+      onQueryChange={presenter.changeQuery}
+      onRemoveHistory={presenter.removeHistory}
+      onClearHistory={presenter.clearHistory}
+      onRetryHotList={presenter.retryHotList}
+    />
   );
 }

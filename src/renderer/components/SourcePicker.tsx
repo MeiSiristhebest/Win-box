@@ -17,10 +17,10 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPanel } from './useAnchoredPanel';
-import { client } from '../api/client';
-import { notifyProfileChanged } from '../lib/configEvents';
 import { isNativeModalOpen } from '../lib/modalScope';
-import type { ProfileSitesView, SourceBean } from '../../shared/types';
+import type { SourceBean } from '../../shared/types';
+import type { SourcePickerPort } from '../features/subscriptions/application/sourcePickerPort';
+import { useSourcePickerController } from '../features/subscriptions/useSourcePickerController';
 
 export interface SourcePickerProps {
   /** 源列表（不传则内部自取） */
@@ -29,6 +29,8 @@ export interface SourcePickerProps {
   current?: string;
   /** 选中回调（不传则内部调用 cfgSetActiveSource 并广播事件） */
   onPick?: (key: string) => void;
+  /** Source/profile loading and switching are composed outside the view. */
+  port: SourcePickerPort;
   /** 顶栏小按钮 / 侧栏文字行 */
   variant?: 'pill' | 'sidebar';
   disabled?: boolean;
@@ -43,18 +45,11 @@ const LEAVE_HOLD_MS = 3000;
 /** 「回缩」出场动画时长（与 CSS 的 `--dur-panel` 对齐；动画走完才 setOpen(false)，见 scheduleLeave） */
 const CLOSE_ANIM_MS = 280;
 
-export default function SourcePicker({ sites, current, onPick, variant = 'pill', disabled }: SourcePickerProps) {
-  const [ownSites, setOwnSites] = useState<SourceBean[]>([]);
-  const [ownKey, setOwnKey] = useState('');
+export default function SourcePicker({ sites, current, onPick, port, variant = 'pill', disabled }: SourcePickerProps) {
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState('');
-  const [switching, setSwitching] = useState(false);
-  const switchingRef = useRef(false);
-  const ownSequence = useRef(0);
-  /** 换源弹层「左订阅 / 右源」数据（打开时拉取；跨订阅点选后由事件驱动刷新） */
-  const [views, setViews] = useState<ProfileSitesView | null>(null);
-  /** 左栏选中的订阅（默认 = 当前生效订阅） */
-  const [paneId, setPaneId] = useState('');
+  const selfLoad = sites === undefined || current === undefined;
+  const { model, actions } = useSourcePickerController({ port, enabled: selfLoad, open });
+  const { sources: ownSites, activeSourceKey: ownKey, profileSites: views, selectedProfileId: paneId, error, switching } = model;
   /** 源名检索词（只过滤右栏） */
   const [q, setQ] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -65,8 +60,6 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   const panelPosition = useAnchoredPanel(open, triggerRef, panelRef, 420, variant === 'sidebar' ? 'top' : 'bottom');
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const srcColRef = useRef<HTMLDivElement | null>(null);
-  /** ★ 2026-09-30：档案视图请求代次 —— 只认最后一次请求的响应（慢响应不得覆盖新数据） */
-  const viewSeqRef = useRef(0);
   /** ★ 2026-10-16（用户要求「展开即定位当前所在的源」）：当前源那一行的 DOM（定位用，见上面 effect） */
   const activeRef = useRef<HTMLButtonElement | null>(null);
   /** ★ 2026-09-30：鼠标移出的宽限计时器（移回区域内即取消，见 cancelLeave/scheduleLeave） */
@@ -75,84 +68,6 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   const [closing, setClosing] = useState(false);
   /** 回缩动画的收尾计时器（与 leaveTimerRef 一起在「移回区域内 / 卸载」时清掉） */
   const closeTimerRef = useRef<number | null>(null);
-
-  const selfLoad = sites === undefined || current === undefined;
-  const loadOwn = (): void => {
-    if (!selfLoad) return;
-    const request = ++ownSequence.current;
-    client
-      .cfgGet()
-      .then((c) => {
-        if (request !== ownSequence.current) return;
-        setOwnSites(c.sources || []);
-        setOwnKey(c.ui?.activeSourceKey || '');
-      })
-      .catch(() => undefined);
-  };
-
-  /**
-   * 拉取「每份订阅的源清单」。
-   * ★ 2026-09-30（用户报「切换订阅时源列表偶尔残留上一个订阅的源」）：
-   *   ① 代次守卫：只采纳最后一次请求的响应 —— 旧的慢响应回来时整包丢弃（否则会把右栏
-   *      改回上一次打开弹层时的快照，看起来就是"混着上一个订阅的源"）；
-   *   ② `alignActive=true`（每次打开弹层）时把左栏对齐到**当前生效订阅** —— 不再沿用上次
-   *      浏览过的那份订阅，避免打开瞬间右栏还是别人家的源。
-   */
-  const loadViews = (alignActive = false): void => {
-    const seq = ++viewSeqRef.current;
-    client
-      .cfgProfileSites()
-      .then((v) => {
-        if (seq !== viewSeqRef.current) return; // 过期响应丢弃
-        setViews(v);
-        setPaneId((cur) => (alignActive || !(cur && v.profiles.some((p) => p.id === cur)) ? v.activeId : cur));
-      })
-      .catch((cause: unknown) => {
-        if (seq !== viewSeqRef.current) return;
-        setError(cause instanceof Error ? cause.message : String(cause));
-        setViews(null);
-      });
-  };
-
-  useEffect(() => {
-    loadOwn();
-    // 切源（其他入口）/窗口重新聚焦 → 重新对齐当前源（多窗口/多入口一致性）
-    // ★ 2026-09-26：源列表本身变了（配置页导入/删源/切档案后广播 winbox:sources-changed）也要重取，
-    //   否则本组件常驻 App（挂载一次）会一直显示旧的「未导入源」。
-    const onFocus = (): void => loadOwn();
-    const onChanged = (): void => loadOwn();
-    const onSources = (): void => loadOwn();
-    window.addEventListener('focus', onFocus);
-    window.addEventListener('winbox:source-changed', onChanged);
-    window.addEventListener('winbox:sources-changed', onSources);
-    return () => {
-      ownSequence.current += 1;
-      window.removeEventListener('focus', onFocus);
-      window.removeEventListener('winbox:source-changed', onChanged);
-      window.removeEventListener('winbox:sources-changed', onSources);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selfLoad]);
-
-  // 打开时：**先作废旧快照**再拉档案视图 + 复位检索词（订阅可能在配置页改过）
-  // ★ 2026-09-30：views 置 null 是关键 —— 否则弹层会先按「上一次打开时的快照」渲染，
-  //   用户看到的就是**上一个订阅的源列表**（用户报的"残留"）。
-  useEffect(() => {
-    if (!open) return;
-    setQ('');
-    setViews(null);
-    setPaneId('');
-    loadViews(true);
-    // 弹层打开期间配置变了（配置页导入/删源/切档案、跨订阅换源）→ 立即重拉，保持与真实配置一致
-    const onCfgChanged = (): void => loadViews();
-    window.addEventListener('winbox:sources-changed', onCfgChanged);
-    window.addEventListener('winbox:profile-changed', onCfgChanged);
-    return () => {
-      window.removeEventListener('winbox:sources-changed', onCfgChanged);
-      window.removeEventListener('winbox:profile-changed', onCfgChanged);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -256,27 +171,12 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
   const toggleOpen = (): void => {
     if (disabled) return;
     cancelLeave();
-    setError('');
-    setOpen((v) => !v);
-  };
-
-  const pick = async (k: string): Promise<void> => {
-    triggerRef.current?.focus();
-    setOpen(false);
-    if (k === cur) return;
-    if (onPick) {
-      onPick(k);
-      return;
+    actions.clearError();
+    if (!open) {
+      actions.beginOpen();
+      setQ('');
     }
-    try {
-      await client.cfgSetActiveSource(k);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      setOpen(true);
-      return;
-    }
-    setOwnKey(k);
-    window.dispatchEvent(new CustomEvent('winbox:source-changed', { detail: k }));
+    setOpen(!open);
   };
 
   /**
@@ -286,51 +186,26 @@ export default function SourcePicker({ sites, current, onPick, variant = 'pill',
    *   让点播页与各列表按新档案重载。
    *   该订阅无可恢复内容（早期迁移档案 json 为空）→ 仅浏览，不改生效档案。
    */
-  const selectPane = (id: string): void => {
-    if (!id || switchingRef.current || id === views?.activeId) return;
-    switchingRef.current = true;
-    setSwitching(true);
-    setError('');
-    void (async () => {
-      try {
-        await client.cfgActivateProfile(id);
-        setPaneId(id);
-        notifyProfileChanged();
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
-      } finally {
-        switchingRef.current = false;
-        setSwitching(false);
-      }
-    })();
-  };
+  const selectPane = (id: string): void => { void actions.activateProfile(id); };
 
   /**
-   * 点选某源：目标订阅 = 当前生效订阅 → 走既有 pick；
+   * 点选某源：目标订阅 = 当前生效订阅 → 按常规来源选择流程处理；
    * 否则先切换档案再选中源（一步完成），并广播两类变更事件让各页同步。
    */
   const pickSource = async (k: string): Promise<void> => {
-    if (switchingRef.current) return;
-    setError('');
     const targetProfile = pane && multi ? pane.id : '';
     const activeId = views?.activeId || '';
-    if (!targetProfile || targetProfile === activeId) {
-      await pick(k);
-      return;
-    }
     setOpen(false);
     triggerRef.current?.focus();
-    try {
-      await client.cfgSwitchProfileSource(targetProfile, k);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      setOpen(true);
-      return;
-    }
-    setOwnKey(k);
-    // 档案已切换：先广播 profile-changed（点播页强制按新档案重载目标源，含「两订阅同名 key」的情况），
-    // 再广播 sources-changed 让各列表（换源入口/历史页）重取
-    notifyProfileChanged(k);
+    if (!targetProfile || targetProfile === activeId) {
+      if (onPick) {
+        if (k !== cur) onPick(k);
+        return;
+      }
+      if (k === cur) return;
+      if (await actions.selectSource(k)) return;
+    } else if (await actions.selectSource(k, targetProfile, activeId)) return;
+    setOpen(true);
   };
 
   const isSidebar = variant === 'sidebar';

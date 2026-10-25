@@ -1,0 +1,33 @@
+@layer legacy {
+/* ============================================================================
+   ★ 2026-10-18（用户要求「统一皮肤标准」）：宿主结构层 —— 外壳 / 详情 / 发现 / 筛选
+   ----------------------------------------------------------------------------
+   皮肤文件只声明**令牌 + layout**；一切结构样式都在这里，按宿主属性 `data-shell` 限定作用域：
+     topbar   = 单行顶栏（网飝 / 缺省）        dualbar = 双行头（哔哔）
+     sidebar  = 玻璃侧边栏（大果）             pillbar = 胶囊导航 + 浮动圆钮（大豆）
+   插件皮肤声明同一枚举即可复用整层；颜色一律走令牌（换令牌即换色，不用改这里）。
+   验收口径见 docs/design/皮肤与主题规范.md §7。
+   ============================================================================ */
+
+/* ---- 全局文本与底色：各外壳一份（字体栈是宿主自用变量，令牌管配色） ---- */
+:root[data-shell='topbar'] { --font-ui: "Netflix Sans", "Helvetica Neue", "Segoe UI", "Microsoft YaHei", Roboto, Arial, sans-serif; }
+:root[data-shell='dualbar'] { --font-ui: "Noto Sans", "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif; }
+:root[data-shell='sidebar'] { --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif; }
+body { font-family: var(--font-ui); }
+:root[data-shell='topbar'] body { background: var(--surface-glass); letter-spacing: .012em; }
+:root[data-shell='topbar'] a { color: var(--text); }
+:root[data-shell='dualbar'] body { background: var(--surface-0); }
+:root[data-shell='sidebar'] body {
+  background: linear-gradient(180deg, var(--surface-3) 0%, var(--surface-0) 46%,
+    color-mix(in srgb, var(--surface-0) 94%, var(--text)) 100%);
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: .005em;
+}
+:root[data-shell='sidebar'] h2,
+:root[data-shell='sidebar'] h3,
+:root[data-shell='sidebar'] h4 { font-weight: 600; letter-spacing: -.01em; }
+:root[data-shell='pillbar'] h2,
+:root[data-shell='pillbar'] h3,
+:root[data-shell='pillbar'] h4 { font-weight: 800; letter-spacing: -.015em; }
+
+}

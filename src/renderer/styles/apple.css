@@ -14,14 +14,21 @@
   --accent-strong: #0069d9;
   --accent-container: #007aff;
   --accent-soft: rgba(0, 122, 255, .12);
-  --on-accent: #ffffff;
+  --on-accent: #001326;
   --accent-2: #5e5ce6;
   /* ===== 文本 ===== */
   --text: #1d1d1f;
   --text-dim: #606065;
   --text-faint: #606065;
+  --text-accent: #005fb8;
+  --text-accent-secondary: #5347a8;
+  --text-danger: #a11c14;
+  --text-warn: #714700;
+  --text-success: #176747;
+  --text-disabled: #596474;
   /* ===== 分隔与语义色 ===== */
-  --border: rgba(60, 60, 67, .16);
+  /* Functional control/card boundary; keep the softer decorative rules below separate. */
+  --border: #7a7a80;
   --border-soft: rgba(60, 60, 67, .1);
   --hairline: rgba(60, 60, 67, .12);
   --danger: #ff3b30;
@@ -32,8 +39,4 @@
   --radius: 14px;
   --radius-sm: 10px;
   --shadow: 0 1px 2px rgba(0, 0, 0, .05), 0 10px 30px rgba(0, 0, 0, .07);
-}
-
-@layer tokens {
-  :root[data-theme='apple'] { --on-accent: #001326; }
 }

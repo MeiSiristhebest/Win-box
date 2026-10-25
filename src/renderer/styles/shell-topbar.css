@@ -1,0 +1,590 @@
+@layer legacy {
+/* ================= 外壳结构：topbar · 单行顶栏（网飝 / 缺省外壳） —— 迁移自 netflix.css（2026-10-18） ================= */
+/* .tmp/skin-extract/netflix.css — 由 src/renderer/styles/netflix.css 迁出的**结构规则**（2026-10-18 统一皮肤迁移）。
+   本文件只承载「结构 / 间距 / 动效 / 颜色」规则：作用域由皮肤主题属性改写为宿主枚举属性
+   （data-shell / data-detail / data-discover），颜色一律走 global.css 的词表令牌。
+   原文件的中文注释与 ★ 日期标注按原文保留；令牌声明见 src/renderer/styles/netflix.css。 */
+
+/* ---- 全局：纯黑舞台（宿主结构层已统一 body / a；此处仅保留网飝特有的静音灰） ---- */
+:root[data-shell='topbar'] .muted { color: var(--text-faint); }
+
+/* ---- 布局：顶部导航替代侧边栏 ---- */
+:root[data-shell='topbar'] .app { flex-direction: column; background: var(--surface-glass); }
+:root[data-shell='topbar'] .sidebar { display: none; }
+:root[data-shell='topbar'] .main { background: var(--surface-glass); }
+
+/* 标题栏：**并进导航条同一行**（一体化）—— 只保留窗口控制按钮，LOGO 在导航条里 */
+/* ★ 2026-09-24：整条顶栏是可拖拽区，且**两套 TopNav 皮肤共用**（netflix + bilibili）。
+   此前只给 netflix 设了 drag → B 站皮肤整条顶栏拖不动（用户实测：主窗口无法拖拽移动）。
+   交互元素必须 no-drag：导航链接、搜索按钮/换源入口（.srcpick）。标题栏自身的按钮区已在组件内联 no-drag。 */
+:root[data-shell='topbar'] .nf-nav { -webkit-app-region: drag; }
+:root[data-shell='topbar'] .nf-nav .nf-link, :root[data-shell='topbar'] .nf-nav .srcpick { -webkit-app-region: no-drag; }
+:root[data-shell='topbar'] .nf-nav .titlebar { height: auto; width: auto; flex: none; background: transparent; border: none; padding: 0; justify-content: flex-end; }
+:root[data-shell='topbar'] .nf-nav .tb-title { display: none; }
+:root[data-shell='topbar'] .nf-nav .tb-controls { gap: 4px; }
+:root[data-shell='topbar'] .nf-nav .tb-btn {
+  width: 36px; height: 28px; padding: 0; margin: 0; border-radius: var(--radius-sm); color: #b9b9b9;
+  display: inline-flex; align-items: center; justify-content: center; background: transparent;
+}
+:root[data-shell='topbar'] .nf-nav .tb-btn:hover { background: rgba(255, 255, 255, .12); color: var(--text); }
+:root[data-shell='topbar'] .nf-nav .tb-btn.tb-close:hover { background: var(--accent); color: #fff; }
+/* 导航项与窗口按钮等高（都 ~28px），整行视觉一致 */
+:root[data-shell='topbar'] .nf-nav .nf-link { padding: 6px 10px; border-radius: var(--radius-sm); }
+:root[data-shell='topbar'] .nf-nav .nf-link:hover { background: rgba(255, 255, 255, .1); }
+
+/* 顶部导航：logo 左、导航项横排；滚动前是渐变、贴顶后实底 */
+:root[data-shell='topbar'] .nf-nav {
+  display: flex; align-items: center; gap: 20px; flex: none;
+  padding: 10px 26px 14px; z-index: 40;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--surface-glass) 98%, transparent), color-mix(in srgb, var(--surface-glass) 72%, transparent) 60%, transparent);
+}
+/* ★ 2026-09-29 缺陷修复（用户报「Netflix / B 站主题下，历史页与搜索结果页的搜索输入框被挡住无法点击」）：
+   真因 = 层序打平。页面自己的 `.topbar` 也是 `position: relative; z-index: 30`（见 global.css，
+   为修「换源列表被封面遮挡」而设），而 `.nf-nav` 此前同为 30 —— 同为 30 时按 DOM 顺序靠后者胜出，
+   页面在导航之后 ⇒ 页面顶栏稳定压在导航整棵子树之上；搜索面板（.sp-panel，向下展开 520px）
+   的第一行输入框恰好落进页面顶栏的区域 → 看得见却点不到（点击都被页面顶栏接管）。
+   修：导航层提到 40（与 Apple 皮肤工具栏同值，同一先例），整棵子树（含搜索面板）稳定压在页面
+   顶栏之上；页面内的弹层（.srcpick-pop 等）自身被顶栏 30 的层包住，不会反向盖住导航。 */
+:root[data-shell='topbar'] .nf-logo {
+  color: var(--text-accent); font-weight: 900; font-size: 21px; letter-spacing: 2.5px; flex: 0 0 auto;
+  text-shadow: 0 0 22px color-mix(in srgb, var(--accent) 40%, transparent); transition: text-shadow var(--dur-state) var(--ease-standard);
+}
+:root[data-shell='topbar'] .nf-logo:hover { text-shadow: 0 0 30px color-mix(in srgb, var(--accent) 62%, transparent); }
+/* 导航项：颜色过渡 + 下划线扫入（Netflix 现代的「当前位置」语言） */
+:root[data-shell='topbar'] .nf-link {
+  position: relative; color: #ddd; font-size: 14px; font-weight: 500; padding: 2px 0;
+  transition: color var(--dur-quick) var(--ease-standard), background var(--dur-quick) var(--ease-standard);
+}
+:root[data-shell='topbar'] .nf-link::after {
+  content: ''; position: absolute; left: 10px; right: 10px; bottom: -3px; height: 2px; border-radius: 2px;
+  background: var(--accent); transform: scaleX(0); transform-origin: left center;
+  transition: transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='topbar'] .nf-link:hover { color: var(--text); }
+:root[data-shell='topbar'] .nf-link.active { color: var(--text); font-weight: 700; }
+:root[data-shell='topbar'] .nf-link.active::after { transform: scaleX(1); }
+:root[data-shell='topbar'] .nf-nav .nf-spacer { flex: 1; }
+
+/* ---- 顶栏（页面内工具栏）：融进黑底；按钮一律**低调小号**（★ 2026-09-24 用户：太大太突兀） ---- */
+:root[data-shell='topbar'] .topbar { background: var(--surface-glass); border-bottom: none; backdrop-filter: none; min-height: 44px; }
+:root[data-shell='topbar'] .topbar button {
+  background: rgba(255, 255, 255, .07); color: #c9c9c9; padding: 5px 12px; font-size: 12.5px; font-weight: 500;
+  border-radius: var(--radius-sm);
+}
+:root[data-shell='topbar'] .topbar button:hover { background: rgba(255, 255, 255, .14); color: var(--text); }
+/* 顶栏不出现红色 CTA（行动点交给内容区/导航），并隐藏「回到源主页/去导入源」这类冗余入口 */
+:root[data-shell='topbar'] .topbar button.primary { background: rgba(255, 255, 255, .07); color: #c9c9c9; display: none; }
+
+/* ---- 按钮：白底主行动 / 半透明次要 / 红色 CTA；统一弹性过渡 + 按压回弹 ---- */
+:root[data-shell='topbar'] button {
+  background: rgba(109, 109, 110, .55); border: none; color: var(--text);
+  border-radius: var(--radius-sm); font-weight: 500; padding: 6px 14px;
+  transition: background var(--dur-state) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
+    box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring);
+}
+:root[data-shell='topbar'] button:hover { background: rgba(109, 109, 110, .38); color: var(--text); box-shadow: none; }
+:root[data-shell='topbar'] button:active { transform: scale(.96); }
+/* 中央播放键使用 translate(-50%,-50%) 定位，按下时保留居中位置。 */
+:root[data-shell='topbar'] .vp-big:active { transform: translate(-50%, -50%); }
+/* 红色只留给真正的品牌行动（详情页播放键悬停等），普通 primary 不作大红块 */
+:root[data-shell='topbar'] button.primary { background: rgba(255, 255, 255, .14); color: var(--text); font-weight: 600; }
+:root[data-shell='topbar'] button.primary:hover { background: rgba(255, 255, 255, .24); box-shadow: none; }
+/* 详情页「▶ 播放选中」= Netflix 的白色播放键 */
+:root[data-detail='cinema'] .nf-play-btn { background: #fff !important; color: #141414 !important; font-weight: 700; box-shadow: 0 4px 18px rgba(0, 0, 0, .45); }
+:root[data-detail='cinema'] .nf-play-btn:hover { background: rgba(255, 255, 255, .82) !important; }
+:root[data-shell='topbar'] .linkbtn { background: none; color: var(--text); }
+:root[data-shell='topbar'] .tag {
+  background: rgba(109, 109, 110, .35); border: 1px solid rgba(255, 255, 255, .12); color: #e5e5e5;
+  border-radius: var(--radius-sm); padding: 4px 12px;
+  transition: background var(--dur-state) var(--ease-standard), color var(--dur-state) var(--ease-standard),
+    border-color var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='topbar'] .tag:hover { border-color: #fff; color: var(--text); }
+:root[data-shell='topbar'] .tag.active { background: #fff; border-color: #fff; color: var(--on-light); font-weight: 700; animation: nfPop var(--dur-state) var(--ease-spring); }
+@keyframes nfPop { 0% { transform: scale(.88); } 100% { transform: scale(1); } }
+:root[data-shell='topbar'] input,
+:root[data-shell='topbar'] select,
+:root[data-shell='topbar'] textarea {
+  background: rgba(22, 22, 22, .7); border: 1px solid #5a5a5a; color: var(--text);
+  transition: border-color var(--dur-quick) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard);
+}
+:root[data-shell='topbar'] input:focus, :root[data-shell='topbar'] select:focus {
+  border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .14);
+}
+:root[data-shell='topbar'] ::placeholder { color: var(--text-faint); }
+/* 浏览器表面也要是设计的一部分：选中色 / 插入符 */
+:root[data-shell='topbar'] ::selection { background: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text); }
+:root[data-shell='topbar'] input, :root[data-shell='topbar'] textarea { caret-color: var(--text-accent, var(--accent)); }
+
+/* ---- 卡片：无边框无底，hover 弹簧放大 + 海报慢推变焦（Netflix 的核心交互） ---- */
+:root[data-shell='topbar'] .card {
+  background: none; border: none; box-shadow: none; border-radius: 6px; overflow: hidden;
+}
+:root[data-shell='topbar'] .card-media .card { border: none; }
+:root[data-shell='topbar'] .card-media { transition: transform var(--dur-state) var(--ease-spring), z-index 0s; }
+:root[data-shell='topbar'] .card-media:hover {
+  transform: none; z-index: auto;
+}
+:root[data-shell='topbar'] .card-media:hover .card {
+  box-shadow: none; background: var(--surface-2);
+}
+:root[data-shell='topbar'] .card-media img { border-radius: 6px; transition: none; }
+:root[data-shell='topbar'] .card-media:hover img { transform: none; }
+/* 海报墙逐个错开入场（前 12 张；与全局 pageIn 同节奏，列表现身为列表） */
+:root[data-shell='topbar'] .grid > * { animation: nfCardIn var(--dur-page) var(--ease-enter) both; }
+:root[data-shell='topbar'] .grid > :nth-child(1) { animation-delay: 0ms; }
+:root[data-shell='topbar'] .grid > :nth-child(2) { animation-delay: 26ms; }
+:root[data-shell='topbar'] .grid > :nth-child(3) { animation-delay: 52ms; }
+:root[data-shell='topbar'] .grid > :nth-child(4) { animation-delay: 78ms; }
+:root[data-shell='topbar'] .grid > :nth-child(5) { animation-delay: 104ms; }
+:root[data-shell='topbar'] .grid > :nth-child(6) { animation-delay: 130ms; }
+:root[data-shell='topbar'] .grid > :nth-child(7) { animation-delay: 156ms; }
+:root[data-shell='topbar'] .grid > :nth-child(8) { animation-delay: 182ms; }
+:root[data-shell='topbar'] .grid > :nth-child(9) { animation-delay: 208ms; }
+:root[data-shell='topbar'] .grid > :nth-child(10) { animation-delay: 234ms; }
+:root[data-shell='topbar'] .grid > :nth-child(11) { animation-delay: 260ms; }
+:root[data-shell='topbar'] .grid > :nth-child(n+12) { animation-delay: 280ms; }
+@keyframes nfCardIn { from { opacity: 0; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: none; } }
+:root[data-shell='topbar'] .card-media .meta { padding: 8px 10px; }
+:root[data-shell='topbar'] .card-media .name { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
+:root[data-shell='topbar'] .card-media .remarks { color: var(--text-success); font-weight: 600; }
+:root[data-shell='topbar'] .card-media .badge {
+  background: var(--accent); color: #fff; font-weight: 700; border-radius: 3px; backdrop-filter: none;
+  box-shadow: none;
+}
+:root[data-shell='topbar'] .no-cover {
+  background: var(--surface-3); color: var(--text-secondary); border-radius: 6px;
+}
+:root[data-shell='topbar'] .grid { gap: 10px 12px; grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr)); }
+
+/* ---- 内容区滚动条（深色细条，悬停加亮） ---- */
+:root[data-shell='topbar'] .content { padding: 4px 26px 26px; }
+:root[data-shell='topbar'] ::-webkit-scrollbar { width: 8px; height: 8px; }
+:root[data-shell='topbar'] ::-webkit-scrollbar-thumb { background: #333; border-radius: var(--radius-sm); transition: background var(--dur-quick) var(--ease-standard); }
+:root[data-shell='topbar'] ::-webkit-scrollbar-thumb:hover { background: #4d4d4d; }
+:root[data-shell='topbar'] ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---- 发现页：Hero（横版剧照轮播 + 文字处高斯模糊层）+ 内容行 ---- */
+/* ★ 2026-09-25（用户定稿）：Hero **满屏** —— 高度 = 视口 − 顶部导航（--nav-h），下方不再留空，
+   内容行用滚轮往下滑；剧照保持比例**完整显示**（contain），比例之外的区域用同一张图放大模糊填充
+   （见 HeroBackdrop 的 fit="contain"：`.nf-hero-fill` 模糊铺底 + `.nf-hero-fg` 清晰居中）。 */
+:root[data-shell='topbar'] .nf-hero {
+  position: relative; margin: -4px -26px 22px;
+  height: calc(100vh - var(--nav-h)); min-height: 420px;
+  display: flex; align-items: flex-end; overflow: hidden;
+  background: var(--surface-0);
+}
+:root[data-shell='topbar'] .nf-hero-bg {
+  position: absolute; inset: 0; background-size: cover; background-position: center 28%;
+  filter: saturate(1.05);
+  /* ★ 2026-09-24：剧照切换 = 交叉淡入淡出（前一张淡出、后一张淡入同时进行，无中间空帧） */
+  transition: opacity .9s ease;
+  will-change: opacity;
+}
+/* 模糊铺底层（仅 Hero 满屏模式）：同一张图 cover 放大 + 模糊，填满 contain 留出的比例外区域 */
+:root[data-shell='topbar'] .nf-hero-fill { filter: blur(32px) saturate(1.15) brightness(.8); transform: scale(1.2); }
+/* 清晰层（仅 Hero 满屏模式）：保持比例完整显示，绝不裁切 */
+:root[data-shell='topbar'] .nf-hero-fg {
+  position: absolute; inset: 0;
+  background-size: contain; background-position: center; background-repeat: no-repeat;
+  transition: opacity .9s ease;
+  will-change: opacity;
+}
+:root[data-shell='topbar'] .nf-hero::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  /* 下方接内容区 + 底部压暗（文字可读性主要由 .nf-hero-body 的模糊层负责，这里只做过渡） */
+  background: linear-gradient(to top, var(--surface-glass) 0%, color-mix(in srgb, var(--surface-glass) 55%, transparent) 24%, color-mix(in srgb, var(--surface-glass) 10%, transparent) 62%, transparent 100%);
+}
+/* ★ 2026-09-24（用户定稿）：**在有字的位置做高斯模糊处理** —— 文字块自身是一层毛玻璃（backdrop-filter） */
+:root[data-shell='topbar'] .nf-hero-body {
+  position: relative; z-index: 2; max-width: 62%;
+  margin: 26px 34px 28px; padding: 20px 24px 22px;
+  background: color-mix(in srgb, var(--surface-glass) 38%, transparent);
+  backdrop-filter: blur(18px) saturate(1.25);
+  -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 14px;
+  /* 换片时文字块轻微上浮淡入（与背景交叉淡入淡出同节奏） */
+  animation: nfHeroIn .5s cubic-bezier(.22, .61, .36, 1) both;
+}
+@keyframes nfHeroIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+:root[data-shell='topbar'] .nf-hero-kicker { display: inline-flex; align-items: center; gap: 8px; color: var(--text-accent, var(--accent)); font-weight: 800; font-size: var(--fs-sm); letter-spacing: 2px; margin-bottom: 8px; }
+:root[data-shell='topbar'] .nf-hero-title { margin: 0 0 10px; font-size: 40px; line-height: 1.06; font-weight: 800; letter-spacing: -.01em; text-shadow: 0 2px 18px rgba(0, 0, 0, .6); }
+:root[data-shell='topbar'] .nf-hero-meta { color: #d2d2d2; font-size: 13px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+:root[data-shell='topbar'] .nf-hero-match { color: var(--text-success, var(--success)); font-weight: 700; }
+:root[data-shell='topbar'] .nf-hero-actions { display: flex; gap: 8px; align-items: center; }
+/* ★ 用户反馈「按钮太大太突兀」→ 收敛为小号、低饱和，融进画面 */
+:root[data-shell='topbar'] .nf-hero-actions button { padding: 6px 16px; font-size: var(--fs-md); border-radius: var(--radius-sm); }
+:root[data-shell='topbar'] .nf-hero-actions button:not(.nf-play-btn) { background: rgba(255, 255, 255, .12); }
+:root[data-shell='topbar'] .nf-hero-actions button:not(.nf-play-btn):hover { background: rgba(255, 255, 255, .2); }
+:root[data-discover='shelf'] .nf-row { margin-bottom: 26px; }
+:root[data-discover='shelf'] .nf-row-title { font-size: 20px; font-weight: 700; margin: 0 0 10px; color: #e5e5e5; }
+:root[data-discover='shelf'] .nf-row-scroll { display: flex; gap: 8px; overflow-x: auto; padding: 8px 2px 14px; }
+:root[data-discover='shelf'] .nf-row-scroll > * { flex: 0 0 var(--card-w); }
+/* ★ 2026-09-29：行项 min-width:0（缺陷修复）—— 超长片名（`.name` 是 nowrap）会经 flex 项
+   `min-width:auto` 把卡片撑宽（实测 176 → 267px），封面随 2:3 撑高，整行被拉到 455px 留白。
+   经典皮肤同行同因，已在 DiscoverPage 内联 minWidth:0 修掉。 */
+:root[data-discover='shelf'] .nf-row-scroll > * { min-width: 0; }
+:root[data-shell='topbar'] .nf-hero h3 { letter-spacing: 0; }
+:root[data-discover='shelf'] .nf-row-title { letter-spacing: 0; }
+
+/* ★ 2026-09-24：详情页「相关推荐」横条 —— 悬停**只做轻微上浮**（不做 scale），
+   保证一排封面视觉尺寸完全一致（用户反馈「部分封面特别大」）。 */
+:root[data-shell='topbar'] .rec-row > .card-media:hover { transform: none; }
+
+/* ---- 详情页：**横版剧照轮播**当全宽背景（与首页 Hero 同一套图与交互）+ 渐变，标题巨大化 ---- */
+:root[data-detail='cinema'] .content.nf-detail-wrap { position: relative; }
+:root[data-detail='cinema'] .nf-detail-backdrop {
+  position: absolute; left: -26px; right: -26px; top: 0; height: 430px; pointer-events: none;
+  overflow: hidden; background: var(--surface-0);
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, .95) 0%, rgba(0, 0, 0, .45) 55%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, .95) 0%, rgba(0, 0, 0, .45) 55%, transparent 100%);
+}
+/* 剧照层由 HeroBackdrop 渲染（.nf-hero-bg：绝对定位铺满 + opacity 交叉淡入淡出，见 components/HeroBackdrop.tsx） */
+:root[data-detail='cinema'] .nf-detail-backdrop .nf-hero-bg { background-position: center 22%; }
+:root[data-detail='cinema'] .nf-detail-backdrop::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--surface-glass) 95%, transparent) 0%, color-mix(in srgb, var(--surface-glass) 60%, transparent) 55%, color-mix(in srgb, var(--surface-glass) 30%, transparent) 100%); }
+:root[data-detail='cinema'] .content.nf-detail-wrap > * { position: relative; z-index: 1; }
+:root[data-detail='cinema'] .nf-detail-wrap h2 { font-size: 34px; font-weight: 800; letter-spacing: -.01em; }
+:root[data-detail='cinema'] .nf-detail-wrap .ep-list { gap: 8px; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+:root[data-shell='topbar'] .ep {
+  background: rgba(109, 109, 110, .3); border: none; border-radius: var(--radius-sm); color: #e5e5e5; padding: 9px; font-weight: 500;
+  transition: background var(--dur-state) var(--ease-standard), color var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='topbar'] .ep:hover { background: rgba(109, 109, 110, .55); color: var(--text); }
+:root[data-shell='topbar'] .ep.active { background: #fff; color: var(--on-light); font-weight: 700; animation: nfPop var(--dur-state) var(--ease-spring); }
+
+/* ---- 播放器：Netflix 风格（黑色舞台 + 红色进度 + 40px 实底播放键 + 底部渐隐控制条） ---- */
+:root[data-shell='topbar'] .vplayer { background: var(--surface-0); }
+:root[data-shell='topbar'] .vp-controls {
+  background: linear-gradient(to top, rgba(0, 0, 0, .92) 0%, rgba(0, 0, 0, .55) 55%, transparent 100%);
+  padding: 22px 22px 16px;
+}
+:root[data-shell='topbar'] .vp-progress { height: 6px; background: rgba(255, 255, 255, .28); border-radius: 3px; }
+:root[data-shell='topbar'] .vp-buffer { background: rgba(255, 255, 255, .42); border-radius: 3px; }
+:root[data-shell='topbar'] .vp-played { background: var(--accent); border-radius: 3px; }
+:root[data-shell='topbar'] .vp-thumb { width: 9px; height: 9px; background: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent); }
+:root[data-shell='topbar'] .vp-ctl { color: var(--text); transition: color var(--dur-quick) var(--ease-standard), background var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring); }
+:root[data-shell='topbar'] .vp-ctl:hover { color: var(--text-accent, var(--accent)); }
+/**
+ * ★★ 2026-10-15（用户报「Netflix 播放器按钮太大，功能变多已挤占文字空间」）★★
+ *   本皮肤上面的通用 `button` 规则（`:root[data-shell='topbar'] button`：灰底 + `padding: 6px 14px`）
+ *   特异度 (0,2,1) 高于基类 `.vp-ctl` 的 `all: unset` (0,1,0) ⇒ 误伤控制条图标按钮：
+ *   实测被撑成 **54×38**（大豆皮肤同位置是 26×26），一条控制条 12 个按钮就多吃掉约 340px。
+ *   这里按大豆(.douban)/哔哔皮肤同款做法恢复「无底无框无内边距」，尺寸回到 26×26。
+ */
+:root[data-shell='topbar'] .vp-ctl,
+:root[data-shell='topbar'] .mini-btn { background: none; border: none; padding: 0; box-shadow: none; }
+:root[data-shell='topbar'] .vp-ctl:hover,
+:root[data-shell='topbar'] .mini-btn:hover { background: rgba(255, 255, 255, .14); }
+:root[data-shell='topbar'] .vp-bar { gap: 16px; }
+:root[data-shell='topbar'] .vp-next { background: color-mix(in srgb, var(--surface-glass) 90%, transparent); border-radius: 6px; }
+:root[data-shell='topbar'] .vp-next button { background: var(--accent); }
+
+/* Keyboard focus keeps the cinema controls discoverable without changing the hover language. */
+:root[data-shell='topbar'] .nf-link:focus-visible,
+:root[data-shell='topbar'] .srcpick-name:focus-visible,
+:root[data-shell='topbar'] .sp-btn:focus-visible {
+  outline: var(--focus-ring); outline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  :root[data-shell='topbar'] .nf-nav { padding: 8px 12px 10px; gap: 8px; }
+  :root[data-shell='topbar'] .nf-link { padding: 5px 6px; font-size: var(--fs-sm); }
+  :root[data-shell='topbar'] .nf-hero-body { max-width: 86%; margin: 18px 16px 20px; padding: 14px 16px 16px; }
+}
+
+/* 播放器窗口（独立 BrowserWindow）：整窗黑底 */
+:root[data-shell='topbar'] .app.pwin, :root[data-shell='topbar'] .app.pwin .main { background: var(--surface-0); }
+:root[data-shell='topbar'] .app.pwin .titlebar { background: var(--surface-0); }
+
+/* ============================================================================
+   ★★ 2026-10-16 第二代外观（**结构级重做**；用户口径：「绝对的好看，绝对的大改」）
+   ----------------------------------------------------------------------------
+   为什么要有第二代：第一代只改了 hover / 选中色 / 滚动条这类**微观交互态** ——
+   它们在截图与整体观感里几乎为零，用户评价「没看出来变化在哪」。这一代改的是**宏观视觉层**：
+     ① 环境 → 全站**环境光背景场**（红/青余光 + 胶片颗粒；骨架见 global.css）+ 影院幕布纵深；
+     ② 首屏 → 发现页**聚光卡**（.spot：海报环境色底 + 清晰海报主体 + 大字号标题）；
+     ③ 形态 → 顶栏「一条黑带」→ **悬浮玻璃岛**（圆角 + 玻璃 + 内高光 + 品牌红方块标）；
+              导航项「下划线」→ **红胶囊 + 弹跳**；分类条「散装 chips」→ **玻璃分段容器**；
+     ④ 卡片 → 「裸图」→ **玻璃卡**（描边 + 双层阴影 + shine 扫光 + 悬停浮出红色播放钮）；
+     ⑤ 排版 → 章节标题 → **带红色光条的大字号标题**。
+   ★ 历史守卫全部保留：`.vp-ctl` 26×26 重置、`.vp-big:active` 位移守卫、pvwin 黑壳、导航 z-index 40。
+   ============================================================================ */
+
+/* ---- ① 环境：**本皮肤不用环境光**（Netflix 的品牌基因就是纯黑影院；加彩色光斑反而不像它） ----
+   ★ 这是四套皮肤「结构性差异」的第一处：同一份 `.app-ambient` DOM，在 netflix 下**整体不显示**。
+     于是四套皮肤一眼能分出「影院黑 / 柔光浅色」两种世界，而不是同一套光斑换四色。 */
+:root[data-shell='topbar'] .app-ambient { display: none; }
+/* 纯黑舞台 + 极淡的红/青角光（只用静态打底光，不要漂浮光斑） */
+:root[data-shell='topbar'] .app {
+  background:
+    radial-gradient(1400px 560px at 12% -18%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 66%),
+    radial-gradient(1000px 420px at 96% 6%, rgba(84, 185, 197, .05), transparent 62%),
+    #0a0a0b;
+}
+/* 外壳各级透明 + 抬层：内容（z-index:1）压住 `.app` 的打底光（避免被覆盖） */
+:root[data-shell='topbar'] .main { background: transparent; position: relative; z-index: 1; }
+/* 顶部内边距归零：首屏 billboard 要**紧贴导航下沿**（全出血 + 满屏高）；左右留 30px 给后续行 */
+:root[data-shell='topbar'] .content { background: transparent; padding: 0 30px 36px; }
+
+/* ---- ② 顶栏：**文档流内的满幅渐变条**（第三代皮肤：方块标 + 纯文字链接 + 发光下划线） ----
+   ★ 2026-10-16 修正（实测 bug）：此前改 `position:absolute` 让顶栏压在首屏之上，
+     但它带 46px 透明下内边距 —— **元素盒仍在命中测试里**，于是所有页面（配置/历史/直播…）
+     顶部约 100px 区域被整块拦住、控件点不到，而且那块区域还是拖拽区。
+     现回归**文档流**：顶栏正常占位、首屏 billboard 紧贴其下并按「视口高 − 导航高」计算高度
+     （老 Hero 的既定纪律，见 --nav-h），既不遮内容也不影响拖拽。 */
+:root[data-shell='topbar'] .nf-nav {
+  position: relative; z-index: 40;
+  display: flex; align-items: center; flex: none;
+  padding: 12px 36px 14px; gap: 14px;
+  background: linear-gradient(180deg, rgba(6, 6, 8, .97), rgba(9, 9, 11, .86) 62%, rgba(9, 9, 11, .78));
+  border: none; border-radius: 0;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .07);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+/* 品牌：红色渐变方块标（::before）+ 白色字标 */
+:root[data-shell='topbar'] .nf-logo {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 16px; font-weight: 900; letter-spacing: .2em; color: var(--text); text-shadow: none;
+}
+:root[data-shell='topbar'] .nf-logo::before {
+  content: ''; width: 28px; height: 28px; border-radius: 9px; flex: none;
+  background: linear-gradient(145deg, #ff3240, var(--accent) 52%, #8d0409);
+  box-shadow: 0 5px 18px -3px color-mix(in srgb, var(--accent) 95%, transparent), inset 0 1px 0 rgba(255, 255, 255, .4);
+  transition: box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='topbar'] .nf-logo:hover::before {
+  transform: scale(1.08) rotate(-4deg);
+  box-shadow: 0 8px 26px -3px var(--accent), inset 0 1px 0 rgba(255, 255, 255, .55);
+}
+/* 导航项：**纯文字链接**（Netflix 顶栏没有胶囊）—— 悬停变白，选中亮白 + 红色下划线发光 */
+:root[data-shell='topbar'] .nf-link {
+  position: relative; padding: 6px 2px; border-radius: 0; font-size: var(--fs-md); font-weight: 500; color: #c9c9cd;
+  transition: color var(--dur-quick) var(--ease-standard), text-shadow var(--dur-state) var(--ease-standard);
+}
+:root[data-shell='topbar'] .nf-nav .nf-link { padding: 6px 2px; flex: 0 0 auto; white-space: nowrap; }
+:root[data-shell='topbar'] .nf-link::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -4px; height: 2px; border-radius: 2px;
+  background: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 85%, transparent);
+  transform: scaleX(0); transform-origin: center center;
+  transition: transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='topbar'] .nf-link:hover { background: none; color: var(--text); text-shadow: 0 0 14px rgba(255, 255, 255, .35); }
+:root[data-shell='topbar'] .nf-link:active { transform: none; }
+:root[data-shell='topbar'] .nf-link.active {
+  background: none; box-shadow: none; color: var(--text); font-weight: 700;
+  animation: nfPop var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='topbar'] .nf-link.active::after { transform: scaleX(1); }
+
+@media (max-width: 1100px) {
+  :root[data-shell='topbar'] .nf-nav { padding-inline: 16px; gap: 8px; }
+  :root[data-shell='topbar'] .nf-logo { font-size: 14px; letter-spacing: .1em; }
+}
+
+/* ---- ③ 页面内顶栏：玻璃条（原实心黑） ---- */
+:root[data-shell='topbar'] .topbar {
+  background: rgba(16, 16, 18, .62); border-bottom: 1px solid rgba(255, 255, 255, .06);
+  backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  min-height: 48px;
+}
+:root[data-shell='topbar'] .topbar button {
+  background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: var(--radius-sm); padding: 5px 13px;
+}
+:root[data-shell='topbar'] .topbar button:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--text);
+}
+
+/* ---- ④ 分类条：**裸胶囊行**（Netflix 的类型条直接铺在内容上，不装容器） ----
+   ★ 结构性差异之三：其余三套皮肤都把分类条装进「玻璃 / 白色容器」，netflix 保持裸铺，
+     且 chip 用**小圆角矩形**（4px）而非其余皮肤的 999px 药丸 —— 形态一眼可辨。 */
+:root[data-shell='topbar'] .cascade {
+  padding: 0; margin-bottom: 24px; border-radius: 0;
+  background: none; border: none;
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+:root[data-shell='topbar'] .cascade-row + .cascade-row { border-top: 1px solid rgba(255, 255, 255, .06); padding-top: 6px; }
+:root[data-shell='topbar'] .cascade-label { color: #9a9aa2; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .1em; }
+:root[data-shell='topbar'] .tag {
+  border-radius: var(--radius-sm); padding: 5px 14px; font-size: 12.5px;
+  background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14); color: #d8d8dd;
+  transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
+    border-color var(--dur-quick) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='topbar'] .tag:hover { background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .3); color: var(--text); }
+:root[data-shell='topbar'] .tag.active {
+  background: #fff; border-color: #fff; color: #141414; font-weight: 700;
+  box-shadow: 0 6px 18px -8px rgba(0, 0, 0, .9); animation: nfPop var(--dur-state) var(--ease-spring);
+}
+
+/* ---- ⑤ 章节标题：带红色光条的大字号（原「一行 20px 灰字」） ---- */
+:root[data-discover='shelf'] .nf-row { margin-bottom: 32px; }
+:root[data-discover='shelf'] .nf-row-title {
+  display: flex; align-items: center; gap: 11px; margin: 0 0 14px;
+  font-size: 23px; font-weight: 800; letter-spacing: -.02em; color: var(--text);
+}
+:root[data-discover='shelf'] .nf-row-title::before {
+  content: ''; flex: none; width: 4px; height: 21px; border-radius: 3px;
+  background: linear-gradient(180deg, #ff3b47, #c2050b);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-discover='shelf'] .nf-row-scroll { padding: 10px 4px 20px; gap: 12px; }
+
+/* ---- ⑥ 卡片：**裸海报 + 悬停展开**（Netflix 的核心交互：放大 + 压暗 + 浮出播放钮） ----
+   ★ 结构性差异之四：其余三套皮肤都是「常驻的玻璃/白色卡片容器」，netflix 回到**无容器裸图**，
+     靠 hover 时的放大、四周压暗与浮层信息制造层次 —— 而不是靠常驻的描边与玻璃。
+   ★ 也**不做 shine 扫光**（扫光是哔哔皮肤的语言），改用「放大 + 底部压暗 + 红色播放钮」这套 Netflix 语言。 */
+/* ★ 2026-10-16 修正（用户报「hover 放大后一部分被排出屏幕外」）：
+   真因 = 行的横滚容器 `.nf-row-scroll` 是 `overflow-x: auto`，而 `overflow-x` 非 visible 会把
+   `overflow-y` 也**强制算成 auto**（CSS 规范行为）⇒ 卡片一旦整体 scale/translate，越界部分直接被裁掉。
+   故 netflix 卡片不再整体变换，改**内部变焦**：外框不动，封面图缓慢推近 + 底部压暗 + 浮出播放钮 ——
+   既保留 Netflix 的 hover 语言，又零裁切风险。 */
+:root[data-shell='topbar'] .card-media { transition: none; }
+:root[data-shell='topbar'] .card-media:hover { transform: none; z-index: auto; }
+:root[data-shell='topbar'] .card-media .card {
+  border: none; border-radius: var(--radius); overflow: hidden; background: none; box-shadow: none;
+  transition: box-shadow var(--dur-state) var(--ease-standard);
+}
+:root[data-shell='topbar'] .card-media:hover .card {
+  box-shadow: none;
+}
+:root[data-shell='topbar'] .card-media img {
+  border-radius: 0;
+  transition: none;
+}
+:root[data-shell='topbar'] .card-media:hover img { transform: none; }
+/* 封面区（.card 的第一个子元素 = 海报容器）：承载「底部压暗」与「红色播放钮」 */
+:root[data-shell='topbar'] .card-media .card > :first-child { position: relative; overflow: hidden; }
+:root[data-shell='topbar'] .card-media .meta { padding: 9px 2px 11px; }
+:root[data-shell='topbar'] .no-cover {
+  background: linear-gradient(180deg, rgba(38, 38, 42, .9), rgba(20, 20, 22, .95));
+  color: var(--text-secondary); border-radius: 0;
+}
+
+/* ---- ⑦ 按钮：方角小圆角（**药丸是过度设计，已按用户口径撤销**）+ 白底主行动 ---- */
+/* ★ 2026-10-16 用户口径：「配置页的标签卡，我不懂你为什么要用弧形半球，原版方的不比这个样式好看吗，丑死了」——
+   此前把通用 `button` 改成 `border-radius: 999px` 药丸，在配置页这种**高密度表单**里确实难看。
+   现回归全局基座的 `--radius-sm`（=4px，见 global.css 的 button 基类）；药丸仅保留给首屏 CTA（.spot-go）。 */
+:root[data-shell='topbar'] button {
+  border-radius: var(--radius-sm); padding: 6px 16px;
+  background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .1); color: var(--text); font-weight: 500;
+}
+:root[data-shell='topbar'] button:hover {
+  background: rgba(255, 255, 255, .15); border-color: rgba(255, 255, 255, .24); color: var(--text);
+}
+:root[data-shell='topbar'] button.primary {
+  background: #fff; border-color: transparent; color: #141414; font-weight: 700; padding: 7px 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .45);
+}
+:root[data-shell='topbar'] button.primary:hover { background: #f1f1f1; box-shadow: 0 10px 28px -10px color-mix(in srgb, var(--accent) 70%, transparent); }
+/* 首屏 CTA 保留药丸（唯一的「弧形」例外：大的行动按钮） */
+:root[data-shell='topbar'] .spot-go,
+:root[data-shell='topbar'] .spot-next { border-radius: 999px; }
+
+/* ---- ⑧ 首屏：**满幅 billboard**（全出血、无圆角、文字压底 —— 与其余三套的「卡片式聚光」完全不同） ----
+   ★ 结构性差异之五：其余三套都是「圆角卡片里放聚光内容」，netflix 是**无边框全出血剧场**：
+     背景是海报放大模糊的「景」+ 双层暗幕，文字块压在左下角，右侧海报卡在此模式下**整个不出现**。 */
+:root[data-shell='topbar'] .spot {
+  display: flex; align-items: flex-end; justify-content: flex-start;
+  margin: 0 -30px 28px; padding: 0 44px 56px; box-sizing: border-box;
+  /* ★ 老 Hero 的既定纪律：满屏 = 视口高 − 导航高（导航已回归文档流，不再需要负上边距） */
+  height: calc(100vh - var(--nav-h)); min-height: 420px;
+  border: none; border-radius: 0; background: #050506;
+  box-shadow: none;
+}
+/* ★ 常驻氛围底：剧照/海报还在路上时，景层**也不是纯黑死区** ——
+   品牌红余光 + 暖黑渐变先铺底（剧照加载完成后经 opacity 交叉淡入盖上来）。 */
+:root[data-shell='topbar'] .spot-art {
+  background:
+    radial-gradient(1100px 620px at 74% 24%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 62%),
+    radial-gradient(820px 480px at 14% 84%, rgba(84, 185, 197, .08), transparent 60%),
+    linear-gradient(115deg, #191920 0%, #0a0a0b 72%);
+}
+/* 景 = **横版剧照 / backdrop**（不再是竖版海报放大成色糊）：锐利铺满，只做轻微降亮。
+   ★ 用户报「封面加载不出来」的根因就是拿 2:3 竖版海报铺宽幅 billboard —— 竖图放大后只剩一团色糊。
+   现改走横版图链路（见 DiscoverSpotlight：discoverImages → 360 图搜兜底），取不到才回退竖版。 */
+:root[data-shell='topbar'] .spot-art-layer {
+  filter: saturate(1.12) brightness(.88);
+  transform: none;
+  background-position: center 26%;
+}
+:root[data-shell='topbar'] .spot-veil {
+  background:
+    linear-gradient(to top, #0a0a0b 0%, rgba(10, 10, 11, .84) 15%, rgba(10, 10, 11, .34) 44%, rgba(10, 10, 11, .14) 100%),
+    linear-gradient(100deg, rgba(5, 5, 6, .74) 0%, rgba(5, 5, 6, .14) 46%, rgba(5, 5, 6, 0) 100%);
+}
+/* billboard 模式不出现右侧海报卡（满幅剧场只要「景 + 字」） */
+:root[data-shell='topbar'] .spot-stage { display: none; }
+:root[data-shell='topbar'] .spot-body { max-width: 60%; }
+:root[data-shell='topbar'] .spot-kicker { color: var(--text-accent); font-size: var(--fs-sm); letter-spacing: .26em; }
+:root[data-shell='topbar'] .spot-kicker-dot { background: var(--accent); box-shadow: 0 0 14px var(--accent); }
+:root[data-shell='topbar'] .spot-title {
+  font-size: clamp(34px, 4.6vw, 56px); font-weight: 800; letter-spacing: -.03em;
+  color: var(--text); text-shadow: 0 6px 34px rgba(0, 0, 0, .85);
+}
+:root[data-shell='topbar'] .spot-meta { color: #c6c6cc; font-size: var(--fs-md); }
+:root[data-shell='topbar'] .spot-year { color: var(--text-success, var(--success)); font-weight: 700; }
+:root[data-shell='topbar'] .spot-sep { color: #5a5a60; }
+:root[data-shell='topbar'] .spot-rank { color: var(--text-accent); font-weight: 700; letter-spacing: .06em; }
+:root[data-shell='topbar'] .spot-acts { margin-top: 22px; }
+:root[data-shell='topbar'] .spot-go { display: inline-flex; align-items: center; gap: 8px; padding: 10px 26px; font-size: 14.5px; }
+:root[data-shell='topbar'] .spot-next { background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .16); padding: 10px 20px; font-weight: 600; }
+:root[data-shell='topbar'] .spot-next:hover { background: rgba(255, 255, 255, .18); }
+:root[data-shell='topbar'] .spot-dots { left: auto; right: 44px; bottom: 26px; }
+:root[data-shell='topbar'] .spot-dot { background: rgba(255, 255, 255, .3); }
+:root[data-shell='topbar'] .spot-dot:hover { background: rgba(255, 255, 255, .55); }
+:root[data-shell='topbar'] .spot-dot.active { background: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 90%, transparent); }
+
+/* ---- ⑨ 播放器：**Netflix 影院控制条**（贴底渐隐长条 + 红色细进度 + 大号白色播放键） ----
+   ★ 四套皮肤的控制条**架构各不相同**（见各自文件）：
+     netflix = 贴底渐隐长条（本条）；哔哔 = 悬浮药丸玻璃 dock；大果 = 悬浮圆角玻璃控制卡；
+     大豆 = M3 大圆钮 + 状态层。这是「大改」在播放器上的差异化落点。 */
+:root[data-shell='topbar'] .vplayer { background: var(--surface-0); }
+:root[data-shell='topbar'] .vp-controls {
+  padding: 52px 22px 16px;
+  background: linear-gradient(to top, rgba(0, 0, 0, .96) 0%, rgba(0, 0, 0, .6) 46%, transparent 100%);
+}
+/* ★ 2026-10-17（用户报「进度条后面那层半透明包裹」）：旧规则（见本文件 §播放器 早期块）给
+   `.vp-progress` 上了 `background: rgba(255,255,255,.28)` + `border-radius: 3px`，而本块又把高度
+   拉到 16px ⇒ 红色已播线与细轨道**外面**多出一整条 16px 高的半透明「包裹底」。
+   这里显式置空：16px 高度只作拖拽/悬停热区保留，视觉上只剩 `::before` 细轨道 + 红色已播线。 */
+:root[data-shell='topbar'] .vp-progress { height: 16px; margin-bottom: 6px; background: none; }
+:root[data-shell='topbar'] .vp-progress::before { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .26); }
+:root[data-shell='topbar'] .vp-buffer { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, .38); }
+:root[data-shell='topbar'] .vp-played { height: 4px; border-radius: 2px; background: var(--accent); }
+/* 进度点：Netflix 的红圆点（常态小、悬停变大） */
+:root[data-shell='topbar'] .vp-thumb {
+  width: 9px; height: 9px; background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent), 0 2px 8px rgba(0, 0, 0, .6);
+  transition: width var(--dur-quick) var(--ease-standard), height var(--dur-quick) var(--ease-standard);
+}
+:root[data-shell='topbar'] .vp-progress:hover .vp-thumb { width: 14px; height: 14px; }
+:root[data-shell='topbar'] .vp-bar { gap: 14px; }
+:root[data-shell='topbar'] .vp-ctl { width: 32px; height: 32px; border-radius: 6px; color: var(--text); }
+:root[data-shell='topbar'] .vp-ctl:hover { color: var(--text-accent, var(--accent)); background: rgba(255, 255, 255, .16); }
+:root[data-shell='topbar'] .vp-ctl.vp-on { color: var(--text-accent, var(--accent)); background: color-mix(in srgb, var(--accent) 22%, transparent); }
+:root[data-shell='topbar'] .vp-time { font-size: 12.5px; font-weight: 600; color: #f0f0f2; }
+/* 中央播放键：40px 白色实心键（悬停转红） */
+:root[data-shell='topbar'] .vp-big {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: rgba(255, 255, 255, .92); border: none; color: var(--on-light);
+  box-shadow: none;
+  transition: transform var(--dur-state) var(--ease-spring), background var(--dur-state) var(--ease-standard), color var(--dur-state) var(--ease-standard);
+  box-sizing: border-box;
+  min-height: 40px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* hover 必须保留 translate(-50%,-50%)（缺位移按钮会跳到右下半个身位） */
+:root[data-shell='topbar'] .vp-big:hover {
+  transform: translate(-50%, -50%);
+  background: var(--accent); color: #fff;
+}
+:root[data-shell='topbar'] .vp-next { background: rgba(10, 10, 11, .93); border-radius: 6px; }
+:root[data-shell='topbar'] .vp-next button { background: var(--accent); }
+
+}

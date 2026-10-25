@@ -1,0 +1,555 @@
+@layer legacy {
+/* ================= 外壳结构：dualbar · 双行头（哔哔） —— 迁移自 bilibili.css（2026-10-18） ================= */
+/* bilibili.css（结构层）— 从 src/renderer/styles/bilibili.css 迁出的**非令牌规则**
+   ================================================================================
+   ★ 2026-10-18 迁移（统一皮肤标准）：作用域由原皮肤前缀改写为宿主属性 ——
+     哔哔外壳 = :root[data-shell='dualbar']；发现页类（`nf-row*`）按 layout 枚举 data-discover 限定。
+   ★ 全部规则限定在 `[data-shell='dualbar']`（及 `data-discover`）下，其余主题不受影响。
+   颜色全部改走统一词表令牌（原皮肤私有令牌与硬编码品牌色已并入词表）；
+   中性的黑色遮罩 / 阴影 / 玻璃高光按口径**保留字面值**。
+   ★ 原文件里 `nf-nav*` / `.sidebar` 一类「照抄 netflix 模板」的旧规则**按迁移口径保留**
+     （只改写作用域，不自行删除）。
+   ================================================================================ */
+
+/* ---- 布局：顶部导航（白底，标题栏并进同一行）替代侧边栏 ---- */
+:root[data-shell='dualbar'] .app { flex-direction: column; background: var(--surface-0); }
+:root[data-shell='dualbar'] .sidebar { display: none; }
+:root[data-shell='dualbar'] .main { background: var(--surface-0); }
+/* 标题栏并进导航条（一体化）：只保留窗口控制，浅色小圆角按钮 */
+:root[data-shell='dualbar'] .nf-nav .tb-btn { color: var(--text-dim); border-radius: 4px; }
+:root[data-shell='dualbar'] .nf-nav .tb-btn:hover { background: #f1f2f3; color: var(--text); }
+:root[data-shell='dualbar'] .nf-nav .tb-btn.tb-close:hover { background: var(--accent-2); color: var(--on-accent); }
+/* 独立播放器窗口仍用完整标题栏 */
+:root[data-shell='dualbar'] .app.pwin .titlebar { background: #000; border-bottom: none; }
+
+.nf-nav { /* 结构由 netflix.css 定义，这里只改配色 */ }
+:root[data-shell='dualbar'] .nf-nav {
+  background: rgba(255, 255, 255, .86); border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: 0 1px 10px rgba(24, 25, 28, .04);
+  padding: 10px 26px 12px; gap: 22px;
+}
+:root[data-shell='dualbar'] .nf-logo { color: var(--text-accent); font-weight: 900; letter-spacing: 1px; text-shadow: 0 0 18px color-mix(in srgb, var(--accent) 30%, transparent); }
+:root[data-shell='dualbar'] .nf-link {
+  color: var(--text-dim); font-weight: 500; padding: 6px 10px; border-radius: 6px;
+  transition: color var(--dur-quick) var(--ease-standard), background var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring);
+}
+:root[data-shell='dualbar'] .nf-link:hover { color: var(--text-accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+:root[data-shell='dualbar'] .nf-link:active { transform: scale(.95); }
+:root[data-shell='dualbar'] .nf-link.active {
+  color: var(--on-accent); background: var(--accent); font-weight: 700;
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 55%, transparent);
+  animation: bPop var(--dur-state) var(--ease-spring);
+}
+/* 选中弹跳（NavLink 切换 class 时重放，给「选中了」一个弹性确认） */
+@keyframes bPop { 0% { transform: scale(.86); } 100% { transform: scale(1); } }
+
+/* ---- 卡片：白底 + 12px 圆角 + 轻阴影，hover 弹簧上浮 + 封面慢推变焦（B 站标志性反馈） ---- */
+:root[data-shell='dualbar'] .content { padding: 14px 22px 26px; }
+:root[data-shell='dualbar'] .card {
+  background: #fff; border: 1px solid transparent; border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0, 0, 0, .05);
+  transition: border-color var(--dur-state) var(--ease-standard), background var(--dur-state) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='dualbar'] .card-media .card { border: 1px solid var(--border); overflow: hidden; }
+:root[data-shell='dualbar'] .card-media:hover .card {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: color-mix(in srgb, var(--accent) 5%, transparent);
+  box-shadow: none; transform: none;
+}
+:root[data-shell='dualbar'] .card-media img { border-radius: var(--radius) var(--radius) 0 0; transition: none; }
+:root[data-shell='dualbar'] .card-media:hover img { transform: none; }
+/* 海报墙逐个错开入场（前 12 张；与全局 pageIn 同节奏，列表现身为列表） */
+:root[data-shell='dualbar'] .grid > * { animation: bCardIn var(--dur-page) var(--ease-enter) both; }
+:root[data-shell='dualbar'] .grid > :nth-child(1) { animation-delay: 0ms; }
+:root[data-shell='dualbar'] .grid > :nth-child(2) { animation-delay: 26ms; }
+:root[data-shell='dualbar'] .grid > :nth-child(3) { animation-delay: 52ms; }
+:root[data-shell='dualbar'] .grid > :nth-child(4) { animation-delay: 78ms; }
+:root[data-shell='dualbar'] .grid > :nth-child(5) { animation-delay: 104ms; }
+:root[data-shell='dualbar'] .grid > :nth-child(6) { animation-delay: 130ms; }
+:root[data-shell='dualbar'] .grid > :nth-child(7) { animation-delay: 156ms; }
+:root[data-shell='dualbar'] .grid > :nth-child(8) { animation-delay: 182ms; }
+:root[data-shell='dualbar'] .grid > :nth-child(9) { animation-delay: 208ms; }
+:root[data-shell='dualbar'] .grid > :nth-child(10) { animation-delay: 234ms; }
+:root[data-shell='dualbar'] .grid > :nth-child(11) { animation-delay: 260ms; }
+:root[data-shell='dualbar'] .grid > :nth-child(n+12) { animation-delay: 280ms; }
+@keyframes bCardIn { from { opacity: 0; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: none; } }
+:root[data-shell='dualbar'] .card-media .name { color: var(--text); font-weight: 500; }
+:root[data-shell='dualbar'] .card-media .remarks { color: var(--text-accent); }
+:root[data-shell='dualbar'] .card-media .badge {
+  background: var(--color-accent); color: var(--on-accent); border-radius: 4px; backdrop-filter: none;
+  box-shadow: none;
+}
+:root[data-shell='dualbar'] .no-cover { background: var(--surface-0); color: var(--text-secondary); border-radius: var(--radius); }
+
+/* ---- 按钮：主蓝 / 次白描边 / 粉（强调）；统一弹性过渡 + 按压回弹 ---- */
+:root[data-shell='dualbar'] button {
+  background: #fff; border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); font-weight: 500;
+  transition: background var(--dur-state) var(--ease-standard), border-color var(--dur-state) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
+    box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring);
+}
+:root[data-shell='dualbar'] button:hover { border-color: var(--text-accent, var(--accent)); color: var(--text-accent); background: color-mix(in srgb, var(--accent) 6%, transparent); box-shadow: none; }
+:root[data-shell='dualbar'] button:active { transform: scale(.96); }
+:root[data-shell='dualbar'] .vp-big:active { transform: translate(-50%, -50%); }
+:root[data-shell='dualbar'] button.primary {
+  background: var(--color-accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
+  box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+:root[data-shell='dualbar'] button.primary:hover { background: var(--color-accent); color: var(--on-accent); box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--accent) 55%, transparent); }
+:root[data-shell='dualbar'] .linkbtn { border: none; background: none; color: var(--text-accent); }
+:root[data-shell='dualbar'] .tag {
+  background: #fff; border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); padding: 4px 12px;
+  transition: background var(--dur-state) var(--ease-standard), border-color var(--dur-state) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
+    box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='dualbar'] .tag:hover { border-color: var(--text-accent, var(--accent)); color: var(--text-accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+:root[data-shell='dualbar'] .tag.active {
+  background: var(--color-accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 50%, transparent); animation: bPop var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='dualbar'] input,
+:root[data-shell='dualbar'] select,
+:root[data-shell='dualbar'] textarea {
+  background: #fff; border: 1px solid var(--border); color: var(--text);
+  transition: border-color var(--dur-quick) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard);
+}
+:root[data-shell='dualbar'] input:focus, :root[data-shell='dualbar'] select:focus { border-color: var(--text-accent, var(--accent)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+:root[data-shell='dualbar'] ::placeholder { color: var(--text-faint); }
+/* 浏览器表面也要是设计的一部分：选中色 / 插入符 */
+:root[data-shell='dualbar'] ::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+:root[data-shell='dualbar'] input, :root[data-shell='dualbar'] textarea { caret-color: var(--text-accent, var(--accent)); }
+:root[data-shell='dualbar'] .topbar { background: rgba(255, 255, 255, .86); border-bottom: 1px solid var(--border); backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3); }
+/* 内容区滚动条：浅色细条，悬停加亮 */
+:root[data-shell='dualbar'] ::-webkit-scrollbar { width: 9px; height: 9px; }
+:root[data-shell='dualbar'] ::-webkit-scrollbar-track { background: transparent; }
+:root[data-shell='dualbar'] ::-webkit-scrollbar-thumb { background: #d4d7da; border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+:root[data-shell='dualbar'] ::-webkit-scrollbar-thumb:hover { background: #b6bcc2; background-clip: content-box; border: 2px solid transparent; }
+/* 键盘焦点：B站蓝焦点环（netflix.css 里只对 netflix 主题定义了红色环） */
+:root[data-shell='dualbar'] .nf-link:focus-visible,
+:root[data-shell='dualbar'] .srcpick-name:focus-visible,
+:root[data-shell='dualbar'] .sp-btn:focus-visible {
+  outline: var(--focus-ring); outline-offset: 3px;
+}
+
+/* ---- 详情页：选集按钮（B 站播放页的集数块） ---- */
+:root[data-shell='dualbar'] .ep {
+  background: #fff; border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); font-weight: 500;
+  transition: background var(--dur-state) var(--ease-standard), border-color var(--dur-state) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
+    box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='dualbar'] .ep:hover { border-color: var(--text-accent, var(--accent)); color: var(--text-accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+:root[data-shell='dualbar'] .ep.active {
+  background: var(--color-accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
+  box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 50%, transparent); animation: bPop var(--dur-state) var(--ease-spring);
+}
+
+/* ---- 播放器：B 站播放器观感（纯黑舞台 + 蓝色进度 + 白色圆形中央键 + 底部渐隐） ---- */
+:root[data-shell='dualbar'] .vplayer { background: #000; }
+:root[data-shell='dualbar'] .vp-controls {
+  background: linear-gradient(to top, rgba(0, 0, 0, .9) 0%, rgba(0, 0, 0, .5) 60%, transparent 100%);
+  padding: 20px 20px 16px;
+}
+:root[data-shell='dualbar'] .vp-progress { height: 5px; background: rgba(255, 255, 255, .25); border-radius: 3px; }
+:root[data-shell='dualbar'] .vp-buffer { background: rgba(255, 255, 255, .4); }
+:root[data-shell='dualbar'] .vp-played { background: var(--accent); }
+:root[data-shell='dualbar'] .vp-thumb { width: 9px; height: 9px; background: #fff; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+:root[data-shell='dualbar'] .vp-ctl {
+  color: #fff; background: transparent; border: none; padding: 0; box-shadow: none;
+  transition: color var(--dur-quick) var(--ease-standard), background var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring);
+}
+:root[data-shell='dualbar'] .vp-ctl:hover { color: var(--text-accent, var(--accent)); background: rgba(255,255,255,.14); border: none; box-shadow: none; }
+:root[data-shell='dualbar'] .app.pwin .tb-btn { color: #ddd; background: transparent; border: none; padding: 0; box-shadow: none; }
+:root[data-shell='dualbar'] .app.pwin .tb-btn:hover { color: #fff; background: rgba(255,255,255,.14); }
+:root[data-shell='dualbar'] .app.pwin .tb-btn.tb-close:hover { background: #e5484d; }
+:root[data-shell='dualbar'] .vp-next { background: rgba(0, 0, 0, .85); border-radius: var(--radius-sm); }
+:root[data-shell='dualbar'] .vp-next button, :root[data-shell='dualbar'] .vp-next button.primary { background: var(--accent); border-color: var(--text-accent, var(--accent)); }
+:root[data-shell='dualbar'] .app.pwin, :root[data-shell='dualbar'] .app.pwin .main { background: #000; }
+:root[data-shell='dualbar'] .app.pwin .titlebar { background: #000; border-bottom: none; }
+:root[data-shell='dualbar'] .app.pwin .tb-title { color: #e5e5e5; }
+
+/* ★ 2026-10-14（用户要求）：哔哔皮肤里**播放器窗口的边框应为白色而非黑色** ——
+   仅针对独立播放器窗口（`.app.pwin.pvwin`，含标题栏/小窗条/窗口壳；mpv 内核的浮层除外）；
+   视频舞台 `.vplayer` 仍是纯黑（观看时需要），详情窗口等其它 `.app.pwin` 不受影响。 */
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin,
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .main { background: #fff; }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .titlebar { background: #fff; border-bottom: 1px solid var(--border); }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .tb-title { color: var(--text); }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .tb-btn { color: var(--text-dim); }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .tb-btn:hover { background: var(--surface-0); color: var(--text); }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .tb-btn.tb-close:hover { background: var(--accent-2); color: var(--on-accent); }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .mini-strip { background: rgba(241, 242, 243, .92); color: var(--text-dim); }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .mini-btn { color: var(--text-dim); }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .mini-btn:hover { background: var(--accent-soft); color: var(--text-accent, var(--accent)); }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .mini-strip-close:hover { background: var(--danger); color: var(--on-danger); }
+
+/* ============================================================================
+   ★★ 2026-10-16 第二代外观（**结构级重做**；用户口径：「绝对的好看，绝对的大改」）
+   ----------------------------------------------------------------------------
+   为什么要有第二代：第一代只改了 hover / 选中色 / 滚动条这类**微观交互态** ——
+   它们在截图与整体观感里几乎为零，用户评价「没看出来变化在哪」。这一代改的是**宏观视觉层**：
+     ① 环境 → 全站**环境光背景场**（B站蓝 / B站粉双色柔光 + 中性光 + 胶片颗粒；骨架见 global.css）+ 浅色幕布纵深；
+     ② 首屏 → 发现页**聚光卡**（.spot：海报环境色底 + 清晰海报主体 + 大字号标题）；
+     ③ 形态 → 顶栏「一条白带」→ **悬浮白玻璃岛**（圆角 + 玻璃 + 内高光 + 品牌蓝方块标）；
+              导航项「下划线」→ **蓝底白字胶囊 + 弹跳**；分类条「散装 chips」→ **玻璃分段容器**；
+     ④ 卡片 → 「白卡」→ **白玻璃卡**（描边 + 双层阴影 + shine 扫光 + 悬停浮出蓝色播放钮）；
+     ⑤ 排版 → 章节标题 → **带蓝色光条的大字号标题**。
+   ★ 浅色皮肤专属：聚光卡用**浅色纱幕**（白 / 浅灰高 alpha 渐变）压在模糊海报上，
+     让深色标题（--text #18191c）依然可读 —— 即「浅色聚光卡」，绝不用黑幕。
+   ★ 历史守卫全部保留：`.vp-ctl` 重置 (0,3,0) 仍压过通用 button (0,2,1)、`.vp-big:active` 位移守卫、
+     pvwin 白壳（(0,5,0) 压过本块 .main 透明）、播放器舞台 `.vplayer` 黑底不动、导航 z-index 40。
+   ============================================================================ */
+
+/* ---- ① 环境：浅色幕布 + B站蓝 / B站粉双色柔光 + 中性光 + 胶片颗粒 ---- */
+:root[data-shell='dualbar'] .app-ambient .amb-blob-1 {
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 68%);
+}
+:root[data-shell='dualbar'] .app-ambient .amb-blob-2 {
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent-2) 22%, transparent), transparent 68%);
+}
+:root[data-shell='dualbar'] .app-ambient .amb-blob-3 {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .85), rgba(255, 255, 255, 0) 70%);
+}
+:root[data-shell='dualbar'] .app-ambient .amb-grain { opacity: .22; }
+/* 浅色幕布底：左上品牌蓝余光 + 右上品牌粉余光 + 冷调浅灰渐变（光斑之外的静态打底光，保证「有颜色」） */
+:root[data-shell='dualbar'] .app {
+  background:
+    radial-gradient(1200px 520px at 6% -12%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 62%),
+    radial-gradient(1000px 460px at 98% 2%, color-mix(in srgb, var(--accent-2) 16%, transparent), transparent 60%),
+    linear-gradient(180deg, #eef3f8, #f4f6f8 60%, #f6f8fa);
+}
+/* 外壳各级透明 + 抬层：氛围才看得见；内容（z-index:1）才盖得住氛围（z-index:0 的 fixed 层） */
+:root[data-shell='dualbar'] .main { background: transparent; position: relative; z-index: 1; }
+:root[data-shell='dualbar'] .content { background: transparent; padding: 18px 26px 34px; }
+
+/* ---- ② 双行头外壳（哔哔专属；netflix=满幅浮层 / 大果=侧栏 / 大豆=顶栏+胶囊条，形态互不相同） ----
+   ★ 为什么改结构：原「哔哔与 netflix 共用 .nf-nav 单行顶栏」正是四套皮肤长得像的根源 ——
+     现在哔哔换成**两行**：上 = 品牌 + 居中搜索 + 换源 + 窗口控制；下 = 分类 tab 条。
+   ★ 整条头仍是可拖拽（先例：B 站皮肤曾因漏设 drag 而整窗拖不动）；交互件显式 no-drag。 */
+:root[data-shell='dualbar'] .bb-head {
+  flex: none; position: relative; z-index: 30;
+  background: rgba(255, 255, 255, .88);
+  backdrop-filter: blur(22px) saturate(1.5);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 12px rgba(24, 25, 28, .05);
+  -webkit-app-region: drag;
+}
+:root[data-shell='dualbar'] .bb-top { display: flex; align-items: center; gap: 14px; height: 54px; padding: 0 18px; }
+/* ★★ 2026-10-16 修复（用户报「哔哔皮肤大部分区域点击后无反应」）★★
+   真因 = 下面的 no-drag 豁免清单**漏了导航 tab** —— `.bb-tab` 是 `<a>`（不是 button/.srcpick/input），
+   而整条 `.bb-head` 是 `-webkit-app-region: drag`：**拖拽区内的鼠标按下被当成"拖动窗口"吞掉，不进渲染进程**
+   ⇒ 哔哔的**整个主导航**（发现/点播/历史/收藏/直播/存储/配置/说明）真鼠标点击全部无反应，
+     顶栏空白处与品牌区同样点不动（只有搜索条 / 换源 / 窗口按钮因已豁免正常）。
+   实测（.tmp/skin-deadzone.cjs，四皮肤同法比对）：哔哔 8/8 个 tab 落在「拖拽区 − 豁免区」＝死区；
+   netflix 靠 `.nf-link` 豁免为 0；大果 / 大豆的导航本就在各自拖拽区之外（它们的拖拽区只有工具栏 / 顶栏那一条）。
+   起因：10-16 大改把导航从 `.nf-link` 换成 `.bb-tab`（且搬进 `.bb-head` 拖拽区内）时没同步补豁免。 */
+:root[data-shell='dualbar'] .bb-head button,
+:root[data-shell='dualbar'] .bb-head a,
+:root[data-shell='dualbar'] .bb-head .srcpick,
+:root[data-shell='dualbar'] .bb-head input { -webkit-app-region: no-drag; }
+:root[data-shell='dualbar'] .bb-brand {
+  display: inline-flex; align-items: center; gap: 9px; flex: 0 0 auto;
+  font-size: 15px; font-weight: 900; letter-spacing: .1em; color: var(--text-accent);
+}
+:root[data-shell='dualbar'] .bb-brand-mark {
+  width: 28px; height: 28px; border-radius: 9px; box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--color-accent);
+  color: var(--on-accent); font-size: 17px; font-weight: 900; line-height: 1;
+  box-shadow: 0 4px 14px -3px color-mix(in srgb, var(--accent) 80%, transparent), inset 0 1px 0 rgba(255, 255, 255, .55);
+  transition: box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='dualbar'] .bb-brand:hover .bb-brand-mark {
+  transform: scale(1.07) rotate(-4deg);
+  box-shadow: 0 7px 22px -3px var(--accent), inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+:root[data-shell='dualbar'] .bb-spacer { flex: 1; }
+/* 居中宽胶囊搜索条（复用 SearchPanel 的 bar 变体 DOM，只换皮） */
+:root[data-shell='dualbar'] .bb-top .sp-bar-wrap { flex: 0 1 520px; margin: 0 auto; min-width: 0; }
+:root[data-shell='dualbar'] .bb-top .sp-bar {
+  width: 100%; box-sizing: border-box; justify-content: flex-start;
+  height: 34px; border-radius: 999px; padding: 0 16px; gap: 8px;
+  background: #f1f2f3; border: 1px solid transparent; color: var(--text-faint); font-size: 12.5px;
+  transition: background var(--dur-quick) var(--ease-standard), border-color var(--dur-quick) var(--ease-standard),
+    color var(--dur-quick) var(--ease-standard);
+}
+:root[data-shell='dualbar'] .bb-top .sp-bar:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text-accent); }
+:root[data-shell='dualbar'] .bb-top .titlebar {
+  height: auto; width: auto; flex: none; background: none; border: none; padding: 0; box-shadow: none;
+}
+:root[data-shell='dualbar'] .bb-top .tb-title { display: none; }
+:root[data-shell='dualbar'] .bb-top .tb-controls { gap: 3px; -webkit-app-region: no-drag; }
+:root[data-shell='dualbar'] .bb-top .tb-btn { width: 34px; height: 30px; border-radius: var(--radius-sm); color: var(--text-dim); }
+:root[data-shell='dualbar'] .bb-top .tb-btn:hover { background: #f1f2f3; color: var(--text); }
+:root[data-shell='dualbar'] .bb-top .tb-btn.tb-close:hover { background: var(--accent-2); color: var(--on-accent); }
+/* 第二行：分类 tab 条（选中蓝胶囊 + 弹跳） */
+:root[data-shell='dualbar'] .bb-tabs { display: flex; align-items: center; gap: 4px; padding: 0 14px 10px; overflow-x: auto; }
+:root[data-shell='dualbar'] .bb-tabs::-webkit-scrollbar { display: none; }
+:root[data-shell='dualbar'] .bb-tab {
+  flex: 0 0 auto; padding: 7px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
+  color: var(--text-dim); text-decoration: none; white-space: nowrap;
+  transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
+    box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring);
+}
+:root[data-shell='dualbar'] .bb-tab:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); color: var(--text-accent); }
+:root[data-shell='dualbar'] .bb-tab:active { transform: scale(.95); }
+:root[data-shell='dualbar'] .bb-tab.active {
+  color: var(--on-accent); font-weight: 700; background: var(--color-accent);
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--accent) 95%, transparent), inset 0 1px 0 rgba(255, 255, 255, .35);
+  animation: bPop var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='dualbar'] .bb-main { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; z-index: 1; }
+
+/* ---- ③ 页面内顶栏：玻璃条（原实心白）+ 胶囊按钮 ---- */
+:root[data-shell='dualbar'] .topbar {
+  background: rgba(255, 255, 255, .78); border-bottom: 1px solid rgba(227, 229, 231, .8);
+  backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  min-height: 48px;
+}
+:root[data-shell='dualbar'] .topbar button {
+  background: rgba(255, 255, 255, .8); border: 1px solid var(--border); border-radius: 999px; padding: 5px 13px;
+}
+:root[data-shell='dualbar'] .topbar button:hover {
+  background: #fff; border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text-accent);
+}
+
+/* ---- ④ 分类条：玻璃分段容器 + 胶囊 chips（原「散装 chips 直接铺在页面上」） ---- */
+:root[data-shell='dualbar'] .cascade {
+  padding: 11px 15px; margin-bottom: 22px; border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, .68); border: 1px solid rgba(227, 229, 231, .85);
+  backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: 0 12px 28px -22px rgba(24, 25, 28, .45);
+}
+:root[data-shell='dualbar'] .cascade-row + .cascade-row { border-top: 1px solid rgba(24, 25, 28, .06); padding-top: 6px; }
+:root[data-shell='dualbar'] .cascade-label { color: var(--text-faint); font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+:root[data-shell='dualbar'] .tag {
+  border-radius: 999px; padding: 5px 14px; font-size: 12.5px;
+  background: rgba(255, 255, 255, .9); border: 1px solid var(--border); color: var(--text-dim);
+  transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
+    border-color var(--dur-quick) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
+}
+:root[data-shell='dualbar'] .tag:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--text-accent); }
+:root[data-shell='dualbar'] .tag.active {
+  background: var(--color-accent); border-color: transparent; color: var(--on-accent); font-weight: 700;
+  box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--accent) 90%, transparent); animation: bPop var(--dur-state) var(--ease-spring);
+}
+
+/* ---- ⑤ 章节标题：带蓝色光条的大字号（原「一行 20px 灰字」） ----
+   ★ 发现页内容行类（`nf-row*`）按 layout 枚举限定：只在 `discoverStyle='shelf'` 一系渲染。 */
+:root[data-discover='shelf'] .nf-row,
+:root[data-discover='shelfWide'] .nf-row,
+:root[data-discover='wall'] .nf-row { margin-bottom: 30px; }
+:root[data-discover='shelf'] .nf-row-title,
+:root[data-discover='shelfWide'] .nf-row-title,
+:root[data-discover='wall'] .nf-row-title {
+  display: flex; align-items: center; gap: 11px; margin: 0 0 14px;
+  font-size: 23px; font-weight: 800; letter-spacing: -.02em; color: var(--text);
+}
+:root[data-discover='shelf'] .nf-row-title::before,
+:root[data-discover='shelfWide'] .nf-row-title::before,
+:root[data-discover='wall'] .nf-row-title::before {
+  content: ''; flex: none; width: 4px; height: 21px; border-radius: 3px;
+  background: linear-gradient(180deg, #2fc4f5, var(--accent-strong));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-discover='shelf'] .nf-row-scroll,
+:root[data-discover='shelfWide'] .nf-row-scroll,
+:root[data-discover='wall'] .nf-row-scroll { padding: 10px 4px 20px; gap: 12px; }
+
+/* ---- ⑥ 卡片：白玻璃卡 + shine 扫光 + 悬停浮出蓝色播放钮（原「白底卡片」） ---- */
+:root[data-shell='dualbar'] .card-media { transition: transform var(--dur-state) var(--ease-spring); }
+:root[data-shell='dualbar'] .card-media:hover { transform: none; z-index: auto; }
+:root[data-shell='dualbar'] .card-media .card {
+  border: 1px solid rgba(227, 229, 231, .95); border-radius: 14px; overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .97), rgba(246, 248, 250, .93));
+  box-shadow: none;
+  transition: border-color var(--dur-state) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard),
+    background var(--dur-state) var(--ease-standard);
+}
+:root[data-shell='dualbar'] .card-media:hover .card {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: none;
+}
+:root[data-shell='dualbar'] .card-media img { border-radius: 0; }
+/* 封面区（.card 的第一个子元素 = 海报容器）：承载 shine 扫光与播放钮，且裁掉扫光溢出 */
+:root[data-shell='dualbar'] .card-media .card > :first-child { position: relative; overflow: hidden; }
+:root[data-shell='dualbar'] .card-media .meta { padding: 9px 11px 11px; }
+:root[data-shell='dualbar'] .no-cover {
+  background: linear-gradient(180deg, #f6f7f8, #eef1f3);
+  color: var(--text-secondary); border-radius: 0;
+}
+
+/* ---- ⑦ 按钮：蓝胶囊主行动（B 站的主行动语言）+ 白玻璃次要胶囊 ----
+   通用按钮的按压反馈在前段定义；中央播放键单独保留居中位移。 */
+:root[data-shell='dualbar'] button {
+  border-radius: 999px; padding: 6px 16px;
+  background: rgba(255, 255, 255, .82); border: 1px solid var(--border); color: var(--text-dim); font-weight: 500;
+}
+:root[data-shell='dualbar'] button:hover {
+  background: color-mix(in srgb, var(--accent) 9%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--text-accent); box-shadow: none;
+}
+:root[data-shell='dualbar'] button.primary {
+  background: var(--color-accent); border-color: transparent; color: var(--on-accent); font-weight: 700; padding: 7px 20px;
+  box-shadow: 0 4px 16px -6px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+:root[data-shell='dualbar'] button.primary:hover {
+  background: var(--color-accent); color: var(--on-accent); box-shadow: 0 10px 28px -10px color-mix(in srgb, var(--accent) 80%, transparent);
+}
+
+/* ★ 2026-10-16（用户要求）：**配置页选项卡改为「圆角长方形」**（参考 Netflix 的页签形态），不要半圆药丸。
+   `.cfg-tab` 是 ConfigPage 的 `<button>`，其**内联样式只把下两角压成 0**，上两角仍吃通用
+   `button { border-radius: 999px }`(0,2,1) ⇒ 顶上是半圆。这里上两角收成皮肤小圆角令牌、下两角平齐于
+   分类行底边线（内联已是 0）→ 与 netflix 的页签同形。特异度 (0,3,0) > (0,2,1)（§C54 教训）。 */
+:root[data-shell='dualbar'] .cfg-tab {
+  border-top-left-radius: var(--radius-sm);
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* ---- ⑧ 首屏聚光卡：**浅色纱幕** + 蓝粉环境色 + 深色标题（浅色皮肤的可读性解法） ---- */
+:root[data-shell='dualbar'] .spot {
+  border: 1px solid rgba(227, 229, 231, .9);
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow: 0 30px 66px -36px rgba(24, 25, 28, .45), inset 0 1px 0 rgba(255, 255, 255, .95);
+}
+/* 模糊海报当环境色底：浅色皮肤提亮（不是压暗），只留颜色不留形象 */
+:root[data-shell='dualbar'] .spot-art-layer { filter: blur(52px) saturate(1.5) brightness(1.08); }
+/* ★ 浅色纱幕：白 / 浅灰高 alpha 渐变 + 两处品牌色柔光，压住模糊海报，深色标题依然可读 */
+:root[data-shell='dualbar'] .spot-veil {
+  background:
+    radial-gradient(760px 360px at 8% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 66%),
+    radial-gradient(620px 340px at 96% 100%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 62%),
+    linear-gradient(102deg, rgba(255, 255, 255, .95) 0%, rgba(255, 255, 255, .84) 40%,
+      rgba(255, 255, 255, .46) 68%, rgba(255, 255, 255, .84) 100%);
+}
+:root[data-shell='dualbar'] .spot-kicker { color: var(--text-accent); }
+:root[data-shell='dualbar'] .spot-kicker-dot { background: var(--accent-2); box-shadow: 0 0 12px color-mix(in srgb, var(--accent-2) 95%, transparent); }
+:root[data-shell='dualbar'] .spot-title { color: var(--text); text-shadow: 0 1px 12px rgba(255, 255, 255, .9); }
+:root[data-shell='dualbar'] .spot-meta { color: var(--text-dim); }
+:root[data-shell='dualbar'] .spot-year { color: var(--text-accent, var(--accent)); font-weight: 700; }
+:root[data-shell='dualbar'] .spot-sep { color: var(--text-faint); }
+:root[data-shell='dualbar'] .spot-rank { color: var(--text-accent); font-weight: 700; letter-spacing: .06em; }
+:root[data-shell='dualbar'] .spot-go { display: inline-flex; align-items: center; gap: 7px; padding: 9px 22px; font-size: 14px; }
+:root[data-shell='dualbar'] .spot-next {
+  background: rgba(255, 255, 255, .88); border: 1px solid var(--border); color: var(--text-dim); padding: 9px 18px; font-weight: 600;
+}
+:root[data-shell='dualbar'] .spot-next:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text-accent, var(--accent)); }
+:root[data-shell='dualbar'] .spot-poster {
+  box-shadow: 0 22px 46px -20px rgba(24, 25, 28, .42), 0 0 0 1px rgba(24, 25, 28, .06),
+    0 0 64px -14px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+:root[data-shell='dualbar'] .spot-poster-none { color: var(--text-faint); }
+:root[data-shell='dualbar'] .spot-poster-ghost {
+  filter: brightness(.97) saturate(.82);
+  box-shadow: 0 16px 34px -20px rgba(24, 25, 28, .3), 0 0 0 1px rgba(24, 25, 28, .05);
+}
+:root[data-shell='dualbar'] .spot-dot { background: rgba(24, 25, 28, .18); }
+:root[data-shell='dualbar'] .spot-dot:hover { background: rgba(24, 25, 28, .36); }
+:root[data-shell='dualbar'] .spot-dot.active { background: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 80%, transparent); }
+
+/* ============================================================================
+   ★★ 2026-10-16 第三代（**哔哔差异化**）：把「照抄 netflix 模板换色」的部分逐项换掉 ——
+   哔哔要的是「彩色横幅 + 扁平白卡 + 悬浮药丸控制条」，而不是另一套玻璃卡。
+   ============================================================================ */
+
+/* ---- ⑨ 首屏：**彩色横幅**（蓝→粉渐变纱幕 + 更亮的景），而不是灰蒙蒙的白纱 ---- */
+:root[data-shell='dualbar'] .spot {
+  border: none; border-radius: 20px;
+  background: linear-gradient(115deg, #e8f4fb 0%, #f3f0f6 52%, #fdeef3 100%);
+  box-shadow: 0 20px 46px -26px rgba(24, 25, 28, .4), inset 0 0 0 1px rgba(24, 25, 28, .05);
+}
+:root[data-shell='dualbar'] .spot-art-layer { filter: blur(36px) saturate(2.2) brightness(1.12); }
+/* ★ 右半幅氛围（上一版全幅铺底：深色海报的模糊色铺满浅色卡必然变泥）——
+   模糊海报只在**右半边**（海报身后）晕开，左侧文字区保持干净的品牌渐变；左缘用 mask 羽化衔接。 */
+:root[data-shell='dualbar'] .spot-art {
+  inset: 0 0 0 44%;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 38%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 38%);
+}
+/* 纱幕：只在文字区压一层极薄的白（左侧 .72 → 中段即消失），色彩层交给品牌渐变底与右半幅氛围 */
+:root[data-shell='dualbar'] .spot-veil {
+  background: linear-gradient(100deg, rgba(255, 255, 255, .72) 0%, rgba(255, 255, 255, .34) 34%, rgba(255, 255, 255, 0) 62%);
+}
+:root[data-shell='dualbar'] .spot-kicker { color: var(--text-accent); }
+:root[data-shell='dualbar'] .spot-title {
+  font-size: clamp(30px, 3.8vw, 46px);
+  color: #12161c; text-shadow: 0 2px 14px rgba(255, 255, 255, .9), 0 0 2px rgba(255, 255, 255, .8);
+}
+/* 海报放大 + 落地：带品牌蓝长影，ghost 预告错位更明显 */
+:root[data-shell='dualbar'] .spot-stage { width: 204px; height: 306px; }
+:root[data-shell='dualbar'] .spot-poster {
+  box-shadow: 0 30px 56px -20px rgba(0, 105, 160, .5), 0 0 0 1px rgba(255, 255, 255, .7);
+}
+
+/* ---- ⑩ 章节标题：发现页在哔哔下走**通用 h3**（不是 .nf-row-title），这里补上蓝粉光条 ---- */
+:root[data-shell='dualbar'] .content h3 {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 21px; font-weight: 800; letter-spacing: -.02em;
+}
+:root[data-shell='dualbar'] .content h3::before {
+  content: ''; flex: none; width: 4px; height: 19px; border-radius: 3px;
+  background: linear-gradient(180deg, #4fd4f7, var(--accent) 60%, var(--accent-2));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* ---- ⑪ 卡片：**扁平白卡**（细边 + 几乎无阴影）+ uiverse 式 **skew 扫光** ----
+   ★ 与 netflix（裸图放大）、大果（大圆角玻璃）、大豆（M3 色调容器）三套**卡片解剖**互不相同。 */
+:root[data-shell='dualbar'] .card-media .card {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: #fff;
+  box-shadow: none;
+}
+:root[data-shell='dualbar'] .card-media:hover .card {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  box-shadow: none;
+}
+:root[data-shell='dualbar'] .card-media:hover { transform: none; }
+/* 扫光（uiverse `nasty-fish-9` 的斜切扫光做法：skewX + 位移，比纯平移更有「扫」感） */
+
+/* ---- ⑫ 播放器：**悬浮药丸玻璃控制条**（哔哔专属架构；netflix 是贴底渐隐长条） ----
+   ★ 用 left/right:0 + width + margin:auto 居中，**不用 transform** ——
+     避免 transform 成为内部弹层（字幕/音轨/倍速面板）的包含块而改变其定位。 */
+:root[data-shell='dualbar'] .vplayer { background: #000; }
+:root[data-shell='dualbar'] .vp-controls {
+  left: 0; right: 0; bottom: 18px; width: min(940px, calc(100% - 36px)); margin: 0 auto;
+  padding: 12px 18px 14px; border-radius: 18px; box-sizing: border-box;
+  background: rgba(22, 23, 27, .74);
+  border: 1px solid rgba(255, 255, 255, .14);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow: 0 22px 54px -20px rgba(0, 0, 0, .95);
+}
+:root[data-shell='dualbar'] .vplayer.vp-mini .vp-controls { width: auto; right: auto; left: 50%; transform: translateX(-50%); }
+/* ★ 2026-10-17（用户报「进度条后面那层半透明包裹」，哔哔皮肤同病）：早期块（本文件 §播放器·早期）
+   给 `.vp-progress` 上了 `background: rgba(255,255,255,.25)` + `border-radius: 3px`，本大改块只覆盖了
+   `::before`/`played`/`thumb` ⇒ 父元素那层半透明底仍在（已播线/细轨道外面多一条）。显式置空；
+   高度保留仅作拖拽热区。 */
+:root[data-shell='dualbar'] .vp-progress { background: none; }
+:root[data-shell='dualbar'] .vp-progress::before { height: 4px; border-radius: 999px; background: rgba(255, 255, 255, .22); }
+:root[data-shell='dualbar'] .vp-buffer { height: 4px; border-radius: 999px; background: rgba(255, 255, 255, .34); }
+:root[data-shell='dualbar'] .vp-played { height: 4px; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+:root[data-shell='dualbar'] .vp-thumb {
+  width: 11px; height: 11px; background: var(--accent-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-2) 28%, transparent), 0 2px 8px rgba(0, 0, 0, .6);
+}
+:root[data-shell='dualbar'] .vp-bar { gap: 12px; }
+:root[data-shell='dualbar'] .vp-ctl { width: 30px; height: 30px; border-radius: 999px; color: #fff; }
+:root[data-shell='dualbar'] .vp-ctl:hover { color: #fff; background: color-mix(in srgb, var(--accent) 34%, transparent); }
+:root[data-shell='dualbar'] .vp-ctl.vp-on { color: #fff; background: color-mix(in srgb, var(--accent-2) 34%, transparent); }
+:root[data-shell='dualbar'] .vp-time { color: #eaeaf0; font-size: 12px; }
+:root[data-shell='dualbar'] .vp-big {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 88%, transparent); border: none; color: #fff;
+  box-shadow: none;
+  transition: transform var(--dur-state) var(--ease-spring), background var(--dur-state) var(--ease-standard);
+  box-sizing: border-box;
+  min-height: 40px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* hover 必须保留 translate(-50%,-50%)（缺位移按钮会跳到右下半个身位） */
+:root[data-shell='dualbar'] .vp-big:hover {
+  transform: translate(-50%, -50%);
+  background: color-mix(in srgb, var(--accent-2) 95%, transparent);
+}
+
+}

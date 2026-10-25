@@ -1,12 +1,16 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { client } from '../api/client';
 
 /** 源数据或界面异常只影响当前页，不再使整个窗口空白。 */
-export default class PageErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+interface PageErrorBoundaryProps {
+  children: ReactNode;
+  reportError: (message: string) => void;
+}
+
+export default class PageErrorBoundary extends Component<PageErrorBoundaryProps, { failed: boolean }> {
   state = { failed: false };
   static getDerivedStateFromError() { return { failed: true }; }
   componentDidCatch(error: Error, info: ErrorInfo) {
-    void client.winReportError(`${error.name}: ${error.message}\n${info.componentStack || ''}`).catch(() => undefined);
+    this.props.reportError(`${error.name}: ${error.message}\n${info.componentStack || ''}`);
   }
   render() {
     if (this.state.failed) return <div className="empty" role="alert" style={{ padding: 32 }}>
