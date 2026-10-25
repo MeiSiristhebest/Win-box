@@ -1,20 +1,15 @@
 import { client } from '../api/client';
 import type { UiPreferencesPatch, UiPreferencesSnapshot } from '../../shared/uiPreferences';
-import { normalizePosterSize } from '../../shared/posterSize';
-import { DEFAULT_UI_PREFERENCES, validateUiPreferencesPatch } from '../../shared/uiPreferences';
-import { normalizeTheme } from './themeTokens';
+import {
+  legacyUiPreferencesPatch,
+  normalizeUiPreferencesSnapshot,
+  preferencePatchForKey,
+  preferenceValueFromSnapshot,
+  preferenceValuesAsStrings,
+  UI_PREFERENCE_KEY_LIST,
+} from './uiPreferenceMapping';
 
 type PreferenceListener = () => void;
-
-const THEME_KEY = 'winbox-theme';
-const DISCOVER_KEY = 'winbox-show-discover';
-const WATERFALL_KEY = 'winbox-waterfall';
-const MOTION_KEY = 'winbox-motion';
-const HOME_FILTERS_KEY = 'winbox-home-filters';
-const NAV_MODE_KEY = 'winbox-nav-mode';
-const POSTER_SIZE_KEY = 'winbox-poster-size';
-const PREFERENCE_KEYS = [THEME_KEY, MOTION_KEY, DISCOVER_KEY, WATERFALL_KEY, HOME_FILTERS_KEY, NAV_MODE_KEY, POSTER_SIZE_KEY] as const;
-const PREFERENCE_FIELDS = ['themeId', 'motion', 'showDiscover', 'waterfall'] as const;
 
 const listenersByKey = new Map<string, Set<PreferenceListener>>();
 let latestSnapshot: UiPreferencesSnapshot | null = null;
@@ -37,49 +32,14 @@ function readStoredPreference(key: string): string | null {
   }
 }
 
-function snapshotValue(key: string): string | null {
-  if (!latestSnapshot?.initialized) return null;
-  switch (key) {
-    case THEME_KEY: return latestSnapshot.values.themeId;
-    case MOTION_KEY: return latestSnapshot.values.motion;
-    case DISCOVER_KEY: return latestSnapshot.values.showDiscover ? '1' : '0';
-    case WATERFALL_KEY: return latestSnapshot.values.waterfall ? '1' : '0';
-    case HOME_FILTERS_KEY: return latestSnapshot.values.homeFilters ? '1' : '0';
-    case POSTER_SIZE_KEY: return latestSnapshot.values.posterSize || 'medium';
-    case NAV_MODE_KEY: return latestSnapshot.values.navMode === 'window' ? 'window' : 'inline';
-    default: return null;
-  }
-}
-
 /** The main-process snapshot wins in Electron; localStorage remains the browser-preview fallback and migration cache. */
 export function readPreference(key: string): string | null {
-  return snapshotValue(key) ?? readStoredPreference(key);
+  return preferenceValueFromSnapshot(latestSnapshot, key) ?? readStoredPreference(key);
 }
 
 function legacyPreferences(): UiPreferencesPatch {
-  const theme = readStoredPreference(THEME_KEY);
-  const motion = readStoredPreference(MOTION_KEY);
-  return {
-    themeId: (theme && /^plugin:[a-z0-9-]{3,40}$/.test(theme) ? theme : normalizeTheme(theme)) as UiPreferencesPatch['themeId'],
-    motion: motion === 'on' || motion === 'off' ? motion : DEFAULT_UI_PREFERENCES.motion,
-    showDiscover: readStoredPreference(DISCOVER_KEY) !== '0',
-    waterfall: readStoredPreference(WATERFALL_KEY) === '1',
-    homeFilters: readStoredPreference(HOME_FILTERS_KEY) === '1',
-    navMode: readStoredPreference(NAV_MODE_KEY) === 'window' ? 'window' : 'inline',
-    posterSize: normalizePosterSize(readStoredPreference(POSTER_SIZE_KEY)),
-  };
-}
-
-function valuesAsStrings(snapshot: UiPreferencesSnapshot): Record<string, string> {
-  return {
-    [THEME_KEY]: snapshot.values.themeId,
-    [MOTION_KEY]: snapshot.values.motion,
-    [DISCOVER_KEY]: snapshot.values.showDiscover ? '1' : '0',
-    [WATERFALL_KEY]: snapshot.values.waterfall ? '1' : '0',
-    [HOME_FILTERS_KEY]: snapshot.values.homeFilters ? '1' : '0',
-    [POSTER_SIZE_KEY]: snapshot.values.posterSize || 'medium',
-    [NAV_MODE_KEY]: snapshot.values.navMode === 'window' ? 'window' : 'inline',
-  };
+  const values = Object.fromEntries(UI_PREFERENCE_KEY_LIST.map((key) => [key, readStoredPreference(key)]));
+  return legacyUiPreferencesPatch(values);
 }
 
 function notifyPreference(key: string): void {
@@ -87,21 +47,11 @@ function notifyPreference(key: string): void {
 }
 
 function applySnapshot(value: UiPreferencesSnapshot): void {
-  if (!value || !Number.isSafeInteger(value.revision) || value.revision < 0 || typeof value.initialized !== 'boolean') return;
-  const patch = (() => {
-    try { return validateUiPreferencesPatch(value.values); } catch { return null; }
-  })();
-  if (!patch || PREFERENCE_FIELDS.some((field) => !Object.hasOwn(patch, field))) return;
-  const validatedValues: UiPreferencesSnapshot['values'] = { ...DEFAULT_UI_PREFERENCES, ...patch };
-
-  const snapshot: UiPreferencesSnapshot = {
-    revision: value.revision,
-    initialized: value.initialized,
-    values: validatedValues,
-  };
+  const snapshot = normalizeUiPreferencesSnapshot(value);
+  if (!snapshot) return;
   if (latestSnapshot && snapshot.revision < latestSnapshot.revision) return;
   if (latestSnapshot && latestSnapshot.initialized && !snapshot.initialized) return;
-  const previousValues = new Map<string, string | null>(PREFERENCE_KEYS.map((key) => [key, readPreference(key)] as const));
+  const previousValues = new Map<string, string | null>(UI_PREFERENCE_KEY_LIST.map((key) => [key, readPreference(key)] as const));
   if (latestSnapshot && snapshot.revision === latestSnapshot.revision) {
     const previous = latestSnapshot.values;
     const next = snapshot.values;
@@ -119,13 +69,13 @@ function applySnapshot(value: UiPreferencesSnapshot): void {
 
   if (!snapshot.initialized) return;
 
-  const values = valuesAsStrings(snapshot);
+  const values = preferenceValuesAsStrings(snapshot);
   try {
     for (const [key, preference] of Object.entries(values)) localStorage.setItem(key, preference);
   } catch {
     // The in-memory and main-process values remain available when browser storage is disabled.
   }
-  for (const key of PREFERENCE_KEYS) {
+  for (const key of UI_PREFERENCE_KEY_LIST) {
     if (previousValues.get(key) !== values[key]) notifyPreference(key);
   }
 }
@@ -181,17 +131,6 @@ function releaseExternalListenerIfUnused(): void {
   }
 }
 
-function patchForKey(key: string, value: string): UiPreferencesPatch | null {
-  if (key === THEME_KEY) return { themeId: value as UiPreferencesPatch['themeId'] };
-  if (key === MOTION_KEY) return { motion: value === 'on' || value === 'off' ? value : 'auto' };
-  if (key === DISCOVER_KEY) return { showDiscover: value !== '0' };
-  if (key === WATERFALL_KEY) return { waterfall: value === '1' };
-  if (key === HOME_FILTERS_KEY) return { homeFilters: value === '1' };
-  if (key === POSTER_SIZE_KEY) return { posterSize: normalizePosterSize(value) };
-  if (key === NAV_MODE_KEY) return { navMode: value === 'window' ? 'window' : 'inline' };
-  return null;
-}
-
 /** Imports existing renderer preferences once, then uses the main-process snapshot as the durable source. */
 export function syncUiPreferencesFromMain(): Promise<void> {
   if (syncRequest) return syncRequest;
@@ -226,7 +165,7 @@ export async function syncUiPreferencesToMain(): Promise<void> {
 }
 
 export function writePreference(key: string, value: string): void {
-  const patch = patchForKey(key, value);
+  const patch = preferencePatchForKey(key, value);
   if (patch && hasMainPreferenceUpdates()) {
     const restoreMainValue = (): void => {
       if (latestSnapshot) applySnapshot(latestSnapshot);

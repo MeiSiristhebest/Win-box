@@ -4,8 +4,9 @@ import { useSyncExternalStore } from 'react';
 import { normalizePosterSize, type PosterSize } from '../../shared/posterSize';
 import type { MotionPreference } from '../../shared/uiPreferences';
 import { readPreference, subscribePreference, writePreference } from './preferenceStore';
+import { UI_PREFERENCE_KEYS } from './uiPreferenceMapping';
 
-const KEY_DISCOVER = 'winbox-show-discover';
+const KEY_DISCOVER = UI_PREFERENCE_KEYS.discover;
 const subscribeShowDiscover = (notify: () => void): (() => void) => subscribePreference(KEY_DISCOVER, notify);
 
 /** 是否展示「发现」页（默认展示；只有显式关过才是 false） */
@@ -28,7 +29,7 @@ export function useShowDiscover(): boolean {
  *   点播分类浏览的「瀑布模式」（一直下滑自动加载下一页）——默认**关**（保持原来的翻页）。
  *   持久化到主进程偏好：用户点开详情再返回时模式不丢。
  */
-const KEY_WATERFALL = 'winbox-waterfall';
+const KEY_WATERFALL = UI_PREFERENCE_KEYS.waterfall;
 const subscribeWaterfall = (notify: () => void): (() => void) => subscribePreference(KEY_WATERFALL, notify);
 
 export function getWaterfall(): boolean {
@@ -53,7 +54,7 @@ export function useWaterfall(): boolean {
  */
 export type MotionPref = MotionPreference;
 
-const KEY_MOTION = 'winbox-motion';
+const KEY_MOTION = UI_PREFERENCE_KEYS.motion;
 const subscribeMotion = (notify: () => void): (() => void) =>
   subscribePreference(KEY_MOTION, () => { applyMotionPref(getMotionPref()); notify(); });
 
@@ -92,8 +93,8 @@ export function initMotionPref(): void {
 }
 
 export type NavMode = 'inline' | 'window';
-const KEY_NAV_MODE = 'winbox-nav-mode';
-const KEY_HOME_FILTERS = 'winbox-home-filters';
+const KEY_NAV_MODE = UI_PREFERENCE_KEYS.navMode;
+const KEY_HOME_FILTERS = UI_PREFERENCE_KEYS.homeFilters;
 const subscribeNavMode = (notify: () => void): (() => void) => subscribePreference(KEY_NAV_MODE, notify);
 const subscribeHomeFilters = (notify: () => void): (() => void) => subscribePreference(KEY_HOME_FILTERS, notify);
 export function getNavMode(): NavMode { return readPreference(KEY_NAV_MODE) === 'window' ? 'window' : 'inline'; }
@@ -103,7 +104,7 @@ export function getHomeFilters(): boolean { return readPreference(KEY_HOME_FILTE
 export function setHomeFilters(value: boolean): void { writePreference(KEY_HOME_FILTERS, value ? '1' : '0'); }
 export function useHomeFilters(): boolean { return useSyncExternalStore(subscribeHomeFilters, getHomeFilters, () => false); }
 
-const KEY_POSTER_SIZE = 'winbox-poster-size';
+const KEY_POSTER_SIZE = UI_PREFERENCE_KEYS.posterSize;
 const subscribePosterSize = (notify: () => void): (() => void) => subscribePreference(KEY_POSTER_SIZE, notify);
 export function getPosterSize(): PosterSize { return normalizePosterSize(readPreference(KEY_POSTER_SIZE)); }
 export function setPosterSize(value: PosterSize): void { writePreference(KEY_POSTER_SIZE, value); }
