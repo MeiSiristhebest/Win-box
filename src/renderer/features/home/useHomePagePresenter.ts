@@ -244,7 +244,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
   const listStyle = !!curSite?.style && /list/i.test(curSite.style);
   const siteCats = curSite?.categories?.filter(Boolean) ?? [];
   const itemNavigation = useHomeItemNavigationPresenter({
-    currentProfileId: profileIdRef.current,
+    currentProfileId: activeProfileId,
     currentSources: sites,
     currentSite: curSite,
     fallbackSourceKey: key,
