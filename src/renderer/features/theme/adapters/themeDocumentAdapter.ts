@@ -1,5 +1,5 @@
 import { normalizeTheme, SEMANTIC_TOKEN_NAMES, skinBase, skinLayout, themes, type SkinEntry, type Theme } from '../../../lib/themeTokens';
-import type { ThemeLayout, ThemeSkinView } from '../../../../shared/plugin';
+import type { ThemeLayout } from '../../../../shared/plugin';
 import type { ThemeDocumentPort } from '../application/themeApplication';
 
 const STYLE_ID = 'winbox-plugin-themes';
