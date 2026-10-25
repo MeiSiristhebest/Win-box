@@ -26,6 +26,8 @@ export const IPC = {
   DANMAKU_SEARCH: 'danmaku:search',
   DANMAKU_EPISODES: 'danmaku:episodes',
   DANMAKU_FETCH: 'danmaku:fetch',
+  /** ★ 2026-10-25（9978 局域网控制台）：手机端推送发射实时弹幕 */
+  DANMAKU_EMIT_REALTIME: 'danmaku:emitRealtime',
   // TMDB 元数据补全（缺封面/缺简介兜底；凭据内置密文，仅查询通道）
   META_SEARCH: 'meta:search',
   // ★ 详情页增强（演职员/类型/相关推荐）与发现页榜单（无源默认主页）

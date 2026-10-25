@@ -20,7 +20,7 @@ import { applyUiScale, registerUiWindow, scaledWindowFor, setMainWindowProvider 
 import { BASE_WINDOW } from '../shared/uiScale';
 import { applyWindowCorner } from './util/windowCorner';
 import { bossKey } from './bossKey';
-import { playerWindow, onPlayerWindowClosed } from './player/PlayerWindow';
+import { playerWindow, onPlayerWindowClosed, openPlayerWindow } from './player/PlayerWindow';
 import { playerSettings } from './player/playerSettings';
 import { hostRegexFor } from '../engine/util/m3u8Purify';
 import { TorrentPlay } from './torrent/torrentPlay';
@@ -317,6 +317,63 @@ proxy.onSpiderProxy = (port) => hostServices.bridge.pinSpiderProxy(port);
 proxy.onPythonProxy = (key, params) => hostServices.pythonSourceProxy.execute(key, params);
 // ★ 2026-09-29：`/bt/<hash>/<idx>` 取流口（Range + piece 门控 + 本地读盘）
 proxy.bt = torrent;
+// ★ 2026-10-25（9978 局域网控制台与手机端推送）：处理手机扫码/局域网网页推送动作
+proxy.onRemoteAction = async (action) => {
+  fileLogger.i(`remote: 收到指令 ${action.do} ${action.name || ''} ${action.url || ''}`);
+  if (action.do === 'pushStore' && action.url) {
+    try {
+      const res = await hostServices.subscriptionImports.importConfig({ url: action.url, name: action.name || '推送仓库' });
+      fileLogger.i(`remote: 仓库推送导入完成，共 ${res.config.sites.length} 源`);
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.webContents.send(IPC.WIN_REPORT_ERROR, { message: `已成功导入手机推送的仓库：${action.name || action.url}` });
+      }
+    } catch (e) {
+      fileLogger.w(`remote: 仓库推送导入失败: ${(e as Error).message}`);
+    }
+  } else if (action.do === 'push' && action.url) {
+    openPlayerWindow({
+      key: 'push',
+      flag: 'push',
+      title: action.name || '手机推送播放',
+      episodes: [{ name: action.name || '推送视频', url: action.url }],
+      epIndex: 0,
+      lastUrl: action.url,
+      lastName: action.name || '推送视频',
+    });
+  } else if (action.do === 'livePush' && (action.address || action.url)) {
+    const liveUrl = action.address || action.url || '';
+    openPlayerWindow({
+      key: 'livePush',
+      flag: 'livePush',
+      title: action.name || '手机推送直播',
+      episodes: [{ name: action.name || '直播频道', url: liveUrl }],
+      epIndex: 0,
+      lastUrl: liveUrl,
+      lastName: action.name || '直播频道',
+    });
+  } else if (action.do === 'pushAliToken' && action.token) {
+    try {
+      await hostServices.driveAccounts.set('ali', action.token);
+      fileLogger.i('remote: 阿里云盘 Token 保存成功');
+    } catch (e) {
+      fileLogger.w(`remote: 阿里云盘 Token 保存失败: ${(e as Error).message}`);
+    }
+  } else if (action.do === 'search' && action.word) {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) {
+        w.show();
+        w.focus();
+        w.webContents.send('nav:search', { keyword: action.word });
+      }
+    }
+  } else if (action.do === 'danmaku' && action.text) {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) {
+        w.webContents.send(IPC.DANMAKU_EMIT_REALTIME, { text: action.text });
+      }
+    }
+  }
+};
 
 function isDev(): boolean {
   return !app.isPackaged && process.env.NODE_ENV !== 'production';

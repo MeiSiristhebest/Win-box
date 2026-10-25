@@ -5,15 +5,22 @@ import { runInNewContext } from 'node:vm';
 import { transformSync } from 'esbuild';
 import { formatBytes, type UpdateCheckResult, type UpdateProgress } from '../src/shared/update';
 import { isDetailWinHash } from '../src/shared/detailWin';
+import { isSearchWinHash } from '../src/shared/searchWin';
+import { presentUpdateGate } from '../src/renderer/features/updates/application/updateGate';
 
 interface Node {
   type: unknown;
   props: Record<string, any>;
   children: any[];
 }
-const source = readFileSync(new URL('../src/renderer/components/UpdateGate.tsx', import.meta.url), 'utf8')
-  .replace(/^import .*;\r?$/gm, '')
+const stripImports = (source: string) => source.replace(/^import .*;\r?$/gm, '');
+const gateSource = stripImports(readFileSync(new URL('../src/renderer/components/UpdateGate.tsx', import.meta.url), 'utf8'))
   .replace('export default function UpdateGate', 'function UpdateGate');
+const presenterSource = stripImports(readFileSync(new URL('../src/renderer/features/updates/useUpdateGatePresenter.ts', import.meta.url), 'utf8'))
+  .replace('export function useUpdateGatePresenter', 'function useUpdateGatePresenter');
+const viewSource = stripImports(readFileSync(new URL('../src/renderer/components/UpdateGateView.tsx', import.meta.url), 'utf8'))
+  .replace('export function UpdateGateView', 'function UpdateGateView');
+const source = [presenterSource, viewSource, gateSource].join('\n');
 const compiled = transformSync(source + '\nglobalThis.component = UpdateGate;', {
   loader: 'tsx', jsxFactory: 'h', jsxFragment: 'Fragment', target: 'es2022',
 }).code;
@@ -30,17 +37,39 @@ function host(hash = '#/', search = false) {
   let cursor = 0;
   let pending: Array<() => void> = [];
   let onProgress: (p: UpdateProgress) => void = () => {};
+  const memoSlots = new Map<number, { deps: unknown[]; value: unknown }>();
   const client = {
     updateCheck: vi.fn().mockResolvedValue(available),
     updateDownload: vi.fn().mockResolvedValue({ ok: true }),
     updateCancel: vi.fn().mockResolvedValue(true),
     updateInstall: vi.fn().mockResolvedValue({ ok: true }),
     onUpdateProgress: vi.fn((cb: typeof onProgress) => { onProgress = cb; return vi.fn(); }),
+    openBackupDownload: vi.fn(),
   };
+  const port = {
+    checkForUpdate: () => client.updateCheck(),
+    downloadUpdate: () => client.updateDownload(),
+    cancelDownload: () => client.updateCancel(),
+    installUpdate: () => client.updateInstall(),
+    subscribeToProgress: (listener: typeof onProgress) => client.onUpdateProgress(listener),
+    openBackupDownload: () => client.openBackupDownload(),
+  };
+  const AppModal = (props: Record<string, any>): Node => ({
+    type: appModal,
+    props,
+    children: props.children == null ? [] : Array.isArray(props.children) ? props.children : [props.children],
+  });
   const context: any = {
-    client, formatBytes, isDetailWinHash, isSearchWindow: () => search, AppModal: appModal,
+    client, formatBytes, isDetailWinHash, isSearchWinHash, isSearchWindow: () => search, AppModal,
+    createUpdateGateAdapter: () => port, presentUpdateGate,
     window: { location: { hash } }, Fragment: 'fragment',
-    h: (type: unknown, props: Record<string, any> | null, ...children: any[]): Node => ({ type, props: props || {}, children }),
+    h: (type: any, props: Record<string, any> | null, ...children: any[]): Node => {
+      const nextProps = { ...props };
+      if (children.length > 0) nextProps.children = children.length === 1 ? children[0] : children;
+      if (typeof type === 'function') return type(nextProps);
+      const content = nextProps.children;
+      return { type, props: nextProps, children: content == null ? [] : Array.isArray(content) ? content : [content] };
+    },
     useState: (initial: unknown) => {
       const i = cursor++;
       if (!(i in slots)) slots[i] = initial;
@@ -51,6 +80,15 @@ function host(hash = '#/', search = false) {
       if (!(i in slots)) slots[i] = { current: initial };
       return slots[i];
     },
+    useMemo: (factory: () => unknown, deps: unknown[]) => {
+      const i = cursor++;
+      const old = memoSlots.get(i);
+      if (old && deps.length === old.deps.length && deps.every((value, index) => Object.is(value, old.deps[index]))) return old.value;
+      const value = factory();
+      memoSlots.set(i, { deps, value });
+      return value;
+    },
+    useCallback: (callback: (...args: any[]) => any, deps: unknown[]) => context.useMemo(() => callback, deps),
     useEffect: (fn: () => void | (() => void), deps: unknown[]) => {
       const i = cursor++;
       const old = effects.get(i);

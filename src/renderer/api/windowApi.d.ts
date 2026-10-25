@@ -209,6 +209,7 @@ declare global {
         search: (name: string, season?: number) => Promise<IpcResult<DanmakuAnime[]>>;
         episodes: (bangumiId: number, animeTitle: string | undefined, source: string) => Promise<IpcResult<DanmakuCandidate[]>>;
         fetch: (episodeId: number, source: string) => Promise<IpcResult<string>>;
+        onRealtime?: (cb: (data: { text: string }) => void) => () => void;
       };
       meta: {
         search: (name: string, year?: string, provider?: 'tmdb' | 'douban') => Promise<IpcResult<MetaHit | null>>;

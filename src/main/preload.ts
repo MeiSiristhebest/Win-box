@@ -215,6 +215,11 @@ const api = {
     episodes: (bangumiId: number, animeTitle?: string, source?: string) => invoke(IPC.DANMAKU_EPISODES, bangumiId, animeTitle, source),
     // ★ 2026-09-26：source = 接口基础地址
     fetch: (episodeId: number, source?: string) => invoke(IPC.DANMAKU_FETCH, episodeId, source),
+    onRealtime: (cb: (data: { text: string }) => void) => {
+      const l = (_e: unknown, ev: { text: string }) => cb(ev);
+      ipcRenderer.on(IPC.DANMAKU_EMIT_REALTIME, l);
+      return () => { ipcRenderer.removeListener(IPC.DANMAKU_EMIT_REALTIME, l); };
+    },
   },
   meta: {
     // 元数据补全；TMDB 仅在用户配置凭据后启用。

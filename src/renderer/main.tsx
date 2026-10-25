@@ -3,9 +3,11 @@ import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import App from './App';
 import { AppDialogProvider } from './components/AppDialog';
+import { FluentDesignProvider } from './components/FluentDesignProvider';
 import { initTheme } from './lib/theme';
+import { loadPluginThemeRegistry } from './features/theme/adapters/pluginThemeRegistryAdapter';
 import { dropSessionUiMemoryIfRestarted } from './lib/uiMemory';
-import { initDisplayPrefs } from './lib/displayPrefs';
+import { initDisplayPrefs } from './features/display';
 import { initMotionPref } from './lib/uiPrefs';
 import { syncUiPreferencesFromMain } from './lib/preferenceStore';
 import { client } from './api/client';
@@ -30,18 +32,22 @@ async function bootUiMemory(): Promise<void> {
 
 // 挂载前应用持久化的亮/深色主题，避免首屏白屏/闪错主题
 initTheme();
+void loadPluginThemeRegistry();
 // ★ 2026-10-08：挂载前应用「界面动效」偏好（写 <html data-motion>）——首屏就按用户档位渲染动效
 initMotionPref();
 
 void Promise.all([bootUiMemory(), syncUiPreferencesFromMain().catch(() => undefined)]).finally(() => {
   initTheme();
+  void loadPluginThemeRegistry();
   initMotionPref();
   void initDisplayPrefs().finally(() => createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       <HashRouter>
-        <AppDialogProvider>
-          <App />
-        </AppDialogProvider>
+        <FluentDesignProvider>
+          <AppDialogProvider>
+            <App />
+          </AppDialogProvider>
+        </FluentDesignProvider>
       </HashRouter>
     </React.StrictMode>,
   ));

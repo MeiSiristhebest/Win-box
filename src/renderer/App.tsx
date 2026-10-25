@@ -1,5 +1,5 @@
 import { Outlet, Route, Routes, useNavigate } from 'react-router-dom';
-import TitleBar from './components/TitleBar';
+import WindowTitleBar from './layouts/WindowTitleBar';
 import PageErrorBoundary from './components/PageErrorBoundary';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { KeepAliveRoutes } from './features/navigation/KeepAliveRoutes';
@@ -30,19 +30,37 @@ import { playVodExternal } from './lib/externalPlay';
 import { useShowDiscover } from './lib/uiPrefs';
 // 详情打开方式统一入口 + 固定窗口身份判定。
 import { isDetailWindow, openDetailRoute } from './lib/detailWin';
-import { isSearchWindow, bindSearchNav } from './lib/searchWin';
+import { isSearchWindow, bindSearchNavigation, openSearchWindow } from './features/search/adapters/searchWindowNavigationAdapter';
 import { useTheme } from './lib/theme';
 import { setImageFreezeActive } from './lib/freezeImages';
 import { presentationFor } from './lib/themeTokens';
 import { isNativeModalOpen } from './lib/modalScope';
 import { client } from './api/client';
+import { disclaimerAgreementAdapter } from './adapters/disclaimerAgreementAdapter';
 import { AppModal, useAppDialog } from './components/AppDialog';
 import { APP_NAV_GROUPS, NAV, SHELL_PRESENTATIONS, ShellFrame } from './layouts/ShellLayouts';
 // ★ 2026-10-18 插件快捷键（contributes.keymap）：app 作用域分发（动作复用 ui.command 词表）
-import { usePluginKeymaps } from './lib/pluginKeymaps';
-import { runPluginCommand } from './lib/pluginCommands';
+import { usePluginKeymaps } from './features/plugins/usePluginKeymaps';
+import { PluginCommandProvider, usePluginCommandRunner } from './features/plugins/PluginCommandContext';
 import type { Episode } from '../shared/types';
 import { PluginDialogBridge } from './features/plugins/PluginDialogBridge';
+import { pluginDialogAdapter } from './features/plugins/adapters/pluginDialogAdapter';
+import { coverLookupAdapter } from './features/covers/adapters/coverLookupAdapter';
+import { coverBrowserImageAdapter } from './features/covers/adapters/coverBrowserImageAdapter';
+import { coverSettingsChangesAdapter } from './features/covers/adapters/coverSettingsChangesAdapter';
+import { coverClockAdapter } from './features/covers/adapters/coverClockAdapter';
+import { CoversProvider } from './features/covers/CoverLookupContext';
+import { pluginKeymapAdapter } from './features/plugins/adapters/pluginKeymapAdapter';
+import { PluginKeymapsProvider } from './features/plugins/PluginKeymapsContext';
+import { pluginCommandAdapter } from './features/plugins/adapters/pluginCommandAdapter';
+import { reportPageError } from './features/diagnostics/adapters/pageErrorReporterAdapter';
+
+const coverRuntimePorts = {
+  lookup: coverLookupAdapter,
+  settingsChanges: coverSettingsChangesAdapter,
+  images: coverBrowserImageAdapter,
+  clock: coverClockAdapter,
+};
 
 /**
  * ★ 2026-10-08（用户要求「详情页独立窗口」）：详情窗口与主窗口共享同一份 localStorage 的 uiMem，
@@ -60,7 +78,7 @@ function PageShell() {
   const loc = useLocation();
   return (
     <div className="page-anim" key={loc.pathname}>
-      <PageErrorBoundary>
+      <PageErrorBoundary reportError={reportPageError}>
         <Suspense fallback={<RouteLoading />}>
           <Outlet />
         </Suspense>
@@ -76,20 +94,27 @@ function RouteLoading() {
 export default function App() {
   return (
     <UpdateGate>
-      <PluginDialogBridge />
-      <AppShell />
+      <CoversProvider ports={coverRuntimePorts}>
+        <PluginCommandProvider port={pluginCommandAdapter}>
+          <PluginKeymapsProvider port={pluginKeymapAdapter}>
+            <PluginDialogBridge port={pluginDialogAdapter} />
+            <AppShell />
+          </PluginKeymapsProvider>
+        </PluginCommandProvider>
+      </CoversProvider>
     </UpdateGate>
   );
 }
 
 function AppShell() {
   const dialog = useAppDialog();
+  const runPluginCommand = usePluginCommandRunner();
   const nav = useNavigate();
   const loc = useLocation();
   // ★ 2026-10-15：把本窗口的导航函数交给搜索入口 —— 「单页内」模式下搜索在**本窗口内**跳转（伪墓碑）。
   useEffect(() => {
-    bindSearchNav((to) => nav(to));
-    return () => bindSearchNav(null);
+    bindSearchNavigation((to) => nav(to));
+    return () => bindSearchNavigation(null);
   }, [nav]);
   /** 内置浅深外观共用桌面布局；插件外观按自己的结构声明展示。 */
   const theme = useTheme();
@@ -137,11 +162,7 @@ function AppShell() {
   };
   // 首次启动免责声明弹窗：已同意过（localStorage 标记）则不再弹出
   const [disclaim, setDisclaim] = useState(() => {
-    try {
-      return localStorage.getItem('winbox-disclaim-agreed') !== '1';
-    } catch {
-      return true;
-    }
+    return !disclaimerAgreementAdapter.isAccepted();
   });
   // 系统级返回：Alt+← / Backspace（输入控件内不拦截），覆盖所有页面的返回需求
   useEffect(() => {
@@ -262,11 +283,7 @@ function AppShell() {
 
   // 首次同意后主窗口进入说明页；记录标记，下次启动不再弹出或跳转。
   const agreeDisclaim = () => {
-    try {
-      localStorage.setItem('winbox-disclaim-agreed', '1');
-    } catch {
-      /* ignore */
-    }
+    disclaimerAgreementAdapter.accept();
     setDisclaim(false);
     if (!isPlayerWin && !isDetailWindow() && !isSearchWindow()) nav('/about', { replace: true });
   };
@@ -385,8 +402,21 @@ function AppShell() {
       vodId: meta?.vodId,
       // 同集已有进度 → 外部播放器直接续播（外部播放器无法回传进度，故保留历史里的位置）
       seek: sameEpProgress(fromKey, meta?.vodId, rawUrl, meta?.profileId),
-    }).then((out) => {
-      if (!out.played) void openBuiltin();
+    }).then(async (out) => {
+      if (out.played) return;
+      if (out.error) {
+        await dialog.alert(out.error, { title: '外部播放器启动失败' });
+        return;
+      }
+      if (out.fallbackReason) {
+        const useBuiltin = await dialog.confirm(`${out.fallbackReason}\n\n是否继续使用应用内播放器？`, {
+          title: '无法直接交给外部播放器',
+          confirmLabel: '应用内播放',
+          cancelLabel: '取消',
+        });
+        if (!useBuiltin) return;
+      }
+      await openBuiltin();
     });
   };
 
@@ -412,7 +442,7 @@ function AppShell() {
         <main className="main">
           <Routes>
             <Route path="/player" element={
-              <PageErrorBoundary>
+              <PageErrorBoundary reportError={reportPageError}>
                 <Suspense fallback={<RouteLoading />}>
                   <PlayerPage />
                 </Suspense>
@@ -443,7 +473,7 @@ function AppShell() {
     { path: '/history', el: <HistoryPage /> },
     // ★ 2026-10-17（用户要求）：收藏列表（增删改查）
     { path: '/favorites', el: <FavoritesPage /> },
-    { path: '/detail/:key/:id', el: <DetailPage onPlay={onDetailPlay} /> },
+    { path: '/detail/:key/:id', el: <DetailPage onPlay={onDetailPlay} onOpenSearch={openSearchWindow} /> },
     { path: '/live', el: <LivePage /> },
     // ★ 2026-09-29：WebDAV 存储（只读）—— 浏览自建 OpenList/AList/Nextcloud 等并播放
     { path: '/storage', el: <StoragePage /> },
@@ -467,7 +497,7 @@ function AppShell() {
    * ★ 主界面用的**伪墓碑**路由（见 KeepAliveRoutes）：切页保持挂载、仅隐藏，返回零重载。
    */
   const mainRoutesNode = (
-    <PageErrorBoundary>
+    <PageErrorBoundary reportError={reportPageError}>
       <Suspense fallback={<RouteLoading />}>
         <KeepAliveRoutes>{routeChildren}</KeepAliveRoutes>
       </Suspense>
@@ -486,7 +516,7 @@ function AppShell() {
         {disclaim && DisclaimerModal}
         <main className="main">
           {/* 无边框窗口必须有可拖拽 + 关闭的标题栏（页面自身 topbar 只提供返回/关闭语义） */}
-          <TitleBar title={isSearchWindow() ? '搜索结果' : '影片详情'} />
+      <WindowTitleBar title={isSearchWindow() ? '搜索结果' : '影片详情'} />
           {routesNode}
         </main>
       </div>
