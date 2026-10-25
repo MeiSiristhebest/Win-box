@@ -98,6 +98,8 @@ export interface VideoPlayerProps {
   danmakuTitle?: string;
   /** 小窗口模式：控制条只保留 上/下集 + 播放暂停；全屏等功能消失 */
   mini?: boolean;
+  /** 切换画中画小窗口模式 */
+  onToggleMini?: () => void;
   /** ★ 播放地址属于「cookie 型」网盘且未绑定 → 提示去配置页绑定（值为网盘 provider，如 quark/uc/baidu/115） */
   driveBindProvider?: string | null;
   /** ★ 2026-09-29：在播放器里完成网盘绑定后回调外层（重新解析当前集，不用手动重开） */
@@ -609,8 +611,8 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
   };
 
   const toggleMiniMode = useCallback(() => {
-    void dependencies.playerViewport.setMini(!mini);
-  }, [dependencies.playerViewport, mini]);
+    props.onToggleMini?.();
+  }, [props]);
 
   const cycleFitMode = useCallback(() => {
     const FIT_ORDER: PlayerFit[] = ['contain', 'cover', 'r169', 'r43', 'fill', 'none'];
