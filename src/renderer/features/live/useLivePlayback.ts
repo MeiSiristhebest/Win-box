@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { LiveBean, LiveEpgEntry, LiveGroup, UserConfig } from '../../../shared/types';
+import type { EpgProgram, LiveBean, LiveEpgEntry, LiveGroup, UserConfig } from '../../../shared/types';
 import { splitLine } from '../../../engine/live/LiveUtils';
+import { buildCatchupUrl } from '../../../engine/live/catchup';
 import type {
   LivePlaybackClockPort,
   LivePlaybackDataPort,
@@ -31,6 +32,9 @@ export interface LivePlaybackDependencies {
 export function useLivePlayback({ data, memory, refresh: refreshEvents, clock }: LivePlaybackDependencies) {
   const [view, setView] = useState<LiveView>(EMPTY);
   const [epgState, setEpgState] = useState<{ groups: LiveGroup[] | null; index: number; profileId: string; byKey: Record<string, LiveEpgEntry> }>({ groups: null, index: 0, profileId: '', byKey: {} });
+  const [catchupUrl, setCatchupUrl] = useState<string | null>(null);
+  const [catchupTitle, setCatchupTitle] = useState<string>('');
+  const [liveToast, setLiveToast] = useState<string>('');
   const epg = epgState.groups === view.groups && epgState.index === view.liveIdx && epgState.profileId === view.profileId ? epgState.byKey : {};
   const sequence = useRef(0);
   const loadedSpec = useRef('');
@@ -100,12 +104,16 @@ export function useLivePlayback({ data, memory, refresh: refreshEvents, clock }:
     configSequence.current += 1;
     const request = ++sequence.current;
     loadedSpec.current = '';
+    setCatchupUrl(null);
+    setCatchupTitle('');
     configRef.current = { ...config, ui: { ...config.ui, activeLiveIndex: index } };
     void data.setActiveLineup(index).catch(() => undefined);
     void load(config, index, request);
   }, [data, load]);
 
   const pickChannel = useCallback((group: LiveGroup, name: string, index: number) => {
+    setCatchupUrl(null);
+    setCatchupTitle('');
     setView(current => {
       return { ...current, ...selectLiveChannel(current.groups, group.group, name, index) };
     });
@@ -115,6 +123,42 @@ export function useLivePlayback({ data, memory, refresh: refreshEvents, clock }:
   const curChannel = curGroup?.channels.find(channel => channel.name === view.channelName);
   const curEpg = curChannel ? epg[curChannel['tvg-id']] || epg[curChannel['tvg-name']] || epg[curChannel.name] : undefined;
   const lines = curChannel?.urls.map((url, i) => splitLine(url, i + 1)) ?? [];
+
+  const playCatchup = useCallback((prog: EpgProgram) => {
+    if (!curChannel || !view.playUrl) return;
+    const url = buildCatchupUrl(view.playUrl, curChannel.catchup, prog.startTime, prog.endTime);
+    if (url) {
+      setCatchupUrl(url);
+      setCatchupTitle(`${prog.title} (${prog.start}-${prog.end})`);
+      setLiveToast(`正在时移回看：${prog.title}（${prog.start}-${prog.end}）`);
+    } else {
+      setLiveToast('该频道暂未配置时移回看规则');
+    }
+  }, [curChannel, view.playUrl]);
+
+  const exitCatchup = useCallback(() => {
+    setCatchupUrl(null);
+    setCatchupTitle('');
+    setLiveToast('已恢复实时直播');
+  }, []);
+
+  const failoverToNextLine = useCallback((reason: string) => {
+    if (lines.length > 1) {
+      const nextIndex = (view.lineIdx + 1) % lines.length;
+      setCatchupUrl(null);
+      setCatchupTitle('');
+      setLiveToast(`当前线路卡顿异常（${reason}），已自动为您切至线路 ${nextIndex + 1}`);
+      pickChannel(curGroup!, view.channelName, nextIndex);
+      return true;
+    }
+    return false;
+  }, [lines.length, view.lineIdx, curGroup, view.channelName, pickChannel]);
+
+  useEffect(() => {
+    if (!liveToast) return;
+    const timer = setTimeout(() => setLiveToast(''), 3500);
+    return () => clearTimeout(timer);
+  }, [liveToast]);
 
   useEffect(() => {
     let alive = true;
@@ -136,5 +180,22 @@ export function useLivePlayback({ data, memory, refresh: refreshEvents, clock }:
     return () => { alive = false; if (timer !== undefined) clock.cancel(timer); };
   }, [clock, data, view.groups, view.liveIdx, view.profileId, curChannel]);
 
-  return { ...view, curGroup, curChannel, curEpg, lines, pickLive, pickChannel };
+  const activePlayUrl = catchupUrl || view.playUrl;
+
+  return {
+    ...view,
+    playUrl: activePlayUrl,
+    curGroup,
+    curChannel,
+    curEpg,
+    lines,
+    liveToast,
+    isCatchupActive: Boolean(catchupUrl),
+    catchupTitle,
+    playCatchup,
+    exitCatchup,
+    failoverToNextLine,
+    pickLive,
+    pickChannel,
+  };
 }

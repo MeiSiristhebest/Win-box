@@ -87,6 +87,8 @@ export interface VideoPlayerProps {
   onPickEpisode?: (index: number) => void;
   /** ★ 2026-10-25（自动切源容错机制 AutoChangeParse）：流异常/超时时自动切换下一解析线路 */
   onAutoChangeParse?: (currentTime: number) => Promise<boolean> | boolean;
+  /** ★ 2026-10-25（播放故障回调）：供外层（如直播切备用线）接管流异常 */
+  onPlaybackFailure?: (time: number, reason: string) => void;
   /** 当前解析线路名称（展示在 HUD 提示中） */
   parseName?: string;
   /** 视频分辨率回传到窗口标题；未知/换源时为空。 */
@@ -507,12 +509,16 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
   }, [coordinateVolumeFlash, flashVolume]);
 
   const onAutoChangeParse = props.onAutoChangeParse;
+  const onPlaybackFailure = props.onPlaybackFailure;
   const handlePlaybackFailure = useCallback((time: number, reason: string) => {
     if (onAutoChangeParse) {
       showSkipToast(`流异常（${reason}），正在自动为您切换解析线路…`);
       void onAutoChangeParse(time);
     }
-  }, [onAutoChangeParse, showSkipToast]);
+    if (onPlaybackFailure) {
+      onPlaybackFailure(time, reason);
+    }
+  }, [onAutoChangeParse, onPlaybackFailure, showSkipToast]);
 
   const parseName = props.parseName;
   useEffect(() => {

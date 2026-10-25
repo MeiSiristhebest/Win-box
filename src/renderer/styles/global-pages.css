@@ -221,10 +221,33 @@
 .dav-size { flex: none; width: 76px; text-align: right; }
 .dav-time { flex: none; width: 124px; text-align: right; }
 /* ★ 2026-09-29 EPG：当前 / 下一档一行（仅当该频道有节目单时渲染） */
-.live-epg { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 8px; font-size: 12.5px; }
+.live-epg { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-bottom: 8px; font-size: 12.5px; }
 .live-epg > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .live-epg b { font-weight: 600; color: var(--text-dim); margin-right: 4px; }
 .live-epg-now { color: var(--text); }
+.live-catchup-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 12px; margin-bottom: 8px; border-radius: 6px;
+  background: var(--surface-2); border: 1px solid var(--text-accent, var(--accent)); font-size: 12.5px;
+}
+.live-schedule-toggle { margin-left: auto; font-size: 12px; }
+.live-schedule-drawer {
+  max-height: 180px; overflow-y: auto; margin: 6px 0 10px; padding: 6px;
+  border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border-soft);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.live-schedule-row { display: flex; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+.live-schedule-row.active { background: var(--accent-soft); color: var(--text-accent, var(--accent)); font-weight: 600; }
+.live-prog-time { flex: 0 0 auto; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.live-prog-title { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-status-tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--accent); color: #fff; }
+.live-catchup-action { font-size: 11px; padding: 1px 6px; }
+.live-hud-toast {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 20;
+  padding: 6px 14px; border-radius: 8px; background: rgba(0, 0, 0, 0.78); color: #fff;
+  font-size: 13px; font-weight: 500; backdrop-filter: blur(8px); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
 .ep-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
 .ep { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 7px; cursor: pointer;
   font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

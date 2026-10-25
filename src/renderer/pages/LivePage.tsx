@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import PluginSlot from '../components/PluginSlot';
 import VideoPlayer from '../components/VideoPlayer';
 import { useLivePlayback } from '../features/live/useLivePlayback';
@@ -7,7 +8,13 @@ import { useLiveExportPresenter } from '../features/live/useLiveExportPresenter'
 import { SelectionButton } from '../components/ui/SelectionButton';
 
 export default function LivePage() {
-  const { profileId, lives, liveIdx, groups, groupName, channelName, lineIdx, playUrl, loading, err, liveName, curGroup, curEpg, lines, pickLive, pickChannel } = useLivePlayback(livePlaybackDependencies);
+  const {
+    profileId, lives, liveIdx, groups, groupName, channelName, lineIdx, playUrl,
+    loading, err, liveName, curGroup, curChannel, curEpg, lines, liveToast,
+    isCatchupActive, catchupTitle, playCatchup, exitCatchup, failoverToNextLine,
+    pickLive, pickChannel,
+  } = useLivePlayback(livePlaybackDependencies);
+  const [showSchedule, setShowSchedule] = useState(false);
   const exportKey = JSON.stringify([profileId, liveIdx, liveName]);
   const liveExport = useLiveExportPresenter(exportKey, liveExportAdapter);
 
@@ -77,26 +84,73 @@ export default function LivePage() {
                   ))}
                 </fieldset>
               )}
-              {/* ★ 2026-09-29 EPG：当前 / 下一档（仅有节目单时才显示，避免占位空格） */}
-              {curEpg && (curEpg.current || curEpg.next) && (
-                <div className="live-epg">
-                  {curEpg.current && (
-                    <span className="live-epg-now">
-                      <b>正在播</b> {curEpg.current.start}~{curEpg.current.end} {curEpg.current.title || '（无标题）'}
-                    </span>
+              {/* ★ 2026-09-29 EPG：当前 / 下一档 / 完整回看节目单 */}
+              {curEpg && (curEpg.current || curEpg.next || (curEpg.programs && curEpg.programs.length > 0)) && (
+                <div className="live-epg-section">
+                  <div className="live-epg">
+                    {curEpg.current && (
+                      <span className="live-epg-now">
+                        <b>正在播</b> {curEpg.current.start}~{curEpg.current.end} {curEpg.current.title || '（无标题）'}
+                      </span>
+                    )}
+                    {curEpg.next && (
+                      <span className="muted">
+                        <b>下一档</b> {curEpg.next.start} {curEpg.next.title || '（无标题）'}
+                      </span>
+                    )}
+                    {curEpg.programs && curEpg.programs.length > 0 && (
+                      <button
+                        type="button"
+                        className="linkbtn live-schedule-toggle"
+                        onClick={() => setShowSchedule(!showSchedule)}
+                      >
+                        {showSchedule ? '收起节目单' : `全天节目 (${curEpg.programs.length})`}
+                      </button>
+                    )}
+                  </div>
+                  {showSchedule && curEpg.programs && (
+                    <div className="live-schedule-drawer">
+                      {curEpg.programs.map((prog, idx) => {
+                        const now = Date.now();
+                        const isCurrent = prog.startTime <= now && now <= prog.endTime;
+                        const isPast = prog.endTime < now;
+                        return (
+                          <div key={idx} className={`live-schedule-row ${isCurrent ? 'active' : ''}`}>
+                            <span className="live-prog-time">{prog.start}~{prog.end}</span>
+                            <span className="live-prog-title" title={prog.title}>{prog.title}</span>
+                            {isCurrent && <span className="live-status-tag">直播中</span>}
+                            {isPast && curChannel?.catchup && (
+                              <button
+                                type="button"
+                                className="linkbtn live-catchup-action"
+                                onClick={() => playCatchup(prog)}
+                              >
+                                回看
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
-                  {curEpg.next && (
-                    <span className="muted">
-                      <b>下一档</b> {curEpg.next.start} {curEpg.next.title || '（无标题）'}
-                    </span>
-                  )}
+                </div>
+              )}
+              {isCatchupActive && (
+                <div className="live-catchup-bar">
+                  <span>⏪ <b>时移回看中</b>：{catchupTitle}</span>
+                  <button type="button" className="linkbtn" onClick={exitCatchup}>返回实时直播</button>
                 </div>
               )}
               {/* ★ 2026-09-27：播放器必须有「有高度」的 flex 宿主 —— `.vplayer` 的高度只来自 flex（flex:1），
                   直接放进 block 容器 `.right` 会折成 0 高度（用户报「直播界面播放器消失」）。 */}
               {playUrl ? (
                 <div className="live-player">
-                  <VideoPlayer url={playUrl} />
+                  {liveToast && <div className="live-hud-toast">{liveToast}</div>}
+                  <VideoPlayer
+                    url={playUrl}
+                    playTitle={isCatchupActive ? `${channelName} - ${catchupTitle}` : channelName}
+                    onPlaybackFailure={(_time, reason) => failoverToNextLine(reason)}
+                  />
                 </div>
               ) : (
                 <div className="empty">无播放地址</div>
