@@ -113,8 +113,15 @@ export class PythonSpiderRuntimeAdapter implements PythonSpiderRuntimePort {
     if (this.options.pool) {
       const serveArgv = [runner, '-serve', pyPath, className];
       const key = servePoolKey(executable, serveArgv, env);
+      let result: PoolResult | null = null;
       try {
-        const result = await this.options.submitToPool(executable, key, serveArgv, className, method, args, env, requestTimeout, undefined, signal);
+        result = await this.options.submitToPool(executable, key, serveArgv, className, method, args, env, requestTimeout, undefined, signal);
+      } catch {
+        if (signal?.aborted) throw abortError(signal);
+        // A rejected pool submission is a transport failure and may use the one-shot path.
+      }
+
+      if (result) {
         throwIfAborted(signal);
         if (result.ok) {
           const rawError = result.error ? String(result.error) : '';
@@ -129,11 +136,12 @@ export class PythonSpiderRuntimeAdapter implements PythonSpiderRuntimePort {
           this.options.logInfo(`python-bridge ${className}.${method} 失败原因: ${timeoutResult.reason}`);
           return timeoutResult;
         }
-        if (result.reason === 'cancelled') throw signal ? abortError(signal) : new Error('搜索已取消');
-      } catch {
-        if (signal?.aborted) throw abortError(signal);
-        // A pool transport failure falls back to a one-shot process. A successful
-        // empty response is returned above and is never re-executed.
+        if (result.reason === 'cancelled') {
+          if (signal) throw abortError(signal);
+          const error = new Error('搜索已取消');
+          error.name = 'AbortError';
+          throw error;
+        }
       }
     }
 
