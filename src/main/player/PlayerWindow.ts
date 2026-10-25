@@ -82,6 +82,7 @@ let mini = false; // 是否处于小窗口模式
 let normalBounds: Electron.Rectangle | null = null;
 /** 记忆上次小窗口位置，再次进入时沿用 */
 let miniBounds: Electron.Rectangle | null = null;
+let preMiniAlwaysOnTop = false;
 
 declare const __dirname: string;
 
@@ -239,6 +240,12 @@ export function playerSetMini(isMini: boolean): void {
       ? { x: Math.max(ax, Math.min(miniBounds.x, ax + aw - mw)), y: Math.max(ay, Math.min(miniBounds.y, ay + ah - mh)) }
       : { x: Math.round(ax + (aw - mw) / 2), y: Math.round(Math.max(ay, ay + (ah - mh) / 2)) };
     mini = true; // ★ 先置位再改边界：move/resize 追踪器在 mini 态下只记 miniBounds，避免覆盖 normalBounds
+    preMiniAlwaysOnTop = w.isAlwaysOnTop();
+    try {
+      w.setAlwaysOnTop(true, 'floating');
+    } catch {
+      w.setAlwaysOnTop(true);
+    }
     w.setMinimumSize(Math.round(MINI_MIN_W * uiScale), Math.round(MINI_MIN_H * uiScale));
     w.setFullScreenable(false);
     w.setBounds({ ...mb, width: mw, height: mh });
@@ -247,6 +254,11 @@ export function playerSetMini(isMini: boolean): void {
     const nb = normalBounds;
     const restore = scaledWindowFor(PLAYER_NORMAL, w);
     mini = false; // ★ 先置位：恢复边界为正常尺寸，追踪器此时只会记录 normalBounds
+    try {
+      w.setAlwaysOnTop(preMiniAlwaysOnTop, 'floating');
+    } catch {
+      w.setAlwaysOnTop(preMiniAlwaysOnTop);
+    }
     w.setMinimumSize(restore.minWidth, restore.minHeight);
     w.setFullScreenable(true);
     if (nb) w.setBounds(nb);
