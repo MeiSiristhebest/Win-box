@@ -54,7 +54,7 @@ export interface SubscriptionImportGroupCommitPort {
   ): void;
 }
 
-export interface SubscriptionImportGroupManager extends SubscriptionImportGroupCommitPort {
+export interface SubscriptionGroupProfilePort extends SubscriptionImportGroupCommitPort {
   snapshot(): SubscriptionImportSnapshot;
 }
 
@@ -220,7 +220,7 @@ export function commitSubscriptionImportGroup(options: {
 }
 
 export async function runSubscriptionImportGroup(options: {
-  manager: SubscriptionImportGroupManager;
+  manager: SubscriptionGroupProfilePort;
   executeBatch: typeof executeSubscriptionImportBatch;
   items: readonly SubscriptionImportItem[];
   name: string;

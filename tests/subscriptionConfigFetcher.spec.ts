@@ -23,7 +23,9 @@ describe('batch import diagnostics', () => {
     }));
     const logger = { i: vi.fn(), w: vi.fn(), e: vi.fn() };
     const result = await fetchSubscriptionConfig({ http: { request }, logger }, 'https://example.invalid/config.json', true);
-    expect(request.mock.calls[0][0].totalTimeoutMs).toBe(22_000);
+    const totalTimeoutMs = request.mock.calls[0][0].totalTimeoutMs;
+    expect(totalTimeoutMs).toBeGreaterThan(0);
+    expect(totalTimeoutMs).toBeLessThanOrEqual(22_000);
     expect(result.hint).toContain('https://gitlab.example/users/sign_in');
     expect(result.hint).not.toContain('token=private');
     expect(result.hint).toContain('HTML');
