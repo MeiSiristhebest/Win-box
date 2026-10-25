@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { PluginDialogRequest } from '../../../shared/pluginDialog';
 import { useAppDialog } from '../../components/AppDialog';
+import type { PluginDialogPort } from './application/pluginDialogPort';
 
 function PluginDialog({ request, finish }: { request: PluginDialogRequest; finish(id: string, accepted: boolean): void }) {
   const dialog = useAppDialog();
@@ -16,19 +17,18 @@ function PluginDialog({ request, finish }: { request: PluginDialogRequest; finis
   return null;
 }
 
-export function PluginDialogBridge() {
+export function PluginDialogBridge({ port }: { port: PluginDialogPort }) {
   const [requests, setRequests] = useState<PluginDialogRequest[]>([]);
   const finish = useCallback((id: string, accepted: boolean) => {
-    window.api?.plugins?.replyDialog?.({ id, accepted });
+    port.reply({ id, accepted });
     setRequests(items => items.filter(item => item.id !== id));
-  }, []);
+  }, [port]);
   useEffect(() => {
-    const api = window.api?.plugins;
-    if (!api?.onDialog || !api.onDialogCancel || !api.dialogReady) return;
-    const off = api.onDialog(request => setRequests(items => items.some(item => item.id === request.id) ? items : [...items, request]));
-    const offCancel = api.onDialogCancel(id => setRequests(items => items.filter(item => item.id !== id)));
-    api.dialogReady();
-    return () => { off(); offCancel(); };
-  }, []);
+    const disconnect = port.connect(
+      request => setRequests(items => items.some(item => item.id === request.id) ? items : [...items, request]),
+      id => setRequests(items => items.filter(item => item.id !== id)),
+    );
+    return disconnect ?? undefined;
+  }, [port]);
   return <>{requests.map(request => <PluginDialog key={request.id} request={request} finish={finish} />)}</>;
 }

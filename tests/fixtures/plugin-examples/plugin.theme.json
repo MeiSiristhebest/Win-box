@@ -30,7 +30,7 @@
         "--accent-2": "#8ad6c8",
         "--text": "#f6eef3",
         "--text-dim": "#c3a9b6",
-        "--text-faint": "#8e7681",
+        "--text-faint": "#ad99a4",
         "--border": "#432f3b",
         "--border-soft": "rgba(255, 255, 255, .1)",
         "--hairline": "rgba(255, 255, 255, .08)",
