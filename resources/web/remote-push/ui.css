@@ -1,0 +1,117 @@
+body,
+html {
+    height: 100%;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    font-family: system-ui, -apple-system, Helvetica Neue, sans-serif;
+}
+
+.page,
+body {
+    background-color: var(--weui-BG-0);
+}
+
+.page {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    box-sizing: border-box;
+    z-index: 1;
+}
+
+.store_container {
+    background: #10aeff;
+    border-radius: 10px;
+    flex-direction: column;
+    width: 100%;
+    padding: 12px;
+    font-size: 12px;
+}
+
+.weui-form__title2 {
+    color: darkgray;
+    font-size: 16px;
+    margin-top: 10px;
+    font-style: italic;
+    text-align: center;
+}
+
+.input_container {
+    padding: 12px 10px;
+    height: 38px;
+    border-width: 0;
+    background: white;
+    border-radius: 10px;
+}
+
+.weui-form__image {
+    text-align: center;
+    vertical-align: middle;
+}
+
+#tuiguang0, #tuiguang1 {
+    width: 50%;
+}
+.custom_title {
+    width: 100%;
+    font-size: 24px;
+    text-align: center;
+    display: block;
+    margin-top: 26px;
+}
+
+#title {
+    margin-top: -30px;
+}
+
+/* - Chrome ≤56,
+   - Safari 5-10.0
+   - iOS Safari 4.2-10.2
+   - Opera 15-43
+   - Opera Mobile >12
+   - Android Browser 2.1-4.4.4
+   - Samsung Internet
+   - UC Browser for Android
+   - QQ Browser */
+::-webkit-input-placeholder {
+    color: #00C7EE;
+    font-weight: 400;
+}
+
+/* Firefox 4-18 */
+:-moz-placeholder {
+    color: #00C7EE;
+    font-weight: 400;
+}
+
+/* Firefox 19-50 */
+::-moz-placeholder {
+    color: #00C7EE;
+    font-weight: 400;
+}
+
+/* - Internet Explorer 10–11
+   - Internet Explorer Mobile 10-11 */
+:-ms-input-placeholder {
+    color: #00C7EE !important;
+    font-weight: 400 !important;
+}
+
+/* Edge (also supports ::-webkit-input-placeholder) */
+::-ms-input-placeholder {
+    color: #00C7EE;
+    font-weight: 400;
+}
+
+/* CSS Working Draft */
+::placeholder {
+    color: #00C7EE;
+    font-weight: 400;
+}
+
