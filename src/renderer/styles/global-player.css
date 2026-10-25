@@ -1,0 +1,324 @@
+@layer legacy {
+/* ---- 播放器（现代化） ---- */
+/* ★ 2026-10-15（用户要求「大豆/大果的播放器被改成圆角，做回正常的直角播放器」→ 四套皮肤一起）：
+   舞台 `.vplayer` 必须是**直角**。它带 `overflow:hidden`，一旦有圆角就会**把视频画面自身的四角切掉**
+   （画面满铺时肉眼可见）；浅色外壳的皮肤（大豆 / 大果）还会在黑色舞台四周露出圆角缺口。
+   故圆角在**基类**统一置 0 —— 各皮肤不得再给 `.vplayer` 加圆角（原值 10px 为开源初始口径）。 */
+.vplayer { position: relative; flex: 1; background: #000; min-height: 0; overflow: hidden;
+  font-family: inherit; border-radius: 0; }
+.vplayer video { width: 100%; height: 100%; object-fit: contain; outline: none; }
+
+/* ★ 2026-09-26（用户报「部分比例的视频会让播放器底部 UI 消失」）——
+   ① 高度链：flex item 默认 `min-height: auto` 会按内容（视频固有比例）撑高，
+      竖屏/超宽视频会把 .vplayer 顶到视口之外，绝对定位在底部的 .vp-controls 随之下沉不可见。
+      播放器窗口链 = .main → .pwin-body → .pwin-stage → .vplayer，**每一层都必须允许收缩**。
+   ② 画面区域：.vp-stage 绝对定位撑满并裁切溢出 → 画面本身不可能把控制条挤出可视区。 */
+.pwin-body { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.pwin-stage { flex: 1; min-height: 0; min-width: 0; display: flex; }
+.vp-stage { position: absolute; inset: 0; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  container-type: size; }
+.vp-stage-toggle { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0;
+  border-radius: 0; background: transparent; color: inherit; opacity: 0; cursor: pointer; }
+.vp-stage-toggle:focus-visible { outline: var(--focus-ring); outline-offset: -4px; }
+.vp-ratio { width: 100%; height: 100%; min-height: 0; overflow: hidden; }
+.vp-stage video { width: 100%; height: 100%; object-fit: contain; }
+.vp-stage.fit-fill video { object-fit: fill; }
+.vp-stage.fit-cover video { object-fit: cover; }
+.vp-stage.fit-none video { object-fit: none; }
+/* 强制 16:9 / 4:3：**拉伸**到该比例显示区（对齐安卓 TVBox 的「画面比例」，用于去黑边/修正变形）。
+   盒子尺寸用容器查询单位显式算「能放下的最大定比矩形」：width = min(容器宽, 容器高 × 比例) ——
+   只靠 `aspect-ratio` + `max-*` 在 clamp 时**不会**把约束传到另一轴（实测 1040×602 舞台下
+   16:9 会停在 1.728、4:3 也会停在 1.728），故必须显式 min()。 */
+.vp-stage.fit-r169 .vp-ratio { width: min(100cqw, calc(100cqh * 16 / 9)); height: auto; aspect-ratio: 16 / 9; }
+.vp-stage.fit-r43 .vp-ratio { width: min(100cqw, calc(100cqh * 4 / 3)); height: auto; aspect-ratio: 4 / 3; }
+.vp-stage.fit-r169 video,
+.vp-stage.fit-r43 video { object-fit: fill; }
+.vp-loading { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px;
+  align-items: center; justify-content: center; color: var(--text-dim); font-size: 13px; background: rgba(0,0,0,.3); }
+.vp-spin { width: 30px; height: 30px; border-radius: 50%; border: 3px solid rgba(255,255,255,.18);
+  border-top-color: var(--text-accent, var(--accent)); animation: vspin .8s linear infinite; }
+@keyframes vspin { to { transform: rotate(360deg); } }
+.vp-big { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  width: 40px; height: 40px; min-height: 40px; padding: 0; border-radius: 10px; border: 1px solid rgba(255,255,255,.38); display: flex; align-items: center; justify-content: center;
+  background: rgba(15,18,23,.84); color: #fff; backdrop-filter: none; box-shadow: none;
+  transition: transform .15s, background .15s, opacity .2s; opacity: 0; pointer-events: none; box-sizing: border-box; -webkit-backdrop-filter: none; }
+.vp-big svg { width: 20px; height: 20px; }
+.vplayer.vui .vp-big { opacity: 1; pointer-events: auto; }
+.vp-big:hover { background: rgba(15,18,23,.96); transform: translate(-50%, -50%); }
+.vp-err { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px;
+  align-items: center; justify-content: center; color: #fff; background: rgba(0,0,0,.72); font-size: 14px; padding: 20px; text-align: center; }
+/* ★ 网盘资源未绑定 cookie 提示卡片：覆盖于加载/错误之上（z-index 最高，优先可操作） */
+.vp-drive-bind { position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; gap: 16px;
+  align-items: center; justify-content: center; color: #fff; background: rgba(0,0,0,.78);
+  font-size: 14px; line-height: 1.7; padding: 24px; text-align: center; }
+.vp-load-text { display: inline-flex; align-items: center; gap: 2px; }
+.vp-load-speed { color: #8fd0ff; font-variant-numeric: tabular-nums; font-weight: 600; }
+.vp-next { position: absolute; left: 50%; bottom: 20%; transform: translateX(-50%); z-index: 6; display: flex;
+  align-items: center; gap: 12px; color: #fff; font-size: 14px; padding: 10px 16px; border-radius: 8px;
+  background: rgba(0,0,0,.72); box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+.vp-controls { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 14px 8px; z-index: 5;
+  background: linear-gradient(transparent, rgba(0,0,0,.72)); opacity: 0; transition: opacity .2s; }
+.vplayer.vui .vp-controls { opacity: 1; }
+.vp-progress { position: relative; height: 14px; display: flex; align-items: center; margin-bottom: 4px; }
+.vp-progress::before { content: ''; position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: rgba(255,255,255,.22); }
+.vp-buffer { position: absolute; left: 0; height: 4px; border-radius: 2px; background: rgba(255,255,255,.32); }
+.vp-played { position: absolute; left: 0; height: 4px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+/* ★ 2026-09-26（用户要求）：进度点缩小（12px → 9px）；★ 2026-09-28 再缩（9px → 7px）
+   并用 translate(-50%) 居中定位 —— 主题皮肤可各自覆盖尺寸，无需再在 JSX 里写半宽偏移 */
+.vp-thumb { position: absolute; top: 50%; left: 0; transform: translate(-50%, -50%); width: 7px; height: 7px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 5px rgba(0,0,0,.5); }
+/* ★ 2026-09-28（用户要求）：进度条悬停 —— 定位细线 + 指向时间气泡 */
+.vp-hline { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.75); pointer-events: none; }
+.vp-htip { position: absolute; bottom: calc(100% + 6px); transform: translateX(-50%); pointer-events: none;
+  padding: 1px 6px; border-radius: 4px; font-size: 12px; color: #fff; white-space: nowrap;
+  background: rgba(0,0,0,.82); box-shadow: 0 2px 8px rgba(0,0,0,.4); font-variant-numeric: tabular-nums; }
+.vp-bar { display: flex; align-items: center; gap: 10px; color: #fff; }
+/* 小窗口模式：控制条只保留 上/下集 + 播放暂停，居中 */
+.vplayer.vp-mini .vp-bar { justify-content: center; }
+.vplayer.vp-mini .vp-controls { padding: 18px 10px 6px; }
+.vp-ctl { all: unset; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; color: #eee; border-radius: 8px; }
+.vp-ctl:hover { color: #fff; background: rgba(255,255,255,.14); }
+.vp-ctl:disabled { color: #c5cedc; cursor: not-allowed; background: none; opacity: 1; }
+.vp-ctl:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ★ 2026-09-30（用户要求）：播放器「置顶」按钮的**已开启态**——高亮色 + 亮底 + 实心图标，与未开启明显区分。
+   ★ 皮肤样式（netflix/bilibili/apple）里的 `:root[data-theme='X'] .vp-ctl` 特异度 (0,3,0) 更高，
+     故这里带 `:root[data-theme]` 前缀（(0,4,0)）压过它们 —— 否则默认皮肤下置顶态仍是白色，看不出开没开。 */
+.vp-ctl.vp-on,
+:root[data-theme] .vp-ctl.vp-on { color: #fff; background: #111419ed; border-color: #ffffff68; box-shadow: 0 0 0 1px #ffffff30; }
+:root[data-theme] .vp-ctl.vp-on:hover { color: #fff; background: #242a33; border-color: #ffffff88; }
+/* ★ 2026-10-17（阶段3）：**MPV 内核专属**技术信息条 —— 位于控制条内部、进度条之上，随 `.vui` 一起显隐。
+   （只在非小窗分支渲染；皮肤若要覆盖，按 §C54 用 `:root[data-theme]` 前缀压特异度。） */
+.vp-tech { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; color: rgba(255,255,255,.82); }
+.vp-tech-chip { font-size: 12px; line-height: 1; padding: 3px 6px; border-radius: 4px;
+  background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.08); white-space: nowrap; }
+/* ★ 2026-10-17（阶段3）：**MPV 内核专属**起播格式标签（画面右上角，加载后短暂显示 4s） */
+.vp-fmtbadges { position: absolute; top: 14px; right: 14px; z-index: 6; display: flex; gap: 6px;
+  pointer-events: none; animation: vpBadgeIn .28s ease-out both; }
+.vp-fmtbadge { font-size: 12px; font-weight: 600; letter-spacing: .02em; padding: 4px 8px; border-radius: 5px;
+  color: #fff; background: rgba(12,14,20,.62); border: 1px solid rgba(255,255,255,.16);
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+@keyframes vpBadgeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.vp-time { font-size: 12px; color: #e6e8ee; font-variant-numeric: tabular-nums; }
+.vp-live { color: var(--text-danger, var(--danger)); font-size: 12px; font-weight: 700; letter-spacing: .5px; }
+
+/* ===== ★ 2026-10-16（用户要求）：播放器「选集」=====
+   · 入口 = 底部控制条里「画面比例」与「全屏」之间的一个 `.vp-ctl`（用户指定位置；开启态沿用 `.vp-on`）；
+   · 点开 → 选集抽屉从画面**右侧**丝滑滑出：**上下贯通**（top→bottom）、只占画面 **1/4~1/3**、
+     半透明 + 毛玻璃、列表为该资源当前线路的集排列；点某集 → 切集并**自动关闭**；再点入口同样关闭。
+   · 打开期间控制层被锁住（鼠标不动底部播放条也不消失）；面板存在时不展示中央暂停键（见 VideoPlayer）。
+   ★ 面板一律带 `:root[data-theme]` 前缀：皮肤里 `button` 规则特异度更高（netflix/bilibili 等会把
+     background/border/padding 全写掉），不加前缀毛玻璃与描边会被吃（§C54 教训，同 `.vp-ctl.vp-on` 口径）。 */
+:root[data-theme] .vp-eppanel {
+  position: absolute; top: 0; bottom: 0; right: 0; z-index: 7;
+  /* 只占画面 1/4~1/3（`clamp` 保证宽屏不低于 1/4、窄屏不超过 1/3；极窄屏兜底 240px） */
+  width: clamp(240px, 28%, 33%);
+  display: flex; flex-direction: column;
+  background: var(--surface-elevated, var(--surface-3));
+  color: var(--text-primary, var(--text));
+  border-left: 1px solid var(--border-strong, var(--border));
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: -14px 0 36px rgba(0, 0, 0, .42);
+  transform: translateX(103%); pointer-events: none;
+  transition: transform .3s var(--ease-spring, cubic-bezier(.22, 1, .36, 1));
+}
+:root[data-theme] .vp-eppanel.open { transform: translateX(0); pointer-events: auto; }
+:root[data-theme] .vp-ephead { display: flex; align-items: center; gap: 8px; padding: 12px 12px 8px; color: var(--text-primary, var(--text)); }
+:root[data-theme] .vp-eptitle { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root[data-theme] .vp-epcount { flex: 0 0 auto; font-size: 12px; color: var(--text-secondary, var(--text-dim)); font-variant-numeric: tabular-nums; }
+:root[data-theme] .vp-epclose {
+  all: unset; cursor: pointer; flex: 0 0 auto;
+  width: 24px; height: 24px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--text-secondary, var(--text-dim));
+  transition: background .13s, color .13s;
+}
+:root[data-theme] .vp-epclose:hover { background: var(--accent-soft); color: var(--text-primary, var(--text)); }
+:root[data-theme] .vp-eplist { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain;
+  padding: 0 8px 12px; display: flex; flex-direction: column; gap: 2px; }
+:root[data-theme] .vp-epitem {
+  all: unset; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; padding: 8px;
+  border-radius: 8px; color: var(--text-primary, var(--text)); font-size: 12.5px;
+  transition: background .13s, color .13s;
+}
+:root[data-theme] .vp-epitem:hover { background: var(--accent-soft); color: var(--text-primary, var(--text)); }
+:root[data-theme] .vp-epno { flex: 0 0 auto; min-width: 26px; text-align: right; font-size: 12px;
+  color: var(--text-secondary, var(--text-dim)); font-variant-numeric: tabular-nums; }
+:root[data-theme] .vp-epname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root[data-theme] .vp-epitem.cur { background: var(--accent-soft); color: var(--text-primary, var(--text)); }
+:root[data-theme] .vp-epitem.cur .vp-epno { color: var(--text-accent, var(--accent)); font-weight: 700; }
+
+/* ===== ★ 2026-09-30 图片浏览器（图集源：每「集」= 一张图）===== */
+.ivi { display: flex; align-items: center; justify-content: center; touch-action: none; }
+.ivi-img { max-width: 100%; max-height: 100%; object-fit: contain; user-select: none;
+  transition: transform .08s linear; will-change: transform; }
+.ivi-bar { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; align-items: center;
+  gap: 8px; padding: 6px 10px; border-radius: 8px; background: rgba(0,0,0,.55);
+  backdrop-filter: blur(6px); color: #eee; transition: opacity .25s; }
+.ivi-bar.ivi-hide { opacity: 0; pointer-events: none; }
+.ivi-title { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ivi-page { font-size: 12px; color: #cfd3dd; font-variant-numeric: tabular-nums; }
+.ivi-zoom { font-size: 12px; color: #cfd3dd; font-variant-numeric: tabular-nums; min-width: 40px; text-align: right; }
+.ivi-nav { position: absolute; top: 50%; transform: translateY(-50%); transition: opacity .25s; }
+.ivi-nav.ivi-hide { opacity: 0; pointer-events: none; }
+.ivi-left { left: 8px; }
+.ivi-right { right: 8px; }
+.ivi-nav-btn { all: unset; cursor: pointer; width: 44px; height: 68px; display: flex; align-items: center;
+  justify-content: center; color: #fff; background: rgba(0,0,0,.4); border-radius: 8px; }
+.ivi-nav-btn:hover { background: rgba(0,0,0,.62); }
+.ivi-nav-btn:disabled { color: #fff; background: rgba(0, 0, 0, .82); opacity: 1; cursor: default; }
+
+/* ===== ★ 2026-09-30 音乐播放器（音频源：mp3/flac/m4a…）===== */
+.aud { display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(120% 120% at 50% 0%, #1d2230 0%, #0b0d12 70%); }
+.aud audio { display: none; }
+.aud-stage { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px;
+  width: min(520px, 92%); }
+.aud-cover { width: 132px; height: 132px; border-radius: 50%; overflow: hidden; display: flex;
+  align-items: center; justify-content: center; background: rgba(255,255,255,.07);
+  box-shadow: 0 10px 34px rgba(0,0,0,.5); }
+.aud-cover img { width: 100%; height: 100%; object-fit: cover; }
+.aud-cover.spinning { animation: audspin 14s linear infinite; }
+@keyframes audspin { to { transform: rotate(360deg); } }
+.aud-note { font-size: 46px; color: rgba(255,255,255,.5); }
+.aud-title { font-size: 15px; font-weight: 650; color: #f2f4f8; text-align: center; max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aud-sub { font-size: 12px; color: var(--text-dim); min-height: 16px; }
+.aud-err { font-size: 12px; color: var(--text-danger, var(--danger)); text-align: center; }
+.aud-progrow { display: flex; align-items: center; gap: 10px; width: 100%; }
+.aud-time { font-size: 12px; color: #cfd3dd; font-variant-numeric: tabular-nums; min-width: 42px; text-align: center; }
+.aud-progress { appearance: none; flex: 1; width: 100%; height: 16px; margin: 0; padding: 0; border: 0; border-radius: 999px; background: transparent; cursor: pointer; }
+.aud-progress::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--audio-progress), rgba(255,255,255,.18) var(--audio-progress), rgba(255,255,255,.18) 100%); }
+.aud-progress::-webkit-slider-thumb { appearance: none; width: 12px; height: 12px; margin-top: -4px; border: 0; border-radius: 50%; background: var(--accent); }
+.aud-progress::-moz-range-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,.18); }
+.aud-progress::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--accent); }
+.aud-progress::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--accent); }
+.aud-progress:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+.aud-progress:disabled { cursor: default; }
+.aud-ctls { display: flex; align-items: center; gap: 12px; }
+.aud-play { all: unset; cursor: pointer; width: 48px; height: 48px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; background: var(--accent); color: #0b0d12; }
+.aud-play:hover { filter: brightness(1.08); }
+.aud-vol { display: inline-flex; align-items: center; gap: 6px; color: #cfd3dd; }
+.aud-vol input { width: 74px; }
+.aud-mini .aud-cover { width: 58px; height: 58px; }
+.aud-mini .aud-stage { gap: 6px; padding: 8px; }
+.vp-rate-host { position: relative; z-index: 4; display: flex; flex: 0 0 auto; align-items: center; }
+.vp-ctl.vp-rate { all: unset; box-sizing: border-box; width: 82px; min-height: 40px; padding: 0 9px;
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 7px;
+  color: var(--text-primary, var(--text)); background: var(--surface-elevated, var(--surface-3));
+  border: 1px solid var(--border-strong, var(--border)); border-radius: 10px;
+  font: 600 13px/1 var(--font-ui); font-variant-numeric: tabular-nums; cursor: pointer; }
+.vp-ctl.vp-rate:hover { color: var(--text-primary, var(--text)); background: var(--surface-2); border-color: var(--border-strong, var(--border)); }
+.vp-ctl.vp-rate:focus-visible { outline: 2px solid var(--focus-ring-color, var(--color-accent, var(--accent))); outline-offset: 2px; }
+.vp-rate-menu { position: absolute; z-index: 40; left: 50%; bottom: calc(100% + 8px); min-width: 116px; padding: 5px;
+  display: flex; flex-direction: column; gap: 3px; color: var(--text-primary, var(--text));
+  background: var(--surface-elevated, var(--surface-3));
+  border: 1px solid var(--border-strong, var(--border)); border-radius: 10px; box-shadow: var(--shadow-lg);
+  opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, 4px);
+  transition: opacity .12s ease, transform .12s ease, visibility .12s ease; }
+.vp-rate-host.open .vp-rate-menu { opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, 0); }
+.vp-rate-option { appearance: none; width: 100%; min-height: 40px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  color: var(--text-primary, var(--text)); background: transparent; border: 1px solid transparent; border-radius: 6px;
+  font: 500 13px/1.2 var(--font-ui); font-variant-numeric: tabular-nums; text-align: left; cursor: pointer; }
+.vp-rate-option:hover { background: color-mix(in srgb, var(--color-accent, var(--accent)) 16%, var(--surface-elevated, var(--surface-3))); }
+.vp-rate-option.selected, .vp-rate-option[aria-checked='true'] {
+  color: var(--on-accent); background: var(--color-accent, var(--accent));
+  border-color: var(--color-accent, var(--accent)); font-weight: 700;
+}
+.vp-rate-option:focus-visible { outline: 2px solid var(--focus-ring-color, var(--color-accent, var(--accent))); outline-offset: 1px; }
+/* ★ 2026-10-08（用户拍板「内置官方构建」）MPV 内核切换按钮：小标（激活态复用 .vp-ctl.vp-on 的 accent 高亮） */
+.vp-kernel-tag { font-size: 12px; font-weight: 700; letter-spacing: .25px; }
+
+/* ★★ 2026-10-08 MPV 高兼容内核：播放器窗口 transparent=true + 播放区页面透明 ——
+   mpv 子窗口从透明处透出，HTML 覆盖层（控制条/弹幕/设置面板）仍在其上绘制且点击归 HTML（PoC 实测）。
+   普通（HTML5）内核下这些规则不生效（整页仍不透明绘制，视觉与旧版一致）。
+   ★ 透明链必须一路到 .vplayer/.vp-stage（中间任何一层不透明都会整块盖住 mpv 画面）。
+   ★★ 特异度（勿改回 html[data-mpv]）：皮肤包（netflix/bilibili/apple.css）用
+   `:root[data-theme=X] .app.pwin .main`（0,5,0）等规则把播放器壳画成不透明黑 ——
+   本组选择器必须挂 `:root[data-theme][data-mpv]`（0,6,0）才能压过皮肤（同 §C54 置顶按钮那次教训）。 */
+:root[data-theme][data-mpv] body,
+:root[data-theme][data-mpv] .app.pwin,
+:root[data-theme][data-mpv] .app.pwin .main,
+:root[data-theme][data-mpv] .pwin-body,
+:root[data-theme][data-mpv] .pwin-stage,
+:root[data-theme][data-mpv] .vplayer { background: transparent; }
+:root[data-theme][data-mpv] .vplayer video { visibility: hidden; }
+/* ★ mpv 子窗口按父窗口**客户区**渲染（无法只占播放区）→ 标题栏 / mini 条改**浮层**（顶栏渐隐），
+   让出顶部 38px 给画面：否则标题栏会把视频上缘盖掉（竖屏 / 4:3 内容尤其明显）。 */
+:root[data-theme][data-mpv] .app.pwin .main { position: relative; }
+:root[data-theme][data-mpv] .app.pwin .titlebar { position: relative; z-index: 6; background: #0a0c10; border-bottom: none; }
+:root[data-theme][data-mpv] .app.pwin .mini-strip {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 6; border-bottom: none;
+  background: linear-gradient(180deg, rgba(10, 12, 16, .72), rgba(10, 12, 16, 0));
+}
+
+/* ---- 播放器音量控件：竖向条状音量条（悬浮面板） ---- */
+.vp-vol { position: relative; display: inline-flex; align-items: center; }
+/* ★ 2026-09-29 DLNA 投屏：控制条按钮 + 设备弹层（与音量面板同款玻璃材质/展开动效） */
+.vp-cast { position: relative; display: inline-flex; align-items: center; }
+.vp-cpanel { position: absolute; bottom: calc(100% + 8px); left: 50%; z-index: 7;
+  transform: translateX(-50%) translateY(6px) scale(.98); transform-origin: bottom center;
+  display: flex; flex-direction: column; gap: 6px; min-width: 168px; max-width: 260px;
+  padding: 10px; border-radius: 10px;
+  background: rgba(10, 12, 16, .86); border: 1px solid rgba(255, 255, 255, .1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45); backdrop-filter: blur(8px);
+  opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease; }
+.vp-cpanel.open { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0) scale(1); }
+.vp-cpct { font-size: 12px; color: rgba(255, 255, 255, .62); padding: 0 2px 2px; }
+.vp-citem { text-align: left; font-size: 12px; padding: 6px 8px; border-radius: 7px; cursor: pointer;
+  background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .08); color: #fff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vp-citem:hover:not(:disabled) { background: rgba(255, 255, 255, .14); }
+.vp-citem:disabled { color: var(--text-disabled, var(--text-dim)); opacity: 1; cursor: not-allowed; }
+.vp-crefresh { color: rgba(255, 255, 255, .72); background: transparent; }
+.vp-cmsg { font-size: 12px; color: rgba(255, 255, 255, .72); line-height: 1.5; word-break: break-all; }
+.vp-vpanel { position: absolute; bottom: calc(100% + 8px); left: 50%; z-index: 7;
+  transform: translateX(-50%) translateY(6px) scale(.98); transform-origin: bottom center;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 10px 9px; border-radius: 10px;
+  background: rgba(10, 12, 16, .8); border: 1px solid rgba(255, 255, 255, .1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45); backdrop-filter: blur(8px);
+  opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease; }
+/* ★ 打开条件：悬停到音量控件或面板（CSS :hover 会因后代溢出而保持）→ 悬停开/移开收；
+     拖拽/键盘闪烁（.open）也保持打开。 */
+.vp-vol.open .vp-vpanel { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); pointer-events: auto; }
+.vp-vpanel::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 10px; }
+.vp-vpct { font-size: 12px; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Rotate a horizontal native range into the vertical rail so the thumb and track share a true centerline. */
+.vp-vtrack-wrap { position: relative; flex: none; width: 16px; height: 92px; }
+.vp-vtrack {
+  appearance: none; direction: ltr;
+  position: absolute; left: 50%; top: 50%; width: 92px; height: 16px; margin: 0; padding: 0; border: 0;
+  border-radius: 8px; cursor: pointer; background: transparent; touch-action: none;
+  transform: translate(-50%, -50%) rotate(-90deg); transform-origin: center;
+}
+.vp-vtrack:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.vp-vtrack::-webkit-slider-runnable-track {
+  width: 100%; height: 6px; margin: 0; border-radius: 999px;
+  background: linear-gradient(to right, var(--accent) 0, var(--accent) var(--volume), rgba(255,255,255,.48) var(--volume), rgba(255,255,255,.48) 100%);
+}
+.vp-vtrack::-webkit-slider-thumb {
+  appearance: none; width: 14px; height: 14px; margin-top: -4px; border: 0; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 0 1px rgba(13, 16, 22, .72), 0 1px 4px rgba(0, 0, 0, .55);
+}
+.vp-vtrack::-moz-range-track { width: 100%; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, .48); }
+.vp-vtrack::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--accent); }
+.vp-vtrack::-moz-range-thumb {
+  width: 14px; height: 14px; border: 0; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 0 1px rgba(13, 16, 22, .72), 0 1px 4px rgba(0, 0, 0, .55);
+}
+.vplayer video { width: 100%; height: 100%; object-fit: contain; outline: none; }
+/*
+   全屏光标跟随操作栏状态：移动时显示，播放中静止后隐藏。
+   ★ 2026-10-17：播放器窗口两种内核全屏都用原生窗口全屏 → `.vfull`；主窗口（直播/WebDAV）
+     仍是元素全屏 → `:fullscreen`。边缘缩放由主进程 setResizable 管理，
+   不在整个窗口上强制 cursor:none，以免视频区域只有碰到按钮才显示光标。
+*/
+.vplayer:fullscreen,
+.vplayer.vfull { cursor: default; }
+.vplayer:fullscreen:not(.vui),
+.vplayer.vfull:not(.vui) { cursor: none; }
+}

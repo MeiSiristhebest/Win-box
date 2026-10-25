@@ -9,13 +9,14 @@
 //     （Cloud_quark/Cloud_uc 在 init 时读它；不含 `pus` 的 cookie 会被蜘蛛置空）；
 //   · 其余网盘（百度/阿里/115/哔哩）→ 应用凭据 + 注入蜘蛛 ext（ext.baidu/ali/bili…）。
 //   保存后主进程会丢弃常驻蜘蛛进程 → 下次请求按新 cookie 重新 init（否则仍用旧 cookie）。
-import { useEffect, useMemo, useState } from 'react';
-import { client } from '../api/client';
-import { checkDriveCookie } from '../../shared/driveCookie';
+import { Tab as FluentTab, TabList as FluentTabList } from '@fluentui/react-components';
+import { CheckmarkCircle20Filled, Circle20Regular } from '@fluentui/react-icons';
 import { driveProviderLabel } from '../../shared/driveProvider';
 import { AppModal } from './AppDialog';
 import DriveLogin from './DriveLogin';
 import UcTvBind from './UcTvBind';
+import type { DriveBindingPorts } from '../features/driveBinding/application/driveBindingPorts';
+import { useDriveCredentialManagement } from '../features/driveBinding/useDriveCredentialManagement';
 
 /** 可绑定网盘（key = DriveStore provider 键；与 fty 绑定页的「夸克/百度/阿里/哔哩」菜单口径一致） */
 const PROVIDERS: ReadonlyArray<{ key: string; label: string }> = [
@@ -27,7 +28,7 @@ const PROVIDERS: ReadonlyArray<{ key: string; label: string }> = [
   { key: 'bili', label: '哔哩哔哩' },
 ];
 
-interface Props {
+export interface DriveBindModalProps {
   /** 当前源名（文案用） */
   siteName: string;
   /**
@@ -40,56 +41,14 @@ interface Props {
   onClose: () => void;
   /** 保存成功后通知外层（刷新源主页，让新 cookie 立刻生效） */
   onSaved: () => void;
+  ports: DriveBindingPorts;
 }
 
-export default function DriveBindModal({ siteName, initialProvider, reason, onClose, onSaved }: Props) {
-  const [tokens, setTokens] = useState<Record<string, string>>({});
+export default function DriveBindModal({ siteName, initialProvider, reason, onClose, onSaved, ports }: DriveBindModalProps) {
   const initProv = (initialProvider || '').trim().toLowerCase();
-  const [provider, setProvider] = useState(PROVIDERS.some((p) => p.key === initProv) ? initProv : 'quark');
-  const [cookie, setCookie] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-
-  const refresh = () => {
-    void client.driveGet().then(setTokens).catch(() => undefined);
-  };
-  useEffect(refresh, []);
-
-  const check = useMemo(() => checkDriveCookie(provider, cookie), [provider, cookie]);
-  const bound = !!tokens[provider];
-
-  async function save(): Promise<void> {
-    const ck = cookie.trim();
-    if (!ck) { setMsg('请先粘贴 Cookie'); return; }
-    setBusy(true);
-    setMsg('');
-    try {
-      await client.driveSet(provider, ck); // 主进程：写凭据 + Cloud-drive 配置 + 重置蜘蛛进程
-      setCookie('');
-      refresh();
-      setMsg(`✓ 已保存「${driveProviderLabel(provider)}」全局登录状态，所有支持该网盘的子仓和源均可复用。`);
-      onSaved();
-    } catch (e) {
-      setMsg(`保存失败：${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function unbind(): Promise<void> {
-    setBusy(true);
-    setMsg('');
-    try {
-      await client.driveRemove(provider);
-      refresh();
-      setMsg(`已解绑「${driveProviderLabel(provider)}」`);
-      onSaved();
-    } catch (e) {
-      setMsg(`解绑失败：${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const selectedInitialProvider = PROVIDERS.some((item) => item.key === initProv) ? initProv : 'quark';
+  const { model, actions } = useDriveCredentialManagement({ port: ports.credentials, initialProvider: selectedInitialProvider, onSaved });
+  const { provider, cookie, credentials: tokens, busy, message: msg, validation: check, isBound: bound } = model;
 
   return (
     <AppModal
@@ -112,25 +71,43 @@ export default function DriveBindModal({ siteName, initialProvider, reason, onCl
           {reason ? <div style={{ marginTop: 4 }}>{reason}</div> : null}
         </div>
 
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+        <FluentTabList
+          className="drive-provider-list"
+          aria-label="选择网盘服务"
+          appearance="subtle-circular"
+          selectedValue={provider}
+          onTabSelect={(_event, data) => actions.selectProvider(String(data.value))}
+        >
           {PROVIDERS.map((p) => (
-            <button
+            <FluentTab
               key={p.key}
-              className={`tag ui-action ${provider === p.key ? 'active' : ''}`}
-              aria-pressed={provider === p.key}
-              onClick={() => { setProvider(p.key); setMsg(''); }}
+              id={`drive-provider-${p.key}`}
+              aria-controls="drive-provider-panel"
+              value={p.key}
+              icon={tokens[p.key] ? <CheckmarkCircle20Filled className="drive-provider-bound-icon" /> : <Circle20Regular className="drive-provider-unbound-icon" />}
+              className="drive-provider-tab"
             >
-              {p.label}{tokens[p.key] ? ' ✓' : ''}
-            </button>
+              <span className="drive-provider-name">{p.label}</span>
+              <span className="drive-provider-state">
+                {provider === p.key ? '当前' : tokens[p.key] ? '已绑定' : '未绑定'}
+              </span>
+            </FluentTab>
           ))}
-        </div>
+        </FluentTabList>
 
+        <section
+          id="drive-provider-panel"
+          className="drive-provider-panel"
+          role="tabpanel"
+          aria-labelledby={`drive-provider-${provider}`}
+          tabIndex={0}
+        >
         <div className="row" style={{ gap: 8, alignItems: 'center', marginBottom: 6 }}>
           <span className="muted" style={{ fontSize: 12 }}>
             {bound ? `当前已绑定（${driveProviderLabel(provider)}，凭据长度 ${tokens[provider].length}）` : '当前未绑定'}
           </span>
           {bound && (
-            <button className="linkbtn" style={{ marginLeft: 'auto' }} disabled={busy} onClick={() => void unbind()}>
+              <button className="linkbtn" style={{ marginLeft: 'auto' }} disabled={busy} onClick={() => void actions.unbind()}>
               解绑
             </button>
           )}
@@ -139,7 +116,7 @@ export default function DriveBindModal({ siteName, initialProvider, reason, onCl
         <textarea
           value={cookie}
           aria-label={`${driveProviderLabel(provider)} Cookie`}
-          onChange={(e) => setCookie(e.target.value)}
+          onChange={(e) => actions.changeCookie(e.target.value)}
           placeholder={`粘贴「${driveProviderLabel(provider)}」的完整 Cookie（形如 __pus=…; __puus=…）\n获取：浏览器打开网盘网页并登录 → F12 → Network → 任意请求 → 复制 Request Headers 里的完整 cookie`}
           style={{ width: '100%', height: 110, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
         />
@@ -151,23 +128,25 @@ export default function DriveBindModal({ siteName, initialProvider, reason, onCl
         )}
 
         <div className="row" style={{ gap: 10, marginTop: 12, alignItems: 'center' }}>
-          <button className="primary" disabled={busy || !cookie.trim()} onClick={() => void save()}>
+          <button className="primary" disabled={busy || !cookie.trim()} onClick={() => void actions.save()}>
             {busy ? '保存中…' : '保存绑定'}
           </button>
-          <span className="muted" style={{ fontSize: 11 }}>不知道去哪拿 Cookie？用下面的「扫码登录」自动抓取完整 Cookie</span>
+          <span className="muted" style={{ fontSize: 12 }}>不知道去哪拿 Cookie？用下面的「扫码登录」自动抓取完整 Cookie</span>
         </div>
 
         {/* ★ 2026-09-26：扫码/网页登录（原配置页网盘绑定卡的能力，已搬到源内） */}
         <DriveLogin
           provider={provider}
-          onBound={() => { refresh(); onSaved(); }}
+          port={ports.webLogin}
+          onBound={() => { void actions.handleExternalLoginSaved(); }}
         />
 
         {/* ★ 2026-10-14：UC 专属 —— non-VIP（NORMAL）的「UC原画」走 TV Token 而非 cookie，
             只绑 cookie 时 jar 报「非高会需要配置 UC TV Token，请到配置中心扫码获取」 */}
-        {provider === 'uc' && <UcTvBind cookieBound={bound} onBound={() => { refresh(); onSaved(); }} />}
+        {provider === 'uc' && <UcTvBind cookieBound={bound} onBound={() => { void actions.handleExternalLoginSaved(); }} port={ports.ucTvToken} />}
 
         {msg && <div className="muted" style={{ fontSize: 12, marginTop: 8, lineHeight: 1.7 }}>{msg}</div>}
+        </section>
     </AppModal>
   );
 }

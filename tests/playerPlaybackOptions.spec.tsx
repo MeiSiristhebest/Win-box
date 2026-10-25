@@ -1,19 +1,22 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { PLAYER_FITS } from '../src/renderer/lib/playerPrefs';
 import { PlayerFitControl, PlayerRateControl } from '../src/renderer/features/playback/PlayerPlaybackOptions';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('player playback options', () => {
-  it('offers the supported playback rates and reports the selected rate', () => {
+  it('offers the supported playback rates and reports the selected rate', async () => {
     const onRateChange = vi.fn() as unknown as (rate: number) => void;
-    const { container } = render(<PlayerRateControl rate={1} onRateChange={onRateChange} />);
-    const select = container.querySelector('select') as HTMLSelectElement;
+    const user = userEvent.setup();
+    render(<PlayerRateControl rate={1} onRateChange={onRateChange} />);
+    await user.click(screen.getByRole('button', { name: '播放速度：1倍' }));
 
-    expect(Array.from(select.options).map((option) => Number(option.value))).toEqual([0.5, 0.75, 1, 1.25, 1.5, 2]);
-    fireEvent.change(select, { target: { value: '1.5' } });
+    const rates = screen.getAllByRole('menuitemradio');
+    expect(rates.map((option) => Number(option.textContent?.replace('x', '')))).toEqual([0.5, 0.75, 1, 1.25, 1.5, 2]);
+    await user.click(screen.getByRole('menuitemradio', { name: '1.5x' }));
     expect(onRateChange).toHaveBeenCalledWith(1.5);
   });
 

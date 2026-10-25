@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   clampSeconds,
+  decodeSkipStore,
   latestSkipOfResource,
   mergeSkipStores,
   normalizeSkipRecord,
@@ -14,7 +15,7 @@ import {
   skipStoreKey,
   SKIP_SEC_MAX,
   type SkipStore,
-} from '../src/renderer/lib/skipSegments';
+} from '../src/renderer/features/playback/application/skipSegments';
 
 const R = 'k:src:vod1';
 
@@ -46,6 +47,21 @@ describe('normalizeSkipRecord — 记录归一', () => {
   it('缺字段按 0 兜底、from 透传', () => {
     expect(normalizeSkipRecord({ intro: 90 })).toEqual({ intro: 90, outro: 0, at: 0, from: undefined });
     expect(normalizeSkipRecord({ outro: 120, at: 11, from: '第3集' })).toEqual({ intro: 0, outro: 120, at: 11, from: '第3集' });
+  });
+});
+
+describe('decodeSkipStore — 存储边界解码', () => {
+  it('preserves explicit clears and discards malformed values', () => {
+    expect(decodeSkipStore({
+      'source|cleared': { intro: 0, outro: 0, at: 12, cleared: true },
+      'source|invalid-clear': { intro: 1, outro: 0, at: 13, cleared: true },
+      'source|bad': null,
+      'source|valid': { intro: 30, outro: 0, at: 14, from: '第2集' },
+    })).toEqual({
+      'source|cleared': { intro: 0, outro: 0, at: 12, from: undefined, cleared: true },
+      'source|valid': { intro: 30, outro: 0, at: 14, from: '第2集' },
+    });
+    expect(decodeSkipStore([])).toEqual({});
   });
 });
 

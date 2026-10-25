@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { useRef, useState } from 'react';
+import { useReducer, useRef, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DanmakuPanel } from '../src/renderer/features/playback/DanmakuPanel';
+import { customEndpointsText } from '../src/engine/danmaku/endpoints';
+import { reduceDanmakuSettings } from '../src/renderer/features/playback/application/danmakuSettings';
 import type { DanmakuCandidate, DanmakuSettings } from '../src/shared/danmaku';
 
 afterEach(() => cleanup());
@@ -37,7 +39,7 @@ function Harness({ onSearch = vi.fn(), onCandidateSelect = vi.fn() }: {
   onCandidateSelect?: (value: DanmakuCandidate) => void;
 }) {
   const [enabled, setEnabled] = useState(true);
-  const [settings, setSettings] = useState(initialSettings);
+  const [settings, dispatchSettings] = useReducer(reduceDanmakuSettings, initialSettings());
   const [query, setQuery] = useState('测试作品');
   const [episode, setEpisode] = useState('S1E02');
   const [sourcesOpen, setSourcesOpen] = useState(false);
@@ -50,6 +52,7 @@ function Harness({ onSearch = vi.fn(), onCandidateSelect = vi.fn() }: {
       <output data-testid="enabled">{String(enabled)}</output>
       <DanmakuPanel
         enabled={enabled}
+        enabledSourceCount={settings.endpoints.filter((endpoint) => endpoint.enabled !== false).length}
         open
         activeEpisodeId={null}
         message=""
@@ -66,11 +69,14 @@ function Harness({ onSearch = vi.fn(), onCandidateSelect = vi.fn() }: {
         onPanelPointerEnter={vi.fn()}
         onPanelPointerLeave={vi.fn()}
         onToggle={() => setEnabled((value) => !value)}
-        onSettingsChange={setSettings}
+        onSettingsCommand={dispatchSettings}
         onQueryChange={setQuery}
         onEpisodeChange={setEpisode}
-        setSourcesOpen={setSourcesOpen}
-        setCustomText={setCustomText}
+        onToggleSources={() => {
+          setCustomText(customEndpointsText(settings.endpoints));
+          setSourcesOpen((open) => !open);
+        }}
+        onCustomEndpointsTextChange={setCustomText}
         onSearch={onSearch}
         onCandidateSelect={onCandidateSelect}
       />
@@ -105,7 +111,7 @@ describe('DanmakuPanel', () => {
     expect(onCandidateSelect).toHaveBeenCalledWith(candidate);
   });
 
-  it('updates region and endpoint settings through the supplied settings setter', () => {
+  it('dispatches semantic region and endpoint commands to the play session', () => {
     render(<Harness />);
 
     fireEvent.click(screen.getByRole('button', { name: '半屏' }));

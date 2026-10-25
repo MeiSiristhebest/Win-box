@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { PlayerProgressBar } from '../src/renderer/features/playback/PlayerProgressBar';
+import type { PointerCoordinates } from '../src/renderer/features/playback/presentation/PlayerControlsViewModel';
 
 function makeProps() {
   return {
@@ -12,7 +13,7 @@ function makeProps() {
     getCurrentTime: () => 10,
     seekTo: vi.fn() as unknown as (seconds: number) => void,
     formatTime: (seconds: number) => `${seconds}s`,
-    onContextMenu: vi.fn() as unknown as (event: React.MouseEvent<HTMLDivElement>, time: number | null) => boolean,
+    onContextMenu: vi.fn() as unknown as (position: PointerCoordinates, time: number | null) => boolean,
   };
 }
 
@@ -58,6 +59,6 @@ describe('PlayerProgressBar', () => {
 
     fireEvent.contextMenu(progress, { clientX: 110, clientY: 20 });
     expect(props.onContextMenu).toHaveBeenCalledOnce();
-    expect(props.onContextMenu).toHaveBeenLastCalledWith(expect.anything(), 60);
+    expect(props.onContextMenu).toHaveBeenLastCalledWith({ clientX: 110, clientY: 20 }, 60);
   });
 });

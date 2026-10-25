@@ -1,35 +1,20 @@
 import { useId } from 'react';
-import type { SkipSeg } from '../../lib/skipSegments';
 
-export interface SkipSegmentsDraft {
-  intro: string;
-  outro: string;
-}
+import type { SkipSegmentsControlModel } from './presentation/PlayerControlModels';
 
-interface SkipSegmentsControlProps {
-  segments: SkipSeg;
-  inheritedFrom: string | null;
-  draft: SkipSegmentsDraft;
-  open: boolean;
-  onDraftChange: (draft: SkipSegmentsDraft) => void;
-  onToggle: () => void;
-  onSave: () => void;
-  onClear: () => void;
-}
-
+type SkipSegmentsControlProps = SkipSegmentsControlModel;
 export function SkipSegmentsControl({
   segments,
+  hasSegments,
   inheritedFrom,
   draft,
   open,
-  onDraftChange,
+  onDraftCommand,
   onToggle,
   onSave,
   onClear,
 }: SkipSegmentsControlProps) {
   const panelId = useId();
-  const hasSegments = segments.intro > 0 || segments.outro > 0;
-
   return (
     <>
       <button
@@ -45,7 +30,7 @@ export function SkipSegmentsControl({
         }
         onClick={onToggle}
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M4 6.4v11.2L12.6 12z" fill="currentColor" />
           <path d="M12.4 6.4v11.2L21 12z" fill="currentColor" />
         </svg>
@@ -55,7 +40,7 @@ export function SkipSegmentsControl({
         <div className="vp-subpanel vp-skippanel" id={panelId}>
           <div className="vsp-row">
             <span style={{ fontWeight: 600, fontSize: 12 }}>跳过片头片尾（本集）</span>
-            <span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }}>
+            <span className="muted" style={{ marginLeft: 'auto', fontSize: 12 }}>
               {hasSegments ? `片头 ${segments.intro}s · 片尾 ${segments.outro}s` : '未设置'}
             </span>
           </div>
@@ -74,10 +59,10 @@ export function SkipSegmentsControl({
               max={21600}
               placeholder="0"
               value={draft.intro}
-              onChange={(event) => onDraftChange({ ...draft, intro: event.target.value })}
+              onChange={(event) => onDraftCommand({ type: 'change-intro', value: event.currentTarget.value })}
               onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) onSave(); }}
             />
-            <span className="muted" style={{ fontSize: 11 }}>秒（起播即跳到）</span>
+            <span className="muted" style={{ fontSize: 12 }}>秒（起播即跳到）</span>
           </div>
           <div className="vsp-row">
             <span className="muted vsp-label">片尾</span>
@@ -89,15 +74,15 @@ export function SkipSegmentsControl({
               max={21600}
               placeholder="0"
               value={draft.outro}
-              onChange={(event) => onDraftChange({ ...draft, outro: event.target.value })}
+              onChange={(event) => onDraftCommand({ type: 'change-outro', value: event.currentTarget.value })}
               onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) onSave(); }}
             />
-            <span className="muted" style={{ fontSize: 11 }}>秒（剩这么多秒跳下一集）</span>
+            <span className="muted" style={{ fontSize: 12 }}>秒（剩这么多秒跳下一集）</span>
           </div>
           <div className="vsp-row" style={{ marginBottom: 4 }}>
             <button className="vsp-btn primary" type="button" onClick={onSave}>保存到本集</button>
             <button className="vsp-btn" type="button" onClick={onClear}>清除</button>
-            <span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }}>进度条右键可快速标点</span>
+            <span className="muted" style={{ marginLeft: 'auto', fontSize: 12 }}>进度条右键可快速标点</span>
           </div>
         </div>
       )}

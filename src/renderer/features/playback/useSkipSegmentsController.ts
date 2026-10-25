@@ -1,14 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { isNativeModalOpen } from '../../lib/modalScope';
-import {
-  clampSeconds,
-  loadSkipStore,
-  persistSkipStore,
-  putSkipRecord,
-  resolveSkip,
-  type SkipSeg,
-} from '../../lib/skipSegments';
-import type { SkipSegmentsDraft } from './SkipSegmentsControl';
+import { reduceSkipSegmentsDraft, type SkipSegmentsDraft, type SkipSegmentsDraftCommand } from './application/skipSegmentsDraft';
+import { clampSeconds, putSkipRecord, resolveSkip, type SkipSeg } from './application/skipSegments';
+import type { SkipSegmentsControllerPorts, SkipSegmentsTimerHandle } from './application/skipSegmentsControllerPorts';
 
 export interface SkipSegmentsMenu {
   x: number;
@@ -30,7 +23,7 @@ export function useSkipSegmentsController({
   episodeLabel,
   resourceName,
   isLive,
-}: UseSkipSegmentsControllerOptions) {
+}: UseSkipSegmentsControllerOptions, ports: SkipSegmentsControllerPorts) {
   const skipResourceKey = (resourceKey || '').trim();
   const skipEpisodeKey = (episodeKey || '').trim();
   const skipEpisodeLabel = (episodeLabel || '').trim();
@@ -45,8 +38,12 @@ export function useSkipSegmentsController({
   const segmentsRef = useRef<SkipSeg>({ intro: 0, outro: 0 });
   const introFiredRef = useRef(false);
   const outroFiredRef = useRef(false);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<SkipSegmentsTimerHandle | null>(null);
   const menuElementRef = useRef<HTMLDivElement>(null);
+
+  const dispatchDraftCommand = useCallback((command: SkipSegmentsDraftCommand) => {
+    setDraft((current) => reduceSkipSegmentsDraft(current, command));
+  }, []);
 
   useEffect(() => {
     if (!skipResourceKey || !skipEpisodeKey) {
@@ -57,7 +54,7 @@ export function useSkipSegmentsController({
       setDraft({ intro: '', outro: '' });
       return;
     }
-    const resolved = resolveSkip(loadSkipStore(), skipResourceKey, skipEpisodeKey);
+    const resolved = resolveSkip(ports.memory.read(), skipResourceKey, skipEpisodeKey);
     const next = resolved ? resolved.seg : { intro: 0, outro: 0 };
     segmentsRef.current = next;
     // Reloads the external per-episode storage snapshot after the source identity changes.
@@ -67,46 +64,35 @@ export function useSkipSegmentsController({
     setDraft({ intro: next.intro ? String(next.intro) : '', outro: next.outro ? String(next.outro) : '' });
     introFiredRef.current = false;
     outroFiredRef.current = false;
-  }, [skipResourceKey, skipEpisodeKey]);
+  }, [skipResourceKey, skipEpisodeKey, ports.memory]);
 
   useEffect(() => {
     if (!menu) return;
-    const onDown = (event: MouseEvent) => {
-      const element = menuElementRef.current;
-      if (element && event.target instanceof Node && element.contains(event.target)) return;
-      setMenu(null);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (isNativeModalOpen()) return;
-      if (event.key === 'Escape') setMenu(null);
-    };
-    window.addEventListener('mousedown', onDown, true);
-    window.addEventListener('keydown', onKey, true);
-    return () => {
-      window.removeEventListener('mousedown', onDown, true);
-      window.removeEventListener('keydown', onKey, true);
-    };
-  }, [menu]);
+    return ports.menuDismissal.subscribe(() => menuElementRef.current, () => setMenu(null));
+  }, [menu, ports.menuDismissal]);
 
   const showToast = useCallback((text: string) => {
     setToast(text);
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setToast(''), 2500);
-  }, []);
+    if (toastTimerRef.current !== null) ports.scheduler.cancel(toastTimerRef.current);
+    toastTimerRef.current = ports.scheduler.schedule(() => {
+      toastTimerRef.current = null;
+      setToast('');
+    }, 2500);
+  }, [ports.scheduler]);
 
   useEffect(
     () => () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (toastTimerRef.current !== null) ports.scheduler.cancel(toastTimerRef.current);
     },
-    [],
+    [ports.scheduler],
   );
 
   const commit = useCallback((intro: number, outro: number) => {
     if (!usable) return;
     const previous = segmentsRef.current;
     const next = { intro: clampSeconds(intro), outro: clampSeconds(outro) };
-    persistSkipStore(
-      putSkipRecord(loadSkipStore(), skipResourceKey, skipEpisodeKey, next, skipEpisodeLabel || resourceName || ''),
+    ports.memory.save(
+      putSkipRecord(ports.memory.read(), skipResourceKey, skipEpisodeKey, next, skipEpisodeLabel || resourceName || '', ports.clock.now()),
     );
     segmentsRef.current = next;
     setSegments(next);
@@ -114,13 +100,35 @@ export function useSkipSegmentsController({
     if (next.intro !== previous.intro) introFiredRef.current = false;
     if (next.outro !== previous.outro) outroFiredRef.current = false;
     setDraft({ intro: next.intro ? String(next.intro) : '', outro: next.outro ? String(next.outro) : '' });
-    console.info(`[skip] 本集记录已更新：片头 ${next.intro}s · 片尾 ${next.outro}s（${skipEpisodeLabel || skipEpisodeKey}）`);
-  }, [usable, skipResourceKey, skipEpisodeKey, skipEpisodeLabel, resourceName]);
+  }, [usable, skipResourceKey, skipEpisodeKey, skipEpisodeLabel, resourceName, ports.memory, ports.clock]);
 
   const saveDraft = useCallback(() => {
     commit(clampSeconds(draft.intro), clampSeconds(draft.outro));
     showToast('已保存本集跳过设置');
   }, [commit, showToast, draft]);
+
+  const captureIntroFromMenu = useCallback((): number | undefined => {
+    if (!menu) return undefined;
+    const intro = menu.t;
+    commit(intro, segmentsRef.current.outro);
+    setMenu(null);
+    return intro;
+  }, [commit, menu]);
+
+  const captureOutroFromMenu = useCallback((duration: number): number | undefined => {
+    if (!menu || !Number.isFinite(duration)) return undefined;
+    const outro = Math.max(0, Math.round(duration - menu.t));
+    commit(segmentsRef.current.intro, outro);
+    setMenu(null);
+    return outro;
+  }, [commit, menu]);
+
+  const clearSegments = useCallback(() => commit(0, 0), [commit]);
+  const clearFromMenu = useCallback(() => {
+    clearSegments();
+    setMenu(null);
+  }, [clearSegments]);
+  const dismissMenu = useCallback(() => setMenu(null), []);
 
   return {
     segments,
@@ -131,7 +139,7 @@ export function useSkipSegmentsController({
     setMenu,
     toast,
     draft,
-    setDraft,
+    dispatchDraftCommand,
     segmentsRef,
     introFiredRef,
     outroFiredRef,
@@ -140,5 +148,10 @@ export function useSkipSegmentsController({
     showToast,
     commit,
     saveDraft,
+    captureIntroFromMenu,
+    captureOutroFromMenu,
+    clearSegments,
+    clearFromMenu,
+    dismissMenu,
   };
 }

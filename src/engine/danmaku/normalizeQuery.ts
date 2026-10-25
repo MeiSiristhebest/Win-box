@@ -3,7 +3,6 @@
 // 背景：很多资源名为了规避审核被改得"奇奇怪怪"（夹符号/emoji、错字谐音、删字、
 //      带"第N集/更新至N"尾缀等），直接拿原名搜索往往匹配不到；
 //     这里的清洗 + 多候选让搜索至少能贴近常见写法。
-import { seasonOf } from './endpoints';
 function full2half(s: string): string {
   return s
     .replace(/[\uff01-\uff5e]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
@@ -98,61 +97,4 @@ export function episodeFieldFromName(name: string): string {
   if (e) return stripEp(e[1]);
   const tail = /(?<![0-9A-Za-z])(\d{1,3})(?![0-9])/.exec(s);
   return tail ? stripEp(tail[1]) : '';
-}
-
-// ---- ★ 2026-09-28（用户要求）：弹幕候选**显示压缩** ----
-//   接口返回的 title/episodeTitle 常带长尾（「年度/更新至N/第N话」等），列表里读不全 →
-//   提炼成「剧名（年份）· 第N季 · 第M集」；取不到的段自动省略，提不到剧名时原样返回。
-
-/** 从文本里提集号：`第N话/集/期` → N；`SxxExx` → xx；`更新至N` → N；纯数字（非年份）→ N */
-function epNumberOf(s: string): string {
-  const t = full2half((s || '').trim());
-  if (!t) return '';
-  const se = /[Ss]\d{1,2}\s*[Ee]\s*(\d{1,4})/.exec(t);
-  if (se) return stripEp(se[1]);
-  const cn = /第\s*(\d{1,4})\s*[集话期]/.exec(t);
-  if (cn) return stripEp(cn[1]);
-  const up = /(?:更新至|至)\s*(\d{1,4})\s*[集话期]?/.exec(t);
-  if (up) return stripEp(up[1]);
-  const pure = /^\s*(\d{1,4})\s*$/.exec(t);
-  if (pure && !/^(?:19|20)\d{2}$/.test(pure[1])) return stripEp(pure[1]);
-  return '';
-}
-
-/**
- * 弹幕候选显示压缩：`斗破苍穹年番 第212话` → `斗破苍穹年番 · 第212集`；
- * `斗罗大陆系列小剧场(2026)【动漫】from tencent` → `斗罗大陆系列小剧场 · 第1集`。
- * 年份取标题里的 `(19|20)xx`（带不带括号都认，纯净化为全角括号展示）；
- * 季号沿用 {@link seasonOf}；集号优先取 `episodeTitle`，其次接口的 `episodeNumber`，最后退回标题。
- * ★ 2026-09-29：净化「平台/类型」噪声（`【动漫】` / `from tencent` 等）——它们会把
- *   `· 第N集` 挤到第二行或截断，用户反映「tencent 的条目看不到是第几集」。
- */
-export function formatCandidateLabel(title?: string, episodeTitle?: string, episodeNumber?: string): string {
-  const raw = full2half((title || '').trim());
-  const ym = /[（([]?\s*((?:19|20)\d{2})\s*[）)\]]?/.exec(raw);
-  const year = ym ? ym[1] : '';
-  const num = (episodeNumber || '').trim();
-  const ep = epNumberOf(episodeTitle || '') || (/^\d{1,4}$/.test(num) ? stripEp(num) : '') || epNumberOf(raw);
-  const season = seasonOf(raw) ?? seasonOf(episodeTitle || '');
-  let name = raw
-    .replace(/[（([]\s*(?:19|20)\d{2}\s*[）)\]]/g, ' ')
-    .replace(/\bfrom\s*[^\s（()\u4e00-\u9fa5]+/gi, ' ')
-    .replace(/[（([【]\s*(?:3D)?(?:动漫|动画|国漫|日漫|电视剧|电影|综艺|纪录片|TV|OVA)\s*[）)\]】]/gi, ' ')
-    .replace(/第\s*(?:\d{1,2}|[一二三四五六七八九十]{1,3})\s*[季部]/g, ' ')
-    .replace(/[Ss](?:eason)?\s*\d{1,2}\s*[Ee]\s*\d{1,4}/g, ' ')
-    .replace(/[Ss]\s*\d{1,2}(?![0-9A-Za-z])/g, ' ')
-    .replace(/第\s*\d{1,4}\s*[集话期]/g, ' ')
-    .replace(/(?:更新至|全)\s*\d{1,4}\s*[集话期]?/g, ' ')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/[\s\-–—·:：|]+$/g, '')
-    .trim();
-  if (!name) name = raw; // 净化后为空但原文有内容（如纯符号名）→ 保留原文
-  // 连剧名都没有（只有集名）→ 直接用集名当标题，且不再重复追加「第N集」
-  const nameFromEp = !name;
-  if (nameFromEp) name = (episodeTitle || '').trim();
-  if (!name) return '';
-  const parts: string[] = [year ? `${name}（${year}）` : name];
-  if (season != null) parts.push(`第${season}季`);
-  if (ep && !nameFromEp) parts.push(`第${ep}集`);
-  return parts.join(' · ');
 }

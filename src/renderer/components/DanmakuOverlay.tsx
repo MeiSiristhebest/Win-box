@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { danmakuArea, eachScrollDraw, layoutDanmaku, scrollDrawStart, setTextMeasurer } from '../../engine/danmaku/layout';
 import { DanmakuBitmapCache, type BitmapEntry } from '../lib/danmakuBitmap';
+import { clearDanmakuCanvas, prepareDanmakuCanvas } from '../lib/danmakuCanvas';
 import type { DanmakuItem, DanmakuRegion } from '../../shared/danmaku';
 
 /** 弹幕字体串（测量与绘制必须同串，否则量出的宽度与实画不符）。 */
@@ -172,8 +173,7 @@ export default function DanmakuOverlay({ videoRef, mpv = null, items, enabled, r
     //   旧实现在 enabled=false 时直接 return（取消 rAF），**画布上最后一帧从未清除** →
     //   弹幕定格在屏幕上。这里关闭时先把画布清空再退出。
     if (!enabled) {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      clearDanmakuCanvas(ctx, canvas);
       return;
     }
     // ★ mpv 内核：无 <video> 时间源，用主进程推送的 time（mpv.time.current）
@@ -195,13 +195,9 @@ export default function DanmakuOverlay({ videoRef, mpv = null, items, enabled, r
 
       const dpr = window.devicePixelRatio || 1;
       const cw = canvas.clientWidth;
-      const ch = canvas.clientHeight;
-      if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) {
-        canvas.width = Math.round(cw * dpr);
-        canvas.height = Math.round(ch * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      }
-      ctx.clearRect(0, 0, cw, ch);
+      // A disabled frame leaves an identity transform. Always clear in physical
+      // pixels and restore DPR, even when the backing-store size is unchanged.
+      prepareDanmakuCanvas(ctx, canvas, dpr);
       ctx.globalAlpha = opacity;
       ctx.font = danmakuFont(fontSize);
       ctx.textBaseline = 'top';

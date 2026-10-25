@@ -6,103 +6,13 @@ import { canWriteRendererStorage } from './storageEpoch';
 //   页面重挂载时从此处恢复状态。
 // 聚合搜索结果记忆（搜索 → 详情 → 返回时恢复搜索结果界面）
 import { playbackProgressKey, type PlaybackSourceRef } from './playbackProgress';
+import type { RecordWatchInput, UiMemory, WatchHistory } from './uiMemoryTypes';
+import { historyGroupKey, mergeHistoryViews, normalizeWatch, regroupHistory, tombstoneActive, unionTombstones } from './uiHistoryMerge';
+import { mergeHomeOnLoad, normalizeHome, pickHomeForSave } from './uiHomeMemory';
+export type { DetailMem, HomeMem, HomeSearchMem, RecordWatchInput, UiMemory, WatchHistory } from './uiMemoryTypes';
+export { historyGroupKey, latestEpisodeOf, mergeHistoryViews, normalizeWatch, pruneTombstones, regroupHistory, tombstoneActive, unionTombstones, watchedEpisodeOf, TOMB_KEEP_MS, TOMB_MAX } from './uiHistoryMerge';
+export { mergeHomeOnLoad, normalizeHome, pickHomeForSave } from './uiHomeMemory';
 
-export interface HomeSearchMem {
-  wd: string;
-  profileId?: string;
-  aggMode: boolean;
-  aggScope: 'current' | 'all' | 'all-profiles';
-  searchAllSources: boolean;
-  searchAllProfiles?: boolean;
-  /** 搜索结果（SearchAllReport 可 JSON 序列化） */
-  agg: { items: unknown[]; perSource: unknown[]; hitSources: number; failedSources: number; totalRaw: number } | null;
-  /**
-   * ★ 2026-09-30（用户报「其他接口的盘搜类型源搜索结果看不了内容」）：
-   * 当前是否停留在某个**文件夹**（`vod_tag=folder`，如盘搜的「夸克 (92个)」）里 ——
-   * 内容由 `categoryContent(tid)` 展开。存进搜索态，从详情页返回时文件夹视图能原样恢复。
-   */
-  folder?: { key: string; tid: string; name: string; profileId: string; sourceName?: string } | null;
-}
-export interface HomeMem {
-  profileId?: string;
-  key: string;
-  tid: string;
-  pg: number;
-  scrollTop: number;
-  /** 当前分类已选中的筛选（gkey → value），与 tid/pg 同存（进详情返回时恢复筛选状态） */
-  filters?: Record<string, string>;
-  /** 上次搜索态；搜索 → 详情 → 返回时由 HomePage 恢复（exitSearch 清除） */
-  search?: HomeSearchMem | null;
-  /**
-   * ★ 2026-09-28 修复「搜索返回栈错乱」：本份 home 状态的**最后有意变更时间**（ms）。
-   *
-   * 根因：`loadUiMemory()` 会用盘上的 home **整份覆盖**内存（挂载 / 窗口 focus / visibility 都会触发），
-   * 而盘上那份可能是**上一次搜索**（第二次搜索的 2s 防抖还没落盘，或播放器窗口把自己的旧快照写了回去）
-   * ⇒「搜 A → 详情 → 搜 B → 详情 → 返回」会退回 A 的结果。
-   * 现在两个窗口写盘/载入都走 `pickNewerHome()`：**updatedAt 更大的那份胜出**（相等时按调用方偏好）。
-   * 只有会改变「搜索/浏览态」的动作会 bump 它（saveSearchMem / exitSearch / 进浏览态）。
-   */
-  updatedAt?: number;
-}
-export interface DetailMem {
-  flag: string;
-  ep: number;
-  scrollTop: number;
-}
-/** 单条观看历史（自动保存）：一部资源（url 去重）+ 刮削元数据 + 最后播放进度 + 观看时间 */
-export interface WatchHistory {
-  /** 资源展示名（如"狂飙 第12集"）；无名称时回退为 url */
-  name: string;
-  /**
-   * ★ 历史条目的主键/回退地址。原则上保存**原始 episode url**（可重新走 client.play 转存/解析），
-   *   不要存已过期的直链 —— 否则夸克这类"转存直链临时有效、播放完即删"的资源从历史续播必然失败。
-   */
-  url: string;
-  /** ★ 原始 episode url（与 url 同值；显式字段便于历史页点开时重新转存/解析） */
-  rawUrl?: string;
-  /** ★ 播放源 flag（client.play 需要 key+flag 才能重新解析/转存） */
-  flag?: string;
-  /** 封面图（详情/搜索结果携带的 pic；缺失时卡片占位） */
-  pic?: string;
-  /** 集数/备注角标（如"第12集"、"HD"） */
-  remarks?: string;
-  /** 来源源名（展示在卡片左上 chip，与搜索结果一致） */
-  sourceName?: string;
-  /** 来源源 key（点击可回详情） */
-  sourceKey?: string;
-  /** ★ 所属订阅档案 ID；历史跨订阅播放时先恢复该档案 */
-  profileId?: string;
-  /** 详情 vod_id（回详情用） */
-  vodId?: string;
-  /** 最后播放位置（秒） */
-  time: number;
-  /** 最近观看时间戳（ms），用于历史排序 */
-  updatedAt: number;
-}
-export interface UiMemory {
-  home: HomeMem;
-  /** 详情记忆：键 = "key:id" */
-  detail: Map<string, DetailMem>;
-  /** 播放进度（秒）：键 = 播放 url */
-  playTime: Map<string, number>;
-  /** 最近一次播放来源（返回目标与回退用） */
-  playSource: { fromKey: string; id: string; name: string } | null;
-  /** 观看历史：键 = 播放 url（去重，一资源一记录） */
-  history: Map<string, WatchHistory>;
-  /**
-   * ★ 2026-09-28 修复「历史删一次删不掉（播放中尤甚）」：**删除标记**（url → 带符号时间戳 ms）。
-   *
-   * 根因：`saveUiMemory()` 会把 localStorage 里已有的 history 合并回内存（修「历史为空」时的多窗口
-   * 覆盖问题），而被删条目在内存里已不存在（`!cur`）→ 于是**从 localStorage 原样补回**，
-   * 删除在下一次写盘时原地复活；播放器窗口每 5s 写一次盘，所以「播放中」尤其明显。
-   *
-   * 带符号语义（撤销必须能压过删除，否则盘上墓碑会把撤销又抹掉）：
-   *   `+ts` = ts 时刻执行了**删除**；`-ts` = ts 时刻执行了**撤销**。合并时取 |ts| 更大的那次动作。
-   * 生效规则：某条记录仅当「其 url 的当前动作是删除，且删除时间晚于该条 updatedAt」时才被抑制。
-   * 标记随同 `tvboxUiMemory` 一起落盘，两个窗口共享。
-   */
-  deleted: Map<string, number>;
-}
 
 export const uiMem: UiMemory = {
   home: { key: '', tid: '', pg: 1, scrollTop: 0, filters: {}, search: null },
@@ -112,40 +22,6 @@ export const uiMem: UiMemory = {
   history: new Map(),
   deleted: new Map(),
 };
-
-export interface RecordWatchInput {
-  name?: string;
-  url: string;
-  rawUrl?: string;
-  flag?: string;
-  pic?: string;
-  remarks?: string;
-  sourceName?: string;
-  sourceKey?: string;
-  profileId?: string;
-  vodId?: string;
-  time?: number;
-}
-
-/** 片名基底（历史名形如「剧名 - 第N集」→ 剧名） */
-function baseNameOfHistory(name?: string): string {
-  return (name || '').split(' - ')[0]?.trim() || '';
-}
-
-/**
- * ★ 2026-09-29（用户报「同一部剧第一集/第二集算两条历史」）：**历史分组键** —— 同源同片合并为一条。
- *   判据优先级：`sourceKey + vodId`（最稳，跨集同键）→ `sourceKey + 片名基底` → 退回 url（保持旧行为）。
- */
-export function historyGroupKey(meta: { sourceKey?: string; vodId?: string; name?: string; url?: string; profileId?: string }): string {
-  const sk = (meta.sourceKey || '').trim();
-  const pid = (meta.profileId || '').trim();
-  const prefix = pid ? `p:${pid}:` : '';
-  const vid = (meta.vodId || '').trim();
-  if (sk && vid) return `${prefix}k:${sk}:${vid}`;
-  const base = baseNameOfHistory(meta.name);
-  if (sk && base) return `${prefix}n:${sk}#${base}`;
-  return (meta.url || '').trim();
-}
 
 /** 在内存历史里按「分组键或记录 url」定位真实键（删除/续播/迁移用） */
 function resolveHistoryKey(keyOrUrl: string): string {
@@ -250,192 +126,6 @@ export function recentWatch(limit = 100): WatchHistory[] {
     .slice(0, limit);
 }
 
-// ---- ★ 2026-09-26：历史页「有更新」检测的两个纯函数（可单测）----
-
-/** 从历史记录的备注/名称里解析**已看到第几集**（解析不到返回 0，如电影「HD」） */
-export function watchedEpisodeOf(it: Pick<WatchHistory, 'remarks' | 'name'>): number {
-  const s = `${it.remarks || ''} ${it.name || ''}`;
-  const m = /(?:[Ss]\d{1,2})?[Ee][Pp]?\s*0*(\d{1,4})|第\s*0*(\d{1,4})\s*[集话話期]/.exec(s);
-  const n = m ? Number(m[1] ?? m[2]) : 0;
-  return Number.isFinite(n) && n > 0 ? n : 0;
-}
-
-/** 源当前最新集数：取各线路集数最大值与备注「更新至N集」两处的大者 */
-export function latestEpisodeOf(d: { episodes?: Record<string, Array<unknown>>; remarks?: string }): number {
-  let n = 0;
-  for (const list of Object.values(d.episodes || {})) n = Math.max(n, Array.isArray(list) ? list.length : 0);
-  const m = /(?:更新至|全)\s*0*(\d{1,4})\s*[集话話期]/.exec(d.remarks || '');
-  if (m) n = Math.max(n, Number(m[1]) || 0);
-  return n;
-}
-
-// ---- ★ 2026-09-28：历史删除墓碑（纯函数，可单测）----
-
-/** 墓碑保留时长（30 天）——过期的墓碑不再影响合并（用户很久以前删过的片子可以正常重新记录） */
-export const TOMB_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
-/** 墓碑条数上限（超出按时间新→旧保留），防 localStorage 无限膨胀 */
-export const TOMB_MAX = 500;
-
-/** 归一一条「持久化形态」的历史记录（缺字段兜底，与 recordWatch 的字段集保持一致） */
-export function normalizeWatch(url: string, ex: Partial<WatchHistory>): WatchHistory {
-  return {
-    name: typeof ex.name === 'string' ? ex.name : url,
-    url,
-    rawUrl: ex.rawUrl,
-    flag: ex.flag,
-    pic: ex.pic,
-    remarks: ex.remarks,
-    sourceName: ex.sourceName,
-    sourceKey: ex.sourceKey,
-    profileId: ex.profileId,
-    vodId: ex.vodId,
-    time: Number(ex.time) || 0,
-    updatedAt: Number(ex.updatedAt) || 0,
-  };
-}
-
-/** 清理标记：丢弃 |ts| 超过 TOMB_KEEP_MS 的，并按 |ts| 新→旧截断到 TOMB_MAX 条 */
-export function pruneTombstones(tombs: Map<string, number>, now: number = Date.now()): Map<string, number> {
-  const cutoff = now - TOMB_KEEP_MS;
-  const live: Array<[string, number]> = [];
-  for (const [url, ts] of tombs) {
-    if (url && Number.isFinite(ts) && ts !== 0 && Math.abs(ts) >= cutoff) live.push([url, ts]);
-  }
-  live.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-  return new Map(live.slice(0, TOMB_MAX));
-}
-
-/**
- * 合并两处标记（本窗口内存 ∪ 盘上）：同 url 取**最近一次动作**（|ts| 更大者，保留其符号 = 删除/撤销），
- * 再统一清理。
- *
- * 为什么要并盘上的：播放器窗口是另一个渲染进程，它启动后再由主窗口执行的删除**不在它的内存里**；
- * 只有把盘上的标记一起并进来，它的下一次写盘才不会把主窗口刚删的条目复活。
- */
-export function unionTombstones(
-  base: Map<string, number>,
-  persisted: Array<[string, unknown]> | null | undefined,
-  now: number = Date.now(),
-): Map<string, number> {
-  const out = new Map(base);
-  if (Array.isArray(persisted)) {
-    for (const [k, v] of persisted) {
-      if (typeof k !== 'string' || !k) continue;
-      const ts = Number(v) || 0;
-      if (ts !== 0 && Math.abs(ts) > Math.abs(out.get(k) || 0)) out.set(k, ts);
-    }
-  }
-  return pruneTombstones(out, now);
-}
-
-/**
- * 该 url 的记录是否被「删除」标记抑制：仅当当前动作是**删除**（ts > 0）且删除晚于记录自身 updatedAt。
- * （用户删除后又重新观看 → 新记录的 updatedAt 更新 ⇒ 自动放行；撤销标记为负数 ⇒ 永不抑制。）
- */
-export function tombstoneActive(tombs: Map<string, number>, url: string, updatedAt: number): boolean {
-  const ts = tombs.get(url) || 0;
-  return ts > 0 && ts > updatedAt;
-}
-
-/**
- * 合并「本窗口内存 history」与「盘上 history」，并施加删除标记语义：
- * 1. 内存里已被删除标记覆盖 → 先从内存剔除（播放器窗口的旧快照会被清掉）；
- * 2. 盘上条目若被删除标记覆盖 → **不复活**；
- * 3. 其余同 url 取 `updatedAt` 更新者（原有跨窗口合并语义）。
- */
-export function mergeHistoryViews(
-  memory: Map<string, WatchHistory>,
-  persisted: Array<[string, unknown]> | null | undefined,
-  tombstones: Map<string, number>,
-): Map<string, WatchHistory> {
-  const map = new Map(memory);
-  for (const url of tombstones.keys()) {
-    const cur = map.get(url);
-    if (cur && tombstoneActive(tombstones, url, cur.updatedAt || 0)) map.delete(url);
-  }
-  if (!Array.isArray(persisted)) return map;
-  for (const [k, v] of persisted) {
-    if (typeof k !== 'string' || !k || !v || typeof v !== 'object') continue;
-    const ex = v as Partial<WatchHistory>;
-    const updatedAt = Number(ex.updatedAt) || 0;
-    if (tombstoneActive(tombstones, k, updatedAt)) continue; // 删得比这条记录更晚 → 保持删除
-    const cur = map.get(k);
-    if (!cur || (cur.updatedAt || 0) < updatedAt) map.set(k, normalizeWatch(k, ex));
-  }
-  return map;
-}
-
-/**
- * ★ 2026-09-29：把「按 url 存的旧记录」归并到**分组键**（同源同片多集合并为一条）。
- *   载入/写盘都过一遍 —— 用户既有历史（ep1/ep2 两条）在升级后自动合并；
- *   合并取 `updatedAt` 更新者（即最近看的那一集），并施加墓碑（旧键或新键命中即丢弃）。
- */
-export function regroupHistory(
-  map: Map<string, WatchHistory>,
-  tombstones: Map<string, number>,
-): Map<string, WatchHistory> {
-  const out = new Map<string, WatchHistory>();
-  // 旧历史首次续播补齐 profileId 后，写盘合并不能把原来的无档案记录复活成第二条。
-  const scoped = new Set(Array.from(map.values()).filter((it) => it?.profileId)
-    .map((it) => `${historyGroupKey({ ...it, profileId: undefined })}\n${it.rawUrl || it.url}`));
-  for (const [k, it] of map) {
-    if (!it) continue;
-    if (!it.profileId && scoped.has(`${historyGroupKey(it)}\n${it.rawUrl || it.url}`)) continue;
-    const gk = historyGroupKey(it) || k;
-    if (tombstoneActive(tombstones, gk, it.updatedAt || 0)) continue;
-    const cur = out.get(gk);
-    if (!cur || (cur.updatedAt || 0) < (it.updatedAt || 0)) out.set(gk, it);
-  }
-  return out;
-}
-
-// ---- ★ 2026-09-28：home 状态版本守卫（搜索返回栈，纯函数可单测）----
-
-/** 归一「盘上形态」的 home（缺字段兜底；非法输入返回 null） */
-export function normalizeHome(raw: unknown): HomeMem | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const h = raw as Partial<HomeMem>;
-  return {
-    key: typeof h.key === 'string' ? h.key : '',
-    tid: typeof h.tid === 'string' ? h.tid : '',
-    pg: Number(h.pg) || 1,
-    scrollTop: Number(h.scrollTop) || 0,
-    filters: (h.filters && typeof h.filters === 'object' ? h.filters : {}) as Record<string, string>,
-    search: h.search && typeof h.search === 'object' ? (h.search as HomeSearchMem) : null,
-    updatedAt: Number(h.updatedAt) || 0,
-  };
-}
-
-/**
- * 载入（盘 → 内存）时合并 home：**浏览态以盘上为准**（保持「从盘上刷新」的既有语义），
- * **搜索态取 `updatedAt` 更新的一方** —— 防止盘上那份「上一次搜索」覆盖掉内存里刚做的新搜索。
- */
-export function mergeHomeOnLoad(mem: HomeMem, disk: unknown): HomeMem {
-  const d = normalizeHome(disk);
-  if (!d) return mem;
-  const memTs = mem.updatedAt || 0;
-  const diskTs = d.updatedAt || 0;
-  return {
-    ...d,
-    search: diskTs >= memTs ? d.search : mem.search,
-    updatedAt: Math.max(memTs, diskTs),
-  };
-}
-
-/**
- * 写盘（内存 → 盘）时取哪份 home：`updatedAt` 更大者胜出；
- * 相等时 `preferDiskOnTie`（播放器窗口 = true，它自己的 home 只是启动时的旧快照）。
- */
-export function pickHomeForSave(mine: HomeMem, disk: unknown, preferDiskOnTie: boolean): HomeMem {
-  const d = normalizeHome(disk);
-  if (!d) return mine;
-  const memTs = mine.updatedAt || 0;
-  const diskTs = d.updatedAt || 0;
-  if (diskTs > memTs) return d;
-  if (memTs > diskTs) return mine;
-  return preferDiskOnTie ? d : mine;
-}
-
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
@@ -488,7 +178,7 @@ export function saveUiMemory() {
     }
   })();
   const existing = prev && Array.isArray(prev.history) ? prev.history : null;
-  uiMem.deleted = unionTombstones(uiMem.deleted, prev?.deleted);
+  uiMem.deleted = unionTombstones(uiMem.deleted, prev?.deleted, Date.now());
   // ★ 2026-09-29：合并后按分组键归并（同源同片多集 → 一条），并回写内存保持一致
   const map = regroupHistory(mergeHistoryViews(uiMem.history, existing, uiMem.deleted), uiMem.deleted);
   uiMem.history = map;
@@ -534,7 +224,7 @@ export function loadUiMemory() {
     }
     uiMem.playTime = new Map(data.playTime || []);
     // ★ 2026-09-28：墓碑一起载入（本窗口内存 ∪ 盘上），再按墓碑过滤历史 —— 否则"删了再切回本页"会回弹
-    uiMem.deleted = unionTombstones(uiMem.deleted, data.deleted);
+    uiMem.deleted = unionTombstones(uiMem.deleted, data.deleted, Date.now());
     const h: Array<[string, unknown]> = data.history || [];
     const norm = new Map<string, WatchHistory>();
     for (const [k, v] of h) {
@@ -685,7 +375,7 @@ export function loadLatestWatch(keyOrUrl: string): WatchHistory | null {
     }
     if (!best) return null;
     // ★ 已被删除（删除标记更晚）→ 视为不存在，避免从历史续播到用户删掉的条目
-    const tombs = unionTombstones(uiMem.deleted, d?.deleted);
+    const tombs = unionTombstones(uiMem.deleted, d?.deleted, Date.now());
     if (tombstoneActive(tombs, bestKey, best.updatedAt || 0)) return null;
     if (bestKey !== keyOrUrl && tombstoneActive(tombs, keyOrUrl, best.updatedAt || 0)) return null;
     return best;

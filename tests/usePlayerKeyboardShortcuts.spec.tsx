@@ -3,14 +3,16 @@ import { useRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { usePlayerKeyboardShortcuts } from '../src/renderer/features/playback/usePlayerKeyboardShortcuts';
+import { playerKeyboardShortcutsAdapter } from '../src/renderer/features/playback/adapters/playerKeyboardShortcutsAdapter';
 
-function Harness({ isMpv = false, actions }: { isMpv?: boolean; actions: { play: () => void; pause: () => void; seek: (seconds: number) => void; volume: (value: number) => void; showVolume: () => void; reveal: () => void; exitFullscreen: () => void } }) {
+function Harness({ isMpv = false, actions }: { isMpv?: boolean; actions: { play: () => void; pause: () => void; seek: (seconds: number) => void; volume: (value: number) => void; showVolume: () => void; reveal: () => void; exitFullscreen: () => void; stepSubtitleOffset?: (delta: -0.5 | 0.5) => void; toggleDanmaku?: () => void } }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   usePlayerKeyboardShortcuts({
     videoRef, isMpv: () => isMpv, isPaused: () => true, play: actions.play, pause: actions.pause,
     getTime: () => 0, getDuration: () => 60, seek: actions.seek, getVolume: () => 0.5, setVolume: actions.volume,
     showVolume: actions.showVolume, revealControls: actions.reveal, exitMpvFullscreen: actions.exitFullscreen,
-  });
+    onStepSubtitleOffset: actions.stepSubtitleOffset, onToggleDanmaku: actions.toggleDanmaku,
+  }, playerKeyboardShortcutsAdapter);
   return <><video ref={videoRef} /><input aria-label='text entry' /></>
 }
 
@@ -23,6 +25,8 @@ function actions() {
     showVolume: vi.fn() as unknown as () => void,
     reveal: vi.fn() as unknown as () => void,
     exitFullscreen: vi.fn() as unknown as () => void,
+    stepSubtitleOffset: vi.fn() as unknown as (delta: -0.5 | 0.5) => void,
+    toggleDanmaku: vi.fn() as unknown as () => void,
   };
 }
 
@@ -50,6 +54,19 @@ describe('usePlayerKeyboardShortcuts', () => {
     render(<Harness isMpv actions={handlers} />);
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(handlers.exitFullscreen).toHaveBeenCalledOnce();
+  });
+
+  it('adjusts subtitle offset with [ / ] and toggles danmaku with d', () => {
+    const handlers = actions();
+    render(<Harness actions={handlers} />);
+    fireEvent.keyDown(window, { key: '[' });
+    fireEvent.keyDown(window, { key: ']' });
+    fireEvent.keyDown(window, { key: 'd' });
+
+    expect(handlers.stepSubtitleOffset).toHaveBeenCalledWith(-0.5);
+    expect(handlers.stepSubtitleOffset).toHaveBeenCalledWith(0.5);
+    expect(handlers.toggleDanmaku).toHaveBeenCalledOnce();
+    expect(handlers.reveal).toHaveBeenCalledTimes(3);
   });
 
   it('does not route global playback shortcuts while a native dialog is open', () => {

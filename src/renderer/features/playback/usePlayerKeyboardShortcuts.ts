@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
-import { isNativeModalOpen } from '../../lib/modalScope';
+import type { PlayerKeyboardShortcutEvent, PlayerKeyboardShortcutsPorts } from './application/playerKeyboardShortcuts';
 interface PlayerKeyboardShortcutsOptions {
   videoRef: RefObject<HTMLVideoElement | null>;
   isMpv: () => boolean;
@@ -16,25 +16,29 @@ interface PlayerKeyboardShortcutsOptions {
   exitMpvFullscreen: () => void;
   shouldExitFullscreen?: () => boolean;
   setBoost?: (on: boolean) => void;
+  onStepSubtitleOffset?: (delta: -0.5 | 0.5) => void;
+  onToggleDanmaku?: () => void;
 }
 
 
-export function usePlayerKeyboardShortcuts(options: PlayerKeyboardShortcutsOptions): void {
+export function usePlayerKeyboardShortcuts(
+  options: PlayerKeyboardShortcutsOptions,
+  ports: PlayerKeyboardShortcutsPorts,
+): void {
   const latest = useRef(options);
   useLayoutEffect(() => { latest.current = options; });
   useEffect(() => {
-    let holdTimer: ReturnType<typeof setInterval> | null = null;
-    let boostTimer: ReturnType<typeof setTimeout> | null = null;
+    let holdTimer: unknown = null;
+    let boostTimer: unknown = null;
     const clear = () => {
-      if (holdTimer) clearInterval(holdTimer);
-      if (boostTimer) clearTimeout(boostTimer);
+      if (holdTimer !== null) ports.scheduler.cancelInterval(holdTimer);
+      if (boostTimer !== null) ports.scheduler.cancelTimeout(boostTimer);
       holdTimer = null; boostTimer = null; latest.current.setBoost?.(false);
     };
-    const onKeyDown = (event: KeyboardEvent) => {
+    const onKeyDown = (event: PlayerKeyboardShortcutEvent) => {
       const current = latest.current;
-      if (isNativeModalOpen()) { clear(); return; }
-      const target = event.target as HTMLElement | null;
-      if (target && (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable)) return;
+      if (ports.modalGuard.hasBlockingModal()) { clear(); return; }
+      if (event.targetIsEditable) return;
       if ((!current.videoRef.current && !current.isMpv()) || event.repeat) return;
       if (event.key === 'Escape' && (current.shouldExitFullscreen?.() ?? current.isMpv())) { current.exitMpvFullscreen(); return; }
       if (event.key === ' ') {
@@ -47,18 +51,30 @@ export function usePlayerKeyboardShortcuts(options: PlayerKeyboardShortcutsOptio
           value.seek(Math.max(0, Math.min(value.getTime() + seconds, duration > 0 ? duration : Infinity)));
         };
         seek(direction * 5);
-        if (direction > 0 && current.setBoost) boostTimer = setTimeout(() => { boostTimer = null; latest.current.setBoost?.(true); }, 500);
-        else holdTimer = setInterval(() => seek(direction * 2), 40);
+        if (direction > 0 && current.setBoost) boostTimer = ports.scheduler.scheduleTimeout(() => { boostTimer = null; latest.current.setBoost?.(true); }, 500);
+        else holdTimer = ports.scheduler.scheduleInterval(() => seek(direction * 2), 40);
       } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
         event.preventDefault();
         current.setVolume(Math.max(0, Math.min(1, current.getVolume() + (event.key === 'ArrowUp' ? 0.05 : -0.05))));
         current.showVolume(); current.revealControls();
+      } else if (event.key === '[' || event.key === '【') {
+        event.preventDefault();
+        current.onStepSubtitleOffset?.(-0.5);
+        current.revealControls();
+      } else if (event.key === ']' || event.key === '】') {
+        event.preventDefault();
+        current.onStepSubtitleOffset?.(0.5);
+        current.revealControls();
+      } else if (event.key === 'd' || event.key === 'D') {
+        event.preventDefault();
+        current.onToggleDanmaku?.();
+        current.revealControls();
       }
     };
-    const onKeyUp = (event: KeyboardEvent) => {
-      if (isNativeModalOpen() || event.key === 'ArrowLeft' || event.key === 'ArrowRight') clear();
+    const onKeyUp = (event: PlayerKeyboardShortcutEvent) => {
+      if (ports.modalGuard.hasBlockingModal() || event.key === 'ArrowLeft' || event.key === 'ArrowRight') clear();
     };
-    window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', clear);
-    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', clear); clear(); };
-  }, []);
+    const unsubscribe = ports.events.subscribe({ onKeyDown, onKeyUp, onWindowBlur: clear });
+    return () => { unsubscribe(); clear(); };
+  }, [ports]);
 }

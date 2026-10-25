@@ -1,27 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { client } from '../../api/client';
 import type { PlayerEngineView } from '../../../shared/plugin';
+import type { KernelChoice } from './presentation/PlayerControlModels';
+export type { KernelChoice } from './presentation/PlayerControlModels';
 import type { MpvStatus } from '../../../shared/player';
 import { isEngineKernel, type Kernel } from '../../lib/kernel';
+import type { PluginPlaybackEnginesPort } from './application/pluginPlaybackEngines';
 
-export interface KernelChoice { id: Kernel; label: string; note?: string }
-
-export function usePluginPlaybackEngines(active: boolean, url: string, mpv: MpvStatus | null) {
+export function usePluginPlaybackEngines(active: boolean, url: string, mpv: MpvStatus | null, port: PluginPlaybackEnginesPort) {
   const [engines, setEngines] = useState<PlayerEngineView[]>([]);
   const [enabled, setEnabled] = useState<Record<string, boolean>>({});
   const [failure, setFailure] = useState({ url: '', id: '', reason: '' });
   useEffect(() => {
     if (!active) return;
     let alive = true;
+    let requestSequence = 0;
     const load = () => {
-      void Promise.resolve().then(() => client.engineList()).then(items => { if (alive) setEngines(items.filter(item => isEngineKernel(item.id))); }).catch(() => undefined);
-      void Promise.resolve().then(() => client.playerPrefsGet()).then(settings => { if (alive) setEnabled(settings.engineEnabled ?? {}); }).catch(() => undefined);
+      const request = ++requestSequence;
+      void port.loadSnapshot().then(snapshot => {
+        if (!alive || request !== requestSequence) return;
+        setEngines(snapshot.engines.filter(item => isEngineKernel(item.id)));
+        setEnabled({ ...snapshot.enabledEngineIds });
+      }).catch(() => undefined);
     };
     load();
-    window.addEventListener('focus', load);
-    window.addEventListener('winbox:engines-changed', load);
-    return () => { alive = false; window.removeEventListener('focus', load); window.removeEventListener('winbox:engines-changed', load); };
-  }, [active]);
+    const unsubscribe = port.subscribeToChanges(load);
+    return () => { alive = false; requestSequence += 1; unsubscribe(); };
+  }, [active, port]);
 
   const usable = useMemo(() => engines.filter(item => item.ready && enabled[item.id] === true && !(failure.url === url && failure.id === item.id)).map(item => item.id), [engines, enabled, failure, url]);
   const choices = useMemo<KernelChoice[]>(() => [

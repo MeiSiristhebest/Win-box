@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { client } from '../../api/client';
 import type { Kernel } from '../../lib/kernel';
+import type { PlayerFullscreenPort } from './application/playerFullscreen';
 
 interface UsePlayerFullscreenOptions {
   allowMpv: boolean;
@@ -9,6 +9,7 @@ interface UsePlayerFullscreenOptions {
   mini: boolean;
   containerRef: { current: HTMLDivElement | null };
   revealControls: () => void;
+  port: PlayerFullscreenPort;
 }
 
 let lastNativeFullscreen = false;
@@ -20,6 +21,7 @@ export function usePlayerFullscreen({
   mini,
   containerRef,
   revealControls,
+  port,
 }: UsePlayerFullscreenOptions) {
   const nativeFullscreen = nativeWindow ?? (allowMpv && kernel === 'mpv');
   const [full, setFull] = useState(nativeWindow ? lastNativeFullscreen : false);
@@ -30,38 +32,38 @@ export function usePlayerFullscreen({
   useEffect(() => {
     if (!mini) return;
     if (document.fullscreenElement) void document.exitFullscreen().then(() => setFull(false)).catch(() => undefined);
-    else if (nativeFullscreen && fullRef.current) void client.playerSetFullscreen(false).then(() => setFull(false)).catch(() => undefined);
-  }, [mini, nativeFullscreen]);
+    else if (nativeFullscreen && fullRef.current) void port.setNativeFullscreen(false).then(setFull).catch(() => undefined);
+  }, [mini, nativeFullscreen, port]);
 
   useEffect(() => {
     if (!nativeFullscreen) return;
     let active = true;
-    const unsubscribe = client.playerOnFullscreen(setFull);
-    void client.playerIsFullscreen()
-      .then((state) => {
-        if (active) setFull(!!state.fullscreen);
+    const unsubscribe = port.subscribeToNativeFullscreen(setFull);
+    void port.readNativeFullscreen()
+      .then((fullscreen) => {
+        if (active) setFull(fullscreen);
       })
       .catch(() => undefined);
     return () => {
       active = false;
       unsubscribe();
     };
-  }, [nativeFullscreen]);
+  }, [nativeFullscreen, port]);
 
   useEffect(() => {
     if (nativeFullscreen) return;
     const syncWindowResize = () => {
       const active = !!document.fullscreenElement;
       setFull(active);
-      void client.playerSetResizable(!active).catch(() => undefined);
+      void port.setWindowResizable(!active).catch(() => undefined);
     };
     document.addEventListener('fullscreenchange', syncWindowResize);
     syncWindowResize();
     return () => {
       document.removeEventListener('fullscreenchange', syncWindowResize);
-      void client.playerSetResizable(true).catch(() => undefined);
+      void port.setWindowResizable(true).catch(() => undefined);
     };
-  }, [nativeFullscreen]);
+  }, [nativeFullscreen, port]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -73,10 +75,10 @@ export function usePlayerFullscreen({
   }, [full, nativeWindow]);
 
   const exitMpvFullscreen = useCallback(() => {
-    void client.playerSetFullscreen(false)
-      .then((state) => setFull(!!state.fullscreen))
+    void port.setNativeFullscreen(false)
+      .then(setFull)
       .catch(() => undefined);
-  }, []);
+  }, [port]);
 
   const toggleFull = useCallback(() => {
     const container = containerRef.current;
@@ -84,9 +86,9 @@ export function usePlayerFullscreen({
     if (nativeFullscreen) {
       if (transitionBusyRef.current) return;
       transitionBusyRef.current = true;
-      void client.playerIsFullscreen()
-        .then((state) => client.playerSetFullscreen(!state.fullscreen))
-        .then((state) => setFull(!!state.fullscreen))
+      void port.readNativeFullscreen()
+        .then((fullscreen) => port.setNativeFullscreen(!fullscreen))
+        .then(setFull)
         .catch(() => undefined)
         .finally(() => {
           transitionBusyRef.current = false;
@@ -96,7 +98,7 @@ export function usePlayerFullscreen({
     }
     if (document.fullscreenElement) void document.exitFullscreen();
     else void container.requestFullscreen();
-  }, [containerRef, nativeFullscreen, revealControls]);
+  }, [containerRef, nativeFullscreen, port, revealControls]);
 
   return { full, fullRef, setFull, toggleFull, exitMpvFullscreen };
 }

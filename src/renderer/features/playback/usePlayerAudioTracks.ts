@@ -1,9 +1,8 @@
-import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react';
-import type Hls from 'hls.js';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { MpvAudioTrack } from '../../../shared/player';
 import { isEngineKernel, type Kernel } from '../../lib/kernel';
-import { getSessionAudioPref, setSessionAudioPref } from '../../lib/playerPrefs';
-import { client } from '../../api/client';
+import type { SessionAudioPreferencePort } from './application/sessionAudioPreference';
+import type { PlayerAudioTracksPort } from './application/playerAudioTracks';
 
 export function audioTrackKey(track: MpvAudioTrack): string { return (track.lang || track.title || 'id:' + track.id).trim(); }
 export function audioTrackLabel(track: MpvAudioTrack, index: number): string {
@@ -11,7 +10,12 @@ export function audioTrackLabel(track: MpvAudioTrack, index: number): string {
   return parts.length ? parts.join(' · ') : '音轨 ' + (index + 1);
 }
 
-export function usePlayerAudioTracks(url: string, kernel: Kernel, hlsRef: RefObject<Hls | null>) {
+export function usePlayerAudioTracks(
+  url: string,
+  kernel: Kernel,
+  port: PlayerAudioTracksPort,
+  preference: SessionAudioPreferencePort,
+) {
   const key = kernel + '\u0000' + url;
   const [state, setState] = useState<{ key: string; tracks: MpvAudioTrack[]; aid: number | null; open: boolean }>(() => ({ key, tracks: [], aid: null, open: false }));
   if (state.key !== key) setState({ key, tracks: [], aid: null, open: false });
@@ -28,13 +32,13 @@ export function usePlayerAudioTracks(url: string, kernel: Kernel, hlsRef: RefObj
     retries.current = { key: '', id: -1, count: 0 };
   }, [url, kernel]);
   const apply = useCallback((track: MpvAudioTrack) => {
-    if (isEngineKernel(context.current.kernel)) void client.engineCmd({ type: 'aid', value: track.id }).catch(() => undefined);
-    else if (context.current.kernel === 'mpv') void client.mpvCmd({ type: 'aid', value: track.id }).catch(() => undefined);
-    else if (hlsRef.current) hlsRef.current.audioTrack = track.id;
-    setSessionAudioPref(audioTrackKey(track));
-  }, [hlsRef]);
+    if (isEngineKernel(context.current.kernel)) port.selectEngineTrack(track.id);
+    else if (context.current.kernel === 'mpv') port.selectMpvTrack(track.id);
+    else port.selectHlsTrack(track.id);
+    preference.rememberPreferredTrackKey(audioTrackKey(track));
+  }, [port, preference]);
   const sync = useCallback((list: MpvAudioTrack[], selected: number | null) => {
-    const pref = getSessionAudioPref();
+    const pref = preference.readPreferredTrackKey();
     const key = context.current.kernel + '\u0000' + context.current.url;
     setState(previous => previous.key === key && JSON.stringify(previous.tracks) === JSON.stringify(list) && previous.aid === selected ? previous : { key, tracks: list, aid: selected, open: previous.key === key && previous.open });
     if (!pref || applied.current === key) return;
@@ -46,15 +50,10 @@ export function usePlayerAudioTracks(url: string, kernel: Kernel, hlsRef: RefObj
     if (count >= 3) { applied.current = key; return; }
     retries.current = { key, id: hit.id, count: count + 1 };
     apply(hit);
-  }, [apply]);
+  }, [apply, preference]);
   const syncHls = useCallback(() => {
-    const hls = hlsRef.current;
-    if (!hls) return;
-    const list: MpvAudioTrack[] = hls.audioTracks.map((raw, index) => ({
-      id: index, title: raw.name || undefined, lang: raw.lang || undefined,
-      channels: raw.attrs?.CHANNELS || undefined, selected: hls.audioTrack === index || undefined,
-    }));
-    sync(list, hls.audioTrack >= 0 ? hls.audioTrack : null);
-  }, [hlsRef, sync]);
+    const snapshot = port.readHlsTracks();
+    if (snapshot) sync(snapshot.tracks, snapshot.selectedTrackId);
+  }, [port, sync]);
   return { tracks, aid, open, setOpen, apply, sync, syncHls };
 }

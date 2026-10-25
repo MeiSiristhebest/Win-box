@@ -6,105 +6,28 @@
 //     · 字幕时间偏移
 //   ★ 不在此重复持久化的项：字幕字号/位置/开关（主进程 subtitleSet → subtitle.json）、
 //     弹幕设置（主进程 danmakuSet → danmaku.json），二者已是跨窗口持久的。
-import { isEngineKernel, type KernelPref } from './kernel';
-import { normalizeSpdif } from '../../shared/player';
+import {
+  DEFAULT_PLAYER_PREFS,
+  normalizePlayerPrefs,
+  type PlayerPrefs,
+} from '../features/playback/application/playerPreferences';
 
-export interface PlayerPrefs {
-  /** 音量 0..1（0 = 静音） */
-  vol: number;
-  /** 倍速（0.5 ~ 2） */
-  rate: number;
-  /** 字幕时间偏移（秒） */
-  subOffset: number;
-  /** ★ 2026-09-26 新增：画面比例（见 PlayerFit） */
-  fit: PlayerFit;
-  /** ★ 2026-10-08 新增：播放内核偏好（auto = 按资源形态自动；手动切换后记住显式值） */
-  kernel: KernelPref;
-  /**
-   * ★ 2026-10-17（阶段3b，用户要求「音频直通开关」）：MPV 内核的**音频源码直通**档位
-   *   （值 = mpv `audio-spdif` 的编解码列表串；'' = 关闭，见 shared/player.ts 的 SPDIF_OPTIONS）。
-   *   ★ 只在 MPV 内核生效；每次起播时按此偏好下发一次（HTML5 内核无关）。
-   */
-  spdif: string;
-}
-
-/**
- * ★ 2026-09-26（用户要求）：**画面比例** —— 部分片源比例特殊（竖屏/超宽）时画面与 UI 互相干扰，
- *   给用户一个显式控制：适应（默认）/ 拉伸填满 / 裁剪填满 / 强制 16:9 / 强制 4:3 / 原始尺寸。
- *   语义对齐安卓 TVBox 的「画面比例」菜单（默认 / 16:9 / 4:3 / 填充 / 原始），
- *   另加「裁剪填满」（等价 object-fit: cover，去黑边）。
- */
-export type PlayerFit = 'contain' | 'fill' | 'cover' | 'r169' | 'r43' | 'none';
-
-/** 菜单项（顺序即 UI 顺序；label 面向用户） */
-export const PLAYER_FITS: ReadonlyArray<{ value: PlayerFit; label: string }> = [
-  { value: 'contain', label: '适应（保持比例）' },
-  { value: 'fill', label: '拉伸填满' },
-  { value: 'cover', label: '裁剪填满' },
-  { value: 'r169', label: '强制 16:9' },
-  { value: 'r43', label: '强制 4:3' },
-  { value: 'none', label: '原始尺寸' },
-];
-
-/** 画面比例兜底：非法/未知值一律回落「适应」，避免记忆把画面记成不可用状态 */
-export function normalizeFit(v: unknown): PlayerFit {
-  return PLAYER_FITS.some((f) => f.value === v) ? (v as PlayerFit) : 'contain';
-}
-
-/**
- * 内核偏好兜底：非法/未知值一律回落「自动」（见 lib/kernel.ts）。
- * ★ R11：`engine:<id>` 形态**保留**（插件引擎是否可用要到渲染时才知 ——
- *   由 `resolveKernel(pref, url, { engines })` 按「已启用且就绪」集合收敛，不可用则回落 auto 结果）。
- */
-export function normalizeKernelPref(v: unknown): KernelPref {
-  if (v === 'html5' || v === 'mpv' || v === 'auto') return v;
-  return isEngineKernel(v) ? v : 'auto';
-}
-
-/**
- * ★ 2026-10-17（用户要求「音轨设置」）：**本会话内**记住的音轨（语言 → 标题 → id 的标识）。
- *
- * 刻意**不落盘**（选了某语言不该影响别的片），但必须是**模块级变量**：播放器组件在换集时会
- * 重挂载（实测：`pref` 被重置成空 → 下一集不再自动沿用），组件内的 ref 扛不住。
- */
-let sessionAudioPref = '';
-
-/** 读「本会话记住的音轨」（空 = 用户还没选过，走内核默认） */
-export function getSessionAudioPref(): string {
-  return sessionAudioPref;
-}
-
-/** 记「本会话记住的音轨」（用户在音轨面板点选时写入） */
-export function setSessionAudioPref(key: string): void {
-  sessionAudioPref = String(key || '');
-}
-
+export {
+  DEFAULT_PLAYER_PREFS,
+  normalizeFit,
+  normalizeKernelPref,
+  PLAYER_FITS,
+  type PlayerFit,
+  type PlayerPrefs,
+} from '../features/playback/application/playerPreferences';
 
 const KEY = 'winbox-player-prefs';
-
-export const DEFAULT_PLAYER_PREFS: PlayerPrefs = { vol: 1, rate: 1, subOffset: 0, fit: 'contain', kernel: 'auto', spdif: '' };
-
-/** 数值兜底：非法（NaN/Infinity/越界）一律退回默认值，避免「记忆」把音量记成 0 这类静默故障 */
-function num(v: unknown, def: number, lo: number, hi: number): number {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return def;
-  return Math.min(hi, Math.max(lo, n));
-}
 
 /** 读取记忆（坏 JSON / 部分字段缺失都能安全回退逐字段默认值） */
 export function loadPlayerPrefs(): PlayerPrefs {
   try {
     const j = localStorage.getItem(KEY);
-    if (!j) return { ...DEFAULT_PLAYER_PREFS };
-    const o = JSON.parse(j) as Partial<PlayerPrefs>;
-    return {
-      vol: num(o.vol, DEFAULT_PLAYER_PREFS.vol, 0, 1),
-      rate: num(o.rate, DEFAULT_PLAYER_PREFS.rate, 0.25, 4),
-      subOffset: num(o.subOffset, DEFAULT_PLAYER_PREFS.subOffset, -60, 60),
-      fit: normalizeFit(o.fit),
-      kernel: normalizeKernelPref(o.kernel),
-      spdif: normalizeSpdif(o.spdif),
-    };
+    return j ? normalizePlayerPrefs(JSON.parse(j)) : { ...DEFAULT_PLAYER_PREFS };
   } catch {
     return { ...DEFAULT_PLAYER_PREFS };
   }

@@ -1,16 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { animeTitleForQuery, extractEp, normalizeTitle } from '../../../engine/subtitle/normalizeQuery';
 import { parseDanmakuResponse } from '../../../engine/danmaku/parseDanmakuXml';
-import { episodeFieldFromName, formatCandidateLabel, parseEpisodeInput } from '../../../engine/danmaku/normalizeQuery';
+import { episodeFieldFromName, parseEpisodeInput } from '../../../engine/danmaku/normalizeQuery';
 import { seasonOf, sortCandidatesByEp } from '../../../engine/danmaku/endpoints';
-import { client } from '../../api/client';
 import {
   DEFAULT_DANMAKU_SETTINGS,
   type DanmakuCandidate,
   type DanmakuItem,
   type DanmakuSettings,
 } from '../../../shared/danmaku';
-import { orderCandidatesForEpisode, searchDanmakuCandidates } from './danmakuSearch';
+import { orderCandidatesForEpisode } from './application/danmakuSearchWorkflow';
+import { customEndpointsText } from '../../../engine/danmaku/endpoints';
+import { reduceDanmakuSettings, type DanmakuSettingsCommand } from './application/danmakuSettings';
+import type { DanmakuCandidateLabelFormatter } from './application/danmakuCandidateLabel';
+import type { DanmakuControllerPorts } from './application/danmakuControllerPorts';
 
 const MAX_DM_TRY = 5;
 const DM_TRY_BUDGET_MS = 60_000;
@@ -25,17 +28,27 @@ interface UseDanmakuControllerArgs {
   url: string;
   resourceName?: string;
   danmakuTitle?: string;
+  autoMatch?: boolean;
   formatTime: (seconds: number) => string;
+  formatCandidateLabel: DanmakuCandidateLabelFormatter;
+  ports: DanmakuControllerPorts;
 }
 
 export function useDanmakuController({
   url,
   resourceName,
   danmakuTitle,
+  autoMatch = false,
   formatTime,
+  formatCandidateLabel,
+  ports,
 }: UseDanmakuControllerArgs) {
   const [enabled, setEnabled] = useState(false);
-  const [settings, setSettings] = useState<DanmakuSettings>({ ...DEFAULT_DANMAKU_SETTINGS });
+  const [settings, dispatchSettings] = useReducer(
+    reduceDanmakuSettings,
+    DEFAULT_DANMAKU_SETTINGS,
+    (initial) => ({ ...initial, endpoints: initial.endpoints.map((endpoint) => ({ ...endpoint })) }),
+  );
   const [items, setItems] = useState<DanmakuItem[]>([]);
   const [candidates, setCandidates] = useState<DanmakuCandidate[]>([]);
   const [searching, setSearching] = useState(false);
@@ -58,18 +71,35 @@ export function useDanmakuController({
   }, [resourceName, danmakuTitle]);
 
   useEffect(() => {
-    client.danmakuGet().then((value: DanmakuSettings) => {
-      setSettings(value);
+    ports.loadSettings().then((value: DanmakuSettings) => {
+      dispatchSettings({ type: 'restore-settings', settings: value });
       setEnabled(value.enabled);
       setSettingsLoaded(true);
     }).catch(() => setSettingsLoaded(true));
-  }, []);
+  }, [ports]);
 
   useEffect(() => {
     if (!settingsLoaded) return;
-    void client.danmakuSet({ ...settings, enabled }).catch(() => undefined);
+    void ports.saveSettings({ ...settings, enabled }).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings, enabled, settingsLoaded]);
+  }, [settings, enabled, settingsLoaded, ports]);
+
+  useEffect(() => {
+    if (!ports.onRealtimeDanmaku) return;
+    return ports.onRealtimeDanmaku((text) => {
+      if (!text || !text.trim()) return;
+      setItems((prev) => [
+        ...prev,
+        {
+          time: 0,
+          text: text.trim(),
+          color: '#FFFFFF',
+          mode: 1,
+          size: 25,
+        },
+      ]);
+    });
+  }, [ports]);
 
   useEffect(() => {
     generationRef.current++;
@@ -84,7 +114,7 @@ export function useDanmakuController({
   }, [url]);
 
   const fetchItems = async (candidate: DanmakuCandidate): Promise<DanmakuItem[]> => {
-    const xml = await client.danmakuFetch(candidate.episodeId, candidate.source);
+    const xml = await ports.fetchEpisode(candidate.episodeId, candidate.source);
     return parseDanmakuResponse(xml || '');
   };
 
@@ -96,7 +126,7 @@ export function useDanmakuController({
     const minTime = times.length ? Math.min(...times) : 0;
     const maxTime = times.length ? Math.max(...times) : 0;
     const base = nextItems.length
-      ? `已加载 ${nextItems.length} 条弹幕（${candidate.sourceName} · ${formatCandidateLabel(candidate.title, candidate.episodeTitle, candidate.episodeNumber)}）${maxTime > 0 ? ` · 时段 ${formatTime(minTime)}~${formatTime(maxTime)}` : ''}`
+      ? `已加载 ${nextItems.length} 条弹幕（${candidate.sourceName} · ${formatCandidateLabel(candidate)}）${maxTime > 0 ? ` · 时段 ${formatTime(minTime)}~${formatTime(maxTime)}` : ''}`
       : `「${candidate.sourceName}」该剧集暂无弹幕`;
     setMessage(
       hint
@@ -141,7 +171,7 @@ export function useDanmakuController({
       ?? seasonOf(name);
     const targetEpisode = parsedEpisode.ep || extractEp(resourceName || '');
     try {
-      const list = await searchDanmakuCandidates(name, season, targetEpisode, !!options?.fresh);
+      const list = await ports.searchCandidates(name, season, targetEpisode, !!options?.fresh);
       if (generation !== generationRef.current) return;
       setCandidates(sortCandidatesByEp(list || []));
       if (!list || !list.length) {
@@ -198,6 +228,26 @@ export function useDanmakuController({
     else setMessage('弹幕已开启：请到弹幕面板输入剧名后点「匹配弹幕」');
   };
 
+  // ★ 影视仓开箱体验对齐：弹幕处于启用状态时，切集或起播自动在后台异步静默匹配拉取弹幕
+  useEffect(() => {
+    if (!autoMatch || !settingsLoaded || !enabled || !url) return;
+    const clean = query.trim() || danmakuTitle?.trim() || normalizeTitle(resourceName || '') || (resourceName || '').trim();
+    if (clean) {
+      const ep = episode || episodeFieldFromName(resourceName || '');
+      void matchDanmaku(clean, ep);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, enabled, settingsLoaded, autoMatch]);
+
+  const onSettingsCommand = useCallback((command: DanmakuSettingsCommand) => {
+    dispatchSettings(command);
+  }, []);
+
+  const onToggleSources = useCallback(() => {
+    setCustomText(customEndpointsText(settings.endpoints));
+    setSourcesOpen((open) => !open);
+  }, [settings.endpoints]);
+
   const updateQuery = (value: string) => {
     queryEditedRef.current = true;
     setQuery(value);
@@ -207,14 +257,14 @@ export function useDanmakuController({
     enabled,
     setEnabled,
     settings,
-    setSettings,
+    onSettingsCommand,
     items,
     candidates,
     searching,
     message,
     activeEpisodeId,
     sourcesOpen,
-    setSourcesOpen,
+    onToggleSources,
     customText,
     setCustomText,
     query,

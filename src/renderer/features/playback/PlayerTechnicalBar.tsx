@@ -1,6 +1,8 @@
-import type { MpvTechnicalState } from './useMpvTechnicalState';
+import type { PlayerTechnicalBarModel } from './presentation/PlayerControlModels';
 
-export function PlayerTechnicalBar({ active, error, mpvTech, fmtNet }: { active: boolean; error: string; mpvTech: MpvTechnicalState | null; fmtNet(value: number): string }) {
+type PlayerTechnicalBarProps = PlayerTechnicalBarModel;
+
+export function PlayerTechnicalBar({ active, error, mpvTech, fmtNet }: PlayerTechnicalBarProps) {
   return <>
         {active && !error && mpvTech && (
           <div className="vp-tech">

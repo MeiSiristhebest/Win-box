@@ -1,12 +1,22 @@
 // @vitest-environment happy-dom
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { emptyMpvKernelState, type MpvKernelState, type MpvStartOptions, type MpvStateEvent } from '../src/shared/player';
 import type { PlaybackSourceRef } from '../src/renderer/lib/playbackProgress';
-import { getPlayTime } from '../src/renderer/lib/uiMemory';
-import { useMpvPlaybackSession, type MpvPlaybackSessionClient } from '../src/renderer/features/playback/useMpvPlaybackSession';
+import { usePlaybackKernelSession } from '../src/renderer/features/playback/usePlaybackKernelSession';
+import type { PlaybackKernelSessionPort } from '../src/renderer/features/playback/application/mpvPlaybackPorts';
+import type { PlaybackPositionMemoryPort } from '../src/renderer/features/playback/application/playbackSessionPorts';
 import type { Kernel } from '../src/renderer/lib/kernel';
+import { createPlaybackHandoffPort, type PlaybackHandoff } from '../src/renderer/features/playback/application/playbackHandoff';
+import { createPlaybackSessionStatePort } from '../src/renderer/features/playback/application/playbackSessionState';
+
+const storedPositions = new Map<string, number>();
+const positionKey = (url: string, scope?: PlaybackSourceRef) => `${scope?.profileId ?? ''}:${scope?.key ?? ''}:${url}`;
+const positionMemory: PlaybackPositionMemoryPort = {
+  read: (url, scope) => storedPositions.get(positionKey(url, scope)) ?? 0,
+  save: (url, seconds, scope) => { storedPositions.set(positionKey(url, scope), seconds); },
+};
 
 function state(overrides: Partial<MpvKernelState> = {}): MpvKernelState {
   return { ...emptyMpvKernelState(), ...overrides };
@@ -14,7 +24,7 @@ function state(overrides: Partial<MpvKernelState> = {}): MpvKernelState {
 
 function makeClient() {
   const listeners: Array<(event: MpvStateEvent) => void> = [];
-  const client: MpvPlaybackSessionClient = {
+  const client: PlaybackKernelSessionPort = {
     mpvOnState: (callback) => {
       listeners.push(callback);
       return () => {
@@ -25,6 +35,10 @@ function makeClient() {
     mpvStart: vi.fn(async (_options: MpvStartOptions) => ({ session: 7 })),
     mpvCmd: vi.fn(async () => undefined),
     mpvStop: vi.fn(async () => undefined),
+    engineOnState: () => () => undefined,
+    engineStart: vi.fn(async () => ({ ok: true, session: 41 })),
+    engineCmd: vi.fn(async () => undefined),
+    engineStop: vi.fn(async () => undefined),
   };
   return { client, listeners };
 }
@@ -36,22 +50,29 @@ function Harness({
   kernel = 'mpv',
   spdif,
   onEngineFailure,
+  initialHandoff = null,
+  progressKey = 'profile-a-source-a',
 }: {
-  client: MpvPlaybackSessionClient;
+  client: PlaybackKernelSessionPort;
   startTime?: number;
   onEnded?: () => void;
   kernel?: Kernel;
   spdif?: string;
   onEngineFailure?: (kernel: Kernel, reason: string) => void;
+  initialHandoff?: PlaybackHandoff | null;
+  progressKey?: string;
 }) {
   const stateRef = useRef(state());
-  const liveKindRef = useRef(false);
   const timeRef = useRef(0);
   const sizeRef = useRef({ w: 0, h: 0 });
-  const resumeRef = useRef(0);
   const volumeRef = useRef(0.75);
-  const handoffRef = useRef<{ url: string; paused: boolean } | null>(null);
+  const handoff = useMemo(() => {
+    const port = createPlaybackHandoffPort();
+    if (initialHandoff) port.stage(initialHandoff);
+    return port;
+  }, []);
   const skipSegmentsRef = useRef({ intro: 0, outro: 0 });
+  const sessionState = useMemo(() => createPlaybackSessionStatePort(() => skipSegmentsRef.current), []);
   const [view, setView] = useState({
     error: '',
     loading: false,
@@ -66,38 +87,40 @@ function Harness({
     resolution: '',
   });
 
-  useMpvPlaybackSession({
-    client,
+  usePlaybackKernelSession({
+    port: client,
     allowMpv: true,
     kernel,
     spdif,
     onEngineFailure,
     url: 'https://media.example/video.mp4',
-    progressKey: 'profile-a-source-a',
+    progressKey,
     playbackSource: { profileId: 'profile-a', key: 'source-a' } satisfies PlaybackSourceRef,
+    positionMemory,
     startTime,
     liveHint: false,
     rate: 1.25,
     fit: 'contain',
     stateRef,
-    liveKindRef,
+    sessionState,
     timeRef,
     sizeRef,
-    resumeRef,
     volumeRef,
-    handoffRef,
-    skipSegmentsRef,
-    setMpvError: (error) => setView((current) => ({ ...current, error })),
-    setLoading: (loading) => setView((current) => ({ ...current, loading })),
-    setPaused: (paused) => setView((current) => ({ ...current, paused })),
-    setCurrentTime: (time) => setView((current) => ({ ...current, time })),
-    setDuration: (duration) => setView((current) => ({ ...current, duration })),
-    setBuffered: (buffered) => setView((current) => ({ ...current, buffered })),
-    setIsLive: (live) => setView((current) => ({ ...current, live })),
-    setNetSpeed: (netSpeed) => setView((current) => ({ ...current, netSpeed })),
-    setRelaySpeed: (relaySpeed) => setView((current) => ({ ...current, relaySpeed })),
-    setBuffering: (buffering) => setView((current) => ({ ...current, buffering })),
-    setPlaybackError: (error) => setView((current) => ({ ...current, error })),
+    handoff,
+    updatePlaybackStatus: (update) => setView((current) => ({
+      ...current,
+      ...(update.error !== undefined ? { error: update.error } : {}),
+      ...(update.mpvError !== undefined ? { error: update.mpvError } : {}),
+      ...(update.loading !== undefined ? { loading: update.loading } : {}),
+      ...(update.paused !== undefined ? { paused: update.paused } : {}),
+      ...(update.currentTime !== undefined ? { time: update.currentTime } : {}),
+      ...(update.duration !== undefined ? { duration: update.duration } : {}),
+      ...(update.buffered !== undefined ? { buffered: update.buffered } : {}),
+      ...(update.isLive !== undefined ? { live: update.isLive } : {}),
+      ...(update.netSpeed !== undefined ? { netSpeed: update.netSpeed } : {}),
+      ...(update.relaySpeed !== undefined ? { relaySpeed: update.relaySpeed } : {}),
+      ...(update.buffering !== undefined ? { buffering: update.buffering } : {}),
+    })),
     reportResolution: (width, height) => setView((current) => ({ ...current, resolution: `${width}x${height}` })),
     canAdvance: () => true,
     advance: onEnded,
@@ -122,10 +145,34 @@ function Harness({
 
 afterEach(() => {
   cleanup();
+  storedPositions.clear();
   localStorage.clear();
 });
 
-describe('useMpvPlaybackSession', () => {
+describe('usePlaybackKernelSession', () => {
+  it.each<Partial<PlaybackHandoff>>([
+    { url: 'https://media.example/old.mp4' }, { progressKey: 'another-profile-source' }, { kernel: 'html5' },
+  ])('ignores position and pause state from a different playback handoff: %j', async (overrides) => {
+    const { client } = makeClient();
+    render(<Harness client={client} initialHandoff={{
+      url: 'https://media.example/video.mp4', progressKey: 'profile-a-source-a', kernel: 'mpv', position: 80, paused: true, ...overrides,
+    }} />);
+    await waitFor(() => expect(client.mpvStart).toHaveBeenCalledOnce());
+    expect(client.mpvStart).toHaveBeenCalledWith(expect.objectContaining({ startTime: 45, paused: false }));
+  });
+
+  it('resumes the matching handoff and does not carry its pause state into a new profile', async () => {
+    const { client } = makeClient();
+    const { rerender } = render(<Harness client={client} initialHandoff={{
+      url: 'https://media.example/video.mp4', progressKey: 'profile-a-source-a', kernel: 'mpv', position: 80, paused: true,
+    }} />);
+    await waitFor(() => expect(client.mpvStart).toHaveBeenCalledOnce());
+    expect(client.mpvStart).toHaveBeenCalledWith(expect.objectContaining({ startTime: 80, paused: true }));
+    rerender(<Harness client={client} progressKey="another-profile-source" />);
+    await waitFor(() => expect(client.mpvStart).toHaveBeenCalledTimes(2));
+    expect(client.mpvStart).toHaveBeenLastCalledWith(expect.objectContaining({ startTime: 45, paused: false }));
+  });
+
   it('resumes from the requested position, records state and ignores stale session events', async () => {
     const { client, listeners } = makeClient();
     const { unmount } = render(<Harness client={client} />);
@@ -142,7 +189,7 @@ describe('useMpvPlaybackSession', () => {
     expect(screen.getByTestId('duration').textContent).toBe('120');
     expect(screen.getByTestId('buffered').textContent).toBe('80');
     expect(screen.getByTestId('resolution').textContent).toBe('1920x1080');
-    expect(getPlayTime('https://media.example/video.mp4', { profileId: 'profile-a', key: 'source-a' })).toBe(60);
+    expect(positionMemory.read('https://media.example/video.mp4', { profileId: 'profile-a', key: 'source-a' })).toBe(60);
 
     act(() => listeners[0]?.({ session: 6, state: state({ time: 99, duration: 120 }) }));
     expect(screen.getByTestId('time').textContent).toBe('60');

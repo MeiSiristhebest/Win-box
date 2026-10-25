@@ -1,36 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { mpvDisplayStandard, mpvFormatBadges, type MpvKernelState } from '../../../shared/player';
+import { mpvFormatBadges, type MpvKernelState } from '../../../shared/player';
 import type { Kernel } from '../../lib/kernel';
 
-export function technicalState(st: MpvKernelState) {
-      const tech = {
-        hwdec: st.hwdec || '',
-        w: st.video?.w || st.videoW,
-        h: st.video?.h || st.videoH,
-        standard: mpvDisplayStandard(st.video),
-        vCodec: st.vCodec || '',
-        aCodec: st.aCodec || '',
-        channels: st.audio?.channels || '',
-        vKbps: st.vBitrateKbps,
-        aKbps: st.aBitrateKbps,
-        fps: st.fps,
-        dropped: st.dropped,
-        cacheSec: st.cacheDuration,
-        speedKbps: st.cacheKbps,
-        // ★ 阶段3b：技术详情浮层明细（直接从内核状态取；缺值留空/0，浮层按「有值才显示」渲染）
-        pixelformat: st.video?.pixelformat || '',
-        primaries: st.video?.primaries || '',
-        gamma: st.video?.gamma || '',
-        light: st.video?.light || '',
-        sigPeak: st.video?.sigPeak || 0,
-        samplerate: st.audio?.samplerate || 0,
-        channelCount: st.audio?.channelCount || 0,
-        spdif: st.spdif || '',
-      };
-
-  return tech;
-}
-export type MpvTechnicalState = ReturnType<typeof technicalState>;
+import { technicalState, type MpvTechnicalState } from './presentation/playerTechnicalState';
+export { technicalState };
+export type { MpvTechnicalState };
 
 export function useMpvTechnicalState(url: string, kernel: Kernel) {
   const key = kernel + '\u0000' + url;

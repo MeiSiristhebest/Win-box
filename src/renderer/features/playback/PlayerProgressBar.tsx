@@ -1,16 +1,7 @@
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
+import type { PlayerProgressBarModel } from './presentation/PlayerControlModels';
+import { useEffect, useRef, useState, type PointerEvent } from 'react';
 
-interface PlayerProgressBarProps {
-  currentTime: number;
-  duration: number;
-  buffered: number;
-  canSeek: () => boolean;
-  getCurrentTime: () => number;
-  seekTo: (seconds: number) => void;
-  formatTime: (seconds: number) => string;
-  onContextMenu: (event: MouseEvent<HTMLDivElement>, time: number | null) => boolean;
-}
-
+type PlayerProgressBarProps = PlayerProgressBarModel;
 interface ProgressHover {
   x: number;
   time: number;
@@ -107,7 +98,7 @@ export function PlayerProgressBar({
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (latestRef.current.onContextMenu(event, timeAtX(event.clientX))) setHover(null);
+        if (latestRef.current.onContextMenu({ clientX: event.clientX, clientY: event.clientY }, timeAtX(event.clientX))) setHover(null);
       }}
     >
       <div className="vp-buffer" style={{ width: duration ? `${(buffered / duration) * 100}%` : '0%' }} />

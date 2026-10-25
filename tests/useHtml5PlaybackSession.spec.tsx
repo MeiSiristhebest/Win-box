@@ -1,34 +1,55 @@
 // @vitest-environment happy-dom
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlaybackSourceRef } from '../src/renderer/lib/playbackProgress';
 import type { Kernel } from '../src/renderer/lib/kernel';
 import type { PlayerPrefs } from '../src/renderer/lib/playerPrefs';
-import { getPlayTime } from '../src/renderer/lib/uiMemory';
 import { useHtml5PlaybackSession } from '../src/renderer/features/playback/useHtml5PlaybackSession';
+import { createPlaybackHandoffPort, type PlaybackHandoff } from '../src/renderer/features/playback/application/playbackHandoff';
+import { createPlaybackSessionStatePort } from '../src/renderer/features/playback/application/playbackSessionState';
+import type { MediaDiagnosticsPort } from '../src/renderer/features/playback/application/mediaDiagnostics';
+import type { PlaybackPositionMemoryPort, PlaybackRuntimePort } from '../src/renderer/features/playback/application/playbackSessionPorts';
 
 const playbackUrl = 'https://media.example/video.mp4';
 const playbackSource: PlaybackSourceRef = { profileId: 'profile-a', key: 'source-a' };
+const mediaDiagnostics: MediaDiagnosticsPort = { report: async () => undefined };
+const storedPositions = new Map<string, number>();
+const positionKey = (url: string, scope?: PlaybackSourceRef) => `${scope?.profileId ?? ''}:${scope?.key ?? ''}:${url}`;
+const positionMemory: PlaybackPositionMemoryPort = {
+  read: (url, scope) => storedPositions.get(positionKey(url, scope)) ?? 0,
+  save: (url, seconds, scope) => { storedPositions.set(positionKey(url, scope), seconds); },
+};
+const playbackRuntime: PlaybackRuntimePort = { isDesktopRuntime: () => false };
 
 function Harness({
   pausedHandoff = false,
   onEnded = () => undefined,
   clearAuto = () => undefined,
+  tryExternalFallback,
   kernel = 'html5',
+  initialHandoff,
+  recoverHtmlPlayback = () => false,
 }: {
   pausedHandoff?: boolean;
   onEnded?: () => void;
   clearAuto?: () => void;
+  tryExternalFallback?: (sourceUrl: string, position: number) => Promise<{ opened: boolean; player?: string; error?: string } | null>;
   kernel?: Kernel;
+  initialHandoff?: PlaybackHandoff;
+  recoverHtmlPlayback?: () => boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const prefsRef = useRef<PlayerPrefs>({ vol: 0.6, rate: 1.5, subOffset: 0, fit: 'contain', kernel: 'auto', spdif: '' });
   const bossActiveRef = useRef(false);
-  const liveKindRef = useRef(false);
-  const resumeRef = useRef(0);
-  const volumeHandoffRef = useRef(pausedHandoff ? { url: playbackUrl, paused: true } : null);
+  const handoff = useMemo(() => {
+    const port = createPlaybackHandoffPort();
+    const initial = initialHandoff ?? (pausedHandoff ? { url: playbackUrl, progressKey: 'profile-a-source-a', kernel: 'html5' as const, position: 0, paused: true } : null);
+    if (initial) port.stage(initial);
+    return port;
+  }, []);
   const skipSegmentsRef = useRef({ intro: 0, outro: 0 });
+  const sessionState = useMemo(() => createPlaybackSessionStatePort(() => skipSegmentsRef.current), []);
   const introFiredRef = useRef(false);
   const outroFiredRef = useRef(false);
   const [view, setView] = useState({
@@ -69,34 +90,38 @@ function Harness({
     isAudio: false,
     liveHint: false,
     playbackSource,
+    positionMemory,
+    runtime: playbackRuntime,
     startTime: 45,
     prefsRef,
     bossActiveRef,
-    liveKindRef,
-    resumeRef,
-    volumeHandoffRef,
-    skipSegmentsRef,
+    sessionState,
+    handoff,
     introFiredRef,
     outroFiredRef,
-    setError: (error) => setView((current) => ({ ...current, error })),
-    setMpvError: (mpvError) => setView((current) => ({ ...current, mpvError })),
-    setLoading: (loading) => setView((current) => ({ ...current, loading })),
-    setPaused: (paused) => setView((current) => ({ ...current, paused })),
-    setCurrentTime: (time) => setView((current) => ({ ...current, time })),
-    setDuration: (duration) => setView((current) => ({ ...current, duration })),
-    setIsLive: (live) => setView((current) => ({ ...current, live })),
-    setNetSpeed: (netSpeed) => setView((current) => ({ ...current, netSpeed })),
-    setRelaySpeed: (relaySpeed) => setView((current) => ({ ...current, relaySpeed })),
-    setBuffering: (buffering) => setView((current) => ({ ...current, buffering })),
+    updatePlaybackStatus: (update) => setView((current) => ({
+      ...current,
+      ...(update.error !== undefined ? { error: update.error } : {}),
+      ...(update.mpvError !== undefined ? { mpvError: update.mpvError } : {}),
+      ...(update.loading !== undefined ? { loading: update.loading } : {}),
+      ...(update.paused !== undefined ? { paused: update.paused } : {}),
+      ...(update.currentTime !== undefined ? { time: update.currentTime } : {}),
+      ...(update.duration !== undefined ? { duration: update.duration } : {}),
+      ...(update.isLive !== undefined ? { live: update.isLive } : {}),
+      ...(update.netSpeed !== undefined ? { netSpeed: update.netSpeed } : {}),
+      ...(update.relaySpeed !== undefined ? { relaySpeed: update.relaySpeed } : {}),
+      ...(update.buffering !== undefined ? { buffering: update.buffering } : {}),
+    })),
     clearAuto,
     revealControls: () => undefined,
-    tryMpvFallback: () => false,
+    recoverHtmlPlayback,
+    tryExternalFallback,
     handlePlaybackEnd: onEnded,
     canAdvance: () => true,
     advance: onEnded,
     showSkipToast: () => undefined,
     formatTime: (seconds) => `${seconds}s`,
-  });
+  }, mediaDiagnostics);
 
   return (
     <div>
@@ -108,11 +133,43 @@ function Harness({
 
 afterEach(() => {
   cleanup();
+  storedPositions.clear();
   localStorage.clear();
   vi.restoreAllMocks();
 });
 
 describe('useHtml5PlaybackSession', () => {
+  it('does not launch an external player when a selected kernel is already taking over', async () => {
+    const tryExternalFallback = vi.fn(async () => ({ opened: true }));
+    render(<Harness recoverHtmlPlayback={() => true} tryExternalFallback={tryExternalFallback} />);
+    const video = screen.getByTestId('video') as HTMLVideoElement;
+    await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+    Object.defineProperty(video, 'error', { configurable: true, value: { code: 4, message: 'Unsupported codec' } });
+    act(() => video.dispatchEvent(new Event('error')));
+    expect(tryExternalFallback).not.toHaveBeenCalled();
+    expect(screen.getByTestId('view').textContent).toContain('"error":""');
+  });
+
+  it.each<Partial<PlaybackHandoff>>([
+    { url: 'https://media.example/old.mp4' }, { progressKey: 'another-profile-source' }, { kernel: 'mpv' },
+  ])('ignores position and pause state from a different playback handoff: %j', async (overrides) => {
+    render(<Harness initialHandoff={{
+      url: playbackUrl, progressKey: 'profile-a-source-a', kernel: 'html5', position: 80, paused: true, ...overrides,
+    }} />);
+    const video = screen.getByTestId('video') as HTMLVideoElement;
+    await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+    act(() => video.dispatchEvent(new Event('durationchange')));
+    expect(video.currentTime).toBe(45);
+  });
+
+  it('restores a matching kernel handoff position while retaining an explicit pause', async () => {
+    render(<Harness initialHandoff={{ url: playbackUrl, progressKey: 'profile-a-source-a', kernel: 'html5', position: 80, paused: true }} />);
+    const video = screen.getByTestId('video') as HTMLVideoElement;
+    act(() => video.dispatchEvent(new Event('durationchange')));
+    expect(video.currentTime).toBe(80);
+    expect(video.play).not.toHaveBeenCalled();
+  });
+
   it('stops HTML playback when a plugin takes over and does not start a second stream', async () => {
     const { rerender } = render(<Harness />);
     const video = screen.getByTestId('video') as HTMLVideoElement;
@@ -150,7 +207,7 @@ describe('useHtml5PlaybackSession', () => {
     });
     expect(screen.getByTestId('view').textContent).toContain('"time":52');
     expect(screen.getByTestId('view').textContent).toContain('"buffering":true');
-    expect(getPlayTime(playbackUrl, playbackSource)).toBe(52);
+    expect(positionMemory.read(playbackUrl, playbackSource)).toBe(52);
 
     act(() => video.dispatchEvent(new Event('playing')));
     expect(screen.getByTestId('view').textContent).toContain('"buffering":false');
@@ -162,7 +219,7 @@ describe('useHtml5PlaybackSession', () => {
     expect(video.load).toHaveBeenCalledOnce();
     expect(video.hasAttribute('src')).toBe(false);
     expect(clearAuto).toHaveBeenCalledOnce();
-    expect(getPlayTime(playbackUrl, playbackSource)).toBe(52);
+    expect(positionMemory.read(playbackUrl, playbackSource)).toBe(52);
   });
 
   it('keeps a paused kernel handoff paused instead of autoplaying', async () => {
@@ -172,5 +229,22 @@ describe('useHtml5PlaybackSession', () => {
 
     expect(video.play).not.toHaveBeenCalled();
     expect(screen.getByTestId('view').textContent).toContain('"paused":true');
+  });
+
+  it('hands unsupported media to the configured external player once', async () => {
+    const tryExternalFallback = vi.fn(async () => ({ opened: true, player: 'PotPlayer' }));
+    render(<Harness tryExternalFallback={tryExternalFallback} />);
+    const video = screen.getByTestId('video') as HTMLVideoElement;
+    await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+    Object.defineProperty(video, 'error', {
+      configurable: true,
+      value: { code: 4, message: 'PipelineStatus::DEMUXER_ERROR_COULD_NOT_PARSE' },
+    });
+
+    act(() => video.dispatchEvent(new Event('error')));
+
+    await waitFor(() => expect(tryExternalFallback).toHaveBeenCalledOnce());
+    expect(tryExternalFallback).toHaveBeenCalledWith(playbackUrl, 45);
+    await waitFor(() => expect(screen.getByTestId('view').textContent).toContain('已交给PotPlayer播放'));
   });
 });

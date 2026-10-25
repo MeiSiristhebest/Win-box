@@ -32,6 +32,7 @@ describe('detectMediaKind — 图片 / 音频 / 直播 / 视频分流', () => {
   it('m3u8（含无后缀但路径含 m3u8/hls）→ hls', () => {
     expect(detectMediaKind('https://v.test/index.m3u8')).toBe('hls');
     expect(detectMediaKind('https://v.test/hls/abc/index')).toBe('hls');
+    expect(detectMediaKind('https://v.test/hls/abc/segment.ts')).toBe('mpegts');
     expect(detectMediaKind('https://v.test/path?fmt=x&t=1')).toBe('video');
   });
 
@@ -51,6 +52,9 @@ describe('detectMediaKind — 图片 / 音频 / 直播 / 视频分流', () => {
     expect(detectMediaKind(wrap('https://img.test/a.jpg'))).toBe('image');
     expect(detectMediaKind(wrap('https://m.test/a.mp3'))).toBe('audio');
     expect(detectMediaKind(wrap('https://v.test/index.m3u8'))).toBe('hls');
+    // Direct HLS links are now wrapped for local segment relay; the wrapper
+    // must still select hls.js instead of handing the manifest to Chromium.
+    expect(detectMediaKind(wrap('https://v.test/hls/live/channel'))).toBe('hls');
   });
 
   it('本机 do=m3u8（含多层 /play 包装、无后缀/伪装后缀）始终走 HLS', () => {
@@ -84,5 +88,17 @@ describe('isLikelyLive — 直播态提前判定（时长是最终判据，见 V
   it('普通点播 m3u8 / mp4 → 不预判直播（交给时长判定）', () => {
     expect(isLikelyLive('https://v.test/20260911/71548/index.m3u8')).toBe(false);
     expect(isLikelyLive('https://v.test/a.mp4')).toBe(false);
+  });
+});
+
+
+describe('custom JVM HLS proxy', () => {
+  it('recognizes Adm3u8 with a Base64 target before and after JVM scoping', () => {
+    for (const path of ['/proxy', '/proxy/18081']) {
+      const url = 'http://127.0.0.1:9978' + path + '?do=Adm3u8&url=aHR0cHM6Ly9jZG4udGVzdC9tYW5pZmVzdA==';
+      expect(detectMediaKind(url)).toBe('hls');
+      expect(detectMediaKind(wrap(url))).toBe('hls');
+    }
+    expect(detectMediaKind('https://remote.test/proxy?do=Adm3u8')).toBe('video');
   });
 });

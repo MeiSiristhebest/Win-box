@@ -1,23 +1,9 @@
 // @vitest-environment happy-dom
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { client } from '../src/renderer/api/client';
 import { useDanmakuController } from '../src/renderer/features/playback/useDanmakuController';
-import { orderCandidatesForEpisode, searchDanmakuCandidates } from '../src/renderer/features/playback/danmakuSearch';
+import type { DanmakuControllerPorts } from '../src/renderer/features/playback/application/danmakuControllerPorts';
 import { DEFAULT_DANMAKU_SETTINGS, type DanmakuCandidate } from '../src/shared/danmaku';
-
-vi.mock('../src/renderer/api/client', () => ({
-  client: {
-    danmakuGet: vi.fn(),
-    danmakuSet: vi.fn(),
-    danmakuFetch: vi.fn(),
-  },
-}));
-
-vi.mock('../src/renderer/features/playback/danmakuSearch', () => ({
-  orderCandidatesForEpisode: vi.fn(),
-  searchDanmakuCandidates: vi.fn(),
-}));
 
 afterEach(() => cleanup());
 
@@ -41,14 +27,12 @@ const candidate: DanmakuCandidate = {
 describe('useDanmakuController', () => {
   it('ignores search results from the previous URL', async () => {
     const search = deferred<DanmakuCandidate[]>();
-    vi.mocked(client.danmakuGet).mockResolvedValue(
-      { ...DEFAULT_DANMAKU_SETTINGS } as Awaited<ReturnType<typeof client.danmakuGet>>,
-    );
-    vi.mocked(client.danmakuSet).mockResolvedValue(
-      {} as Awaited<ReturnType<typeof client.danmakuSet>>,
-    );
-    vi.mocked(searchDanmakuCandidates).mockReturnValue(search.promise);
-    vi.mocked(orderCandidatesForEpisode).mockImplementation((candidates) => candidates);
+    const ports: DanmakuControllerPorts = {
+      loadSettings: vi.fn().mockResolvedValue({ ...DEFAULT_DANMAKU_SETTINGS }),
+      saveSettings: vi.fn().mockResolvedValue(undefined),
+      fetchEpisode: vi.fn().mockResolvedValue(''),
+      searchCandidates: vi.fn().mockReturnValue(search.promise),
+    };
 
     const { result, rerender } = renderHook(
       ({ url }: { url: string }) => useDanmakuController({
@@ -56,6 +40,8 @@ describe('useDanmakuController', () => {
         resourceName: 'Show Episode 1',
         danmakuTitle: 'Show',
         formatTime: (seconds) => String(seconds),
+        formatCandidateLabel: (candidate) => candidate.title || '',
+        ports,
       }),
       { initialProps: { url: 'episode-1' } },
     );
@@ -77,6 +63,46 @@ describe('useDanmakuController', () => {
     expect(result.current.items).toEqual([]);
     expect(result.current.activeEpisodeId).toBeNull();
     expect(result.current.message).toBe('');
-    expect(client.danmakuFetch).not.toHaveBeenCalled();
+    expect(ports.fetchEpisode).not.toHaveBeenCalled();
+    expect(ports.searchCandidates).toHaveBeenCalledWith('Show', undefined, '1', false);
+  });
+
+  it('automatically matches danmaku when autoMatch is enabled', async () => {
+    const search = deferred<DanmakuCandidate[]>();
+    const ports: DanmakuControllerPorts = {
+      loadSettings: vi.fn().mockResolvedValue({ ...DEFAULT_DANMAKU_SETTINGS, enabled: true }),
+      saveSettings: vi.fn().mockResolvedValue(undefined),
+      fetchEpisode: vi.fn().mockResolvedValue('<?xml version="1.0" encoding="utf-8"?><danmaku><d p="1.0,1,25,16777215,0,0,0,0">Test comment</d></danmaku>'),
+      searchCandidates: vi.fn().mockReturnValue(search.promise),
+    };
+
+    const { result } = renderHook(
+      () => useDanmakuController({
+        url: 'episode-auto-1',
+        resourceName: 'Anime Title E01',
+        danmakuTitle: 'Anime Title',
+        autoMatch: true,
+        formatTime: (seconds) => String(seconds),
+        formatCandidateLabel: (candidate) => candidate.title || '',
+        ports,
+      }),
+    );
+
+    // Initial render loads settings with enabled=true
+    await act(async () => {
+      // allow settings promise to resolve
+    });
+
+    expect(ports.searchCandidates).toHaveBeenCalledWith('Anime Title', undefined, '1', false);
+    expect(result.current.searching).toBe(true);
+
+    await act(async () => {
+      search.resolve([candidate]);
+    });
+
+    expect(result.current.searching).toBe(false);
+    expect(result.current.activeEpisodeId).toBe(12);
+    expect(result.current.items).toHaveLength(1);
+    expect(result.current.items[0].text).toBe('Test comment');
   });
 });

@@ -5,13 +5,15 @@ import type { Kernel } from '../../lib/kernel';
 import type { PlaybackSourceRef } from '../../lib/playbackProgress';
 import { resolvePlayTarget } from '../../lib/playTarget';
 import { detectMediaKind } from '../../lib/mediaKind';
-import type { PlayerPrefs } from '../../lib/playerPrefs';
-import { getPlayTime, setPlayTime } from '../../lib/uiMemory';
-import type { SkipSeg } from '../../lib/skipSegments';
+import type { PlayerPrefs } from './application/playerPreferences';
+import type { PlaybackPositionMemoryPort, PlaybackRuntimePort } from './application/playbackSessionPorts';
+import type { PlaybackSessionStatePort } from './application/playbackSessionState';
 import { resolveResumePosition } from './resumePosition';
 import { createHtml5PlaybackTimeline } from './html5PlaybackTimeline';
 import { hlsErrorText } from './hlsErrorText';
-import { reportHtmlMediaEvent } from './useMediaDiagnostics';
+import { reportHtmlMediaEvent, type MediaDiagnosticsPort } from './application/mediaDiagnostics';
+import type { PlaybackHandoffPort } from './application/playbackHandoff';
+import type { PlayerPlaybackPresentationUpdate } from './application/PlayerPlaybackPresentation';
 
 export interface Html5PlaybackSessionOptions {
   videoRef: MutableRefObject<HTMLVideoElement | null>;
@@ -26,28 +28,20 @@ export interface Html5PlaybackSessionOptions {
   isAudio: boolean;
   liveHint: boolean;
   playbackSource?: PlaybackSourceRef;
+  positionMemory: PlaybackPositionMemoryPort;
+  runtime: PlaybackRuntimePort;
   startTime?: number;
   prefsRef: MutableRefObject<PlayerPrefs | null>;
   bossActiveRef: MutableRefObject<boolean>;
-  liveKindRef: MutableRefObject<boolean>;
-  resumeRef: MutableRefObject<number>;
-  volumeHandoffRef: MutableRefObject<{ url: string; paused: boolean } | null>;
-  skipSegmentsRef: MutableRefObject<SkipSeg>;
+  sessionState: PlaybackSessionStatePort;
+  handoff: PlaybackHandoffPort;
   introFiredRef: MutableRefObject<boolean>;
   outroFiredRef: MutableRefObject<boolean>;
-  setError(value: string): void;
-  setMpvError(value: string): void;
-  setLoading(value: boolean): void;
-  setPaused(value: boolean): void;
-  setCurrentTime(value: number): void;
-  setDuration(value: number): void;
-  setIsLive(value: boolean): void;
-  setNetSpeed(value: number | null): void;
-  setRelaySpeed(value: number | null): void;
-  setBuffering(value: boolean): void;
+  updatePlaybackStatus(update: PlayerPlaybackPresentationUpdate): void;
   clearAuto(): void;
   revealControls(): void;
-  tryMpvFallback(): boolean;
+  recoverHtmlPlayback(): boolean;
+  tryExternalFallback?(sourceUrl: string, position: number): Promise<{ opened: boolean; player?: string; error?: string } | null>;
   handlePlaybackEnd(): void;
   canAdvance(): boolean;
   advance(): void;
@@ -56,7 +50,7 @@ export interface Html5PlaybackSessionOptions {
 }
 
 /** Owns the HTML media element, HLS/FLV engines, event listeners and their cleanup. */
-export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): void {
+export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, mediaDiagnostics: MediaDiagnosticsPort): void {
   const localHlsRef = useRef<HlsInstance | null>(null);
   const hlsRef = options.hlsRef ?? localHlsRef;
   const audioTracksRef = useRef(options.onAudioTracks);
@@ -73,28 +67,20 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
     isAudio,
     liveHint,
     playbackSource,
+    positionMemory,
+    runtime,
     startTime,
     prefsRef,
     bossActiveRef,
-    liveKindRef,
-    resumeRef,
-    volumeHandoffRef,
-    skipSegmentsRef,
+    sessionState,
+    handoff,
     introFiredRef,
     outroFiredRef,
-    setError,
-    setMpvError,
-    setLoading,
-    setPaused,
-    setCurrentTime,
-    setDuration,
-    setIsLive,
-    setNetSpeed,
-    setRelaySpeed,
-    setBuffering,
+    updatePlaybackStatus,
     clearAuto,
     revealControls,
-    tryMpvFallback,
+    recoverHtmlPlayback,
+    tryExternalFallback,
     handlePlaybackEnd,
     canAdvance,
     advance,
@@ -106,23 +92,15 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
     const video = videoRef.current;
     if (!video || !url || !htmlUrl || isImage || isAudio || kernel !== 'html5') return;
 
-    setError('');
-    setMpvError('');
-    setLoading(true);
-    setPaused(true);
-    setCurrentTime(0);
-    setDuration(0);
-    setIsLive(liveHint);
-    liveKindRef.current = liveHint;
-    setNetSpeed(null);
-    setRelaySpeed(null);
-    setBuffering(false);
+    updatePlaybackStatus({ error: '', mpvError: '', loading: true, paused: true, currentTime: 0, duration: 0, isLive: liveHint });
+    sessionState.setLivePlaybackKind(liveHint);
+    updatePlaybackStatus({ netSpeed: null, relaySpeed: null, buffering: false });
 
     if (prefsRef.current) {
       video.volume = prefsRef.current.vol;
       video.playbackRate = prefsRef.current.rate;
     }
-    video.src = '';
+    video.removeAttribute('src');
     hlsRef.current?.destroy();
     hlsRef.current = null;
     hlsNetRetryRef.current = 0;
@@ -140,30 +118,35 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
     const target = resolvePlayTarget(htmlUrl).toLowerCase().split('?')[0];
     let speedTimer: ReturnType<typeof setInterval> | null = null;
     let cancelled = false;
+    let externalFallbackStarted = false;
     let previousBytes = -1;
     let previousTime = 0;
     const reportKiloBytesPerSecond = (speed: number) => {
-      if (Number.isFinite(speed) && speed > 0) setNetSpeed(speed);
+      if (Number.isFinite(speed) && speed > 0) updatePlaybackStatus({ netSpeed: speed });
     };
+    const handoffTarget = { url, progressKey, kernel } as const;
+    const currentHandoff = () => handoff.readFor(handoffTarget);
     const timeline = createHtml5PlaybackTimeline({
       media: video,
       getResumePosition: () => resolveResumePosition({
-        kernelPosition: resumeRef.current,
+        kernelPosition: currentHandoff()?.position ?? 0,
         startTime,
-        storedPosition: getPlayTime(url, playbackSource),
+        storedPosition: positionMemory.read(url, playbackSource),
       }),
       getPreRestorePosition: () => resolveResumePosition({
         kernelPosition: 0,
         startTime,
-        storedPosition: getPlayTime(url, playbackSource),
+        storedPosition: positionMemory.read(url, playbackSource),
       }),
-      onResumePositionApplied: () => { resumeRef.current = 0; },
-      getSegments: () => skipSegmentsRef.current,
-      isLive: () => liveKindRef.current,
+      onResumePositionApplied: () => {
+        handoff.markPositionApplied(handoffTarget);
+      },
+      getSegments: () => sessionState.getSkipSegments(),
+      isLive: () => sessionState.getLivePlaybackKind(),
       introFired: introFiredRef,
       outroFired: outroFiredRef,
-      setCurrentTime,
-      savePosition: (time) => setPlayTime(url, time, playbackSource),
+      setCurrentTime: (value) => updatePlaybackStatus({ currentTime: value }),
+      savePosition: (time) => positionMemory.save(url, time, playbackSource),
       canAdvance,
       advance,
       showToast: showSkipToast,
@@ -175,30 +158,64 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
         if (video.volume !== prefsRef.current.vol) video.volume = prefsRef.current.vol;
         if (video.playbackRate !== prefsRef.current.rate) video.playbackRate = prefsRef.current.rate;
       }
-      setLoading(false);
+      updatePlaybackStatus({ loading: false });
       timeline.maybeSkip();
     };
     const onDuration = () => {
       const duration = video.duration;
-      setDuration(Number.isFinite(duration) ? duration : 0);
-      setIsLive(liveKindRef.current || duration === Infinity);
+      updatePlaybackStatus({ duration: Number.isFinite(duration) ? duration : 0, isLive: sessionState.getLivePlaybackKind() || duration === Infinity });
       timeline.onDurationReady();
     };
     const onPlay = () => {
-      setPaused(false);
-      setBuffering(false);
+      updatePlaybackStatus({ paused: false, buffering: false });
       clearAuto();
       revealControls();
     };
     const onPause = () => {
-      setPaused(true);
+      updatePlaybackStatus({ paused: true });
       revealControls();
     };
-    const onWaiting = () => setBuffering(true);
-    const onPlaying = () => setBuffering(false);
+    const onWaiting = () => updatePlaybackStatus({ buffering: true });
+    const onPlaying = () => updatePlaybackStatus({ buffering: false });
     const onError = () => {
-      if (tryMpvFallback()) return;
-      setError('播放出错：视频加载失败或源不可用');
+      if (externalFallbackStarted) return;
+      if (recoverHtmlPlayback()) return;
+      const mediaError = video.error;
+      const reason = mediaError?.code === 2
+        ? '网络读取失败，源站可能拒绝连接或链接已失效'
+        : mediaError?.code === 3
+          ? '视频解码失败，可能是编码不兼容或媒体数据损坏'
+          : mediaError?.code === 4
+            ? '内置播放器无法识别该媒体响应：可能是源站返回了网页/文字，也可能是编码或播放清单不受当前内核支持'
+            : mediaError?.code === 1
+              ? '播放请求已中止'
+              : '视频加载失败或源不可用';
+      const nativeMessage = mediaError?.message?.replace(/\s+/g, ' ').trim().slice(0, 160);
+      const redundantFormatCode = mediaError?.code === 4 && /MEDIA_ELEMENT_ERROR:\\s*Format error/i.test(nativeMessage || '');
+      const errorMessage = `播放出错：${reason}${nativeMessage && !redundantFormatCode ? `（技术信息：${nativeMessage}）` : ''}`;
+      updatePlaybackStatus({ loading: false });
+      // When the user has explicitly enabled an external player, hand formats
+      // Chromium cannot demux (for example HEVC/MKV or a source-specific stream)
+      // to that player using the same local proxy URL and current seek position.
+      // A single attempt per media session avoids duplicate launches from repeated
+      // Chromium error events.
+      if (mediaError?.code === 4 && tryExternalFallback && !externalFallbackStarted) {
+        externalFallbackStarted = true;
+        void tryExternalFallback(htmlUrl || url, Math.max(0, video.currentTime || 0)).then((result) => {
+          if (cancelled) return;
+          if (result?.opened) {
+            updatePlaybackStatus({ error: `内置播放器无法解析此媒体，已交给${result.player || '外部播放器'}播放。` });
+            return;
+          }
+          updatePlaybackStatus({ error: result?.error ? `${errorMessage}（外部播放器启动失败：${result.error}）` : errorMessage });
+        }).catch((error) => {
+          if (cancelled) return;
+          const detail = error instanceof Error ? error.message : String(error);
+          updatePlaybackStatus({ error: `${errorMessage}（外部播放器启动失败：${detail}）` });
+        });
+        return;
+      }
+      updatePlaybackStatus({ error: errorMessage });
     };
     const onEnded = () => handlePlaybackEnd();
 
@@ -213,23 +230,26 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
     video.addEventListener('ended', onEnded);
 
     const start = () => {
-      if (volumeHandoffRef.current?.url === url && volumeHandoffRef.current.paused) {
-        setPaused(true);
+      if (currentHandoff()?.paused) {
+        updatePlaybackStatus({ paused: true });
         return;
       }
-      video.play().then(() => setPaused(false)).catch(() => undefined);
+      video.play().then(() => updatePlaybackStatus({ paused: false })).catch(() => undefined);
     };
 
     if (detectMediaKind(htmlUrl) === 'hls') {
-      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Electron/Chromium may report "maybe" for Apple's HLS MIME type even
+      // though its media pipeline cannot demux HLS. In the desktop app, always
+      // let hls.js load manifests and segments through the supported MSE path.
+      const desktopRuntime = runtime.isDesktopRuntime();
+      if (!desktopRuntime && video.canPlayType('application/vnd.apple.mpegurl')) {
         video.src = htmlUrl;
         start();
       } else {
         void import('hls.js').then(({ default: Hls }) => {
           if (cancelled) return;
           if (!Hls.isSupported()) {
-            setError('当前环境不支持 HLS 播放');
-            setLoading(false);
+        updatePlaybackStatus({ error: '当前环境不支持 HLS 播放', loading: false });
             return;
           }
           const hls = new Hls({
@@ -256,8 +276,8 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
           hls.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
             const details = (data as unknown as { details?: { live?: boolean } }).details;
             const live = !!details?.live;
-            liveKindRef.current = live;
-            setIsLive(live);
+            sessionState.setLivePlaybackKind(live);
+            updatePlaybackStatus({ isLive: live });
           });
           hls.on(Hls.Events.FRAG_LOADED, (_event, data) => {
             const stats = (data as { stats?: { loading: number; loaded: number } }).stats;
@@ -267,35 +287,42 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
           });
           hls.on(Hls.Events.ERROR, (_event, data) => {
             if (!data.fatal) return;
-            reportHtmlMediaEvent(video, htmlUrl, options.resourceName, 'hls-fatal:' + data.type + ':' + data.details);
-            if (data.type === Hls.ErrorTypes.NETWORK_ERROR && hlsNetRetryRef.current < 2) {
+            reportHtmlMediaEvent(mediaDiagnostics, {
+              event: 'hls-fatal:' + data.type + ':' + data.details,
+              url: htmlUrl,
+              title: options.resourceName,
+              readyState: video.readyState,
+              currentTime: video.currentTime,
+              paused: video.paused,
+            });
+            const responseStatus = data.response?.code;
+            const upstreamRejected = typeof responseStatus === 'number' && responseStatus >= 400 && responseStatus < 500;
+            if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !upstreamRejected && hlsNetRetryRef.current < 2) {
               hlsNetRetryRef.current++;
-              setError('');
+              updatePlaybackStatus({ error: '' });
               try { hls.startLoad(); } catch { /* Ignore a failed retry request. */ }
               return;
             }
             if (data.type === Hls.ErrorTypes.MEDIA_ERROR && hlsMediaRetryRef.current < 2) {
               hlsMediaRetryRef.current++;
-              setError('');
+              updatePlaybackStatus({ error: '' });
               try { hls.recoverMediaError(); } catch { /* Ignore a failed recovery request. */ }
               return;
             }
             const retries = hlsNetRetryRef.current + hlsMediaRetryRef.current;
-            if (tryMpvFallback()) return;
-            setError(`HLS 播放失败：${hlsErrorText(data.type, data.details)}` + (retries ? `（已自动重试 ${retries} 次）` : ''));
+            if (!upstreamRejected && recoverHtmlPlayback()) return;
+            updatePlaybackStatus({ error: `HLS 播放失败：${hlsErrorText(data.type, data.details, responseStatus)}` + (retries ? `（已自动重试 ${retries} 次）` : '') });
           });
         }).catch(() => {
           if (cancelled) return;
-          setError('HLS 播放组件加载失败');
-          setLoading(false);
+          updatePlaybackStatus({ error: 'HLS 播放组件加载失败', loading: false });
         });
       }
     } else if (target.endsWith('.flv') || target.endsWith('.ts') || /mpegts/.test(target)) {
       void import('mpegts.js').then(({ default: mpegts }) => {
         if (cancelled) return;
         if (!mpegts.isSupported()) {
-          setError('当前环境不支持 FLV 播放');
-          setLoading(false);
+          updatePlaybackStatus({ error: '当前环境不支持 FLV 播放', loading: false });
           return;
         }
         const isFlv = target.endsWith('.flv') || /mpegts/.test(target);
@@ -310,17 +337,16 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
         player.on(mpegts.Events.STATISTICS_INFO, (info: { currentSpeed?: number }) => {
           if (info?.currentSpeed != null && info.currentSpeed > 0) reportKiloBytesPerSecond(info.currentSpeed);
         });
-        const keepPaused = volumeHandoffRef.current?.url === url && volumeHandoffRef.current.paused;
+        const keepPaused = currentHandoff()?.paused;
         if (keepPaused) {
-          setPaused(true);
+          updatePlaybackStatus({ paused: true });
         } else {
           try { player.play(); } catch { /* Ignore autoplay refusal. */ }
-          setPaused(false);
+          updatePlaybackStatus({ paused: false });
         }
       }).catch(() => {
         if (cancelled) return;
-        setError('MPEG-TS 播放组件加载失败');
-        setLoading(false);
+        updatePlaybackStatus({ error: 'MPEG-TS 播放组件加载失败', loading: false });
       });
     } else {
       const targetPrefix = url.split('?')[0];
@@ -369,7 +395,7 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
       video.removeEventListener('error', onError);
       video.removeEventListener('ended', onEnded);
       clearAuto();
-      if (!video.paused) setPlayTime(url, video.currentTime, playbackSource);
+      if (!video.paused) positionMemory.save(url, video.currentTime, playbackSource);
       video.pause();
       hlsRef.current?.destroy();
       hlsRef.current = null;
@@ -383,5 +409,5 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions): v
     };
     // Keep the existing session boundary: URL, kernel, prepared URL, and playback source changes restart the HTML5 session.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, kernel, htmlUrl, progressKey]);
+  }, [url, kernel, htmlUrl, progressKey, positionMemory, runtime]);
 }

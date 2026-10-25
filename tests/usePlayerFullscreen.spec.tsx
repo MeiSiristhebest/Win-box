@@ -3,26 +3,24 @@ import { useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Kernel } from '../src/renderer/lib/kernel';
+import type { PlayerFullscreenPort } from '../src/renderer/features/playback/application/playerFullscreen';
 import { usePlayerFullscreen } from '../src/renderer/features/playback/usePlayerFullscreen';
 
-const api = vi.hoisted(() => ({
+const nativeFullscreen = {
   fullscreenCallbacks: [] as Array<(value: boolean) => void>,
   playerIsFullscreen: vi.fn(async () => ({ fullscreen: false })),
   playerSetFullscreen: vi.fn(async (fullscreen: boolean) => ({ fullscreen })),
   playerSetResizable: vi.fn(async () => undefined),
-}));
-
-vi.mock('../src/renderer/api/client', () => ({
-  client: {
-    playerOnFullscreen: (callback: (value: boolean) => void) => {
-      api.fullscreenCallbacks.push(callback);
-      return vi.fn();
-    },
-    playerIsFullscreen: api.playerIsFullscreen,
-    playerSetFullscreen: api.playerSetFullscreen,
-    playerSetResizable: api.playerSetResizable,
+};
+const fullscreenPort: PlayerFullscreenPort = {
+  readNativeFullscreen: async () => (await nativeFullscreen.playerIsFullscreen()).fullscreen,
+  setNativeFullscreen: async value => (await nativeFullscreen.playerSetFullscreen(value)).fullscreen,
+  setWindowResizable: nativeFullscreen.playerSetResizable,
+  subscribeToNativeFullscreen: listener => {
+    nativeFullscreen.fullscreenCallbacks.push(listener);
+    return vi.fn();
   },
-}));
+};
 
 function Harness({
   kernel = 'html5',
@@ -36,7 +34,7 @@ function Harness({
   revealControls?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const fullscreen = usePlayerFullscreen({ allowMpv, kernel, mini, containerRef, revealControls });
+  const fullscreen = usePlayerFullscreen({ allowMpv, kernel, mini, containerRef, revealControls, port: fullscreenPort });
 
   return (
     <div ref={containerRef}>
@@ -47,10 +45,10 @@ function Harness({
 }
 
 beforeEach(() => {
-  api.fullscreenCallbacks.length = 0;
-  api.playerIsFullscreen.mockReset().mockResolvedValue({ fullscreen: false });
-  api.playerSetFullscreen.mockReset().mockImplementation(async (fullscreen) => ({ fullscreen }));
-  api.playerSetResizable.mockReset().mockResolvedValue(undefined);
+  nativeFullscreen.fullscreenCallbacks.length = 0;
+  nativeFullscreen.playerIsFullscreen.mockReset().mockResolvedValue({ fullscreen: false });
+  nativeFullscreen.playerSetFullscreen.mockReset().mockImplementation(async (fullscreen) => ({ fullscreen }));
+  nativeFullscreen.playerSetResizable.mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -69,28 +67,28 @@ describe('usePlayerFullscreen', () => {
     Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: host });
     act(() => document.dispatchEvent(new Event('fullscreenchange')));
     expect(screen.getByTestId('fullscreen').textContent).toBe('true');
-    expect(api.playerSetResizable).toHaveBeenLastCalledWith(false);
+    expect(nativeFullscreen.playerSetResizable).toHaveBeenLastCalledWith(false);
 
     Object.defineProperty(document, 'fullscreenElement', { configurable: true, value: null });
     act(() => document.dispatchEvent(new Event('fullscreenchange')));
     expect(screen.getByTestId('fullscreen').textContent).toBe('false');
-    expect(api.playerSetResizable).toHaveBeenLastCalledWith(true);
+    expect(nativeFullscreen.playerSetResizable).toHaveBeenLastCalledWith(true);
 
     unmount();
-    expect(api.playerSetResizable).toHaveBeenLastCalledWith(true);
+    expect(nativeFullscreen.playerSetResizable).toHaveBeenLastCalledWith(true);
   });
 
   it('uses the native window fullscreen API for mpv and reveals controls afterward', async () => {
     const revealControls = vi.fn();
     render(<Harness kernel="mpv" allowMpv revealControls={revealControls} />);
-    await waitFor(() => expect(api.playerIsFullscreen).toHaveBeenCalledOnce());
+    await waitFor(() => expect(nativeFullscreen.playerIsFullscreen).toHaveBeenCalledOnce());
 
-    act(() => api.fullscreenCallbacks[0]?.(true));
+    act(() => nativeFullscreen.fullscreenCallbacks[0]?.(true));
     expect(screen.getByTestId('fullscreen').textContent).toBe('true');
     expect(document.documentElement.dataset.playerFullscreen).toBe('1');
 
     fireEvent.click(screen.getByRole('button', { name: 'Toggle' }));
-    await waitFor(() => expect(api.playerSetFullscreen).toHaveBeenCalledWith(true));
+    await waitFor(() => expect(nativeFullscreen.playerSetFullscreen).toHaveBeenCalledWith(true));
     expect(screen.getByTestId('fullscreen').textContent).toBe('true');
     expect(revealControls).toHaveBeenCalledOnce();
   });

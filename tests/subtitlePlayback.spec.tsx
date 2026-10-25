@@ -4,9 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { client } from '../src/renderer/api/client';
 import { useSubtitlePlayback } from '../src/renderer/features/playback/useSubtitlePlayback';
+import { subtitleQueryMemoryAdapter, subtitleSearchServiceAdapter } from '../src/renderer/features/playback/adapters/subtitleSearchAdapters';
+import { subtitlePlaybackAdapter } from '../src/renderer/features/playback/adapters/subtitlePlaybackAdapter';
 import type { SubtitleCandidate } from '../src/shared/subtitle';
 
 const candidate = { file: 'episode.srt', subname: 'episode.srt' } as SubtitleCandidate;
+const searchDependencies = { service: subtitleSearchServiceAdapter, queryMemory: subtitleQueryMemoryAdapter };
 
 function Harness({
   url = 'episode-1',
@@ -25,6 +28,8 @@ function Harness({
     allowMpv,
     kernel,
     initialOffset: 0,
+    searchDependencies,
+    playbackPort: subtitlePlaybackAdapter,
   });
 
   return (
@@ -34,7 +39,11 @@ function Harness({
       {subtitle.candidates.map((item) => (
         <button key={item.file} onClick={() => void subtitle.selectCandidate(item)}>{item.subname}</button>
       ))}
-      <button onClick={() => subtitle.setOffset(1.5)}>Offset 1.5</button>
+      <button onClick={() => {
+        subtitle.onAppearanceCommand({ type: 'step-offset', delta: 0.5 });
+        subtitle.onAppearanceCommand({ type: 'step-offset', delta: 0.5 });
+        subtitle.onAppearanceCommand({ type: 'step-offset', delta: 0.5 });
+      }}>Offset 1.5</button>
       <button onClick={subtitle.toggle}>Toggle</button>
     </div>
   );

@@ -1,20 +1,18 @@
-import type { RefObject } from 'react';
-import { SPDIF_OPTIONS, spdifLabel, type MpvAudioTrack } from '../../../shared/player';
+import type { AudioTrackControlModel } from './presentation/PlayerControlModels';
+import { SPDIF_OPTIONS, spdifLabel } from '../../../shared/player';
 import { usePlayerPanelPosition } from '../../lib/usePlayerPanelPosition';
 import { audioTrackLabel } from './usePlayerAudioTracks';
-import { usePlayerPopupKeyboard } from '../../lib/usePlayerPopupKeyboard';
+import { usePlaybackPopupKeyboard } from './usePlaybackPopupKeyboard';
 
-export function PlayerAudioControl({ open, tracks, aid, isMpv, containerRef, onOpen, onClose, onSelect, spdif, effectiveSpdif, onSpdifChange }: {
-  spdif?: string; effectiveSpdif?: string; onSpdifChange?: (value: string) => void;
-  open: boolean; tracks: MpvAudioTrack[]; aid: number | null; isMpv: boolean;
-  containerRef: RefObject<HTMLDivElement | null>; onOpen(): void; onClose(): void; onSelect(track: MpvAudioTrack): void;
-}) {
+type PlayerAudioControlProps = AudioTrackControlModel;
+
+export function PlayerAudioControl({ open, tracks, aid, isMpv, containerRef, onOpen, onClose, onSelect, spdif, effectiveSpdif, onSpdifChange }: PlayerAudioControlProps) {
   const panelRef = usePlayerPanelPosition(open, containerRef);
-  const { triggerRef, panelId, onKeyDown, onPointerLeave, onBlur } = usePlayerPopupKeyboard(open, onOpen, onClose);
+  const { triggerRef, panelId, onKeyDown, onPointerLeave, onBlur } = usePlaybackPopupKeyboard(open, onOpen, onClose);
   return (
     <div className="vp-vol" onPointerEnter={onOpen} onPointerLeave={onPointerLeave} onBlur={onBlur}>
-      <button ref={triggerRef} className="vp-ctl" title="音轨（悬停选择）" aria-expanded={open} aria-controls={panelId} aria-keyshortcuts="ArrowDown" onKeyDown={onKeyDown} onClick={onOpen}>
-        <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.2v3.6M7 7v10M11 4.4v15.2M15 7.8v8.4M19 10.2v3.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+      <button ref={triggerRef} className="vp-ctl" title="音轨（悬停选择）" aria-label="音轨设置" aria-expanded={open} aria-controls={panelId} aria-keyshortcuts="ArrowDown" onKeyDown={onKeyDown} onClick={onOpen}>
+        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.2v3.6M7 7v10M11 4.4v15.2M15 7.8v8.4M19 10.2v3.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
         {tracks.length > 1 && <span className="vp-subdot" />}
       </button>
       <div className={'vp-fithost' + (open ? ' open' : '')}>

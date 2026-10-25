@@ -7,17 +7,18 @@ afterEach(() => cleanup());
 
 describe('SkipSegmentsControl', () => {
   it('exposes saved and inherited settings and sends edits to the play session', () => {
-    const onDraftChange = vi.fn();
+    const onDraftCommand = vi.fn();
     const onSave = vi.fn();
     const onClear = vi.fn();
     const onToggle = vi.fn();
     render(
       <SkipSegmentsControl
         segments={{ intro: 90, outro: 120 }}
+        hasSegments
         inheritedFrom="第3集"
         draft={{ intro: '90', outro: '120' }}
         open
-        onDraftChange={onDraftChange}
+        onDraftCommand={onDraftCommand}
         onSave={onSave}
         onClear={onClear}
         onToggle={onToggle}
@@ -30,7 +31,7 @@ describe('SkipSegmentsControl', () => {
     expect(screen.getByRole('button', { name: '跳过片头片尾设置' }).getAttribute('aria-expanded')).toBe('true');
 
     fireEvent.change(screen.getByRole('spinbutton', { name: '片头跳过秒数' }), { target: { value: '45' } });
-    expect(onDraftChange).toHaveBeenCalledWith({ intro: '45', outro: '120' });
+    expect(onDraftCommand).toHaveBeenCalledWith({ type: 'change-intro', value: '45' });
     fireEvent.click(screen.getByRole('button', { name: '保存到本集' }));
     fireEvent.click(screen.getByRole('button', { name: '清除' }));
     fireEvent.click(screen.getByRole('button', { name: '跳过片头片尾设置' }));

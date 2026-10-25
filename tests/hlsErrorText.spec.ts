@@ -17,4 +17,8 @@ describe('hlsErrorText', () => {
     expect(hlsErrorText('networkError', 'unexpectedFailure')).toBe('networkError / unexpectedFailure');
     expect(hlsErrorText(undefined, undefined)).toBe('HLS / 未知错误');
   });
+
+  it('shows an upstream HTTP status for failed manifest requests', () => {
+    expect(hlsErrorText('networkError', 'manifestLoadError', 403)).toContain('HTTP 403');
+  });
 });

@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { useRef, useState } from 'react';
+import { useReducer, useRef, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SubtitlePanel } from '../src/renderer/features/playback/SubtitlePanel';
+import { reduceSubtitleAppearance } from '../src/renderer/features/playback/application/subtitleAppearance';
+import type { SubtitleAppearanceCommand } from '../src/renderer/features/playback/application/subtitleAppearance';
 import type { SubtitleCandidate } from '../src/shared/subtitle';
 
 afterEach(() => cleanup());
@@ -21,9 +23,8 @@ function Harness({ onSearch = vi.fn(), onSelectCandidate = vi.fn() }: {
   onSelectCandidate?: (value: SubtitleCandidate) => void;
 }) {
   const [enabled, setEnabled] = useState(true);
-  const [fontSize, setFontSize] = useState(20);
-  const [bottom, setBottom] = useState(40);
-  const [offset, setOffset] = useState(0);
+  const [appearance, dispatchAppearance] = useReducer(reduceSubtitleAppearance, { fontSize: 20, bottom: 40, offset: 0 });
+  const { fontSize, bottom, offset } = appearance;
   const [query, setQuery] = useState('测试作品');
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -49,10 +50,9 @@ function Harness({ onSearch = vi.fn(), onSelectCandidate = vi.fn() }: {
         onPanelPointerEnter={vi.fn()}
         onPanelPointerLeave={vi.fn()}
         onToggle={() => setEnabled((value) => !value)}
-        setFontSize={setFontSize}
-        setBottom={setBottom}
-        setOffset={setOffset}
+        onAppearanceCommand={(command: SubtitleAppearanceCommand) => dispatchAppearance(command)}
         onQueryChange={setQuery}
+        onRestoreQuery={() => setQuery('测试作品 2')}
         onSearch={onSearch}
         onSelectCandidate={onSelectCandidate}
       />
@@ -82,7 +82,7 @@ describe('SubtitlePanel', () => {
     expect(onSelectCandidate).toHaveBeenCalledWith(candidate);
   });
 
-  it('updates subtitle size, position, and time offset through the supplied setters', () => {
+  it('sends subtitle appearance commands to the play session', () => {
     render(<Harness />);
 
     fireEvent.click(screen.getByRole('button', { name: 'A−' }));

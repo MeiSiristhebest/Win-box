@@ -1,39 +1,11 @@
-import type { Dispatch, Ref, SetStateAction } from 'react';
-import { customEndpointsText, mergeEndpoints } from '../../../engine/danmaku/endpoints';
-import { formatCandidateLabel } from '../../../engine/danmaku/normalizeQuery';
-import type { DanmakuCandidate, DanmakuSettings } from '../../../shared/danmaku';
-import { usePlayerPopupKeyboard } from '../../lib/usePlayerPopupKeyboard';
+import type { DanmakuPanelModel } from './presentation/PlayerControlModels';
+import { formatDanmakuCandidateLabel } from './presentation/formatDanmakuCandidateLabel';
+import { usePlaybackPopupKeyboard } from './usePlaybackPopupKeyboard';
 
-interface DanmakuPanelProps {
-  enabled: boolean;
-  open: boolean;
-  activeEpisodeId: number | null;
-  message: string;
-  settings: DanmakuSettings;
-  candidates: DanmakuCandidate[];
-  searching: boolean;
-  query: string;
-  episode: string;
-  sourcesOpen: boolean;
-  customText: string;
-  panelRef: Ref<HTMLDivElement>;
-  onAnchorPointerEnter: () => void;
-  onAnchorPointerLeave: () => void;
-  onPanelPointerEnter: () => void;
-  onPanelPointerLeave: () => void;
-  onClose?: () => void;
-  onToggle: () => void;
-  onSettingsChange: Dispatch<SetStateAction<DanmakuSettings>>;
-  onQueryChange: (value: string) => void;
-  onEpisodeChange: (value: string) => void;
-  setSourcesOpen: Dispatch<SetStateAction<boolean>>;
-  setCustomText: Dispatch<SetStateAction<string>>;
-  onSearch: () => void;
-  onCandidateSelect: (candidate: DanmakuCandidate) => void | Promise<void>;
-}
-
+type DanmakuPanelProps = DanmakuPanelModel;
 export function DanmakuPanel({
   enabled,
+  enabledSourceCount,
   open,
   activeEpisodeId,
   message,
@@ -50,16 +22,15 @@ export function DanmakuPanel({
   onPanelPointerEnter,
   onClose = onAnchorPointerLeave,
   onToggle,
-  onSettingsChange,
+  onSettingsCommand,
   onQueryChange,
   onEpisodeChange,
-  setSourcesOpen,
-  setCustomText,
+  onToggleSources,
+  onCustomEndpointsTextChange,
   onSearch,
   onCandidateSelect,
 }: DanmakuPanelProps) {
-  const enabledSourceCount = settings.endpoints.filter((endpoint) => endpoint.enabled !== false).length;
-  const { triggerRef, panelId, onKeyDown, onPointerLeave, onBlur } = usePlayerPopupKeyboard(open, onPanelPointerEnter, onClose, onAnchorPointerLeave);
+  const { triggerRef, panelId, onKeyDown, onPointerLeave, onBlur } = usePlaybackPopupKeyboard(open, onPanelPointerEnter, onClose, onAnchorPointerLeave);
 
   return (
     <div className="vp-popup-anchor" onPointerEnter={onAnchorPointerEnter} onPointerLeave={onPointerLeave} onBlur={onBlur}>
@@ -71,9 +42,10 @@ export function DanmakuPanel({
         aria-keyshortcuts="ArrowDown"
         onKeyDown={onKeyDown}
         title={`弹幕：${enabled ? '开' : '关'}（点击开关 · 悬停调整）`}
+        aria-label={`弹幕开关：${enabled ? '开' : '关'}；悬停打开设置`}
         onClick={onToggle}
       >
-        <svg width="15" height="15" viewBox="0 0 24 24">
+        <svg width="18" height="18" viewBox="0 0 24 24">
           <path d="M3.5 8a2 2 0 012-2h13a2 2 0 012 2v8a2 2 0 01-2 2h-13a2 2 0 01-2-2z" fill="none" stroke="currentColor" strokeWidth="1.6" />
           <path d="M8 11h4M8 14.5h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
@@ -83,8 +55,8 @@ export function DanmakuPanel({
         <div ref={panelRef} className="vp-panelhost" onPointerEnter={onPanelPointerEnter} onPointerLeave={onPointerLeave}>
           <section id={panelId} aria-label="弹幕设置" className="vp-subpanel vp-dmpanel">
             <div className="vsp-row">
-              <button className={`tag ${enabled ? 'active' : ''}`} onClick={onToggle}>弹幕：{enabled ? '开' : '关'}</button>
-              <span className="muted" style={{ marginLeft: 'auto', fontSize: 11 }}>{message || (activeEpisodeId != null ? '已加载' : '')}</span>
+              <button type="button" className={`vp-panel-toggle${enabled ? ' active' : ''}`} aria-pressed={enabled} onClick={onToggle}>弹幕：{enabled ? '开' : '关'}</button>
+              <span className="muted" style={{ marginLeft: 'auto', fontSize: 12 }}>{message || (activeEpisodeId != null ? '已加载' : '')}</span>
             </div>
             <div className="vsp-row">
               <span className="muted vsp-label">区域</span>
@@ -92,7 +64,7 @@ export function DanmakuPanel({
                 <button
                   key={region}
                   className={`vsp-btn${settings.region === region ? ' active' : ''}`}
-                  onClick={() => onSettingsChange((current) => ({ ...current, region }))}
+                  onClick={() => onSettingsCommand({ type: 'select-region', region })}
                 >
                   {region === 'full' ? '全屏' : region === 'half' ? '半屏' : '1/4 屏'}
                 </button>
@@ -100,43 +72,43 @@ export function DanmakuPanel({
             </div>
             <div className="vsp-row">
               <span className="muted vsp-label">字号</span>
-              <button className="vsp-btn" onClick={() => onSettingsChange((current) => ({ ...current, fontSize: Math.max(16, current.fontSize - 2) }))}>A−</button>
+              <button className="vsp-btn" onClick={() => onSettingsCommand({ type: 'step-font-size', delta: -2 })}>A−</button>
               <input
                 aria-label="弹幕字号" type="range" min={16} max={40} value={settings.fontSize}
-                onChange={(event) => onSettingsChange((current) => ({ ...current, fontSize: Number(event.target.value) }))}
+                onChange={(event) => onSettingsCommand({ type: 'set-font-size', value: Number(event.target.value) })}
               />
-              <button className="vsp-btn" onClick={() => onSettingsChange((current) => ({ ...current, fontSize: Math.min(40, current.fontSize + 2) }))}>A＋</button>
+              <button className="vsp-btn" onClick={() => onSettingsCommand({ type: 'step-font-size', delta: 2 })}>A＋</button>
             </div>
             <div className="vsp-row">
               <span className="muted vsp-label">透明度</span>
               <input
                 aria-label="弹幕不透明度" type="range" min={20} max={100} value={Math.round(settings.opacity * 100)}
-                onChange={(event) => onSettingsChange((current) => ({ ...current, opacity: Number(event.target.value) / 100 }))}
+                onChange={(event) => onSettingsCommand({ type: 'set-opacity', value: Number(event.target.value) / 100 })}
               />
-              <span className="muted" style={{ fontSize: 11 }}>{Math.round(settings.opacity * 100)}%</span>
+              <span className="muted" style={{ fontSize: 12 }}>{Math.round(settings.opacity * 100)}%</span>
             </div>
             <div className="vsp-row">
               <span className="muted vsp-label">密度</span>
               <input
                 aria-label="弹幕密度" type="range" min={25} max={100} value={Math.round(settings.density * 100)}
-                onChange={(event) => onSettingsChange((current) => ({ ...current, density: Number(event.target.value) / 100 }))}
+                onChange={(event) => onSettingsCommand({ type: 'set-density', value: Number(event.target.value) / 100 })}
               />
-              <span className="muted" style={{ fontSize: 11 }}>{settings.density.toFixed(2)}</span>
+              <span className="muted" style={{ fontSize: 12 }}>{settings.density.toFixed(2)}</span>
             </div>
             <div className="vsp-row">
               <span className="muted vsp-label">速度</span>
               <input
                 aria-label="弹幕速度" type="range" min={50} max={300} value={settings.speed}
-                onChange={(event) => onSettingsChange((current) => ({ ...current, speed: Number(event.target.value) }))}
+                onChange={(event) => onSettingsCommand({ type: 'set-speed', value: Number(event.target.value) })}
               />
-              <span className="muted" style={{ fontSize: 11 }}>{settings.speed}</span>
+              <span className="muted" style={{ fontSize: 12 }}>{settings.speed}</span>
             </div>
             <div className="vsp-row">
               <span className="muted vsp-label">时间</span>
-              <button className="vsp-btn" onClick={() => onSettingsChange((current) => ({ ...current, offset: current.offset - 0.5 }))}>−0.5s</button>
-              <span className="muted" style={{ fontSize: 11 }}>{settings.offset >= 0 ? '+' : ''}{settings.offset}s</span>
-              <button className="vsp-btn" onClick={() => onSettingsChange((current) => ({ ...current, offset: current.offset + 0.5 }))}>+0.5s</button>
-              <button className="vsp-btn" title="重置" onClick={() => onSettingsChange((current) => ({ ...current, offset: 0 }))}>重置</button>
+              <button className="vsp-btn" onClick={() => onSettingsCommand({ type: 'step-offset', delta: -0.5 })}>−0.5s</button>
+              <span className="muted" style={{ fontSize: 12 }}>{settings.offset >= 0 ? '+' : ''}{settings.offset}s</span>
+              <button className="vsp-btn" onClick={() => onSettingsCommand({ type: 'step-offset', delta: 0.5 })}>+0.5s</button>
+              <button className="vsp-btn" title="重置" onClick={() => onSettingsCommand({ type: 'reset-offset' })}>重置</button>
             </div>
             <div className="vsp-row">
               <input
@@ -169,15 +141,12 @@ export function DanmakuPanel({
             <div className="vsp-row" style={{ marginBottom: 4 }}>
               <button
                 className="vsp-btn"
-                onClick={() => {
-                  setCustomText(customEndpointsText(settings.endpoints));
-                  setSourcesOpen((value) => !value);
-                }}
+                onClick={onToggleSources}
               >
                 弹幕源 {enabledSourceCount}/{settings.endpoints.length} 启用 {sourcesOpen ? '▲' : '▼'}
               </button>
-              <button className="vsp-btn" onClick={() => onSettingsChange((current) => ({ ...current, endpoints: current.endpoints.map((endpoint) => ({ ...endpoint, enabled: true })) }))}>全开</button>
-              <button className="vsp-btn" onClick={() => onSettingsChange((current) => ({ ...current, endpoints: current.endpoints.map((endpoint) => ({ ...endpoint, enabled: false })) }))}>全关</button>
+              <button className="vsp-btn" onClick={() => onSettingsCommand({ type: 'set-all-sources-enabled', enabled: true })}>全开</button>
+              <button className="vsp-btn" onClick={() => onSettingsCommand({ type: 'set-all-sources-enabled', enabled: false })}>全关</button>
             </div>
             {sourcesOpen && (
               <div className="vsp-dmsrc">
@@ -187,12 +156,7 @@ export function DanmakuPanel({
                       <input
                         type="checkbox"
                         checked={endpoint.enabled}
-                        onChange={() => onSettingsChange((current) => ({
-                          ...current,
-                          endpoints: current.endpoints.map((item, itemIndex) => (
-                            itemIndex === index ? { ...item, enabled: !item.enabled } : item
-                          )),
-                        }))}
+                        onChange={() => onSettingsCommand({ type: 'set-source-enabled', index, enabled: !endpoint.enabled })}
                       />
                       <span className="vsp-dmsrc-name">{endpoint.name}</span>
                     </label>
@@ -203,10 +167,10 @@ export function DanmakuPanel({
                   rows={2}
                   value={customText}
                   placeholder="自定义接口：一行一个，支持「名字@https://host/token」"
-                  onChange={(event) => setCustomText(event.target.value)}
+                  onChange={(event) => onCustomEndpointsTextChange(event.target.value)}
                 />
                 <div className="vsp-row" style={{ marginBottom: 4 }}>
-                  <button className="vsp-btn" onClick={() => onSettingsChange((current) => ({ ...current, endpoints: mergeEndpoints(current.endpoints, customText) }))}>
+                  <button className="vsp-btn" onClick={() => onSettingsCommand({ type: 'merge-custom-endpoints', text: customText })}>
                     保存自定义接口
                   </button>
                 </div>
@@ -215,7 +179,7 @@ export function DanmakuPanel({
             {candidates.length > 0 && (
               <div className="vsp-list">
                 {candidates.map((candidate, index) => {
-                  const label = formatCandidateLabel(candidate.title, candidate.episodeTitle, candidate.episodeNumber) || '未知番剧';
+                  const label = formatDanmakuCandidateLabel(candidate) || '未知番剧';
                   return (
                     <button
                       key={index}

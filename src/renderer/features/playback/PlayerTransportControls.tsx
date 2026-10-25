@@ -1,16 +1,8 @@
-interface PlayerTransportControlsProps {
-  mini: boolean;
-  paused: boolean;
-  canPrev?: boolean;
-  canNext?: boolean;
-  onPrev: () => void;
-  onNext: () => void;
-  onToggle: () => void;
-}
-
+import type { PlayerTransportModel } from './presentation/PlayerControlModels';
+type PlayerTransportControlsProps = PlayerTransportModel & { mini: boolean };
 export function PlayerTransportControls({ mini, paused, canPrev, canNext, onPrev, onNext, onToggle }: PlayerTransportControlsProps) {
-  const navIconSize = mini ? 16 : 15;
-  const playIconSize = mini ? 18 : 15;
+  const navIconSize = 18;
+  const playIconSize = mini ? 20 : 18;
 
   return (
     <>
@@ -19,7 +11,7 @@ export function PlayerTransportControls({ mini, paused, canPrev, canNext, onPrev
           <svg width={navIconSize} height={navIconSize} viewBox="0 0 24 24"><path d="M6 5v14M19 5.5v13l-11-6.5z" fill="currentColor" /></svg>
         </button>
       )}
-      <button className="vp-ctl" onClick={onToggle} title={paused ? '播放' : '暂停'}>
+      <button className="vp-ctl" onClick={onToggle} title={paused ? '播放' : '暂停'} aria-label={paused ? '播放' : '暂停'}>
         {paused ? (
           <svg width={playIconSize} height={playIconSize} viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
         ) : (

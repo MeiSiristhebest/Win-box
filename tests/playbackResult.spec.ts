@@ -29,3 +29,28 @@ describe('播放日志中的无效结果', () => {
     expect(playbackResultError({ parse: 0, url: '', message: '源站接口暂不可用' })).toBe('源站接口暂不可用');
   });
 });
+
+
+describe('CMS preferred playback line', () => {
+  it('classifies share/play pages while preserving media and opaque direct URLs', async () => {
+    const { isPlaybackPageUrl } = await import('../src/shared/playbackResult');
+    expect(isPlaybackPageUrl('https://cdn.test/play/abc')).toBe(true);
+    expect(isPlaybackPageUrl('https://cdn.test/share/abc')).toBe(true);
+    expect(isPlaybackPageUrl('https://cdn.test/play/abc/index.m3u8')).toBe(false);
+    expect(isPlaybackPageUrl('https://cdn.test/opaque-signature?token=x')).toBe(false);
+  });
+  it('chooses the direct HLS line when the first line is a player page', async () => {
+    const { preferredPlaybackFlag } = await import('../src/shared/playbackResult');
+    expect(preferredPlaybackFlag({ flags: ['hnyun', 'hnm3u8'], episodes: {
+      hnyun: [{ name: '1', url: 'https://cdn.test/play/abc' }],
+      hnm3u8: [{ name: '1', url: 'https://cdn.test/play/abc/index.m3u8' }],
+    } })).toBe('hnm3u8');
+  });
+  it('preserves spider-defined and opaque first lines', async () => {
+    const { preferredPlaybackFlag } = await import('../src/shared/playbackResult');
+    expect(preferredPlaybackFlag({ flags: ['native', 'hls'], episodes: {
+      native: [{ name: '1', url: 'native-episode-id' }],
+      hls: [{ name: '1', url: 'https://cdn.test/index.m3u8' }],
+    } })).toBe('native');
+  });
+});

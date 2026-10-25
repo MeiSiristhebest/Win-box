@@ -22,6 +22,8 @@ function createAdapter(kernel: () => Kernel, video: ReturnType<typeof createVide
     paused: false,
   };
   const sendMpvCommand = vi.fn(async (_command: MpvCommand) => undefined);
+  const sendEngineCommand = vi.fn(async (_command: MpvCommand) => undefined);
+  const onCommandError = vi.fn();
   const setCurrentTime = vi.fn();
   const setVolume = vi.fn();
   const setRate = vi.fn();
@@ -32,7 +34,8 @@ function createAdapter(kernel: () => Kernel, video: ReturnType<typeof createVide
       getKernel: kernel,
       getVideo: () => video,
       getMpvState: () => state,
-      sendMpvCommand,
+      commands: { sendMpvCommand, sendEngineCommand },
+      onCommandError,
       setCurrentTime,
       setVolume,
       setRate,
@@ -40,6 +43,8 @@ function createAdapter(kernel: () => Kernel, video: ReturnType<typeof createVide
     }),
     state,
     sendMpvCommand,
+    sendEngineCommand,
+    onCommandError,
     setCurrentTime,
     setVolume,
     setRate,
@@ -75,7 +80,7 @@ describe('player kernel adapter', () => {
     expect(context.sendMpvCommand).not.toHaveBeenCalled();
   });
 
-  it('reads and controls the mpv session', () => {
+  it('reads and controls the mpv session', async () => {
     const context = createAdapter(() => 'mpv', null);
 
     expect(context.adapter.isMpv()).toBe(true);
@@ -88,6 +93,7 @@ describe('player kernel adapter', () => {
     context.adapter.seek(15);
     context.adapter.setVolume(-1);
     context.adapter.setRate(2);
+    await Promise.resolve();
 
     expect(context.sendMpvCommand.mock.calls.map(([command]) => command)).toEqual([
       { type: 'play' },

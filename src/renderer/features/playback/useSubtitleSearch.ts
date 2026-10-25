@@ -1,12 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { client } from '../../api/client';
 import type { SubtitleCandidate } from '../../../shared/subtitle';
 import { buildSearchQuery } from '../../../engine/subtitle/normalizeQuery';
-import { parseSubtitleFile } from '../../../engine/subtitle/parseSubtitle';
+import type { SubtitleCue } from '../../../engine/subtitle/parseSubtitle';
 import { subtitleEmptyReason } from '../../lib/subtitleText';
+import type { SubtitleSearchDependencies } from './application/subtitleSearchPorts';
+import { prepareSubtitleCandidate, searchSubtitleCandidates } from './application/subtitleSearchUseCases';
 
-const SUB_MEM_KEY = 'winbox-sub-mem';
-type SubtitleCue = { start: number; end: number; text: string };
 interface SubtitleSearchState {
   url: string;
   candidates: SubtitleCandidate[];
@@ -19,34 +18,23 @@ function emptySearchState(url: string): SubtitleSearchState {
   return { url, candidates: [], searching: false, message: '', activeSubtitle: '' };
 }
 
-function loadSubtitleMemory(): Record<string, string> {
-  try {
-    const json = localStorage.getItem(SUB_MEM_KEY);
-    return json ? JSON.parse(json) as Record<string, string> : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveSubtitleMemory(memory: Record<string, string>): void {
-  try { localStorage.setItem(SUB_MEM_KEY, JSON.stringify(memory)); } catch { /* local storage is optional */ }
-}
-
 interface UseSubtitleSearchOptions {
   url: string;
   resourceName?: string;
   onApply: (cues: SubtitleCue[]) => void;
+  dependencies: SubtitleSearchDependencies;
 }
 
-export function useSubtitleSearch({ url, resourceName, onApply }: UseSubtitleSearchOptions) {
+export function useSubtitleSearch({ url, resourceName, onApply, dependencies }: UseSubtitleSearchOptions) {
   const resourceKey = resourceName || '';
   const suggestedQuery = useMemo(() => {
-    const memory = loadSubtitleMemory();
-    return (memory[resourceKey] || '').trim() || buildSearchQuery(resourceKey);
-  }, [resourceKey]);
+    const remembered = dependencies.queryMemory.load()[resourceKey]?.trim();
+    return remembered || buildSearchQuery(resourceKey);
+  }, [dependencies.queryMemory, resourceKey]);
   const [queryState, setQueryState] = useState(() => ({ resourceKey, value: suggestedQuery }));
   const query = queryState.resourceKey === resourceKey ? queryState.value : suggestedQuery;
   const setQuery = (value: string) => setQueryState({ resourceKey, value });
+  const restoreSuggestedQuery = () => setQuery(suggestedQuery);
   const [searchState, setSearchState] = useState<SubtitleSearchState>(() => emptySearchState(url));
   const currentState = searchState.url === url ? searchState : emptySearchState(url);
   const updateSearchState = (patch: Partial<Omit<SubtitleSearchState, 'url'>>) => {
@@ -60,13 +48,16 @@ export function useSubtitleSearch({ url, resourceName, onApply }: UseSubtitleSea
   const generationRef = useRef(0);
 
   useEffect(() => {
-    void client.subtitleProviders()
-      .then((providers) => setTokenHint(!providers.some((provider) => provider.available)))
-      .catch(() => setTokenHint(false));
-  }, []);
+    let active = true;
+    void dependencies.service.listProviders()
+      .then((providers) => { if (active) setTokenHint(!providers.some((provider) => provider.available)); })
+      .catch(() => { if (active) setTokenHint(false); });
+    return () => { active = false; };
+  }, [dependencies.service]);
 
   useLayoutEffect(() => {
     generationRef.current += 1;
+    return () => { generationRef.current += 1; };
   }, [url]);
 
   async function search() {
@@ -75,21 +66,13 @@ export function useSubtitleSearch({ url, resourceName, onApply }: UseSubtitleSea
     const generation = ++generationRef.current;
     updateSearchState({ searching: true, message: '', candidates: [] });
     try {
-      const report = await client.subtitleSearch(name);
+      const report = await searchSubtitleCandidates(name, resourceName, dependencies);
       if (generation !== generationRef.current) return;
       const nextCandidates = report?.candidates || [];
       updateSearchState({ candidates: nextCandidates });
-      if (nextCandidates.length && resourceName) {
-        const autoQuery = buildSearchQuery(resourceName);
-        if (name !== autoQuery) {
-          const memory = loadSubtitleMemory();
-          memory[resourceName] = name;
-          saveSubtitleMemory(memory);
-        }
-      }
       if (!nextCandidates.length) updateSearchState({ message: subtitleEmptyReason(report) });
     } catch (error) {
-      if (generation === generationRef.current) updateSearchState({ message: (error as Error).message });
+      if (generation === generationRef.current) updateSearchState({ message: error instanceof Error ? error.message : String(error) });
     } finally {
       if (generation === generationRef.current) updateSearchState({ searching: false });
     }
@@ -99,32 +82,30 @@ export function useSubtitleSearch({ url, resourceName, onApply }: UseSubtitleSea
     const generation = ++generationRef.current;
     updateSearchState({ message: '' });
     try {
-      const result = await client.subtitleFetch(candidate);
+      const prepared = await prepareSubtitleCandidate(candidate, dependencies.service);
       if (generation !== generationRef.current) return;
-      if (!result || !result.text) {
-        updateSearchState({ message: result?.reason || '字幕下载为空' });
+      if (prepared.kind === 'download-failed') {
+        updateSearchState({ message: prepared.reason || '字幕下载为空' });
         return;
       }
-      const cues = parseSubtitleFile(result.fileName || candidate.subname || '', result.text);
-      if (!cues.length) {
-        updateSearchState({ message: '字幕解析失败（' + (result.format || '未知格式') + '，无有效时间轴）' });
+      if (prepared.kind === 'parse-failed') {
+        updateSearchState({ message: '字幕解析失败（' + (prepared.format || '未知格式') + '，无有效时间轴）' });
         return;
       }
-      const fileName = result.fileName || candidate.subname || candidate.file;
-      updateSearchState({ activeSubtitle: fileName, message: result.entries && result.entries > 1
-        ? '已挂载 ' + cues.length + ' 条（包内 ' + result.entries + ' 个文件，取「' + result.fileName + '」）'
-        : '字幕已挂载（' + cues.length + ' 条）' });
-      console.info('[subtitle] ' + (result.fileName || candidate.subname) + '：解析 ' + cues.length + ' 条 cue（包内 ' + (result.entries ?? 1) + ' 个文件）');
-      onApply(cues);
-      void client.subtitleSet({ enabled: true }).catch(() => undefined);
+      updateSearchState({ activeSubtitle: prepared.fileName, message: prepared.entries && prepared.entries > 1
+        ? '已挂载 ' + prepared.cues.length + ' 条（包内 ' + prepared.entries + ' 个文件，取「' + prepared.fileName + '」）'
+        : '字幕已挂载（' + prepared.cues.length + ' 条）' });
+      onApply(prepared.cues);
+      void dependencies.service.enableSubtitles().catch(() => undefined);
     } catch (error) {
-      if (generation === generationRef.current) updateSearchState({ message: (error as Error).message });
+      if (generation === generationRef.current) updateSearchState({ message: error instanceof Error ? error.message : String(error) });
     }
   }
 
   return {
     query,
     setQuery,
+    restoreSuggestedQuery,
     candidates: currentState.candidates,
     searching: currentState.searching,
     message: currentState.message,

@@ -45,6 +45,6 @@ describe('PlayerTransportControls', () => {
 
     expect(buttons).toHaveLength(1);
     expect(buttons[0].title).toBe('暂停');
-    expect(buttons[0].querySelector('svg')?.getAttribute('width')).toBe('18');
+    expect(buttons[0].querySelector('svg')?.getAttribute('width')).toBe('20');
   });
 });

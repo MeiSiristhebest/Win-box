@@ -8,6 +8,7 @@
 // 判定只依据「协议 + 扩展名 + 路径特征」，不做网络探测（拿不到跨域响应头）；
 // 判不准的一律回落到 'video'（保持既有行为，不臆造）。
 import { resolvePlayTarget } from './playTarget';
+import { isHlsPlaylistUrl } from '../../shared/playbackResult';
 
 export type MediaKind = 'hls' | 'flv' | 'mpegts' | 'image' | 'audio' | 'video' | 'unsupported';
 
@@ -37,7 +38,7 @@ export function detectMediaKind(url: string): MediaKind {
     try {
       const u = new URL(relay);
       if (!['127.0.0.1', 'localhost'].includes(u.hostname)) break;
-      if (u.pathname === '/proxy' && u.searchParams.get('do') === 'm3u8') return 'hls';
+      if (/^\/proxy(?:\/\d+)?$/.test(u.pathname) && /m3u8/i.test(u.searchParams.get('do') || '')) return 'hls';
       if (u.pathname !== '/play') break;
       const inner = u.searchParams.get('url') || '';
       if (!/^https?:\/\//i.test(inner) || inner === relay) break;
@@ -52,9 +53,9 @@ export function detectMediaKind(url: string): MediaKind {
   const queryHint = low.split('#')[0];
   if (IMAGE_EXT.has(ext) || /(?:[?&](?:type|mime|format)=image\/(?:jpeg|jpg|png|gif|webp)|[?&](?:type|format)=image\b)/.test(queryHint)) return 'image';
   if (AUDIO_EXT.has(ext) || /(?:[?&](?:type|mime)=audio\/|[?&](?:type|format)=(?:audio|mp3|flac|m4a|aac|wav|ogg)\b)/.test(queryHint)) return 'audio';
-  if (ext === 'm3u8' || /m3u8|\/hls\//.test(low) || /[?&](?:type|format)=(?:hls|m3u8)\b/.test(queryHint)) return 'hls';
   if (ext === 'flv') return 'flv';
   if (ext === 'ts' || ext === 'm2ts' || /mpegts/.test(low)) return 'mpegts';
+  if (isHlsPlaylistUrl(s)) return 'hls';
   return 'video';
 }
 

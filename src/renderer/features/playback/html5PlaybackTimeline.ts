@@ -1,4 +1,4 @@
-import { shouldSkipIntro, shouldSkipOutro, type SkipSeg } from '../../lib/skipSegments';
+import { shouldSkipIntro, shouldSkipOutro, type SkipSeg } from './application/skipSegments';
 import { canRestoreHtml5Position } from './resumePosition';
 
 interface MutableRef<T> {
