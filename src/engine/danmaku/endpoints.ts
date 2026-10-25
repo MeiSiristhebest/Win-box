@@ -2,6 +2,8 @@
 // 外部弹幕接口（LogVar / 御坂 / 炊烟袅袅 等自建服务）的纯函数：
 // 地址归一、自定义接口解析、候选排序与挑选。无副作用，主进程与渲染层共用、可独立单测。
 import { DEFAULT_DANMAKU_ENDPOINTS, type DanmakuAnime, type DanmakuApiEndpoint } from '../../shared/danmaku';
+import { seasonOf } from './episodeMetadata';
+export { seasonOf } from './episodeMetadata';
 
 const SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
 
@@ -116,39 +118,6 @@ function cleanTitle(s: string): string {
     .replace(/\u3000/g, ' ')
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '');
-}
-
-/** 中文数字（一~十/十一…）→ 数字；非汉字数字直接 Number */
-function cnNum(s: string): number | undefined {
-  const t = (s || '').trim();
-  if (/^\d{1,2}$/.test(t)) return Number(t);
-  const map: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 };
-  if (map[t] != null) return map[t];
-  const m = /^十([一二三四五六七八九])$/.exec(t);
-  if (m) return 10 + map[m[1]];
-  const m2 = /^([一二三四五六七八九])十([一二三四五六七八九])?$/.exec(t);
-  if (m2) return map[m2[1]] * 10 + (m2[2] ? map[m2[2]] : 0);
-  return undefined;
-}
-
-/**
- * 从资源名 / 剧名里提取**季号**（用于优先匹配同季条目）：
- *   `绝命毒师 第一季 第01集` → 1；`Breaking.Bad.S01E01` → 1；`第2季` / `Season 2` → 2；
- *   取不到 → `undefined`（此时不改排序，保持原有口径）。
- */
-export function seasonOf(name: string): number | undefined {
-  const s = name || '';
-  const cn = /第\s*(\d{1,2}|[一二三四五六七八九十]{1,3})\s*季/.exec(s);
-  if (cn) {
-    const n = cnNum(cn[1]);
-    if (n && n >= 1 && n <= 99) return n;
-  }
-  const en = /(?:^|[^a-z0-9])s(?:eason)?\s*0?(\d{1,2})(?![0-9])/i.exec(s);
-  if (en) {
-    const n = Number(en[1]);
-    if (n >= 1 && n <= 99) return n;
-  }
-  return undefined;
 }
 
 /** 标题季号与期望季的契合度：0 = 同季 / 1 = 标题无季信息（或未给期望季）/ 2 = 不同季 */

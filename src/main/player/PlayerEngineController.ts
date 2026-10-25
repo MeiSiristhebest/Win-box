@@ -19,6 +19,7 @@ import { playerIsFullscreen, playerIsMini } from './PlayerWindow';
 import { hwndOf } from './MpvController';
 import { initialKernelState, mpvCmdLine, mpvCommandLines, mpvObserveLines, reduceMpvMessage } from './mpvCore';
 import { ENGINE_QUIT_LINE, engineCommandLines, engineLoadLine, expandEngineArgs, reduceEngineEvent, type EngineArgVars } from './engineLines';
+import { JsonLineDecoder } from './JsonLineDecoder';
 
 /** 状态推送节流（与 mpv 同口径：200ms ≈ 进度条刷新率，够用） */
 const PUSH_INTERVAL_MS = 200;
@@ -47,7 +48,7 @@ export class PlayerEngineController {
   private pushTimer: NodeJS.Timeout | null = null;
   private retiring = new Set<ChildProcess>();
   private pipeSeq = 0;
-  private lineBuf = '';
+  private readonly messageDecoder = new JsonLineDecoder();
   private protocol: PlayerEngineProtocol = 'mpv-ipc';
   private engineId = '';
   /**
@@ -101,7 +102,7 @@ export class PlayerEngineController {
     this.protocol = spec.protocol;
     this.engineId = spec.id;
     this.state = initialKernelState(!!opts.live);
-    this.lineBuf = '';
+    this.messageDecoder.reset();
 
     const hwnd = hwndOf(win);
     if (!hwnd) throw new Error('无法取得播放器窗口句柄（引擎无法嵌入）');
@@ -307,18 +308,7 @@ export class PlayerEngineController {
   /** `mpv-ipc`：JSON IPC 行 → `reduceMpvMessage` 归约 */
   private onSockData(d: Buffer, session: number): void {
     if (session !== this.session) return;
-    this.lineBuf += String(d);
-    const lines = this.lineBuf.split('\n');
-    this.lineBuf = lines.pop() || '';
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) continue;
-      let msg: unknown;
-      try {
-        msg = JSON.parse(line);
-      } catch {
-        continue;
-      }
+    for (const msg of this.messageDecoder.push(d)) {
       if (reduceMpvMessage(this.state, msg)) {
         this.schedulePush(this.state.loaded || this.state.eof || this.state.exited);
       }
@@ -328,18 +318,7 @@ export class PlayerEngineController {
   /** `json-lines`：stdout 每行一个 JSON 对象 → `reduceEngineEvent` 归约 */
   private onJsonData(d: Buffer, session: number): void {
     if (session !== this.session) return;
-    this.lineBuf += String(d);
-    const lines = this.lineBuf.split('\n');
-    this.lineBuf = lines.pop() || '';
-    for (const raw of lines) {
-      const line = raw.trim();
-      if (!line) continue;
-      let obj: unknown;
-      try {
-        obj = JSON.parse(line);
-      } catch {
-        continue;
-      }
+    for (const obj of this.messageDecoder.push(d)) {
       if (reduceEngineEvent(this.state, obj)) {
         this.schedulePush(this.state.loaded || this.state.eof || this.state.exited);
       }

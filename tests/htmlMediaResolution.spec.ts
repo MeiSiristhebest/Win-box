@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
 vi.mock('node:fs', () => ({ existsSync: () => true }));
-vi.mock('../src/main/util/paths', () => ({ resourcesDir: () => '/resources' }));
+vi.mock('../src/main/util/paths', () => ({ mediaRuntimesDir: () => '/runtimes', resourcesDir: () => '/resources' }));
 import { HtmlMedia } from '../src/main/player/HtmlMedia';
 
 afterEach(() => vi.restoreAllMocks());

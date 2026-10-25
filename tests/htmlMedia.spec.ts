@@ -51,6 +51,23 @@ describe('HTML media codec compatibility', () => {
     expect(duration).toBe(14.25);
     expect(list).toContain('#EXT-X-ENDLIST');
   });
+  it('uses the FFmpeg executable saved with a compatibility session for each segment', async () => {
+    const media = new HtmlMedia({ i: vi.fn(), w: vi.fn(), e: vi.fn() }) as any;
+    media.sessions.set('abc', {
+      ffmpeg: 'managed-ffmpeg.exe', source: 'http://127.0.0.1:9978/play?url=media', duration: 12,
+      expires: Date.now() + 60_000, segments: new Map(), pending: new Map(), procs: new Set(),
+    });
+    media.run = vi.fn(async () => Buffer.from('fake-ts-segment'));
+    const server = createServer((req, res) => { void media.handle(new URL(req.url!, 'http://localhost'), req, res); });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const response = await fetch(`http://127.0.0.1:${(server.address() as { port: number }).port}/html/abc/0.ts`);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe('fake-ts-segment');
+      expect(media.run).toHaveBeenCalledOnce();
+      expect(media.run.mock.calls[0][0]).toBe('managed-ffmpeg.exe');
+    } finally { media.stop(); server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+  });
   it('cached input serves overlapping byte ranges without re-fetching blocks', async () => {
     const bytes = Buffer.from('0123456789abcdefghijklmnopqrstuvwxyz');
     const upstream = vi.fn(async () => new Response(bytes, { status: 206, headers: { 'Content-Range': `bytes 0-${bytes.length - 1}/${bytes.length}` } }));

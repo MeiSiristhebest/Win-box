@@ -1,6 +1,6 @@
 // tests/pluginKeymap.spec.ts — 插件快捷键（L3 声明式 UI）适配层：
 //   `contributes.keymap` → 宿主视图 `KeymapView`（★ 插件不跑代码；主进程只做校验 + 装配 + 键位归一，
-//   键盘分发与动作执行都在渲染层，见 src/renderer/lib/pluginKeymaps.ts + pluginCommands.ts）。
+//   键盘分发与动作执行都在渲染层，见 src/renderer/features/plugins/usePluginKeymaps.ts + pluginCommands.ts）。
 // 覆盖：白名单字段搬运 / 归属插件标注 / 可选字段不留 undefined / scope 副本隔离 / 键位串归一。
 import { describe, it, expect } from 'vitest';
 import type { KeymapContribute } from '../src/shared/plugin';

@@ -55,21 +55,21 @@ export const themes = {
   dark: {
     label: '深色', presentation: 'desktop', colorScheme: 'dark',
     tokens: {
-      surface: '#111317', 'surface-raised': '#191c22', 'surface-elevated': '#242830',
-      'text-primary': '#edf0f6', 'text-secondary': '#a4acba', 'color-accent': '#9ab7ff',
-      'on-accent': '#132341', 'color-danger': '#ff8c91', 'on-danger': '#321114',
-      'border-subtle': '#292e38', backdrop: '#191c22',
-      'radius-control': '9px', 'radius-container': '14px',
+      surface: '#101318', 'surface-raised': '#191f28', 'surface-elevated': '#242c38',
+      'text-primary': '#f4f6fa', 'text-secondary': '#b8c2d0', 'color-accent': '#78aaff',
+      'on-accent': '#10213b', 'color-danger': '#ff837a', 'on-danger': '#35110f',
+      'border-subtle': '#657184', backdrop: '#101318',
+      'radius-control': '8px', 'radius-container': '12px',
     },
   },
   light: {
     label: '浅色', presentation: 'desktop', colorScheme: 'light',
     tokens: {
-      surface: '#f7f8fa', 'surface-raised': '#ffffff', 'surface-elevated': '#ffffff',
-      'text-primary': '#25282f', 'text-secondary': '#606065', 'color-accent': '#355fd6',
-      'on-accent': '#ffffff', 'color-danger': '#b8313b', 'on-danger': '#ffffff',
-      'border-subtle': '#dfe2e8', backdrop: '#ffffff',
-      'radius-control': '9px', 'radius-container': '14px',
+      surface: '#f3f5f8', 'surface-raised': '#ffffff', 'surface-elevated': '#ebeff5',
+      'text-primary': '#18212d', 'text-secondary': '#4d5969', 'color-accent': '#1d5fc7',
+      'on-accent': '#ffffff', 'color-danger': '#b42318', 'on-danger': '#ffffff',
+      'border-subtle': '#8490a0', backdrop: '#f3f5f8',
+      'radius-control': '8px', 'radius-container': '12px',
     },
   },
 } as Record<string, ThemeDefinition>;

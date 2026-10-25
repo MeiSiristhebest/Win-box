@@ -132,7 +132,7 @@ export interface DanmakuSettings {
 }
 
 export const DEFAULT_DANMAKU_SETTINGS: DanmakuSettings = {
-  enabled: false,
+  enabled: true,
   region: 'full',
   fontSize: 24,
   opacity: 0.85,

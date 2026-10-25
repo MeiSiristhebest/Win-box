@@ -13,6 +13,7 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { normalizePlayerExecutablePath } from '../../shared/player';
 
 export interface ExternalPlayer {
   id: string;
@@ -67,16 +68,43 @@ export function pickPlayers(
   return out;
 }
 
+function playerDetails(path: string, candidates: ExternalPlayer[]): ExternalPlayer {
+  const known = candidates.find((p) => p.path.toLowerCase() === path.toLowerCase());
+  if (known) return { ...known, path };
+
+  const file = path.split(/[\\/]/).pop()?.toLowerCase() || '';
+  if (/^potplayermini(?:64)?\.exe$/.test(file)) return { id: 'potplayer', name: 'PotPlayer', path };
+  if (file === 'vlc.exe') return { id: 'vlc', name: 'VLC', path };
+  if (file === 'mpv.exe' || file === 'mpvnet.exe') return { id: 'mpv', name: file === 'mpvnet.exe' ? 'mpv.net' : 'mpv', path };
+  if (/^mpc-hc(?:64)?\.exe$/.test(file)) return { id: 'mpc-hc', name: 'MPC-HC', path };
+  return { id: 'custom', name: '自定义播放器', path };
+}
+
+/** Resolve one explicitly selected path. Unlike auto-detection, an invalid explicit path never selects another player. */
+export function resolvePlayer(
+  value: string,
+  exists: (p: string) => boolean = existsSync,
+): ExternalPlayer | null {
+  const path = normalizePlayerExecutablePath(value);
+  if (!path) return null;
+  try {
+    if (!exists(path)) return null;
+  } catch {
+    return null;
+  }
+  return playerDetails(path, playerCandidates(process.env));
+}
+
 /** 运行时探测：用户配置的路径优先，其次常见安装位置 */
-export function detectPlayers(overridePath = ''): ExternalPlayer[] {
-  const list = pickPlayers(playerCandidates(process.env), (p) => existsSync(p));
-  const ov = (overridePath || '').trim();
+export function detectPlayers(overridePath = '', exists: (p: string) => boolean = existsSync): ExternalPlayer[] {
+  const candidates = playerCandidates(process.env);
+  const list = pickPlayers(candidates, exists);
+  const ov = normalizePlayerExecutablePath(overridePath);
   if (ov) {
     try {
-      if (existsSync(ov)) {
-        // ★ 2026-09-30：用户填的路径若就是某个已知播放器 → 沿用它的名字（别显示「自定义播放器」）
-        const known = list.find((p) => p.path.toLowerCase() === ov.toLowerCase());
-        return [{ id: known?.id ?? 'custom', name: known?.name ?? '自定义播放器', path: ov }, ...list.filter((p) => p.path !== ov)];
+      if (exists(ov)) {
+        const selected = playerDetails(ov, candidates);
+        return [selected, ...list.filter((p) => p.path.toLowerCase() !== ov.toLowerCase())];
       }
     } catch {
       /* 用户填的路径非法 → 忽略，继续用探测结果 */
@@ -112,15 +140,44 @@ export function seekArgs(id: string, seconds: number): string[] {
 /**
  * 拉起外部播放器播 URL（分离进程：应用退出不带走播放器）。
  * @param extraArgs 播放器专用参数（起播位置等）—— 一律排在 URL 之前（各播放器的约定）
- * 返回是否成功 spawn（同步部分；播放器自身能否播放由它自己决定）。
+ * 等待操作系统发出 spawn 或 error；成功只表示播放器进程已创建，不代表该地址一定能播放。
  */
-export function launchPlayer(path: string, url: string, extraArgs: string[] = []): boolean {
+export interface PlayerLaunchResult {
+  ok: boolean;
+  error?: string;
+}
+
+/** Launch is asynchronous on Windows; wait for `spawn` so ENOENT is not mistaken for success. */
+export function launchPlayer(
+  value: string,
+  url: string,
+  extraArgs: string[] = [],
+  spawnProcess: typeof spawn = spawn,
+  exists: (p: string) => boolean = existsSync,
+): Promise<PlayerLaunchResult> {
+  const path = normalizePlayerExecutablePath(value);
+  if (!path) return Promise.resolve({ ok: false, error: '播放器路径为空' });
   try {
-    const child = spawn(path, [...extraArgs, url], { detached: true, stdio: 'ignore', windowsHide: false });
-    child.on('error', () => undefined); // spawn 失败（权限/被拦）→ 不冒泡成主进程未捕获异常
-    child.unref();
-    return true;
+    if (!exists(path)) return Promise.resolve({ ok: false, error: `播放器文件不存在：${path}` });
   } catch {
-    return false;
+    return Promise.resolve({ ok: false, error: `播放器路径无效：${path}` });
   }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: PlayerLaunchResult): void => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    try {
+      const child = spawnProcess(path, [...extraArgs, url], { detached: true, stdio: 'ignore', windowsHide: false });
+      child.once('spawn', () => {
+        child.unref();
+        finish({ ok: true });
+      });
+      child.once('error', (error) => finish({ ok: false, error: `启动播放器失败：${error.message}` }));
+    } catch (error) {
+      finish({ ok: false, error: `启动播放器失败：${error instanceof Error ? error.message : String(error)}` });
+    }
+  });
 }

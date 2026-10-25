@@ -1,11 +1,11 @@
 // Chromium cannot decode AC3/DTS or demux every MKV. Keep HTML controls and feed H264/AAC HLS.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { isAbsolute, join, resolve, sep } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Logger } from '../../shared/types';
-import { resourcesDir } from '../util/paths';
+import { mediaRuntimesDir, resourcesDir } from '../util/paths';
 
 const SEGMENT_SECONDS = 6;
 const BLOCK_BYTES = 512 * 1024;
@@ -23,7 +23,7 @@ const SEGMENT_TIMEOUT_MS = 180_000;
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const EXPIRY_SWEEP_MS = 60_000;
 type Input = { source: string; size: number; expires: number; blocks: Map<number, Buffer>; pending: Map<number, Promise<Buffer>>; controller: AbortController; procs: Set<ChildProcess> };
-type Session = { source: string; duration: number; expires: number; segments: Map<number, Buffer>; pending: Map<number, Promise<Buffer>>; procs: Set<ChildProcess> };
+type Session = { ffmpeg: string; source: string; duration: number; expires: number; segments: Map<number, Buffer>; pending: Map<number, Promise<Buffer>>; procs: Set<ChildProcess> };
 
 export function htmlMediaPlan(probe: any): { duration: number; compatible: boolean } {
   const streams = Array.isArray(probe?.streams) ? probe.streams : [];
@@ -36,6 +36,23 @@ export function htmlMediaPlan(probe: any): { duration: number; compatible: boole
 
 export function htmlMediaToolsAvailable(ffprobe: string, ffmpeg: string, exists: (path: string) => boolean = path => existsSync(path)): boolean {
   return exists(ffprobe) && exists(ffmpeg);
+}
+
+function ffmpegExecutables(): { ffmpeg: string; ffprobe: string } {
+  const runtimeRoot = join(mediaRuntimesDir(), 'ffmpeg');
+  try {
+    const manifest = JSON.parse(readFileSync(join(runtimeRoot, 'active.json'), 'utf8')) as { relativeBinDir?: unknown };
+    const relative = typeof manifest.relativeBinDir === 'string' ? manifest.relativeBinDir : '';
+    if (relative && !isAbsolute(relative) && !relative.split(/[\\/]/).some(part => part === '..')) {
+      const base = resolve(runtimeRoot);
+      const bin = resolve(base, ...relative.split(/[\\/]/));
+      if (bin.startsWith(base + sep) && htmlMediaToolsAvailable(join(bin, 'ffprobe.exe'), join(bin, 'ffmpeg.exe'))) {
+        return { ffprobe: join(bin, 'ffprobe.exe'), ffmpeg: join(bin, 'ffmpeg.exe') };
+      }
+    }
+  } catch { /* optional download missing or metadata damaged; try packaged tools */ }
+  const bundled = join(resourcesDir(), 'ffmpeg');
+  return { ffprobe: join(bundled, 'ffprobe.exe'), ffmpeg: join(bundled, 'ffmpeg.exe') };
 }
 
 export function htmlPlaylist(duration: number): string {
@@ -246,8 +263,9 @@ export class HtmlMedia {
         if (local.hostname !== '127.0.0.1' || local.port !== String(req.socket.localPort) || !['/play', '/bt'].some(p => local.pathname === p || local.pathname.startsWith(p + '/'))) {
           json(400, { error: '无效的本地播放地址' }); return;
         }
-        const ffprobe = join(resourcesDir(), 'ffmpeg', 'ffprobe.exe');
-        const ffmpeg = join(resourcesDir(), 'ffmpeg', 'ffmpeg.exe');
+        const tools = ffmpegExecutables();
+        const ffprobe = tools.ffprobe;
+        const ffmpeg = tools.ffmpeg;
         if (!htmlMediaToolsAvailable(ffprobe, ffmpeg)) {
           this.log.w('html-media: 未找到 FFmpeg/ffprobe，改用 HTML5 直连；不支持的编码仍需安装媒体组件或切换 MPV');
           json(200, { url: source });
@@ -275,7 +293,7 @@ export class HtmlMedia {
         if (plan.compatible) { this.release(id); json(200, { url: source, ...resolution }); return; }
         if (plan.duration <= 0 || plan.duration > 86400) { this.release(id); throw new Error('无法读取点播媒体时长'); }
         while (this.sessions.size >= 6) this.release(this.sessions.keys().next().value!);
-        this.sessions.set(id, { source: inputUrl, duration: plan.duration, expires: Date.now() + SESSION_TTL_MS, segments: new Map(), pending: new Map(), procs: new Set() });
+        this.sessions.set(id, { ffmpeg, source: inputUrl, duration: plan.duration, expires: Date.now() + SESSION_TTL_MS, segments: new Map(), pending: new Map(), procs: new Set() });
         this.log.i('html-media: 使用 H264/AAC 兼容流（保留 HTML 播放与拖动）');
         json(200, { url: `http://127.0.0.1:${req.socket.localPort}/html/${id}/index.m3u8`, session: id, ...resolution });
         return;
@@ -299,7 +317,7 @@ export class HtmlMedia {
           if (this.activeSegmentJobs >= MAX_ACTIVE_SEGMENT_JOBS) { json(503, { error: '媒体兼容处理繁忙，请稍后重试' }); return; }
           const start = n * SEGMENT_SECONDS;
           this.activeSegmentJobs++;
-          work = this.run(join(resourcesDir(), 'ffmpeg', 'ffmpeg.exe'), [
+          work = this.run(s.ffmpeg, [
             '-v', 'error', '-nostdin', '-rw_timeout', String(FFMPEG_IO_TIMEOUT_US), '-analyzeduration', '1000000', '-probesize', '524288', '-ss', String(start), '-i', s.source,
             '-t', String(Math.min(SEGMENT_SECONDS, s.duration - start)), '-map', '0:v:0?', '-map', '0:a:0?',
             '-sn', '-dn', '-threads', '2',

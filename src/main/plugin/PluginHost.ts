@@ -1,6 +1,6 @@
 import { registerPluginSkins } from '../../shared/ui/themeTokens';
 // src/main/plugin/PluginHost.ts
-// 插件宿主（主进程侧聚合层）：登记 / 物化 / 安装 / 卸载 / 启停 + **超分着色器链解析**。
+// 插件生命周期编排：登记 / 安装 / 卸载 / 启停，并把贡献项交给独立目录服务。
 //
 // ★ 随包官方插件（`resources/plugins/*.winbox`）在启动时**物化**（解包）到 `<pluginsDir>/<id>.winbox/`
 //   并写 `.builtin.json` 侧签 —— 方案 A（2026-10-16 用户定）：磁盘布局与用户安装**完全同构**，
@@ -15,32 +15,28 @@ import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:
 import { dirname, join } from 'node:path';
 import { JsonStore } from '../store/JsonStore';
 import { PluginInstaller } from './PluginInstaller';
+import { PluginContributionCatalog } from './PluginContributionCatalog';
+import { PluginSettingsService } from './PluginSettingsService';
+import { createBuiltinPluginMaterializer } from './BuiltinPluginMaterializer';
 import { PluginRegistry, BUILTIN_MARKER, type PluginEntry } from './PluginRegistry';
-import {
-  danmakuSourceContributeOf, discoverSourceContributeOf, metaProviderContributeOf, shaderModes, shadersForMode,
-  subtitleProviderContributeOf, themeContributeOf,
-  validateDanmakuSourceContribute, validateDiscoverSourceContribute, validateKeymapContribute, validateLiveTemplateContribute,
-  validateMetaProviderContribute, validatePlayerEngineContribute, validateSettingsPanelContribute, validateSubtitleProviderContribute, validateThemeContribute,
-  validateUiCommandContribute, validateUiSlotContribute,
-  settingsEffectiveValue, settingsValueError,
-  type KeymapContribute, type KeymapView,
-  type LiveTemplateContribute, type PlayerEngineContribute, type PlayerEngineView, type PluginInspectResult, type PluginView, type SettingsPanelContribute, type SettingsPanelView, type SettingsValue,
-  type SrState, type ThemeSkinView, type UiCommandContribute, type UiCommandView, type UiSlotContribute, type UiSlotView,
+import type {
+  KeymapView,
+  PlayerEngineView,
+  PluginInspectResult,
+  PluginView,
+  SettingsPanelView,
+  SrState,
+  ThemeSkinView,
+  UiCommandView,
+  UiSlotView,
 } from '../../shared/plugin';
-import { playerEngineFromContribute } from './pluginPlayerEngine';
 import type { EngineLaunchSpec } from '../player/PlayerEngineController';
-import { subtitleProviderFromContribute } from './pluginSubtitleProvider';
-import { metaProviderFromContribute, type MetaProvider } from './pluginMetaProvider';
-import { discoverSourceFromContribute, type DiscoverSource } from './pluginDiscoverSource';
-import { danmakuSourceFromContribute, type DanmakuSource } from './pluginDanmakuSource';
-import { liveTemplateFromContribute, type LiveTemplate } from './pluginLiveTemplate';
-import { uiCommandFromContribute } from './pluginUiCommand';
-import { keymapFromContribute } from './pluginKeymap';
-import { settingsPanelFromContribute } from './pluginSettingsPanel';
-import { uiSlotFromContribute } from './pluginUiSlot';
+import type { MetaProvider } from './pluginMetaProvider';
+import type { DiscoverSource } from './pluginDiscoverSource';
+import type { DanmakuSource } from './pluginDanmakuSource';
+import type { LiveTemplate } from './pluginLiveTemplate';
 import type { SubtitleProvider } from '../subtitle/provider';
-import { srModeUsable } from '../../shared/player';
-import { PluginSandboxManager, type SandboxEntry } from './sandbox/PluginSandboxManager';
+import { PluginSandboxLifecycle, type SandboxEntry } from './sandbox/PluginSandboxLifecycle';
 import type { PluginSandboxApi } from './sandbox/protocol';
 import type { PluginSettingsAccess } from './pluginHostApi';
 import type { Logger } from '../../shared/types';
@@ -75,19 +71,41 @@ interface HostOptions {
 export class PluginHost {
   private readonly installer: PluginInstaller;
   private readonly registry: PluginRegistry;
+  private readonly contributions: PluginContributionCatalog;
+  private readonly builtinMaterializer: ReturnType<typeof createBuiltinPluginMaterializer>;
   private readonly state: JsonStore;
   /** ★ 插件设置面板值（按插件 id → panelId → fieldKey 分桶；`contributes.settings.panel`） */
   private readonly settings: JsonStore;
+  private readonly pluginSettings: PluginSettingsService;
   private entries: PluginEntry[] = [];
   private loaded = false;
   /** ★ R10：L4 沙箱管理器（未接入 → `kind:"code"` 插件不启动，`PluginView.sandbox` 恒 undefined） */
-  private sandbox: PluginSandboxManager | null = null;
+  private sandbox: PluginSandboxLifecycle | null = null;
 
   constructor(private readonly opts: HostOptions) {
     this.installer = new PluginInstaller(opts.pluginsDir);
     this.registry = new PluginRegistry(opts.pluginsDir, opts.builtinDir);
+    this.contributions = new PluginContributionCatalog({
+      entries: () => this.entries,
+      enabled: (pluginId) => this.enabled(pluginId),
+      ready: (entry) => entry.payloadReady && isDirPath(entry.path),
+      enginePaths: () => this.enginePaths(),
+      shaderPath: (entry, filename) => join(entry.path, 'files', filename),
+      fileExists: existsSync,
+    });
+    this.builtinMaterializer = createBuiltinPluginMaterializer(opts.pluginsDir, this.registry, this.installer, {
+      exists: existsSync,
+      readFile: readFileSync,
+      writeFile: (path, contents) => writeFileSync(path, contents),
+    });
     this.state = new JsonStore(opts.statePath);
     this.settings = new JsonStore(opts.settingsPath ?? join(dirname(opts.statePath), 'plugin-settings.json'));
+    this.pluginSettings = new PluginSettingsService({
+      entries: () => this.entries,
+      enabled: (pluginId) => this.enabled(pluginId),
+      ready: (entry) => entry.payloadReady && isDirPath(entry.path),
+      persistence: this.settings,
+    });
   }
 
   /** 启动：物化随包插件 → 刷新登记表 */
@@ -157,30 +175,20 @@ export class PluginHost {
 
   /** 超分状态（可选档位 + 实际生效档位） */
   async srState(wanted: unknown): Promise<SrState> {
-    const e = await this.srPlugin();
-    const modes = e ? this.modesOf(e) : [];
-    return {
-      available: modes.length > 0,
-      modes,
-      mode: srModeUsable(wanted, modes.map((m) => m.id)),
-    };
+    await this.ensureLoaded();
+    return this.contributions.srState(wanted);
   }
 
   /** 某档位 → **绝对路径**着色器链（顺序即生效顺序）；未就绪 / `off` → 空数组 */
   async srShaders(mode: unknown): Promise<string[]> {
-    const e = await this.srPlugin();
-    if (!e) return [];
-    const eff = srModeUsable(mode, this.modesOf(e).map((m) => m.id));
-    if (eff === 'off') return [];
-    return shadersForMode(e.manifest.contributes, 'mpv.shaders', eff)
-      .map((n) => join(e.path, 'files', n))
-      .filter((p) => existsSync(p));
+    await this.ensureLoaded();
+    return this.contributions.srShaders(mode);
   }
 
   /** 当前可用档位（供配置页/播放器显示） */
   async srModes(): Promise<Array<{ id: string; label: string }>> {
-    const e = await this.srPlugin();
-    return e ? this.modesOf(e) : [];
+    await this.ensureLoaded();
+    return this.contributions.srModes();
   }
 
   /**
@@ -190,24 +198,9 @@ export class PluginHost {
    */
   async themeSkins(): Promise<ThemeSkinView[]> {
     await this.ensureLoaded();
-    const out: ThemeSkinView[] = [];
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      const c = themeContributeOf(e.manifest.contributes);
-      if (!c) continue;
-      if (!validateThemeContribute(c).ok) continue; // 安装期已校验，这里兜一道
-      out.push({
-        id: `plugin:${c.id}`,
-        pluginId: e.id,
-        label: c.label,
-        base: c.base,
-        tokens: c.tokens,
-        layout: c.layout ?? {},
-      });
-    }
-    registerPluginSkins(out);
-    return out;
+    const skins = await this.contributions.themeSkins();
+    registerPluginSkins(skins);
+    return skins;
   }
 
   /**
@@ -217,19 +210,7 @@ export class PluginHost {
    */
   async subtitleProviders(): Promise<SubtitleProvider[]> {
     await this.ensureLoaded();
-    const out: SubtitleProvider[] = [];
-    const seen = new Set<string>();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      const c = subtitleProviderContributeOf(e.manifest.contributes);
-      if (!c) continue;
-      if (!validateSubtitleProviderContribute(c).ok) continue; // 安装期已校验，这里兜一道
-      if (seen.has(c.id)) continue;
-      seen.add(c.id);
-      out.push(subtitleProviderFromContribute(c));
-    }
-    return out;
+    return this.contributions.subtitleProviders();
   }
 
   /**
@@ -239,19 +220,7 @@ export class PluginHost {
    */
   async metaProviders(): Promise<MetaProvider[]> {
     await this.ensureLoaded();
-    const out: MetaProvider[] = [];
-    const seen = new Set<string>();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      const c = metaProviderContributeOf(e.manifest.contributes);
-      if (!c) continue;
-      if (!validateMetaProviderContribute(c).ok) continue; // 安装期已校验，这里兜一道
-      if (seen.has(c.id)) continue;
-      seen.add(c.id);
-      out.push(metaProviderFromContribute(c));
-    }
-    return out;
+    return this.contributions.metaProviders();
   }
 
   /**
@@ -260,19 +229,7 @@ export class PluginHost {
    */
   async discoverSources(): Promise<DiscoverSource[]> {
     await this.ensureLoaded();
-    const out: DiscoverSource[] = [];
-    const seen = new Set<string>();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      const c = discoverSourceContributeOf(e.manifest.contributes);
-      if (!c) continue;
-      if (!validateDiscoverSourceContribute(c).ok) continue; // 安装期已校验，这里兜一道
-      if (seen.has(c.id)) continue;
-      seen.add(c.id);
-      out.push(discoverSourceFromContribute(c));
-    }
-    return out;
+    return this.contributions.discoverSources();
   }
 
   /**
@@ -281,19 +238,7 @@ export class PluginHost {
    */
   async danmakuSources(): Promise<DanmakuSource[]> {
     await this.ensureLoaded();
-    const out: DanmakuSource[] = [];
-    const seen = new Set<string>();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      const c = danmakuSourceContributeOf(e.manifest.contributes);
-      if (!c) continue;
-      if (!validateDanmakuSourceContribute(c).ok) continue; // 安装期已校验，这里兜一道
-      if (seen.has(c.id)) continue;
-      seen.add(c.id);
-      out.push(danmakuSourceFromContribute(c));
-    }
-    return out;
+    return this.contributions.danmakuSources();
   }
 
   /**
@@ -303,21 +248,7 @@ export class PluginHost {
    */
   async liveTemplates(): Promise<LiveTemplate[]> {
     await this.ensureLoaded();
-    const out: LiveTemplate[] = [];
-    const seen = new Set<string>();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      for (const raw of e.manifest.contributes ?? []) {
-        if (raw?.type !== 'live.template') continue;
-        const c = raw as unknown as LiveTemplateContribute;
-        if (!validateLiveTemplateContribute(c).ok) continue; // 安装期已校验，这里兜一道
-        if (seen.has(c.id)) continue;
-        seen.add(c.id);
-        out.push({ ...liveTemplateFromContribute(c), pluginId: e.id });
-      }
-    }
-    return out;
+    return this.contributions.liveTemplates();
   }
 
   /**
@@ -327,21 +258,7 @@ export class PluginHost {
    */
   async uiCommands(): Promise<UiCommandView[]> {
     await this.ensureLoaded();
-    const out: UiCommandView[] = [];
-    const seen = new Set<string>();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      for (const raw of e.manifest.contributes ?? []) {
-        if (raw?.type !== 'ui.command') continue;
-        const c = raw as unknown as UiCommandContribute;
-        if (!validateUiCommandContribute(c).ok) continue; // 安装期已校验，这里兜一道
-        if (seen.has(c.id)) continue;
-        seen.add(c.id);
-        out.push(uiCommandFromContribute(c, { id: e.id, name: e.manifest.name }));
-      }
-    }
-    return out;
+    return this.contributions.uiCommands();
   }
 
   /**
@@ -351,21 +268,7 @@ export class PluginHost {
    */
   async keymaps(): Promise<KeymapView[]> {
     await this.ensureLoaded();
-    const out: KeymapView[] = [];
-    const seen = new Set<string>();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      for (const raw of e.manifest.contributes ?? []) {
-        if (raw?.type !== 'keymap') continue;
-        const c = raw as unknown as KeymapContribute;
-        if (!validateKeymapContribute(c).ok) continue; // 安装期已校验，这里兜一道
-        if (seen.has(c.id)) continue;
-        seen.add(c.id);
-        out.push(keymapFromContribute(c, { id: e.id, name: e.manifest.name }));
-      }
-    }
-    return out;
+    return this.contributions.keymaps();
   }
 
   /**
@@ -376,23 +279,9 @@ export class PluginHost {
    */
   async settingsPanels(): Promise<SettingsPanelView[]> {
     await this.ensureLoaded();
-    const out: SettingsPanelView[] = [];
-    const seen = new Set<string>();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      const stored = this.settings.getObject<Record<string, Record<string, unknown>>>(e.id, {});
-      for (const raw of e.manifest.contributes ?? []) {
-        if (raw?.type !== 'settings.panel') continue;
-        const c = raw as unknown as SettingsPanelContribute;
-        if (!validateSettingsPanelContribute(c).ok) continue; // 安装期已校验，这里兜一道
-        if (seen.has(c.id)) continue;
-        seen.add(c.id);
-        out.push(settingsPanelFromContribute(c, { id: e.id, name: e.manifest.name }, stored[c.id]));
-      }
-    }
-    return out;
+    return this.pluginSettings.panels();
   }
+
 
   /**
    * ★ 写一个设置字段值（渲染层表单 onChange → IPC）：值必须过**该字段的类型 / 约束**校验
@@ -401,24 +290,9 @@ export class PluginHost {
    */
   async setPluginSetting(a: { id?: unknown; panelId?: unknown; key?: unknown; value?: unknown }): Promise<PluginSettingResult> {
     await this.ensureLoaded();
-    const id = String(a?.id ?? ''), panelId = String(a?.panelId ?? ''), key = String(a?.key ?? '');
-    if (!id || !panelId || !key) return { ok: false, reason: '参数不完整' };
-    const e = this.entries.find((x) => x.id === id);
-    if (!e || !this.enabled(e.id) || !e.payloadReady || !isDirPath(e.path)) return { ok: false, reason: '插件不存在或未启用' };
-    const panel = (e.manifest.contributes ?? []).find(
-      (x) => x?.type === 'settings.panel' && (x as { id?: unknown }).id === panelId,
-    ) as unknown as SettingsPanelContribute | undefined;
-    if (!panel || !validateSettingsPanelContribute(panel).ok) return { ok: false, reason: '设置面板不存在' };
-    const field = panel.fields.find((f) => f.key === key);
-    if (!field) return { ok: false, reason: `未知设置项：${key}` };
-    const err = settingsValueError(field, a.value);
-    if (err) return { ok: false, reason: `${field.label}：${err}` };
-    const all = this.settings.getObject<Record<string, Record<string, unknown>>>(e.id, {});
-    const bucket = { ...all[panelId], [key]: a.value as SettingsValue };
-    this.settings.setObject(e.id, { ...all, [panelId]: bucket });
-    this.settings.flush();
-    return { ok: true, panels: await this.settingsPanels() };
+    return this.pluginSettings.set(a);
   }
+
 
   /**
    * ★ 插件受限 UI 槽位（`contributes.ui.slot`）：已启用 + 载荷就位 + 通过内容校验 → 摊平成 `UiSlotView`。
@@ -427,21 +301,7 @@ export class PluginHost {
    */
   async uiSlots(): Promise<UiSlotView[]> {
     await this.ensureLoaded();
-    const out: UiSlotView[] = [];
-    const seen = new Set<string>();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      for (const raw of e.manifest.contributes ?? []) {
-        if (raw?.type !== 'ui.slot') continue;
-        const c = raw as unknown as UiSlotContribute;
-        if (!validateUiSlotContribute(c).ok) continue; // 安装期已校验，这里兜一道
-        if (seen.has(c.id)) continue;
-        seen.add(c.id);
-        out.push(uiSlotFromContribute(c, { id: e.id, name: e.manifest.name }));
-      }
-    }
-    return out;
+    return this.contributions.uiSlots();
   }
 
   /**
@@ -453,27 +313,7 @@ export class PluginHost {
    */
   async playerEngines(): Promise<PlayerEngineView[]> {
     await this.ensureLoaded();
-    const paths = this.enginePaths();
-    const out: PlayerEngineView[] = [];
-    const seen = new Set<string>();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (e.manifest.kind !== 'code') continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      for (const raw of e.manifest.contributes ?? []) {
-        if (raw?.type !== 'player.engine') continue;
-        const c = raw as unknown as PlayerEngineContribute;
-        if (!validatePlayerEngineContribute(c).ok) continue; // 安装期已校验，这里兜一道
-        if (seen.has(c.id)) continue;
-        seen.add(c.id);
-        out.push(playerEngineFromContribute(
-          c,
-          { id: e.id, name: e.manifest.name, dir: e.path },
-          paths[`engine:${c.id}`] ?? '',
-        ));
-      }
-    }
-    return out;
+    return this.contributions.playerEngines();
   }
 
   /**
@@ -483,27 +323,7 @@ export class PluginHost {
    */
   async playerEngineSpec(id: string): Promise<EngineLaunchSpec | null> {
     await this.ensureLoaded();
-    const want = String(id || '');
-    const paths = this.enginePaths();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (e.manifest.kind !== 'code') continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      for (const raw of e.manifest.contributes ?? []) {
-        if (raw?.type !== 'player.engine') continue;
-        const c = raw as unknown as PlayerEngineContribute;
-        if (`engine:${c.id}` !== want) continue;
-        if (!validatePlayerEngineContribute(c).ok) return null;
-        const view = playerEngineFromContribute(
-          c,
-          { id: e.id, name: e.manifest.name, dir: e.path },
-          paths[`engine:${c.id}`] ?? '',
-        );
-        if (!view.ready || !view.path) return null;
-        return { id: want, exe: view.path, args: [...(c.args ?? [])], protocol: c.protocol };
-      }
-    }
-    return null;
+    return this.contributions.playerEngineSpec(id);
   }
 
   // ---- ★ R10：L4 沙箱（`kind:"code"`）----
@@ -516,9 +336,9 @@ export class PluginHost {
     api: PluginSandboxApi;
     workerFile: string;
     logger: Logger;
-    factory?: ConstructorParameters<typeof PluginSandboxManager>[0]['factory'];
+    factory?: ConstructorParameters<typeof PluginSandboxLifecycle>[0]['factory'];
   }): void {
-    this.sandbox = new PluginSandboxManager({
+    this.sandbox = new PluginSandboxLifecycle({
       api: deps.api,
       workerFile: deps.workerFile,
       logger: deps.logger,
@@ -531,39 +351,9 @@ export class PluginHost {
    * `get` 按 field.key 定位并返回**有效值**（存值合法则存值、否则 `default`）；`set` 过类型校验（不合法**抛**）。
    */
   pluginSettingsAccess(): PluginSettingsAccess {
-    const findField = (id: string, key: string): { panelId: string; field: SettingsPanelContribute['fields'][number] } | undefined => {
-      const e = this.entries.find((x) => x.id === id);
-      if (!e) return undefined;
-      for (const raw of e.manifest.contributes ?? []) {
-        if (raw?.type !== 'settings.panel') continue;
-        const c = raw as unknown as SettingsPanelContribute;
-        if (!validateSettingsPanelContribute(c).ok) continue;
-        const f = c.fields.find((x) => x.key === key);
-        if (f) return { panelId: c.id, field: f };
-      }
-      return undefined;
-    };
-    return {
-      get: (id: string, key: string): unknown => {
-        const found = findField(id, key);
-        if (!found) return undefined;
-        const stored = this.settings.getObject<Record<string, Record<string, unknown>>>(id, {});
-        return settingsEffectiveValue(found.field, stored[found.panelId]?.[key]);
-      },
-      set: (id: string, key: string, value: unknown): void => {
-        const e = this.entries.find((x) => x.id === id);
-        if (!e) throw new Error('插件不存在');
-        const found = findField(id, key);
-        if (!found) throw new Error(`未知设置项：${key}`);
-        const err = settingsValueError(found.field, value);
-        if (err) throw new Error(`${found.field.label}：${err}`);
-        const all = this.settings.getObject<Record<string, Record<string, unknown>>>(id, {});
-        const bucket = { ...all[found.panelId], [key]: value as SettingsValue };
-        this.settings.setObject(id, { ...all, [found.panelId]: bucket });
-        this.settings.flush();
-      },
-    };
+    return this.pluginSettings.access();
   }
+
 
   /**
    * ★ R10 安装前**干跑**：解包 + 校验但**不落盘**，返回权限清单（含 `permissionNotes`）供用户确认。
@@ -615,30 +405,7 @@ export class PluginHost {
 
   /** 物化随包插件：随包 zip → `<pluginsDir>/<id>.winbox/` + `.builtin.json` 侧签 */
   private async materializeBuiltin(): Promise<void> {
-    // ★ 必须用 listBuiltin()（不经 list() 的去重）——物化后的同名目录会在 list() 里把随包 zip 覆盖掉，
-    //   那样就看不到"随包版本变了"这件事，永远不会重新物化。
-    const packaged = await this.registry.listBuiltin();
-    for (const e of packaged) {
-      // payloadReady=false 且 source=builtin ⇒ 仍是随包只读 zip，尚未物化
-      if (e.source !== 'builtin' || e.payloadReady) continue;
-      const zipPath = e.path;
-      if (!existsSync(zipPath)) continue;
-      const installedDir = join(this.opts.pluginsDir, `${e.id}.winbox`);
-      const hasMarker = existsSync(join(installedDir, BUILTIN_MARKER));
-      // 用户自己的同 id 安装（无侧签）→ 不覆盖
-      if (existsSync(installedDir) && !hasMarker) continue;
-      if (hasMarker && readMarkerVersion(installedDir) === e.manifest.version) continue; // 已是本版
-      const r = await this.installer.install(readFileSync(zipPath));
-      if (!r.ok || !r.dir) continue;
-      try {
-        writeFileSync(
-          join(r.dir, BUILTIN_MARKER),
-          JSON.stringify({ version: e.manifest.version, materializedAt: Date.now() }, null, 2),
-        );
-      } catch {
-        /* 侧签写失败：下次启动会重复物化（幂等） */
-      }
-    }
+    await this.builtinMaterializer.materialize();
   }
 
   private async refresh(): Promise<void> {
@@ -672,19 +439,8 @@ export class PluginHost {
     };
   }
 
-  private modesOf(e: PluginEntry): Array<{ id: string; label: string }> {
-    return shaderModes(e.manifest.contributes, 'mpv.shaders').map((m) => ({ id: m.id, label: m.label }));
-  }
-
-  /** 承担超分的那一个插件（已启用 + 载荷已就位 + 声明了 mpv.shaders 档位） */
-  private async srPlugin(): Promise<PluginEntry | null> {
-    await this.ensureLoaded();
-    for (const e of this.entries) {
-      if (!this.enabled(e.id)) continue;
-      if (!e.payloadReady || !isDirPath(e.path)) continue;
-      if (shaderModes(e.manifest.contributes, 'mpv.shaders').length) return e;
-    }
-    return null;
+  private modesOf(entry: PluginEntry): Array<{ id: string; label: string }> {
+    return this.contributions.modesOf(entry);
   }
 
   /** ★ R11：`local-path` 引擎的用户路径表（未接入 / 读取失败 → 空表） */
@@ -712,14 +468,6 @@ export class PluginHost {
   }
 }
 
-function readMarkerVersion(dir: string): string {
-  try {
-    const m = JSON.parse(readFileSync(join(dir, BUILTIN_MARKER), 'utf-8')) as { version?: unknown };
-    return typeof m.version === 'string' ? m.version : '';
-  } catch {
-    return '';
-  }
-}
 
 function isDirPath(p: string): boolean {
   try {

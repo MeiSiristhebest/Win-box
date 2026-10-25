@@ -23,11 +23,8 @@ export interface SniffHit {
 const SNIFF_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-/** 嗅探专用 session 分区（非 persist: 前缀 = 内存态，退出即清） */
-const SNIFF_PARTITION = 'parse-sniff';
-
-/** 并发上限：同时最多一个隐藏嗅探窗口 */
-const MAX_CONCURRENT = 1;
+/** 并发上限：同时最多 3 个隐藏嗅探窗口（支持多解析线路竞速嗅探） */
+const MAX_CONCURRENT = 3;
 let running = 0;
 
 /** 媒体描述里出现的候选打分（m3u8 最优，其次 mp4/flv） */
@@ -47,9 +44,11 @@ export async function sniffMediaUrl(
   target: string,
   logger: Logger,
   timeoutMs = 20000,
+  signal?: AbortSignal,
 ): Promise<SniffHit | null> {
   const url = (target || '').trim();
   if (!/^https?:\/\//i.test(url)) return null;
+  if (signal?.aborted) return null;
   // 已经是媒体地址 → 不用开窗口
   if (isMediaUrl(url)) return { url, headers: {} };
   // 本机中继地址（/play?url=…）→ 换原始地址嗅探没有意义，直接放弃
@@ -60,7 +59,9 @@ export async function sniffMediaUrl(
   }
   running++;
 
-  const ses = session.fromPartition(SNIFF_PARTITION, { cache: false });
+  // ★ 为每个嗅探任务使用独立内存态 session 分区，避免并发嗅探时 webRequest 监听相互覆盖
+  const partition = `parse-sniff-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const ses = session.fromPartition(partition, { cache: false });
   // ★ 2026-09-25：用户设了网络代理 → 嗅探窗口同样走代理
   //   （很多需要网页解析的站点本身就只在代理下可达；本机地址由 proxyBypassRules 排除）
   const proxy = activeProxyUrl();
@@ -76,7 +77,7 @@ export async function sniffMediaUrl(
     height: 720,
     autoHideMenuBar: true,
     webPreferences: {
-      partition: SNIFF_PARTITION,
+      partition,
       javascript: true,
       images: false,
       webSecurity: false,
@@ -113,10 +114,20 @@ export async function sniffMediaUrl(
       return { url: best, headers: headersByUrl.get(best) || {} };
     };
 
+    const onAbort = (): void => settle();
+    if (signal) {
+      if (signal.aborted) {
+        settle();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+
     const settle = (): void => {
       if (settled) return;
       settled = true;
       for (const t of timers) clearTimeout(t);
+      signal?.removeEventListener('abort', onAbort);
       // 摘掉监听（本分区只有本模块在用，整体置 null 安全）
       try { ses.webRequest.onBeforeRequest(null); } catch { /* ignore */ }
       try { ses.webRequest.onBeforeSendHeaders(null); } catch { /* ignore */ }

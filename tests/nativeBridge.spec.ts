@@ -14,6 +14,7 @@ import { JarSpiderBridge, extractBridgeNotes, isGuardInnerSpiderNull } from '../
 import { NullLogger } from '../src/engine/util/logger';
 import { buildZip } from '../src/engine/util/syncZip';
 import { nativeFixture } from './fixtures/nativeClass';
+import { classifySpiderFailure, translateSpiderLog } from '../src/engine/spider/spiderDiagnostics';
 
 const spawnMock = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', () => ({ spawn: spawnMock }));
@@ -226,7 +227,7 @@ describe('JarSpiderBridge.call — 守卫内层蜘蛛为空 → shell-shim 兜�
     const c2 = spawnMock.mock.results[1].value as ReturnType<typeof fakeChild>;
     c2.stdout.emit('data', Buffer.from('{"list":[1]}'));
     c2.emit('close', 0);
-    expect(await p).toContain('{"list":[1]}');
+    expect((await p).output).toContain('{"list":[1]}');
   });
 
   it('该 jar 无内置真实实现 → 不做兜底重试（只 spawn 一次）', async () => {
@@ -242,10 +243,10 @@ describe('JarSpiderBridge.call — 守卫内层蜘蛛为空 → shell-shim 兜�
       '[android.Log.D] SpiderLog: java.lang.NullPointerException: Cannot invoke "com.github.catvod.crawler.Spider.init(android.content.Context, String)" because "this.oOoOoOoOoOoOoO0o" is null\n',
     ));
     c1.emit('close', 0);
-    await p;
+    const result = await p;
     await new Promise((r) => setTimeout(r, 30));
     expect(spawnMock.mock.results.length).toBe(1);
-    expect(isGuardInnerSpiderNull(bridge.lastReason)).toBe(true);
+    expect(isGuardInnerSpiderNull(result.reason)).toBe(true);
   });
 });
 
@@ -303,10 +304,14 @@ describe('extractBridgeNotes — 原生桥消息抽取', () => {
 describe('isGuardInnerSpiderNull — 失败原因判据', () => {
   it('命中：原始 NPE 与截断后的 120 字符文本、以及翻译后的中文原因', () => {
     const raw = 'java.lang.NullPointerException: Cannot invoke "com.github.catvod.crawler.Spider.init(android.content.Context, String)" because "this.oOoOoOoOoOoOoO0o" is null';
+    const translated = translateSpiderLog(raw);
     expect(isGuardInnerSpiderNull(raw)).toBe(true);
     expect(isGuardInnerSpiderNull(raw.slice(0, 120))).toBe(true);
     expect(isGuardInnerSpiderNull('蜘蛛运行器异常：' + raw.slice(0, 120))).toBe(true);
     expect(isGuardInnerSpiderNull('加固壳内部蜘蛛未就绪（原生解密未产出加载器）—— 已自动改用内置真实实现')).toBe(true);
+    expect(isGuardInnerSpiderNull(translated)).toBe(true);
+    expect(classifySpiderFailure(raw)).toBe('guard-inner-spider-null');
+    expect(classifySpiderFailure('ClassNotFoundException: com.github.catvod.spider.Xxx')).toBe('spider-class-missing');
   });
 
   it('不命中：其它 NPE / 普通失败原因（不误触发兜底重试）', () => {

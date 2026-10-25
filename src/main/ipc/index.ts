@@ -1,12 +1,9 @@
-// src/main/ipc/index.ts — 注册所有 IPC handler
-import { app, BrowserWindow, clipboard, dialog, ipcMain } from 'electron';
+// src/main/ipc/index.ts — 主进程 IPC 组合根
+import { app, BrowserWindow, clipboard, dialog } from 'electron';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { registerHandler } from '../util/ipcGuard';
 import { fileLogger } from '../util/logger';
-import { noteMediaState } from '../util/mediaDiag';
-import { startPlayMemWatch } from '../util/memProbe';
 import { setUiScalePref, uiScaleState } from '../ui/uiScale';
-import { SpiderHost } from '../spider/SpiderHost';
 import { resourcesDir, userDataDir, spiderCacheDir } from '../util/paths';
 import type { LocalPkgStore } from '../store/LocalPkgStore';
 import type { UiPreferencesService } from '../store/UiPreferencesService';
@@ -25,78 +22,106 @@ import { join, basename } from 'node:path';
 import { IPC } from '../../shared/ipc-channels';
 import { LOCAL_PROXY_BASE } from '../../shared/constants';
 import { parseLive } from '../../engine/config/LiveConfigParser';
-import { localLiveUrl, looksLikeLiveSourceText, sanitizeLiveFileName } from '../../engine/live/localLive';
+import { localLiveUrl } from '../../engine/live/localLive';
 import { dataDirReport } from '../util/dataDirBootstrap';
-import * as iconv from 'iconv-lite';
+import { LocalLiveFileImporter } from '../live/LocalLiveFileImporter';
 import { proxySettingsView, setProxySettings, type ProxySettings } from '../net/proxy';
 import { registerBackupIpc } from '../settings/backupIpc';
+import type { SettingsBackupService } from '../settings/SettingsBackupService';
+import { registerPlayerRuntimeIpc } from './playerRuntime';
+import { registerPluginManagementIpc } from './pluginManagement';
+import { registerExternalPlaybackIpc } from './externalPlayback';
+import { registerMetadataIpc } from './metadataIpc';
+import type { MetadataIpcPort } from './metadataIpc';
+import { registerDriveIpc } from './driveIpc';
+import { registerSubtitleIpc } from './subtitleIpc';
+import type { SubtitleIpcPort } from './subtitleIpc';
+import { registerDanmakuIpc } from './danmakuIpc';
+import type { DanmakuIpcPort } from './danmakuIpc';
+import {
+  registerLiveChannelConfigurationIpc,
+  registerProfileIpc,
+  registerSourceConfigurationIpc,
+  registerSubscriptionImportIpc,
+} from './configurationIpc';
+import { registerPlayerWindowIpc } from './playerWindowIpc';
+import { registerVodIpc } from './vodIpc';
+import { registerLiveIpc } from './liveIpc';
+import type { MainIpcApplicationPorts } from './MainIpcApplicationPorts';
 import type { DavServer } from '../../shared/webdav';
 import type { DavService } from '../webdav/DavService';
 import type { DlnaCastTarget, DlnaDevice } from '../../shared/dlna';
 import type { DlnaService } from '../dlna/DlnaService';
 import type { UpdateProgress } from '../../shared/update';
 import type { UpdateService } from '../update/UpdateService';
-import type { ExploreQuery } from '../../shared/discover';
 // 独立播放器窗口
-import { openPlayerWindow, playerSwitchEpisode, isPlayerOpen, closePlayerWindow, playerSetMini, playerIsMini, playerWindow, playerResendInit, onPlayerWindowClosed, isPlayerWindow, playerSetFullscreen, playerIsFullscreen, playerSetResizable } from '../player/PlayerWindow';
+import { openPlayerWindow, playerSwitchEpisode, isPlayerOpen, closePlayerWindow, playerSetMini, playerIsMini, playerWindow, playerResendInit, isPlayerWindow, playerSetFullscreen, playerIsFullscreen, playerSetResizable } from '../player/PlayerWindow';
 // ★ 2026-10-08 MPV 高兼容播放内核（独立播放器窗口内嵌 --wid）
 import { MpvController } from '../player/MpvController';
 // ★ 2026-10-18（R11）第三方播放内核（`contributes.player.engine`；宿主托管，插件只给描述符）
 import type { PlayerEngineController } from '../player/PlayerEngineController';
 // ★ 2026-10-16 插件系统（M1）：宿主聚合（登记/安装/启停/超分着色器解析）
 import type { PluginHost } from '../plugin/PluginHost';
-import type { PlayerEngineView } from '../../shared/plugin';
-import type { SrMode } from '../../shared/player';
 // ★ 2026-10-08 详情页独立窗口（外观开关控制；见 renderer/lib/detailWin.ts）
 import { openDetailWindow, detailWindowReady } from '../player/DetailWindow';
 import { openSearchWindow, searchWindowReady } from '../player/SearchWindow';
-import type { MpvCommand, MpvStartOptions } from '../../shared/player';
 // 老板键
 import { bossKey, BOSS_DEFAULT_ACCEL } from '../bossKey';
 import { playerSettings } from '../player/playerSettings';
-import { detectPlayers, launchPlayer, seekArgs } from '../torrent/externalPlayer';
+import { MediaRuntimeProvisioner } from '../player/MediaRuntimeProvisioner';
+import { detectPlayers, launchPlayer, resolvePlayer, seekArgs } from '../torrent/externalPlayer';
+import { ExternalPlayback } from '../torrent/ExternalPlayback';
+import { normalizePlayerExecutablePath } from '../../shared/player';
 import type { IpcMainInvokeEvent } from 'electron';
-import type { BossKeySettings, EpgChannelRef, ImportReport, LiveBean, LiveGroup, MultiConfigEntry, SearchAllProgressEvent, SiteConfig, SourceBean, SourceMoveDirection, SourceUpdatePatch } from '../../shared/types';
-import type { MetaSettings } from '../../shared/meta';
+import type { BossKeySettings, ImportReport, LiveBean, MultiConfigEntry, SiteConfig, SourceBean } from '../../shared/types';
 import type { PlayerSettings } from '../../shared/player';
 
 function winOf(e: IpcMainInvokeEvent): BrowserWindow | null {
   return BrowserWindow.fromWebContents(e.sender);
 }
 
+interface IpcFeaturePorts {
+  subtitles: SubtitleIpcPort;
+  danmaku: DanmakuIpcPort;
+  metadata: MetadataIpcPort;
+}
+
 /** ★ 本次主进程启动的会话标识（模块求值 = 应用启动一次；重启必变） */
 const SESSION_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-/**
- * ★ 2026-10-14（用户要求）：本地 TXT / M3U 直播源「读 → 形态校验 → 归一化 UTF-8 落盘」的共用步骤。
- * 返回 `needsName=true` 表示调用方尚未给出线路名（交由渲染层「单独弹框命名」后二次调用）。
- * 抛错 = 文件为空 / 编码可疑 / 内容不像直播源。
- */
-function importLiveFile(srcPath: string, nameOverride: string): { fileName: string; name: string; needsName: boolean } {
-  const buf = readFileSync(srcPath);
-  if (!buf.length) throw new Error('所选文件为空');
-  // 编码：UTF-8 优先；出现替换字符（典型 GBK 直播源）时按 gb18030 再解一次做校验
-  let text = buf.toString('utf-8');
-  if (text.includes('\uFFFD')) {
-    try { text = iconv.decode(buf, 'gb18030'); } catch { /* 解码失败就用 utf-8 结果做校验 */ }
-  }
-  if (!looksLikeLiveSourceText(text)) {
-    throw new Error('文件内容不像 TXT / M3U 直播源（需要 #EXTM3U 头、#genre# 分组行，或「频道名,http…」频道行）');
-  }
-  const dir = join(userDataDir(), 'local-live');
-  mkdirSync(dir, { recursive: true });
-  const fileName = sanitizeLiveFileName(basename(srcPath));
-  // 归一化为 UTF-8 落盘（/file 路由固定按 text/plain; charset=utf-8 输出，
-  // 若存原始 GBK 字节会在直播页解码成乱码；文本在上一段已统一解码）
-  writeFileSync(join(dir, fileName), Buffer.from(text, 'utf-8'));
-  const name = nameOverride || nameFromLocalFile(srcPath); // 线路名 = 用户命名（缺省取原始文件名去扩展名）
-  return { fileName, name, needsName: !nameOverride };
-}
-
-export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService, updater: UpdateService, pkgs: LocalPkgStore, uiPreferences: UiPreferencesService, plugins: PluginHost, engines: PlayerEngineController): void {
+export function registerIpc(
+  services: MainIpcApplicationPorts,
+  dav: DavService,
+  dlna: DlnaService,
+  updater: UpdateService,
+  pkgs: LocalPkgStore,
+  uiPreferences: UiPreferencesService,
+  plugins: PluginHost,
+  engines: PlayerEngineController,
+  features: IpcFeaturePorts,
+  backup: Pick<SettingsBackupService, 'snapshot' | 'restore'>,
+): void {
   const log = fileLogger;
+  const localLiveImporter = new LocalLiveFileImporter({
+    read: (path) => readFileSync(path),
+    writeUtf8: (fileName, text) => {
+      const directory = join(userDataDir(), 'local-live');
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(join(directory, fileName), Buffer.from(text, 'utf-8'));
+    },
+  });
   /** ★ 2026-10-08 MPV 播放内核（单会话；播放器窗口关闭/退出应用会 dispose） */
   const mpv = new MpvController(fileLogger);
+  const mediaRuntimes = new MediaRuntimeProvisioner(fileLogger, event => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send(IPC.MEDIA_RUNTIME_PROGRESS, event);
+    }
+  });
+  const externalPlayback = new ExternalPlayback({
+    settings: playerSettings,
+    players: { detectPlayers, launchPlayer, resolvePlayer, seekArgs, normalizeExecutablePath: normalizePlayerExecutablePath },
+    logger: log,
+  });
   /**
    * ★ 2026-10-17（B3「冻结/解冻」）：播放器窗口开/关 → 广播给**其余窗口**。
    *   主窗口据此把隐藏页里已解码的图片位图释放掉（只清 `img.src`、React 树与数据原地保留，零重载）；
@@ -171,139 +196,25 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
     migration: dataDirReport.migration,
   }), log);
 
-  registerHandler(IPC.CONFIG_IMPORT, async (e: any, args: { url?: string; json?: string; name?: string }) => {
-    const r = await host.importConfig(args || {});
-    return { config: r.config, report: r.report, warnings: r.warnings, urls: r.urls };
-  }, log);
-
-  registerHandler(IPC.CONFIG_LIST_SITES, () => host.sites, log);
-  registerHandler(IPC.CONFIG_DIAGNOSE, () => host.importReport, log);
-
-  // 用户配置持久化 + 源管理（任务 B）
-  registerHandler(IPC.CFG_GET, () => host.cfgSnapshot(), log);
-  // ★ 2026-09-27：已学到的「需要网盘绑定」源 key（学习点 = play() 命中网盘直链，见 SpiderHost.markDriveBindNeeded）
-  registerHandler(IPC.DRIVE_BIND_KEYS, () => host.driveBindLearned(), log);
-  registerHandler(IPC.CFG_ADD_SOURCE, (_e: any, bean: SourceBean) => host.cfgAddSource(bean), log);
-  registerHandler(IPC.CFG_UPDATE_SOURCE, (_e: any, a: { key: string; patch: SourceUpdatePatch }) =>
-    host.cfgUpdateSource(a.key, a.patch || {}), log);
-  registerHandler(IPC.CFG_DELETE_SOURCE, (_e: any, key: string) => host.cfgDeleteSource(key), log);
-  registerHandler(IPC.CFG_DELETE_SOURCES, (_e: any, keys: string[]) => host.cfgDeleteSources(Array.isArray(keys) ? keys : []), log);
-  registerHandler(IPC.CFG_GLOBAL_SOURCE_BLOCK, (_e: any, value: { keys: string[]; blocked: boolean }) => {
-    if (!value || !Array.isArray(value.keys) || value.keys.length > 1000 || typeof value.blocked !== 'boolean' || value.keys.some(key => typeof key !== 'string' || key.length > 256)) throw new Error('全局屏蔽参数无效');
-    host.cfgSetGlobalSourceBlock(value.keys, value.blocked);
-  }, log);
-  registerHandler(IPC.CFG_MOVE_SOURCE, (_e: any, a: { key: string; direction: SourceMoveDirection }) =>
-    host.cfgMoveSource(a.key, a.direction), log);
-  registerHandler(IPC.CFG_SET_ACTIVE_SOURCE, (_e: any, key: string) => host.cfgSetActiveSource(key), log);
-  registerHandler(IPC.CFG_SET_ACTIVE_LIVE, (_e: any, index: number) => host.cfgSetActiveLive(index), log);
-  registerHandler(IPC.CFG_IMPORT_URL, async (_e: any, a: { url: string; name?: string }) => {
-    const r = await host.importConfig({ url: a.url, name: a.name });
-    return { config: r.config, report: r.report, warnings: r.warnings, urls: r.urls };
-  }, log);
-  host.onSubscriptionImportProgress = (event) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      try {
-        if (!window.isDestroyed()) window.webContents.send(IPC.CFG_IMPORT_JOB_PROGRESS, event);
-      } catch {
-        // A window can close while the main-process import continues.
-      }
-    }
-  };
-  registerHandler(IPC.CFG_IMPORT_JOB_START, (_e: any, a: { url: string; name?: string }) =>
-    host.startSubscriptionImport(String(a?.url || ''), String(a?.name || '')), log);
-  registerHandler(IPC.CFG_IMPORT_JOB_CANCEL, (_e: any, jobId: string) =>
-    host.cancelSubscriptionImport(String(jobId || '')), log);
-  registerHandler(IPC.CFG_IMPORT_JOB_RETRY, (_e: any, jobId: string) =>
-    host.retryFailedSubscriptionImport(String(jobId || '')), log);
-  registerHandler(IPC.CFG_IMPORT_JOB_CONTINUE, (_e: any, jobId: string) =>
-    host.continueSubscriptionImport(String(jobId || '')), log);
-  registerHandler(IPC.CFG_IMPORT_JOB_GET, (_e: any, jobId: string) =>
-    host.getSubscriptionImport(String(jobId || '')), log);
-  registerHandler(IPC.CFG_IMPORT_JOB_LIST, () => host.listSubscriptionImports(), log);
-  registerHandler(IPC.CFG_IMPORT_JOB_RESUME, (_e: any, jobId: string) =>
-    host.resumeSubscriptionImport(String(jobId || '')), log);
-  registerHandler(IPC.CFG_SUBSCRIPTION_GROUP_REMOVE_MEMBER, (_e: any, args: { groupId: string; memberId: string }) =>
-    host.cfgRemoveSubscriptionGroupMember(String(args?.groupId || ''), String(args?.memberId || '')), log);
-  registerHandler(IPC.CFG_SUBSCRIPTION_GROUP_RESOLVE_REFRESH, (_e: any, args: { groupId: string; memberId: string; resolution: string }) => {
-    const resolution = args?.resolution;
-    if (resolution !== 'keep-current' && resolution !== 'use-upstream') throw new Error('首次刷新处理方式无效');
-    return host.cfgResolveSubscriptionRefresh(String(args?.groupId || ''), String(args?.memberId || ''), resolution);
-  }, log);
-  registerHandler(IPC.CFG_PROFILES, () => host.cfgProfiles(), log);
-  registerHandler(IPC.CFG_PROFILE_SAVE, (_e: any, name: string) => host.cfgSaveAsProfile(name), log);
-  registerHandler(IPC.CFG_PROFILE_ACTIVATE, (_e: any, id: string) => host.cfgActivateProfile(id), log);
-  registerHandler(IPC.CFG_PROFILE_DELETE, (_e: any, id: string) => host.cfgDeleteProfile(id), log);
-  registerHandler(IPC.CFG_PROFILE_UPDATE_NAME, (_e: any, a: { id: string; name: string }) => host.cfgUpdateProfileName(a.id, a.name), log);
-  /**
-   * ★ 2026-09-30（用户要求）：换源弹层「左订阅 / 右源」视图 —— 每份档案的源 key/name 清单。
-   * 当前生效档案取运行期真实源列表；其余档案解析其存档 JSON（坏档给空清单，不阻塞弹层）。
-   */
-  registerHandler(IPC.CFG_PROFILE_SITES, () => host.cfgProfileSites(), log);
-  registerHandler(IPC.CFG_PROFILE_SOURCES, (_e: any, profileId: string) => host.cfgProfileSources(String(profileId || '')), log);
-  /** ★ 2026-09-30（用户要求）：一步完成「切换档案 + 选中该档案下的源」（单次 apply，避免两轮宿主重活） */
-  registerHandler(IPC.CFG_SWITCH_PROFILE_SOURCE, (_e: any, a: { profileId: string; key: string }) =>
-    host.cfgSwitchProfileSource(String(a?.profileId || ''), String(a?.key || '')), log);
+  registerSourceConfigurationIpc(services.sourceConfiguration, services.sourceReads, log);
+  registerSubscriptionImportIpc(services.subscriptionImports, services.subscriptionGroups, log);
+  registerProfileIpc(services.profileConfiguration, log);
+  registerLiveChannelConfigurationIpc(services.liveChannelConfiguration, log);
   // 清理缓存：只删可重建的纯缓存（Chromium 缓存 / jar 转换缓存），绝不动配置/历史/绑定
   //   ★ 2026-09-24：清完立刻在后台重建蜘蛛运行时（重新转换 jar + 重启热进程），
   //     否则用户下一次进源要在请求里现付 30~40s 的「下载 + dex2jar」并被超时打断。
   registerHandler(IPC.CACHE_CLEAR, async () => {
     const r = clearAppCache(userDataDir(), spiderCacheDir());
-    try { host.rewarmAfterCacheClear(); } catch { /* 预热失败不影响清理结果 */ }
+    try { services.spiderRuntime.rewarmAfterCacheClear(); } catch { /* 预热失败不影响清理结果 */ }
     return r;
   }, log);
-  registerHandler(IPC.VOD_DEBUG, (_e: any, key: string) => host.debug(key), log);
-  registerHandler(IPC.VOD_AUDIT, () => host.auditAll(), log);
-  registerHandler(IPC.DRIVE_GET, () => host.driveList(), log);
-  registerHandler(IPC.DRIVE_SET, (_e: any, a: { provider: string; token: string }) => host.driveSet(a.provider, a.token), log);
-  registerHandler(IPC.DRIVE_REMOVE, (_e: any, provider: string) => host.driveRemove(provider), log);
-  registerHandler(IPC.DRIVE_QR_CREATE, (_e: any, provider?: string) => host.driveQrCreate(provider), log);
-  registerHandler(IPC.DRIVE_QR_POLL, (_e: any, provider: string, sid: string) => host.driveQrPoll(provider, sid), log);
-  registerHandler(IPC.DRIVE_WEB_LOGIN, (_e: any, provider: string) => host.driveWebLogin(provider), log);
-  registerHandler(IPC.DRIVE_UC_TV_STATUS, () => host.ucTvStatus(), log);
-  registerHandler(IPC.DRIVE_UC_TV_QR_CREATE, () => host.ucTvQrCreate(), log);
-  registerHandler(IPC.DRIVE_UC_TV_QR_POLL, () => host.ucTvQrPoll(), log);
-  registerHandler(IPC.DRIVE_UC_TV_REMOVE, () => host.ucTvRemove(), log);
-
-  // 外挂字幕（多源：assrt（需 token）/ SubtitleCat（免 token））
-  registerHandler(IPC.SUBTITLE_GET, () => host.subtitleGetSettings(), log);
-  registerHandler(IPC.SUBTITLE_SET, (_e: any, patch: any) => host.subtitleSetSettings(patch || {}), log);
-  registerHandler(IPC.SUBTITLE_PROVIDERS, () => host.subtitleProviderView(), log);
-  registerHandler(IPC.SUBTITLE_SEARCH, (_e: any, name: string) => host.subtitleSearch(String(name)), log);
-  registerHandler(IPC.SUBTITLE_FETCH, (_e: any, cand: any) => host.subtitleFetch(cand), log);
-  // 弹幕（外部接口清单）
-  registerHandler(IPC.DANMAKU_GET, () => host.danmakuGetSettings(), log);
-  registerHandler(IPC.DANMAKU_SET, (_e: any, patch: any) => host.danmakuSetSettings(patch || {}), log);
-  // ★ 2026-09-26：season = 资源名提取的季号（同季条目优先）
-  registerHandler(IPC.DANMAKU_SEARCH, (_e: any, name: string, season?: number) =>
-    host.danmakuSearch(String(name), Number.isFinite(Number(season)) && Number(season) > 0 ? Number(season) : undefined), log);
-  // ★ 2026-09-26：source = 接口基础地址（候选项自带来源，透传回来即可）
-  registerHandler(IPC.DANMAKU_EPISODES, (_e: any, bangumiId: number, animeTitle?: string, source?: string) =>
-    host.danmakuEpisodes(Number(bangumiId), animeTitle ? String(animeTitle) : undefined, source ? String(source) : ''), log);
-  registerHandler(IPC.DANMAKU_FETCH, (_e: any, episodeId: number, source?: string) =>
-    host.danmakuFetch(Number(episodeId), source ? String(source) : ''), log);
-  // TMDB 元数据补全（缺封面/缺简介兜底；凭据内置密文，仅查询）
-  registerHandler(IPC.META_SEARCH, (_e: any, name: string, year?: string, provider?: string) => host.metaSearch(String(name || ''), year ? String(year) : undefined, provider === 'tmdb' || provider === 'douban' ? provider : undefined), log);
-  // ★ 2026-09-24：详情页增强（演职员/类型/相关推荐）与发现页榜单（无源默认主页）
-  registerHandler(IPC.META_EXTRA, (_e: any, name: string, year?: string) => host.metaExtra(String(name || ''), year ? String(year) : undefined), log);
-  registerHandler(IPC.META_DISCOVER, (_e: any, refresh?: boolean) => host.metaDiscover(!!refresh), log);
-  registerHandler(IPC.META_BOARD_PAGE, (_e: any, id: string, page: number, refresh?: boolean) => host.metaBoardPage(String(id || ''), Number(page), !!refresh), log);
-  registerHandler(IPC.META_MOVIE_HOT, () => host.metaMovieHot(), log);
-  registerHandler(IPC.META_DISCOVER_IMAGES, (_e: any, name: string, mediaType: string, year?: string, kind?: string, doubanId?: string) =>
-    host.metaDiscoverImages(String(name || ''), mediaType === 'tv' ? 'tv' : 'movie', /^\d{4}$/.test(String(year)) ? String(year) : undefined, kind === 'poster' ? 'poster' : 'backdrop', /^\d{5,}$/.test(String(doubanId || '')) ? String(doubanId) : undefined), log);
-  // ★ 2026-09-24：发现页「分类」（TMDB 类型清单 + 按类型翻页）
-  registerHandler(IPC.META_GENRES, () => host.metaGenres(), log);
-  registerHandler(IPC.META_GENRE_PAGE, (_e: any, mediaType: string, genreId: number, page: number) => host.metaGenrePage(String(mediaType || 'movie'), Number(genreId) || 0, Number(page) || 1), log);
-  // ★ 2026-10-15（级联分类）：发现页「分类浏览」（豆瓣 recommend；start 偏移分页）与级联词表
-  registerHandler(IPC.META_DISCOVER_QUERY, (_e: any, q: ExploreQuery) => host.metaDiscoverQuery(q || { mediaType: 'movie', tags: [] }), log);
-  registerHandler(IPC.META_EXPLORE_VOCAB, () => host.metaExploreVocab(), log);
-  // ★ 2026-09-24：元数据来源配置（TMDB Key/代理/镜像 + 策略）与搜索面板联想
-  registerHandler(IPC.META_GET_SETTINGS, () => host.metaGetSettings(), log);
-  registerHandler(IPC.META_SET_SETTINGS, (_e: any, patch: unknown) => host.metaSetSettings((patch || {}) as Partial<MetaSettings>), log);
-  registerHandler(IPC.META_SUGGEST, (_e: any, q: string) => host.metaSuggest(String(q || '')), log);
-  // ★ 发现页 Hero 轮播：取某部片的横版剧照/竖版海报（TMDB images）
-  registerHandler(IPC.META_IMAGES, (_e: any, mediaType: string, tmdbId: number) =>
-    host.metaImages(String(mediaType || 'movie') === 'tv' ? 'tv' : 'movie', Number(tmdbId) || 0), log);
-  registerHandler(IPC.CFG_MERGE_EXPORT, (_e: any, ids: string[]) => host.mergeProfilesExport(ids), log);
+  registerHandler(IPC.VOD_DEBUG, (_e: any, key: string) => services.sourceDiagnostics.debug(key), log);
+  registerHandler(IPC.VOD_AUDIT, () => services.sourceDiagnostics.auditAll(), log);
+  registerDriveIpc(services.driveAccounts, log);
+  registerSubtitleIpc(features.subtitles, log);
+  registerDanmakuIpc(features.danmaku, log);
+  registerMetadataIpc(features.metadata, log);
+  registerHandler(IPC.CFG_MERGE_EXPORT, (_e: any, ids: string[]) => services.profileConfiguration.exportMergedProfiles(ids), log);
   registerHandler(IPC.CFG_EXPORT_SAVE, async (_e: any, a: { content: string; defaultName?: string }) => {
     const w = winOf(_e as IpcMainInvokeEvent);
     const r = await dialog.showSaveDialog(w ?? undefined!, {
@@ -315,7 +226,11 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
     writeFileSync(r.filePath, a.content, 'utf-8'); // 只写新文件，绝不改动任何原始文件
     return { saved: true, path: r.filePath };
   }, log);
-  registerBackupIpc(host, uiPreferences);
+  registerBackupIpc({
+    settingsSnapshot: () => backup.snapshot(),
+    restoreSettings: (settings) => backup.restore(settings),
+    resetSpidersForProxyChange: () => services.spiderRuntime.clearSpiderInstances(),
+  }, uiPreferences);
   // ★ 播放网盘资源未绑定 cookie → 从任意窗口请求主窗口跳到「点播页」
   //   （网盘绑定入口已统一到源内：点播页 → 该源 → 「网盘绑定」按钮；配置页不再放网盘配置）
   registerHandler(IPC.UI_GOTO_DRIVE_BIND, () => {
@@ -351,7 +266,7 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
       const text = readFileSync(filePath, 'utf-8');
       if (!text.trim()) return { ok: false, error: '所选 .json 文件为空' };
       const name = nameFromLocalFile(filePath, customName);
-      const r = await host.importConfig({ json: text, name });
+    const r = await services.subscriptionImports.importConfig({ json: text, name });
       return {
         ok: true,
         file: basename(filePath),
@@ -383,11 +298,11 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
       try {
         const name = nameFromLocalFile(srcPath);
         const api = importedApi = pkgs.importPython(srcPath);
-        const bean = host.cfgAddSource({ key: name, name, type: 3, api, ext: '', jar: '' } as SourceBean);
+    const bean = services.sourceConfiguration.addSource({ key: name, name, type: 3, api, ext: '', jar: '' } as SourceBean);
         keys.push(bean.key);
       } catch (err) {
         if (importedApi) {
-          try { pkgs.discardImport(importedApi, host.cfgSnapshot()); }
+    try { pkgs.discardImport(importedApi, services.sourceConfiguration.getSnapshot()); }
           catch (cleanup) { log.w(`导入失败副本清理失败：${String(cleanup)}`); }
         }
         failed.push({ name: nameFromLocalFile(srcPath), error: err instanceof Error ? err.message : String(err) });
@@ -441,7 +356,7 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
       }
       const name = nameFromLocalFile(root, args?.name); // 默认取包目录名
       const url = importedUrl = pkgSubUrl(found.index, found.rel);
-      const r = await host.importConfig({ url, name });
+    const r = await services.subscriptionImports.importConfig({ url, name });
       return {
         ok: true,
         root: pkgs.rootOf(found.index) || root,
@@ -453,7 +368,7 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
       };
     } catch (err) {
       if (importedUrl) {
-        try { pkgs.discardImport(importedUrl, host.cfgSnapshot()); }
+    try { pkgs.discardImport(importedUrl, services.sourceConfiguration.getSnapshot()); }
         catch (cleanup) { log.w(`导入失败副本清理失败：${String(cleanup)}`); }
       }
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -485,23 +400,16 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
       srcPath = picked.filePaths[0];
     }
     try {
-      const r = importLiveFile(srcPath, String(arg.name || '').trim());
+      const r = localLiveImporter.import(srcPath, String(arg.name || '').trim());
       // 首次导入且用户未命名 → 交由渲染层「单独弹框命名」（对齐本地包流程）
       if (r.needsName) return { ok: true, needsName: true, path: srcPath, name: r.name };
       const bean: LiveBean = parseLive({ name: r.name, api: '', type: '0', url: localLiveUrl(LOCAL_PROXY_BASE, r.fileName) }, 0);
-      const added = host.cfgAddLive(bean);
-      return { ok: true, name: r.name, index: added.index, replaced: added.replaced, total: host.lives.length };
+    const added = services.liveChannelConfiguration.add(bean);
+    return { ok: true, name: r.name, index: added.index, replaced: added.replaced, total: services.livePlayback.lives.length };
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   }, log);
-
-  /** ★ 2026-10-14（用户要求）：删除某条直播线路（配置页直播线路列表） */
-  registerHandler(IPC.CFG_DELETE_LIVE, (_e: any, index: number) => host.cfgDeleteLive(Number(index)), log);
-  /** ★ 2026-10-16（用户要求）：批量删除直播线路（配置页直播线路列表多选删除） */
-  registerHandler(IPC.CFG_DELETE_LIVES, (_e: any, indices: number[]) => host.cfgDeleteLives(Array.isArray(indices) ? indices.map(Number) : []), log);
-  /** ★ 2026-10-14（用户要求）：重命名某条直播线路（导入后允许编辑名称） */
-  registerHandler(IPC.CFG_UPDATE_LIVE, (_e: any, a: { index: number; name: string }) => host.cfgUpdateLiveName(Number(a?.index), String(a?.name ?? '')), log);
 
   // ★ 2026-09-29（用户要求）本地包「网页源」：点播页「网页」入口 → 独立窗口打开 homePage（preload 注入 window.fm）
   registerHandler(IPC.WEBHOME_OPEN, (_e: any, init: WebHomeOpenInit) => openWebHomeWindow(init || { url: '' }), log);
@@ -510,65 +418,23 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   registerHandler(IPC.WEBHOME_FM_PLAY, (_e: any, payload: { url?: string; title?: unknown }) => webHomePlay(payload || {}), log);
   registerHandler(IPC.WEBHOME_FM_COOKIE, (_e: any, domain: string) => webHomeCookie(domain), log);
 
-  registerHandler(IPC.VOD_HOME, (_e: any, a: { key: string; profileId?: string }) => host.home(a.key, a.profileId), log);
-  registerHandler(IPC.VOD_CATEGORY, (_e: any, a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }) =>
-    host.category(a.key, a.tid, a.pg, a.extend || {}, a.profileId), log);
-  registerHandler(IPC.VOD_DETAIL, (_e: any, a: { key: string; ids: string[]; profileId?: string }) => host.detail(a.key, a.ids, a.profileId), log);
-  registerHandler(IPC.VOD_SEARCH, (_e: any, a: { key: string; wd: string; profileId?: string }) => host.search(a.key, a.wd, a.profileId), log);
-  // ★ 聚合搜索：逐源进度经 VOD_SEARCH_ALL_PROGRESS 推给发起窗口 → 渲染层边搜边出
-  //   参数 { wd, refresh }：refresh=true 忽略本地缓存强制重搜（「重新搜索」按钮）
-  registerHandler(IPC.VOD_SEARCH_ALL, async (e: any, a: { wd: string; refresh?: boolean; profileId?: string; profileIds?: string[] } | string) => {
-    const arg = typeof a === 'string' ? { wd: a, refresh: false } : a || { wd: '', refresh: false };
-    const w = winOf(e as IpcMainInvokeEvent);
-    const onProgress = (ev: SearchAllProgressEvent): void => {
-      try { w?.webContents.send(IPC.VOD_SEARCH_ALL_PROGRESS, ev); } catch { /* 窗口已关：忽略 */ }
-    };
-    return await host.searchAll(arg.wd, {
-      refresh: !!arg.refresh,
-      profileId: typeof arg.profileId === 'string' ? arg.profileId : undefined,
-      profileIds: Array.isArray(arg.profileIds) ? arg.profileIds : undefined,
-    }, onProgress);
-  }, log);
-  // ★ 2026-09-24：vipFlags 由主进程按订阅顶层 flags 自行决定（渲染层不再传）
-  // ★ 2026-09-29：磁力/电驴这类「桌面版无载体」的播放链接 → 顺手复制到剪贴板，
-  //   用户看到上屏提示后可直接粘进 qBittorrent / 迅雷等工具（见 engine/vod/playLink.ts）。
-  registerHandler(IPC.VOD_PLAY, async (_e: any, a: { key: string; flag: string; id: string; profileId?: string }) => {
-    const r = await host.play(a.key, a.flag, a.id, a.profileId);
-    if (r.externalLink) {
-      try { clipboard.writeText(r.externalLink); } catch { /* 剪贴板不可用不影响播放结果 */ }
-    }
-    return r;
+  registerVodIpc(services.vod, {
+    windowForEvent: (event) => winOf(event),
+    writeClipboard: (text) => clipboard.writeText(text),
   }, log);
 
-  // ---- 独立播放器窗口 ----
-  registerHandler(IPC.PLAYER_OPEN, (_e: any, init: any) => {
-    openPlayerWindow(init);
-    // ★ 2026-10-17（B3）：播放器已开 → 通知其余窗口冻结隐藏页的已解码图片
-    notifyPlayerWindowState(true);
-    return { ok: true };
-  }, log);
-  registerHandler(IPC.PLAYER_SWITCH_EP, (_e: any, request: number | import('../../shared/playerEpisode').PlayerEpisodeSwitch) => {
-    return { switched: playerSwitchEpisode(request) };
-  }, log);
-  registerHandler(IPC.PLAYER_IS_OPEN, () => ({ open: isPlayerOpen() }), log);
-  registerHandler(IPC.PLAYER_GET_INIT, () => ({ open: isPlayerOpen() }), log);
-  /** ★ 2026-09-30：渲染层订阅就绪 → 重发最新 init（修新窗口「首推早于订阅」的竞态，见 PlayerWindow.playerResendInit） */
-  registerHandler(IPC.PLAYER_READY, () => {
-    playerResendInit();
-    return { ok: true };
-  }, log);
-  registerHandler(IPC.PLAYER_SET_MINI, (_e: any, isMini: boolean) => {
-    playerSetMini(!!isMini);
-    return { mini: playerIsMini() };
-  }, log);
-  registerHandler(IPC.PLAYER_IS_MINI, () => ({ mini: playerIsMini() }), log);
-  registerHandler(IPC.PLAYER_SET_FULLSCREEN, async (_e: any, fullscreen: boolean) => ({ fullscreen: await playerSetFullscreen(!!fullscreen) }), log);
-  registerHandler(IPC.PLAYER_IS_FULLSCREEN, () => ({ fullscreen: playerIsFullscreen() }), log);
-  registerHandler(IPC.PLAYER_SET_RESIZABLE, (_e: any, resizable: boolean) => ({ resizable: playerSetResizable(!!resizable) }), log);
-  registerHandler('player:close', () => {
-    closePlayerWindow();
-    return { ok: true };
-  }, log);
+  registerPlayerWindowIpc({
+    open: openPlayerWindow,
+    switchEpisode: playerSwitchEpisode,
+    isOpen: isPlayerOpen,
+    resendInit: playerResendInit,
+    setMini: playerSetMini,
+    isMini: playerIsMini,
+    setFullscreen: playerSetFullscreen,
+    isFullscreen: playerIsFullscreen,
+    setResizable: playerSetResizable,
+    close: closePlayerWindow,
+  }, log, notifyPlayerWindowState);
 
   // ---- 详情/搜索独立窗口（已开则复用：聚焦 + 通知其换路由）----
   registerHandler(IPC.WIN_OPEN_DETAIL, (_e: any, a: { key?: string; id?: string; query?: string }) =>
@@ -585,102 +451,15 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
     return { ok: true };
   }, log);
 
-  // ---- ★ 2026-10-08 MPV 高兼容播放内核（独立播放器窗口内嵌；见 main/player/MpvController）----
-  registerHandler(IPC.MPV_STATUS, () => mpv.status(), log);
-  registerHandler(IPC.MPV_START, async (e: any, opts: MpvStartOptions) => {
-    const w = winOf(e as IpcMainInvokeEvent);
-    if (!w) throw new Error('播放器窗口不存在（mpv 无法嵌入）');
-    // ★ 超分插件（M1）：初始着色器链由**主进程**按当前档位解析成绝对路径（渲染层不碰文件系统）
-    const base = opts || ({ url: '' } as MpvStartOptions);
-    const shaders = await plugins.srShaders(playerSettings.settings.srMode);
-    return mpv.start(w, shaders.length ? { ...base, shaders } : base);
-  }, log);
-  registerHandler(IPC.MPV_CMD, async (_e: any, cmd: MpvCommand) => {
-    // ★ 超分换档：渲染层只报档位 → 此处解析为着色器绝对路径，再走 glsl-shaders（逐条 clr+append）
-    if (cmd?.type === 'sr-mode') {
-      const value = await plugins.srShaders(cmd.value as SrMode);
-      return { ok: mpv.command({ type: 'glsl-shaders', value }) };
-    }
-    return { ok: mpv.command(cmd) };
-  }, log);
-  registerHandler(IPC.MPV_STOP, () => {
-    mpv.stop();
-    return { ok: true };
-  }, log);
-
-  // ---- ★ 2026-10-18（R11）第三方播放内核（`contributes.player.engine`；宿主托管，插件只给描述符）----
-  /** 内置 2（html5 / mpv）+ 插件 N（`engine:<contributeId>`；未就绪项带 `note`） */
-  const engineList = async (): Promise<PlayerEngineView[]> => {
-    const st = mpv.status();
-    const builtin: PlayerEngineView[] = [
-      {
-        id: 'html5', pluginId: 'builtin', pluginName: '内置', label: '内置（HTML5）',
-        capabilities: ['seek', 'rate', 'fit', 'tracks', 'subtitle'], ready: true,
-      },
-      {
-        id: 'mpv', pluginId: 'builtin', pluginName: '内置', label: 'MPV（内置）',
-        capabilities: ['seek', 'rate', 'fit', 'tracks', 'subtitle'], ready: st.available,
-        ...(st.available ? { path: st.path } : { note: st.note }),
-      },
-    ];
-    return [...builtin, ...(await plugins.playerEngines())];
-  };
-  registerHandler(IPC.ENGINE_LIST, () => engineList(), log);
-  registerHandler(IPC.ENGINE_STATUS, async (_e: any, id: string) => {
-    const v = (await engineList()).find((x) => x.id === String(id || ''));
-    return v
-      ? { id: v.id, ready: v.ready, path: v.path, note: v.note }
-      : { id: String(id || ''), ready: false, note: '未找到该内核' };
-  }, log);
-  /**
-   * 写启用开关（`playerSettings.engineEnabled`；默认关）。
-   * ★ 关闭正在运行的那个内核 → 立即停会话（不留孤儿进程；与「停用插件」口径一致）。
-   */
-  registerHandler(IPC.ENGINE_ENABLE, (_e: any, a: { id?: string; enabled?: boolean }) => {
-    const id = String(a?.id || '');
-    if (!id) return { ok: false, reason: '参数不完整' };
-    const on = !!a?.enabled;
-    playerSettings.update({ engineEnabled: { ...playerSettings.settings.engineEnabled, [id]: on } });
-    if (!on && engines.running && engines.currentId === id) engines.stop();
-    return { ok: true };
-  }, log);
-  /**
-   * 拉起一次引擎会话。
-   * ★ **授权闸门**：先校验 `playerSettings.engineEnabled[id] === true`，否则**明确拒绝**
-   *   （`{ok:false, reason}` —— 与「点播外部播放器未启用」同一套口径）。
-   */
-  registerHandler(IPC.ENGINE_START, async (e: any, a: MpvStartOptions & { engineId?: string }) => {
-    const w = winOf(e as IpcMainInvokeEvent);
-    if (!w) throw new Error('播放器窗口不存在（引擎无法嵌入）');
-    const id = String((a as { engineId?: unknown })?.engineId || '');
-    if (!id.startsWith('engine:')) return { ok: false, reason: '该内核不是插件内核（无需 engine:start）' };
-    if (playerSettings.settings.engineEnabled[id] !== true) {
-      return { ok: false, reason: '该内核未启用（请在配置页「插件播放内核」中开启）' };
-    }
-    const spec = await plugins.playerEngineSpec(id);
-    if (!spec) throw new Error('该内核未就绪（插件未安装 / 已停用 / 可执行文件缺失）');
-    const base = { ...(a as MpvStartOptions) } as MpvStartOptions & { engineId?: string };
-    delete base.engineId;
-    const r = await engines.start(w, spec, base);
-    return { ok: true, session: r.session };
-  }, log);
-  registerHandler(IPC.ENGINE_CMD, (_e: any, cmd: MpvCommand) => ({ ok: engines.command(cmd) }), log);
-  registerHandler(IPC.ENGINE_STOP, () => {
-    engines.stop();
-    return { ok: true };
-  }, log);
-  // 播放器窗口关闭 → 停 mpv（不留孤儿进程）；退出应用再兜一道（will-quit）
-  onPlayerWindowClosed(() => mpv.dispose());
-  // ★ R11：播放器窗口关闭 → 一并停插件内核（同口径，不留孤儿进程）
-  onPlayerWindowClosed(() => engines.dispose());
-  // ★ 2026-10-17（B3）：播放器窗口关闭 → 通知其余窗口把 `img.src` 挂回（解冻）
-  onPlayerWindowClosed(() => notifyPlayerWindowState(false));
-  app.on('will-quit', () => {
-    try {
-      mpv.dispose();
-    } catch {
-      /* ignore */
-    }
+  registerPlayerRuntimeIpc({
+    logger: log,
+    mpv,
+    mediaRuntimes,
+    plugins,
+    settings: playerSettings,
+    engines,
+    onPlaybackStarted: () => services.spiderRuntime.onPlaybackStarted(),
+    notifyPlayerWindowState,
   });
 
   // ---- 老板键（全局快捷键隐藏/恢复窗口）----
@@ -696,129 +475,24 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
   }, log);
   // ---- 夸克落盘文件清理（渲染层播放页/播放器页卸载时触发；删除异步执行，失败会持久化重试）----
   registerHandler(IPC.QUARK_CLEANUP, () => {
-    void host.quarkDeletePending().catch(() => undefined);
+      void services.driveFileCleanup.deletePending().catch(() => undefined);
     return true;
   }, log);
-
-  /**
-   * ★ 2026-10-16（用户报「播放时画面突然消失、软件只剩声音」）：渲染层 → 主进程的播放诊断上报。
-   *   主窗（内嵌播放）与播放器窗跑同一个 VideoPlayer，故按**窗口身份**区分（排障时一眼看出是哪个窗）。
-   *   fire-and-forget（send/on）：不占 IPC 往返、播放路径零负担；落盘与崩溃时带出见 util/mediaDiag。
-   */
-  ipcMain.on(IPC.MEDIA_STATE, (e, ev: unknown) => {
-    const w = BrowserWindow.fromWebContents(e.sender);
-    const playerWin = isPlayerWindow(w);
-    noteMediaState(e.sender.id, playerWin ? 'player' : w ? 'main' : 'gone', ev);
-    /**
-     * ★ 2026-10-17：内存基线探针触发点 —— **播放器窗口**（点播 1080P 的主战场）开始播放时，
-     *   起一轮 60s / 每 5s 的内存采样（Electron 逐进程 + 我们 spawn 的子进程 RSS）。
-     *   主窗口内嵌播放（直播 / WebDAV）不触发，避免浏览过程中的噪声；一轮内重复触发会被去重。
-     */
-    const evType = (ev && typeof ev === 'object' ? (ev as { event?: unknown }).event : '') as string;
-    if (playerWin && (evType === 'play' || evType === 'playing')) {
-      startPlayMemWatch();
-      /**
-       * ★ 2026-10-17（B1）：播放期间不会再发搜索请求 → 常驻蜘蛛池纯属白占内存，
-       *   布防「播放期收缩」（整体空闲 30s 后收敛到 1 个热进程）。
-       */
-      host.onPlaybackStarted();
-    }
-  });
 
   // ---- ★ 网络代理（DNS 污染 / TLS SNI 阻断站点用；改后即时生效，无需重启）----
   registerHandler(IPC.PROXY_GET, () => proxySettingsView(), log);
   registerHandler(IPC.PROXY_SET, (_e: any, patch: Partial<ProxySettings>) => {
     const next = setProxySettings(patch || {});
     // 代理变了 → 常驻蜘蛛进程的参数已变（池 key 含代理参数）→ 清一次实例缓存，下一轮按新参数拉起
-    host.resetSpidersForProxyChange();
+    services.spiderRuntime.clearSpiderInstances();
     return next;
   }, log);
 
   // ---- ★ 播放偏好（m3u8 去广告开关；本地中继 /play 每轮读一次 → 改后即时生效）----
   registerHandler(IPC.PLAYER_PREFS_GET, () => playerSettings.settings, log);
   registerHandler(IPC.PLAYER_PREFS_SET, (_e: any, patch: Partial<PlayerSettings>) => playerSettings.update(patch || {}), log);
-  // ---- ★ 2026-10-16 插件系统（M1）：登记 / 安装（弹选择框）/ 卸载 / 启停 / 超分状态 ----
-  registerHandler(IPC.PLUGIN_LIST, () => plugins.list(), log);
-  /**
-   * ★ 2026-10-18（R10）安装**两段式**第 ① 段：弹文件框 + 干跑校验（**不落盘**）→ 返回权限清单。
-   * 渲染层据 `kind`/`permissions`/`permissionNotes` 弹确认框；确认后再调 `plugin:install`（第 ② 段）。
-   */
-  registerHandler(IPC.PLUGIN_INSPECT, async (e: any) => {
-    const w = winOf(e as IpcMainInvokeEvent);
-    const picked = await dialog.showOpenDialog(w ?? undefined!, {
-      title: '安装插件',
-      properties: ['openFile'],
-      filters: [{ name: 'Win-Box 插件', extensions: ['winbox'] }],
-    });
-    if (picked.canceled || !picked.filePaths?.[0]) return { ok: false, canceled: true };
-    const r = await plugins.inspect(picked.filePaths[0]);
-    if (!r.ok) log.w(`插件干跑失败（${picked.filePaths[0]}）：${r.reason || r.reasonCode || ''}`);
-    return r;
-  }, log);
-  /** 安装第 ② 段：给定 `{path}`（干跑选定的文件）→ 直接装；缺 `path` 则回退「弹框 + 装」（兼容旧调用） */
-  registerHandler(IPC.PLUGIN_INSTALL, async (e: any, a?: { path?: string }) => {
-    let filePath = typeof a?.path === 'string' ? a.path : '';
-    if (!filePath) {
-      const w = winOf(e as IpcMainInvokeEvent);
-      const picked = await dialog.showOpenDialog(w ?? undefined!, {
-        title: '安装插件',
-        properties: ['openFile'],
-        filters: [{ name: 'Win-Box 插件', extensions: ['winbox'] }],
-      });
-      if (picked.canceled || !picked.filePaths?.[0]) return { ok: false, canceled: true };
-      filePath = picked.filePaths[0];
-    }
-    const r = await plugins.installFromFile(filePath);
-    log.i(`插件安装：${r.ok ? '成功' : '失败'}（${filePath}）${r.reason ? ` — ${r.reason}` : ''}`);
-    return r;
-  }, log);
-  registerHandler(IPC.PLUGIN_UNINSTALL, async (_e: any, id: string) => plugins.uninstall(String(id || '')), log);
-  registerHandler(IPC.PLUGIN_SET_ENABLED, async (_e: any, a: { id: string; enabled: boolean }) => plugins.setEnabled(String(a?.id || ''), !!a?.enabled), log);
-  registerHandler(IPC.PLUGIN_SR, () => plugins.srState(playerSettings.settings.srMode), log);
-  registerHandler(IPC.PLUGIN_THEMES, () => plugins.themeSkins(), log);
-  // ★ 2026-10-18 受限动作按钮（`contributes.ui.command`）：主进程只装配，动作由渲染层按词表执行
-  registerHandler(IPC.PLUGIN_COMMANDS, () => plugins.uiCommands(), log);
-  // ★ 2026-10-18 追加快捷键（`contributes.keymap`）：主进程只装配 + 归一键位串，分发/执行均由渲染层完成
-  registerHandler(IPC.PLUGIN_KEYMAPS, () => plugins.keymaps(), log);
-  // ★ 2026-10-18 插件设置面板（`contributes.settings.panel`）：主进程装配 + 代持久化；表单渲染/写回由渲染层完成
-  registerHandler(IPC.PLUGIN_SETTINGS, () => plugins.settingsPanels(), log);
-  registerHandler(IPC.PLUGIN_SETTINGS_SET, (_e: any, a: any) => plugins.setPluginSetting(a || {}), log);
-  // ★ 2026-10-18 受限 UI 槽位（`contributes.ui.slot`）：主进程只装配，组件树渲染由渲染层按页面语义名落槽
-  registerHandler(IPC.PLUGIN_SLOTS, () => plugins.uiSlots(), log);
-  // ---- ★ 2026-09-29 磁力外部播放器探测（MKV/HEVC 接力用；只列本机已安装的，不启动）----
-  registerHandler(
-    IPC.BT_DETECT_PLAYERS,
-    () => detectPlayers(playerSettings.settings.btExternalPlayer).map((p) => ({ id: p.id, name: p.name, path: p.path })),
-    log,
-  );
-  // ---- ★ 2026-09-30（用户要求）：点播外部播放器（绑定值 vodExternalPlayer，与磁力分开）----
-  /** 探测本机已安装的外部播放器（点播用；配置页可指定路径，留空 = 自动探测） */
-  registerHandler(
-    IPC.VOD_DETECT_PLAYERS,
-    () => detectPlayers(playerSettings.settings.vodExternalPlayer).map((p) => ({ id: p.id, name: p.name, path: p.path })),
-    log,
-  );
-  /**
-   * 用本机外部播放器打开当前点播地址（a.path 指定本次用哪个播放器；地址是本机 /play 中继时 header/cookie 已由中继注入）。
-   * ★ 2026-09-30（用户要求）：`a.seek`（秒）= 续播位置 —— 按播放器类型拼成命令行参数传给播放器（见 seekArgs）。
-   */
-  registerHandler(IPC.VOD_OPEN_EXTERNAL, (_e: any, a: { url?: string; path?: string; seek?: number }) => {
-    // ★ 2026-10-08（用户要求「换成勾选项；就算填了路径，不勾选依旧不使用第三方播放器」）：
-    //   总开关在**主进程兜一道** —— 任何调用方都不得绕过：未勾选 = 拒绝拉起（渲染层同判据，见 externalPlay.ts）。
-    if (!playerSettings.settings.vodExternalPlayerEnabled) {
-      return { ok: false, error: '点播外部播放器未启用（请在配置页「播放」中勾选「启用点播外部播放器」）' };
-    }
-    const u = String(a?.url || '').trim();
-    if (!u) return { ok: false, error: '地址为空' };
-    const pick = String(a?.path || '').trim();
-    const players = detectPlayers(pick || playerSettings.settings.vodExternalPlayer);
-    if (!players.length) return { ok: false, error: '未检测到本机播放器（可在配置页「播放」中填写播放器路径）' };
-    const p = players[0];
-    const seek = Math.max(0, Math.floor(Number(a?.seek) || 0));
-    const started = launchPlayer(p.path, u, seekArgs(p.id, seek));
-    log.i(`vod: 外部播放器接力「${p.name}」${seek > 0 ? `（起播 ${seek}s）` : ''}→ ${u.slice(0, 120)}`);
-    return started ? { ok: true, player: p.name } : { ok: false, error: `无法启动「${p.name}」` };
-  }, log);
+  registerPluginManagementIpc({ logger: log, plugins, settings: playerSettings });
+  registerExternalPlaybackIpc({ logger: log, playback: externalPlayback });
 
   // ★ 2026-09-29 WebDAV 存储（只读）：服务器管理 + 目录浏览；取流走 `/play?dav=<id>`（中继注入 Authorization）
   registerHandler(IPC.DAV_LIST, () => dav.list(), log);
@@ -832,18 +506,6 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
     (_e: any, a: { id: string; path?: string }) => dav.browse(String(a?.id || ''), a?.path || '/'),
     log,
   );
-  /** WebDAV 文件用本机外部播放器接力（mkv/HEVC 等 Chromium 播不了的形态；复用磁力的播放器设置） */
-  registerHandler(IPC.DAV_OPEN_EXTERNAL, (_e: any, url: string) => {
-    const u = String(url || '').trim();
-    if (!u) return { ok: false, error: '地址为空' };
-    const players = detectPlayers(playerSettings.settings.btExternalPlayer);
-    if (!players.length) return { ok: false, error: '未检测到本机播放器（可在配置页「播放」中填写播放器路径）' };
-    const p = players[0];
-    const started = launchPlayer(p.path, u);
-    log.i(`webdav: 外部播放器接力「${p.name}」→ ${u.slice(0, 120)}`);
-    return started ? { ok: true, player: p.name } : { ok: false, error: `无法启动「${p.name}」` };
-  }, log);
-
   // ★ 2026-09-29 DLNA 投屏：SSDP 发现局域网 MediaRenderer + AVTransport 三动作投屏
   registerHandler(IPC.DLNA_DISCOVER, () => dlna.discover(), log);
   registerHandler(IPC.DLNA_CAST, (_e: any, a: { device: DlnaDevice; target: DlnaCastTarget }) =>
@@ -874,38 +536,16 @@ export function registerIpc(host: SpiderHost, dav: DavService, dlna: DlnaService
     return { ok: true, path };
   }, log);
 
-  registerHandler(IPC.LIVE_LOAD, (_e: any, index: number) => host.loadLive(index), log);
-  // ★ 2026-09-29 EPG：渲染层把当前分组的频道引用传进来（免再拉一次直播源）
-  registerHandler(
-    IPC.LIVE_EPG,
-    (_e: any, a: { index: number; channels: EpgChannelRef[] }) => host.loadLiveEpg(Number(a?.index) || 0, a?.channels || []),
-    log,
-  );
-  registerHandler('live:meta', () => host.lives, log);
-  // ★ 2026-10-18 直播输出模板（内置 2 个 + 插件 `contributes.live.template`）
-  registerHandler(IPC.LIVE_TEMPLATES, () => host.liveTemplates(), log);
-  // ★ 2026-10-18 按模板渲染导出文本（**纯本地无副作用**：不取数、不发请求、不弹框；供 `live:export` 与验收用）
-  registerHandler(
-    IPC.LIVE_RENDER,
-    (_e: any, a: { templateId?: string; groups?: LiveGroup[] }) =>
-      host.renderLiveExport(String(a?.templateId || ''), a?.groups || []),
-    log,
-  );
-  // ★ 2026-10-18 导出直播线路：按模板渲染（**纯本地**，不发请求）→ 保存对话框 → 只写新文件
-  registerHandler(
-    IPC.LIVE_EXPORT,
-    async (_e: any, a: { templateId?: string; groups?: LiveGroup[]; defaultName?: string }) => {
-      const w = winOf(_e as IpcMainInvokeEvent);
-      const r = await host.renderLiveExport(String(a?.templateId || ''), a?.groups || []);
-      const dlg = await dialog.showSaveDialog(w ?? undefined!, {
-        title: '导出直播线路',
-        defaultPath: a?.defaultName || `live.${r.ext}`,
-        filters: [{ name: '直播源', extensions: [r.ext] }],
+  registerLiveIpc(services.livePlayback, {
+    chooseExportPath: async (event, request) => {
+      const owner = winOf(event as IpcMainInvokeEvent);
+      const result = await dialog.showSaveDialog(owner ?? undefined!, {
+        title: request.title,
+        defaultPath: request.defaultName,
+        filters: [{ name: '直播源', extensions: [request.extension] }],
       });
-      if (dlg.canceled || !dlg.filePath) return { saved: false, path: '' };
-      writeFileSync(dlg.filePath, r.content, 'utf-8'); // 只写新文件，绝不改动任何原始文件
-      return { saved: true, path: dlg.filePath };
+      return result.canceled || !result.filePath ? null : result.filePath;
     },
-    log,
-  );
+    writeExportFile: (path, content) => writeFileSync(path, content, 'utf-8'),
+  }, log);
 }

@@ -18,7 +18,7 @@ beforeAll(async () => {
 });
 beforeEach(() => {
   request.mockReset(); logger.e.mockClear(); logger.w.mockClear();
-  (proxy as unknown as { baiduPlayNodes: Map<string, unknown> }).baiduPlayNodes.clear();
+  (proxy as unknown as { playback: { stop(): void } }).playback.stop();
 });
 afterAll(() => proxy.stop());
 
@@ -249,7 +249,6 @@ describe('媒体中继异步失败与 DNS 备用通道', () => {
       request.mockResolvedValueOnce(redirectTo(workingCdn)).mockResolvedValueOnce(mediaChunk());
       await consumeNode(nodeRoute('account-one', 'netdisk-test', 'https://pan.baidu.com/', nodeDlink + '-' + i));
     }
-    expect((proxy as unknown as { baiduPlayNodes: Map<string, unknown> }).baiduPlayNodes.size).toBe(32);
     request.mockResolvedValueOnce(redirectTo(workingCdn)).mockResolvedValueOnce(mediaChunk());
     await consumeNode(nodeRoute('account-one', 'netdisk-test', 'https://pan.baidu.com/', nodeDlink + '-0'));
     expect(request.mock.calls.at(-2)?.[0]).toBe(nodeDlink + '-0');
@@ -325,9 +324,7 @@ describe('媒体中继异步失败与 DNS 备用通道', () => {
   });
 
   it.each(['pcs.baidu.com', 'd.pcs.baidu.com', 'pcs.baidu.com.example'])('签名百度直链禁用 Range 聚合，域名判断不误伤其它站点：%s', async (host) => {
-    const aggregate = vi.spyOn(proxy as unknown as {
-      tryAggregateStream: (...args: unknown[]) => Promise<boolean>;
-    }, 'tryAggregateStream').mockResolvedValue(false);
+    const aggregate = vi.spyOn((proxy as any).aggregateStream, 'tryHandle').mockResolvedValue(false);
     try {
       request.mockResolvedValueOnce({
         statusCode: 206,

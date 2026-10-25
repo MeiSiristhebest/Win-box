@@ -1,6 +1,6 @@
 // src/main/subtitle/SubtitleStore.ts
 // 外挂字幕的凭据（assrt token）与显示偏好持久化。
-// 独立于网盘（DriveStore）与用户配置（UserConfigManager），物理文件 <userData>/subtitle.json。
+// 独立于网盘（DriveStore）与用户配置（UserConfigApplicationService），物理文件 <userData>/subtitle.json。
 // ★ S1（修复）：assrt token 落盘前经 DriveCodec.encode 加密（宿主注入 Electron safeStorage=DPAPI），
 //   读取时 decode 回明文（仅存内存），避免本地明文 token 可被直接读取；旧明文自动无损迁移。
 import { JsonStore } from '../store/JsonStore';

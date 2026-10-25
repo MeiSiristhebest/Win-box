@@ -212,6 +212,43 @@ describe('plugin 契约 — theme（皮肤：纯令牌 + 声明式 layout）', (
     expect(validateThemeContribute(theme({ tokens: { '--hairline': 'var(--nf-dim)' } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');
   });
 
+  it('插件主题的主要、次要文字及强调按钮均须满足 WCAG AA 对比度', () => {
+    const readable = theme({ tokens: {
+      '--surface-0': '#101010',
+      '--surface-1': 'rgba(255,255,255,.04)',
+      '--surface-2': 'rgba(255,255,255,.08)',
+      '--surface-3': 'rgba(255,255,255,.12)',
+      '--text': '#ffffff', '--text-dim': '#c4c4c4', '--text-faint': '#b8b8b8',
+      '--accent': '#0050a0', '--accent-strong': '#003f7c', '--on-accent': '#ffffff',
+    } });
+    expect(validateThemeContribute(readable).ok).toBe(true);
+
+    const lowContrastText = theme({ tokens: {
+      '--surface-0': '#101010', '--surface-1': '#101010', '--surface-2': '#101010', '--surface-3': '#101010',
+      '--text': '#ffffff', '--text-dim': '#555555',
+      '--accent': '#0050a0', '--accent-strong': '#003f7c', '--on-accent': '#ffffff',
+    } });
+    expect(validateThemeContribute(lowContrastText).reason).toContain('--text-dim 在 --surface-0 上的对比度');
+
+    const lowContrastFaintText = theme({ tokens: {
+      '--surface-0': '#101010', '--surface-1': '#101010', '--surface-2': '#101010', '--surface-3': '#101010',
+      '--text': '#ffffff', '--text-dim': '#c4c4c4', '--text-faint': '#303030',
+      '--accent': '#0050a0', '--accent-strong': '#003f7c', '--on-accent': '#ffffff',
+    } });
+    expect(validateThemeContribute(lowContrastFaintText).reason).toContain('--text-faint 在 --surface-0 上的对比度');
+
+    const lowContrastButton = theme({ tokens: {
+      '--surface-0': '#101010', '--text': '#ffffff', '--text-dim': '#c4c4c4',
+      '--accent': '#888888', '--accent-strong': '#777777', '--on-accent': '#808080',
+    } });
+    expect(validateThemeContribute(lowContrastButton).reason).toContain('--on-accent 在 --accent 上的对比度');
+  });
+
+  it('拒绝无法解析的循环文字颜色引用', () => {
+    const cyclicText = theme({ tokens: { '--text': 'var(--text-dim)', '--text-dim': 'var(--text)' } });
+    expect(validateThemeContribute(cyclicText).reason).toContain('引用循环或无法解析');
+  });
+
   it('CSS 注入片段一律拒', () => {
     for (const bad of ['#fff;color:red', 'url(x)', 'rgb(0,0,0)}', '#fff/*x*/']) {
       expect(validateThemeContribute(theme({ tokens: { '--accent': bad } })).reasonCode).toBe('BAD_THEME_TOKEN_VALUE');

@@ -10,7 +10,7 @@ import type { BossKeySettings } from '../shared/types';
 /** 默认老板键：Ctrl/Cmd + Shift + B */
 export const BOSS_DEFAULT_ACCEL = 'CommandOrControl+Shift+B';
 
-export class BossKeyManager {
+export class BossKeyController {
   private store: JsonStore;
   private getWindows: () => BrowserWindow[] = () => [];
   private active = false; // 当前是否处于「老板模式」（所有窗口已隐藏）
@@ -91,4 +91,4 @@ export class BossKeyManager {
 }
 
 /** 全局单例（模块级）：IPC 与主进程共用 */
-export const bossKey = new BossKeyManager();
+export const bossKey = new BossKeyController();

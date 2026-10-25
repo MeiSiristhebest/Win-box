@@ -2,7 +2,6 @@ import { app, BrowserWindow, dialog } from 'electron';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import type { IpcMainInvokeEvent } from 'electron';
-import type { SpiderHost } from '../spider/SpiderHost';
 import type { UiPreferencesService } from '../store/UiPreferencesService';
 import { bossKey } from '../bossKey';
 import { playerSettings } from '../player/playerSettings';
@@ -17,7 +16,13 @@ import type { BackupFile, BackupExportResult, BackupImportResult, BackupSettings
 import { backupUiPreferences, buildBackupFile, parseBackupFile } from './backup';
 
 /** Stage before replacing renderer data; commit belongs to the same live requesting window. */
-export function registerBackupIpc(host: SpiderHost, uiPreferences: UiPreferencesService): void {
+export interface BackupIpcHostPort {
+  settingsSnapshot(): Pick<BackupSettingsState, 'userConfig' | 'driveTokens' | 'subtitle' | 'metaSettings' | 'danmaku'>;
+  restoreSettings(settings: Partial<BackupSettingsState>): void;
+  resetSpidersForProxyChange(): void;
+}
+
+export function registerBackupIpc(host: BackupIpcHostPort, uiPreferences: UiPreferencesService): void {
   let pending: { id: string; owner: number; file: BackupFile; expiresAt: number } | null = null;
   const snapshot = (): BackupSettingsState => ({
     ...host.settingsSnapshot(), player: playerSettings.settings, proxy: getProxySettings(), bossKey: bossKey.settings,

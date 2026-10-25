@@ -1,5 +1,5 @@
 // tests/backup.spec.ts
-// 设置备份纯函数单测：组装 / 解析校验 / 还原（UserConfigManager.restore 整份替换）。
+// 设置备份纯函数单测：组装 / 解析校验 / 还原（UserConfigApplicationService.restore 整份替换）。
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,7 +10,7 @@ import { DEFAULT_SUBTITLE_SETTINGS } from '../src/shared/subtitle';
 import { DEFAULT_DANMAKU_SETTINGS } from '../src/shared/danmaku';
 import { DEFAULT_PLAYER_SETTINGS } from '../src/shared/player';
 import { JsonStore } from '../src/main/store/JsonStore';
-import { UserConfigManager, emptyUserConfig } from '../src/main/store/UserConfigManager';
+import { UserConfigApplicationService, emptyUserConfig } from '../src/main/store/UserConfigApplicationService';
 import { NullLogger } from '../src/engine/util/logger';
 import type { SourceBean, UserConfig } from '../src/shared/types';
 
@@ -90,12 +90,12 @@ describe('parseBackupFile', () => {
   });
 });
 
-describe('UserConfigManager.restore', () => {
+describe('UserConfigApplicationService.restore', () => {
   it('整份替换（源/界面选中/档案原样还原）并落盘可再读', () => {
     const dir = mkdtempSync(join(tmpdir(), 'backup-'));
     try {
       const file = join(dir, 'user-config.json');
-      const m = new UserConfigManager(new JsonStore(file), NullLogger);
+      const m = new UserConfigApplicationService(new JsonStore(file), NullLogger);
       m.load();
       m.restore({
         ...emptyUserConfig(),
@@ -109,7 +109,7 @@ describe('UserConfigManager.restore', () => {
       expect(m.activeSourceKey()).toBe('k2');
 
       // 重新读盘 → 还原内容已持久化
-      const m2 = new UserConfigManager(new JsonStore(file), NullLogger);
+      const m2 = new UserConfigApplicationService(new JsonStore(file), NullLogger);
       m2.load();
       expect(m2.sources().map((s) => s.key)).toEqual(['k1', 'k2']);
       expect(m2.activeSourceKey()).toBe('k2');
@@ -121,7 +121,7 @@ describe('UserConfigManager.restore', () => {
   it('还原时剔除坏源、非法 activeSourceKey 归零', () => {
     const dir = mkdtempSync(join(tmpdir(), 'backup-'));
     try {
-      const m = new UserConfigManager(new JsonStore(join(dir, 'user-config.json')), NullLogger);
+      const m = new UserConfigApplicationService(new JsonStore(join(dir, 'user-config.json')), NullLogger);
       m.load();
       m.restore({
         ...emptyUserConfig(),

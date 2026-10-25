@@ -11,10 +11,10 @@ export type SrMode = 'off' | 'efficiency' | 'quality' | 'general' | 'high';
 export const SR_MODES: readonly SrMode[] = ['off', 'efficiency', 'quality', 'general', 'high'];
 export const SR_MODE_LABEL: Record<SrMode, string> = {
   off: '关闭',
-  efficiency: '效率',
-  quality: '质量',
-  general: '通用',
-  high: '高质量',
+  efficiency: 'Anime4K 效率',
+  quality: 'Anime4K 质量',
+  general: 'RAVU Lite（通用）',
+  high: 'FSRCNNX（高细节）',
 };
 
 export function isSrMode(v: unknown): v is SrMode {
@@ -97,13 +97,28 @@ export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   enginePaths: {},
 };
 
+/** Accept executable paths copied from Windows Explorer, which commonly include wrapping quotes. */
+export function normalizePlayerExecutablePath(value: unknown): string {
+  let path = typeof value === 'string' ? value.trim() : '';
+  while (path.length >= 2) {
+    const first = path[0];
+    const last = path[path.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      path = path.slice(1, -1).trim();
+      continue;
+    }
+    break;
+  }
+  return path;
+}
+
 /** 归一（容错旧值/缺字段；纯函数，配置页与主进程共用） */
 export function normalizePlayerSettings(s: Partial<PlayerSettings> | null | undefined): PlayerSettings {
-  const bt = s && typeof s.btExternalPlayer === 'string' ? s.btExternalPlayer.trim() : '';
-  const vod = s && typeof s.vodExternalPlayer === 'string' ? s.vodExternalPlayer.trim() : '';
+  const bt = normalizePlayerExecutablePath(s?.btExternalPlayer);
+  const vod = normalizePlayerExecutablePath(s?.vodExternalPlayer);
   // 旧配置没有该字段 → 按「路径非空」推导（迁移口径）；显式布尔值一律以它为准
   const vodOn = s && typeof s.vodExternalPlayerEnabled === 'boolean' ? s.vodExternalPlayerEnabled : vod !== '';
-  const mpv = s && typeof s.mpvPath === 'string' ? s.mpvPath.trim() : '';
+  const mpv = normalizePlayerExecutablePath(s?.mpvPath);
   // ★ 超分档位：非白名单值（旧配置 / 手改坏）一律回落 off
   const sr = isSrMode(s?.srMode) ? (s!.srMode as SrMode) : 'off';
   return {
@@ -155,6 +170,28 @@ export interface MpvStatus {
   source: 'override' | 'bundled' | 'system' | 'none';
   /** 人话说明（配置页/播放器提示用） */
   note: string;
+}
+
+export type MediaRuntimeId = 'mpv' | 'ffmpeg';
+export type MediaRuntimePhase = 'resolve' | 'download' | 'verify' | 'extract' | 'complete' | 'canceled' | 'error';
+export interface MediaRuntimeProgress {
+  runtime: MediaRuntimeId;
+  phase: MediaRuntimePhase;
+  received: number;
+  total: number;
+  message: string;
+}
+export interface MediaRuntimeInstalledState {
+  installed: boolean;
+  version?: string;
+  /** MPV executable path, or FFmpeg's bin directory. */
+  path?: string;
+  sha256?: string;
+  assetName?: string;
+}
+export interface MediaRuntimeStatus {
+  mpv: MediaRuntimeInstalledState;
+  ffmpeg: MediaRuntimeInstalledState;
 }
 
 /** 启动一次 mpv 会话（每次换集/换源 = 新会话；主进程先停旧进程） */

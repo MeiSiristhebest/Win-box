@@ -158,7 +158,7 @@ const api = {
       ipcRenderer.on(IPC.VOD_SEARCH_ALL_PROGRESS, l);
       return () => { ipcRenderer.removeListener(IPC.VOD_SEARCH_ALL_PROGRESS, l); };
     },
-    play: (a: { key: string; flag: string; id: string; profileId?: string }) => invoke(IPC.VOD_PLAY, a),
+    play: (a: { key: string; flag: string; id: string; profileId?: string; parseOffset?: number }) => invoke(IPC.VOD_PLAY, a),
     // ★ 2026-09-30（用户要求）：点播外部播放器（与磁力分开绑定）——探测本机播放器 / 用当前地址拉起
     detectPlayers: () => invoke<Array<{ id: string; name: string; path: string }>>(IPC.VOD_DETECT_PLAYERS),
     // ★ 2026-09-30（用户要求）：`seek`（秒）—— 从历史续播时按播放器类型拼起播参数
@@ -369,6 +369,16 @@ const api = {
       const l = (_e: unknown, s: unknown) => cb(s);
       ipcRenderer.on(IPC.MPV_STATE, l);
       return () => ipcRenderer.removeListener(IPC.MPV_STATE, l);
+    },
+  },
+  mediaRuntime: {
+    status: () => invoke(IPC.MEDIA_RUNTIME_STATUS),
+    install: (runtime: 'mpv' | 'ffmpeg') => invoke(IPC.MEDIA_RUNTIME_INSTALL, runtime),
+    cancel: () => invoke(IPC.MEDIA_RUNTIME_CANCEL),
+    onProgress: (cb: (progress: unknown) => void) => {
+      const listener = (_event: unknown, progress: unknown) => cb(progress);
+      ipcRenderer.on(IPC.MEDIA_RUNTIME_PROGRESS, listener);
+      return () => ipcRenderer.removeListener(IPC.MEDIA_RUNTIME_PROGRESS, listener);
     },
   },
   // ★ 2026-10-18（R11）第三方播放内核（`contributes.player.engine`；宿主托管，插件只给描述符）

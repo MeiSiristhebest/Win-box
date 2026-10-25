@@ -3,12 +3,12 @@ import { applyWindowSurfacePolicy, windowSurfaceColor } from '../src/main/prefer
 
 describe('window surface policy', () => {
   it('uses each registered theme surface for application windows', () => {
-    expect(windowSurfaceColor('dark', 'application')).toBe('#111317');
-    expect(windowSurfaceColor('light', 'application')).toBe('#f7f8fa');
-    expect(windowSurfaceColor('netflix', 'application')).toBe('#111317');
-    expect(windowSurfaceColor('bilibili', 'application')).toBe('#f7f8fa');
-    expect(windowSurfaceColor('apple', 'application')).toBe('#f7f8fa');
-    expect(windowSurfaceColor('douban', 'application')).toBe('#f7f8fa');
+    expect(windowSurfaceColor('dark', 'application')).toBe('#101318');
+    expect(windowSurfaceColor('light', 'application')).toBe('#f3f5f8');
+    expect(windowSurfaceColor('netflix', 'application')).toBe('#101318');
+    expect(windowSurfaceColor('bilibili', 'application')).toBe('#f3f5f8');
+    expect(windowSurfaceColor('apple', 'application')).toBe('#f3f5f8');
+    expect(windowSurfaceColor('douban', 'application')).toBe('#f3f5f8');
   });
 
   it('does not apply an opaque color to the transparent player window', () => {
@@ -28,6 +28,6 @@ describe('window surface policy', () => {
 
     expect(closed.setBackgroundColor).not.toHaveBeenCalled();
     expect(open.setBackgroundColor).toHaveBeenCalledOnce();
-    expect(open.setBackgroundColor).toHaveBeenCalledWith('#f7f8fa');
+    expect(open.setBackgroundColor).toHaveBeenCalledWith('#f3f5f8');
   });
 });

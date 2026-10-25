@@ -267,6 +267,10 @@ export const IPC = {
   MPV_STOP: 'mpv:stop',
   /** 主进程 → 渲染层：内核状态推送（时间/时长/暂停/缓冲/直播/尺寸/缓存速度；见 MpvStateEvent） */
   MPV_STATE: 'mpv:state',
+  MEDIA_RUNTIME_STATUS: 'mediaRuntime:status',
+  MEDIA_RUNTIME_INSTALL: 'mediaRuntime:install',
+  MEDIA_RUNTIME_CANCEL: 'mediaRuntime:cancel',
+  MEDIA_RUNTIME_PROGRESS: 'mediaRuntime:progress',
   // ★ 2026-10-18（R11）第三方播放内核（`contributes.player.engine`；宿主托管，插件只给描述符）
   /** 引擎列表（内置 2 + 插件 N；未就绪项带 `note`）→ `PlayerEngineView[]` */
   ENGINE_LIST: 'engine:list',

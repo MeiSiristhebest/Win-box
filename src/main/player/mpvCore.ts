@@ -516,6 +516,13 @@ export function buildMpvArgs(o: BuildMpvArgsOptions): string[] {
      */
     '--demuxer-max-bytes=64MiB',
     '--demuxer-max-back-bytes=16MiB',
+    // ★ 影视仓开箱体验对齐：内嵌多轨自动首选中文字幕与中文音轨，倍速变调保真，网络流防丢包
+    '--slang=zh,chi,chs,sc,cht,tc',
+    '--alang=zh,chi,chs,sc,cmn,yue',
+    '--audio-pitch-correction=yes',
+    '--sub-auto=fuzzy',
+    '--stream-auto-disconnect=0',
+    '--rtsp-transport=tcp',
     `--wid=${o.wid}`,
     `--input-ipc-server=${o.pipe}`,
   ];

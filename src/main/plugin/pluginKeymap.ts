@@ -3,7 +3,7 @@
 //
 // ★ 与 R6 的 `ui.command` 是**同一套动作词表** —— 本层只搬运白名单字段，并把键位串**规范化**
 //   （大小写 / 修饰键顺序 / 别名归一 → 如 `Ctrl+Alt+F`）；动作的实际执行仍在**渲染层**
-//   （`lib/pluginCommands.ts` 的宿主受控动作词表）；主进程只负责**校验 + 装配**。
+//   （renderer 插件命令用例的宿主受控动作词表）；主进程只负责**校验 + 装配**。
 // 事实源：docs/design/插件制作规范.md §5.10；机器契约见 src/shared/plugin.ts。
 
 import { parseKeyCombo, type KeymapContribute, type KeymapView } from '../../shared/plugin';

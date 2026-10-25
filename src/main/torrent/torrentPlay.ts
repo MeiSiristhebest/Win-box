@@ -28,7 +28,8 @@ import {
   type TorrentFile,
 } from '../../engine/torrent/magnet';
 import { Aria2Sidecar } from './Aria2Sidecar';
-import { detectPlayers, launchPlayer } from './externalPlayer';
+import { detectPlayers, launchPlayer, resolvePlayer } from './externalPlayer';
+import { normalizePlayerExecutablePath } from '../../shared/player';
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const num = (v: unknown): number => {
@@ -258,17 +259,18 @@ export class TorrentPlay {
   }
 
   /** 会话 → 播放出口（内联 / 外部接力 / 不可用原因） */
-  private handOff(s: BtSession): BtPlayOutcome {
+  private async handOff(s: BtSession): Promise<BtPlayOutcome> {
     s.lastAccess = Date.now();
     const url = btStreamUrl(LOCAL_PROXY_BASE, s.infoHash, s.fileIndex);
     const block = webPlayBlockReason(s.fileName);
     if (!block) return { kind: 'inline', url, infoHash: s.infoHash, fileIndex: s.fileIndex, title: s.title };
-    const players = detectPlayers(this.externalPlayerPath());
-    if (!players.length) {
+    const configuredPath = normalizePlayerExecutablePath(this.externalPlayerPath());
+    const p = configuredPath ? resolvePlayer(configuredPath) : detectPlayers()[0];
+    if (!p) {
       return { kind: 'unsupported', reason: `${block}，且未检测到外部播放器（可安装 PotPlayer / VLC / mpv / MPC-HC）` };
     }
-    const p = players[0];
-    if (!launchPlayer(p.path, url)) return { kind: 'unsupported', reason: `外部播放器启动失败（${p.name}）` };
+    const launched = await launchPlayer(p.path, url);
+    if (!launched.ok) return { kind: 'unsupported', reason: `外部播放器启动失败（${p.name}）：${launched.error || '未知错误'}` };
     this.logger.i(`BT 外部接力：${p.name} ← ${url}（${block}）`);
     return { kind: 'external', player: p.name, title: s.title };
   }

@@ -4,14 +4,14 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IpcMainInvokeEvent } from 'electron';
-import type { SpiderHost } from '../src/main/spider/SpiderHost';
+import type { BackupIpcHostPort } from '../src/main/settings/backupIpc';
 import type { UiPreferencesService } from '../src/main/store/UiPreferencesService';
 import type { BackupImportResult, BackupSettingsState } from '../src/shared/backup';
 import { DEFAULT_UI_PREFERENCES } from '../src/shared/uiPreferences';
 import { DEFAULT_PLAYER_SETTINGS } from '../src/shared/player';
 import { DEFAULT_SUBTITLE_SETTINGS } from '../src/shared/subtitle';
 import { DEFAULT_DANMAKU_SETTINGS } from '../src/shared/danmaku';
-import { emptyUserConfig } from '../src/main/store/UserConfigManager';
+import { emptyUserConfig } from '../src/main/store/UserConfigApplicationService';
 import { buildBackupFile } from '../src/main/settings/backup';
 import { IPC } from '../src/shared/ipc-channels';
 
@@ -54,7 +54,7 @@ beforeEach(() => {
   restore = vi.fn();
   preferences = { get: () => ({ values: DEFAULT_UI_PREFERENCES }), update: vi.fn() };
   const host = { settingsSnapshot: () => structuredClone(settings), restoreSettings: restore, resetSpidersForProxyChange: vi.fn() };
-  registerBackupIpc(host as unknown as SpiderHost, preferences as unknown as UiPreferencesService);
+  registerBackupIpc(host as unknown as BackupIpcHostPort, preferences as unknown as UiPreferencesService);
 });
 afterEach(() => { rmSync(directory, { recursive: true, force: true }); vi.useRealTimers(); });
 

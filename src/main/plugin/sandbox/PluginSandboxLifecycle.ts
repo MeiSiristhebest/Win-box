@@ -1,4 +1,4 @@
-// src/main/plugin/sandbox/PluginSandboxManager.ts
+// src/main/plugin/sandbox/PluginSandboxLifecycle.ts
 // L4 沙箱的**生命周期管理**：与插件登记表对齐 ——
 //   启用 + `kind:"code"` + 载荷就位 → 确保沙箱在跑；否则（停用 / 卸载 / 载荷未就位）→ 释放。
 //
@@ -25,7 +25,7 @@ export interface SandboxEntry {
   permissions: string[];
 }
 
-export interface PluginSandboxManagerOptions {
+export interface PluginSandboxLifecycleOptions {
   api: PluginSandboxApi;
   workerFile: string;
   logger: Logger;
@@ -33,10 +33,10 @@ export interface PluginSandboxManagerOptions {
   factory?: (opts: PluginSandboxOptions) => SandboxLike;
 }
 
-export class PluginSandboxManager {
+export class PluginSandboxLifecycle {
   private readonly boxes = new Map<string, SandboxLike>();
 
-  constructor(private readonly opts: PluginSandboxManagerOptions) {}
+  constructor(private readonly opts: PluginSandboxLifecycleOptions) {}
 
   /** 与登记表对齐（幂等）：该跑的在跑、不该跑的释放 */
   async sync(entries: SandboxEntry[]): Promise<void> {

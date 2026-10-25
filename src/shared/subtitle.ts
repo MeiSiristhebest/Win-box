@@ -62,6 +62,14 @@ export interface SubtitleSettings {
   bottom: number;
 }
 
+/** Normalized query shared by subtitle providers across the application boundary. */
+export interface SubtitleSearchContext {
+  title: string;
+  keywords: string[];
+  ep?: string;
+  settings: SubtitleSettings;
+}
+
 /** ★ 2026-09-28：多源检索报告（命中 + 每个源的状态，供 UI 说明"为什么没字幕"） */
 export interface SubtitleSearchReport {
   candidates: SubtitleCandidate[];
@@ -93,7 +101,7 @@ export interface SubtitleProviderView {
 }
 
 export const DEFAULT_SUBTITLE_SETTINGS: SubtitleSettings = {
-  enabled: false,
+  enabled: true,
   fontSize: 20,
   bottom: 40,
   providers: { assrt: true, subtitlecat: true },

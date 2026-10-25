@@ -30,6 +30,12 @@ describe('mpvCore · 启动参数', () => {
     expect(args).toContain('--hwdec=auto-safe');
     expect(args).toContain('--input-default-bindings=no');
     expect(args).toContain('--no-config');
+    expect(args).toContain('--slang=zh,chi,chs,sc,cht,tc');
+    expect(args).toContain('--alang=zh,chi,chs,sc,cmn,yue');
+    expect(args).toContain('--audio-pitch-correction=yes');
+    expect(args).toContain('--sub-auto=fuzzy');
+    expect(args).toContain('--stream-auto-disconnect=0');
+    expect(args).toContain('--rtsp-transport=tcp');
   });
 
   it('起播位置/音量/倍速按需带上（0 或缺省不传）', () => {

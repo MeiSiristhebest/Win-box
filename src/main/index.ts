@@ -9,7 +9,9 @@ import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, Notification, shel
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { registerIpc } from './ipc';
-import { SpiderHost } from './spider/SpiderHost';
+import type { MainIpcApplicationPorts } from './ipc/MainIpcApplicationPorts';
+import { createSpiderHostServices } from './spider/createSpiderHostServices';
+import { createDefaultSpiderHostInfrastructure } from './spider/createDefaultSpiderHostInfrastructure';
 import { LocalProxyServer } from './server/LocalProxyServer';
 import { fileLogger } from './util/logger';
 // ★ 2026-10-16（用户报「播放时画面突然消失、只剩声音」）：播放诊断上报的收集器（见下方 child-process-gone）
@@ -28,6 +30,12 @@ import { UpdateService } from './update/UpdateService';
 import { DavStore } from './store/DavStore';
 import { JsonStore } from './store/JsonStore';
 import { LocalPkgStore } from './store/LocalPkgStore';
+import { createConfigurationApplicationServices } from './configuration/createConfigurationApplicationServices';
+import { createSubscriptionAssembly } from './subscriptions/createSubscriptionAssembly';
+import { createSubtitleServiceAssembly } from './subtitle/createSubtitleServiceAssembly';
+import { createDanmakuServiceAssembly } from './danmaku/createDanmakuServiceAssembly';
+import { createMetadataService } from './meta/createMetadataService';
+import { SettingsBackupService } from './settings/SettingsBackupService';
 import { UiPreferencesService } from './store/UiPreferencesService';
 import { applyWindowSurfacePolicy, windowSurfaceColor } from './preferences/WindowSurfacePolicy';
 import { colorSchemeFor } from '../shared/ui/themeTokens';
@@ -58,13 +66,23 @@ const pluginDialogs = new PluginDialogService(() => mainWindow?.webContents ?? n
 ipcMain.on(IPC.PLUGIN_DIALOG_READY, event => pluginDialogs.markReady(event.sender.id));
 ipcMain.on(IPC.PLUGIN_DIALOG_REPLY, (event, reply: PluginDialogReply) => pluginDialogs.reply(event.sender.id, reply));
 app.on('will-quit', () => pluginDialogs.dispose());
-const host = new SpiderHost();
+const localPkgs = new LocalPkgStore(
+  new JsonStore(join(userDataDir(), 'local-pkgs.json')),
+  LOCAL_PROXY_BASE,
+  localImportsDir(),
+  legacyLocalImportsDir(),
+);
+const hostInfrastructure = createDefaultSpiderHostInfrastructure();
+const configurationServices = createConfigurationApplicationServices({
+  persistence: hostInfrastructure.userConfigPersistence,
+  logger: hostInfrastructure.logger,
+  localPackages: localPkgs,
+});
 /**
  * ★ 2026-09-29：磁力（BT）引擎（用户选定方案 B）—— aria2c sidecar + 本机中继 `/bt` + 外部播放器接力。
  * 懒启动（首次磁力播放才拉起 aria2c），退出时 dispose（另有 `--stop-with-process` 兜底防孤儿）。
  */
 const torrent = new TorrentPlay(fileLogger, () => playerSettings.settings.btExternalPlayer);
-host.torrentPlay = torrent;
 /**
  * ★ 2026-09-29 WebDAV 存储（用户选定「WebDAV 直连」）：服务器与凭据加密落盘，
  * 浏览走 PROPFIND、播放走 `/play?dav=<id>` 由中继注入 Authorization（凭据绝不进 URL）。
@@ -84,12 +102,6 @@ const updater = new UpdateService(fileLogger);
  * ★ 2026-09-29（用户要求）本地包（影视壳/影视仓 目录包）：登记表 + `/pkg` 资源路由 + py 就地运行。
  *   导入安装目录下的 imports 副本，原始包可移动/删除，不影响已导入订阅。
  */
-const localPkgs = new LocalPkgStore(
-  new JsonStore(join(userDataDir(), 'local-pkgs.json')),
-  LOCAL_PROXY_BASE,
-  localImportsDir(),
-  legacyLocalImportsDir(),
-);
 const uiPreferences = new UiPreferencesService(
   new JsonStore(join(userDataDir(), 'ui-preferences.json')),
   (snapshot) => {
@@ -170,37 +182,127 @@ app.on('will-quit', () => {
     /* ignore */
   }
 });
-// ★ 2026-10-18 插件字幕源（`contributes.subtitle.provider`）：宿主按插件声明取数 →
-//   与内置源（assrt / subtitlecat）合并进同一套字幕检索/下载链路（见 SpiderHost.allSubtitleProviders）。
-host.pluginSubtitleProviders = () => plugins.subtitleProviders();
-// ★ 2026-10-18 插件元数据源（`contributes.meta.provider`）：作为**兜底**接进 metaSearch
-//   （内置 TMDB / 豆瓣都未命中时才轮到它；见 SpiderHost.pluginMetaLookup）。
-host.pluginMetaProviders = () => plugins.metaProviders();
-// ★ 2026-10-18 插件发现页数据源（`contributes.discover.source`）：作为**增补**接进发现页
-//   （插件分区追加在内置榜单之后；见 SpiderHost.pluginDiscoverSections）。
-host.pluginDiscoverSources = () => plugins.discoverSources();
-// ★ 2026-10-18 插件弹幕源（`contributes.danmaku.source`）：与内置外部接口**并列**接进三步弹幕链路
-//   （搜索番剧 → 剧集列表 → 弹幕 XML；见 SpiderHost.danmakuSearch / danmakuEpisodes / danmakuFetch）。
-host.pluginDanmakuSources = () => plugins.danmakuSources();
-// ★ 2026-10-18 插件直播输出模板（`contributes.live.template`）：接进「导出直播线路」
-//   （宿主把**已解析**的 LiveGroup[] 按模板格式化输出 TXT / M3U；★ 本类型不发请求、不解析）。
-host.pluginLiveTemplates = () => plugins.liveTemplates();
+/** Main composition root: optional player and plugin adapters are fixed before host construction. */
+const subtitleService = createSubtitleServiceAssembly({
+  userDataDirectory: hostInfrastructure.directories.userData,
+  logger: hostInfrastructure.logger,
+  credentialCodec: hostInfrastructure.credentialCodec,
+  listPluginProviders: async () => (await plugins.subtitleProviders()) ?? [],
+}).service;
+const danmakuServices = createDanmakuServiceAssembly({
+  userDataDirectory: hostInfrastructure.directories.userData,
+  logger: hostInfrastructure.logger,
+  listPluginSources: async () => (await plugins.danmakuSources()) ?? [],
+});
+const metadataService = createMetadataService({
+  userDataDir: hostInfrastructure.directories.userData,
+  cacheDir: hostInfrastructure.directories.cache,
+  logger: hostInfrastructure.logger,
+  driveCodec: hostInfrastructure.credentialCodec,
+  metadataProviders: async () => (await plugins.metaProviders()) ?? [],
+  discoverySources: async () => (await plugins.discoverSources()) ?? [],
+});
+const hostServices = createSpiderHostServices(hostInfrastructure, {
+  configuration: configurationServices,
+  createSubscriptionImports: (coordinator) => createSubscriptionAssembly({
+    userDataDirectory: hostInfrastructure.directories.userData,
+    profiles: configurationServices.userConfig,
+    logger: fileLogger,
+    coordinator,
+    onImportProgress: (event) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        try {
+          if (!window.isDestroyed()) window.webContents.send(IPC.CFG_IMPORT_JOB_PROGRESS, event);
+        } catch {
+          // A window can close while the import job continues.
+        }
+      }
+    },
+    onPersistenceError: (error) => fileLogger.w(`订阅导入任务进度保存失败：${error instanceof Error ? error.message : String(error)}`),
+  }).imports,
+  localPackages: localPkgs,
+  integrations: {
+    torrentPlayback: torrent,
+    liveTemplates: () => plugins.liveTemplates(),
+  },
+});
+const syncDriveCredentialFiles = (): void => {
+  hostServices.driveCredentialSynchronizer.sync(hostServices.drives.list(), hostServices.ucTvStore.get());
+};
+const resetSpidersAfterDriveChange = (): void => {
+  hostServices.aggregateSearch.invalidateCredentials();
+  hostServices.spiderRuntime.resetAfterDriveCredentialChange();
+};
+const ipcServices: MainIpcApplicationPorts = {
+  sourceConfiguration: hostServices.sourceConfiguration,
+  sourceReads: {
+    importConfig: (source) => hostServices.subscriptionImports.importConfig(source),
+    get sites() { return hostServices.sourceRuntimeConfiguration.current?.sites ?? []; },
+    get importReport() { return hostServices.subscriptionImports.latestReport; },
+    driveBindLearned: () => hostServices.driveBindingLearning.learnedSourceKeys(),
+  },
+  subscriptionImports: hostServices.subscriptionImports,
+  subscriptionGroups: hostServices.subscriptionGroups,
+  profileConfiguration: hostServices.profileConfiguration,
+  liveChannelConfiguration: hostServices.liveChannelConfiguration,
+  sourceDiagnostics: hostServices.sourceDiagnostics,
+  driveAccounts: hostServices.driveAccounts,
+  spiderRuntime: hostServices.spiderRuntime,
+  driveFileCleanup: hostServices.driveFileCleanup,
+  livePlayback: hostServices.livePlayback,
+  vod: {
+    home: (key, profileId) => hostServices.sourceCatalog.home(key, profileId),
+    category: (key, tid, page, extend, profileId) => hostServices.sourceCatalog.category(key, tid, page, extend, profileId),
+    detail: (key, ids, profileId) => hostServices.sourceCatalog.detail(key, ids, profileId),
+    search: (key, keyword, profileId) => hostServices.sourceCatalog.search(key, keyword, profileId),
+    searchAll: (keyword, options, onProgress) => hostServices.aggregateSearchRunner.run(keyword, options, onProgress),
+    play: (key, flag, id, profileId) => hostServices.playbackRequest.execute(key, flag, id, profileId),
+  },
+};
+const disposeSpiderServices = (): void => {
+  hostServices.subscriptionImports.dispose();
+  try {
+    hostServices.spiderRuntime.dispose();
+  } catch {
+    /* ignore */
+  }
+};
+const settingsBackup = new SettingsBackupService({
+  userConfig: {
+    snapshot: () => configurationServices.sources.getSnapshot(),
+    restore: (value) => configurationServices.userConfig.restore(value),
+  },
+  drives: {
+    list: () => hostServices.driveAccounts.list(),
+    set: (provider, token) => hostServices.driveAccounts.set(provider, token),
+    remove: (provider) => hostServices.driveAccounts.remove(provider),
+  },
+  subtitle: subtitleService,
+  metadata: metadataService,
+  danmaku: {
+    getSettings: () => danmakuServices.store.settings,
+    setSettings: (settings) => { danmakuServices.store.settings = settings; },
+  },
+  driveRuntime: {
+    resetAfterCredentialChange: resetSpidersAfterDriveChange,
+    syncCredentialFiles: syncDriveCredentialFiles,
+  },
+});
 const proxy = new LocalProxyServer(
   fileLogger,
-  () => host.driveList(),
+  () => hostServices.driveAccounts.list(),
   // ★ 2026-09-29 m3u8 去广告注入（默认关，配置页「播放」可开）：
   //   开关每轮清单回源时现读（改后即时生效）；规则用当前订阅的 rules[].regex 按 host 匹配。
   {
     enabled: () => playerSettings.settings.m3u8Purify,
-    rulesFor: (url) => hostRegexFor(url, host.siteConfig?.rules),
+    rulesFor: (url) => hostRegexFor(url, hostServices.sourceRuntimeConfiguration.current?.rules),
   },
   // ★ 2026-09-29 WebDAV 取流认证（凭据只在主进程加密存储里）
   (id) => dav.authHeader(id),
 );
 // ★ 2026-09-29（用户要求）本地包：包内资源路由（/pkg/<i>/<rel>）+ 订阅 pkg:// 读取
 proxy.pkgRoot = (i) => localPkgs.rootOf(i);
-host.localPkgs = localPkgs;
-host.initializeLocalImports();
+  hostServices.sourceConfiguration.initializeLocalImports();
 // ★ 把 /play 中继的真实转发字节速率推给渲染层（播放器「缓存中」实时网速）
 const pushSpeed = (kbs: number): void => {
   for (const w of BrowserWindow.getAllWindows()) {
@@ -211,8 +313,8 @@ proxy.onSpeed = pushSpeed;
 // ★ 2026-09-29：BT 下载速率走同一条通道（/bt 中继写回字节 + aria2 下载速率）→ 播放器「缓存中 x MB/s」
 torrent.onSpeed = pushSpeed;
 // ★ 2026-09-26：壳/蜘蛛的宿主代理（`/proxy/<jvmPort>?do=proxy&key=…`）被访问 → 钉住那个 JVM
-proxy.onSpiderProxy = (port) => host.pinSpiderProxy(port);
-proxy.onPythonProxy = (key, params) => host.pythonProxy(key, params);
+proxy.onSpiderProxy = (port) => hostServices.bridge.pinSpiderProxy(port);
+proxy.onPythonProxy = (key, params) => hostServices.pythonSourceProxy.execute(key, params);
 // ★ 2026-09-29：`/bt/<hash>/<idx>` 取流口（Range + piece 门控 + 本地读盘）
 proxy.bt = torrent;
 
@@ -491,16 +593,16 @@ app.whenReady().then(async () => {
   }
   // ★ 网盘会话必须在蜘蛛预热前准备好：夸克 member 接口会补发新版 __puus，
   //   而 Pizazz/fty 蜘蛛在 init 时只读一次 cookie。失败时保留旧凭据并继续启动。
-  try { host.syncDriveFiles(); } catch { /* 同步失败不影响启动 */ }
-  try { await host.refreshDriveSessions(); } catch (e) {
+  try { syncDriveCredentialFiles(); } catch { /* 同步失败不影响启动 */ }
+  try { await hostServices.driveAccounts.refreshSessions(); } catch (e) {
     fileLogger.w('网盘会话刷新失败（保留现有绑定）：' + (e as Error).message);
   }
-  try { host.syncDriveFiles(); } catch { /* 同步失败不影响启动 */ }
-  host.enablePrewarm();
+  try { syncDriveCredentialFiles(); } catch { /* 同步失败不影响启动 */ }
+  hostServices.spiderRuntime.enablePrewarm();
   // ★ 更新后已清空 winbox-cache（含 jar 转换产物与常驻运行时）→ 立刻在后台重建，
   //   否则用户下次进源要现付「下载 + dex2jar + JVM 冷启动」（实测 37s，会被请求超时顶掉）。
   if (privateCacheReset) {
-    try { host.rewarmAfterCacheClear(); } catch { /* 预热失败不影响清理结果 */ }
+    try { hostServices.spiderRuntime.rewarmAfterCacheClear(); } catch { /* 预热失败不影响清理结果 */ }
   }
   // ★ 2026-10-16 插件宿主：物化随包官方插件 + 刷新登记表（失败不阻塞启动）
   try {
@@ -510,7 +612,11 @@ app.whenReady().then(async () => {
   } catch (e) {
     fileLogger.w('插件初始化失败：' + (e instanceof Error ? e.message : String(e)));
   }
-  registerIpc(host, dav, dlna, updater, localPkgs, uiPreferences, plugins, playerEngines);
+  registerIpc(ipcServices, dav, dlna, updater, localPkgs, uiPreferences, plugins, playerEngines, {
+    subtitles: subtitleService,
+    danmaku: danmakuServices.service,
+    metadata: metadataService,
+  }, settingsBackup);
   /**
    * 显式设置 WINBOX_MEMORY_PROBE=1 时，启动后 15s 采一次空闲基线；
    *   供与「播放中」的采样对照；播放中的 60s 采样由 ipc 的 `media:state`（播放器窗口）触发。
@@ -532,13 +638,13 @@ app.whenReady().then(async () => {
   bossKey.apply();
   // ★ 关闭播放器窗口 → 删除本次夸克转存落盘文件（观看进度保留在本地历史）
   onPlayerWindowClosed(() => {
-    void host.quarkDeletePending().catch(() => undefined);
+    void hostServices.driveFileCleanup.deletePending().catch(() => undefined);
   });
   // ★ 启动时清理上次遗留的夸克落盘文件（此前关闭/退出未删成功的）
-  void host.quarkDeletePending().catch(() => undefined);
+  void hostServices.driveFileCleanup.deletePending().catch(() => undefined);
   createWindow();
   // ★ 启动时自动订阅刷新（≥7 天一次，静默后台执行，失败仅记日志）
-  void host.maybeAutoRefreshSubscriptions();
+  void hostServices.subscriptionImports.refreshIfDue();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -552,18 +658,18 @@ app.on('window-all-closed', () => {
 // ★ 退出前彻底清理：terminate 所有 JVM 蜘蛛子进程 + 停本地代理 + 断 token 解码，
 //   确保关闭应用后无任何后台残留进程/服务（含 Electron 隐含子进程会在 app.quit 后自行结束）。
 registerAppQuitCleanup(app, {
-  cleanup: () => host.quarkDeletePending(),
+  cleanup: () => hostServices.driveFileCleanup.deletePending(),
   timeoutMs: 8_000,
   onError: error => fileLogger.w(`退出清理失败：${error instanceof Error ? error.message : String(error)}`),
   dispose: () => {
     try {
       // ★ 退出前再尝试一次夸克落盘文件清理（失败会持久化到下次启动重试）
-      void host.quarkDeletePending();
+      void hostServices.driveFileCleanup.deletePending();
     } catch {
       /* ignore */
     }
     try {
-      host.dispose();
+      disposeSpiderServices();
     } catch {
       /* ignore */
     }
@@ -583,7 +689,7 @@ registerAppQuitCleanup(app, {
 
 // 兜底：若 did-fail-load 或异常，也让 JVM 子进程不残留
 process.on('beforeExit', () => {
-  try { host.dispose(); } catch { /* ignore */ }
+  try { disposeSpiderServices(); } catch { /* ignore */ }
 });
 
 // 单实例锁
