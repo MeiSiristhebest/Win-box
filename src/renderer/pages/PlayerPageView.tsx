@@ -116,6 +116,7 @@ export function PlayerPageView({ session, windowState, title, onResolutionChange
               onPrev={() => selectEpisode(epIndex - 1)}
               onNext={() => selectEpisode(epIndex + 1)}
               mini={mini}
+              onToggleMini={() => void setMini(!mini)}
               // ★ 2026-10-08（用户拍板「内置官方构建」）：MPV 高兼容内核 —— 仅本窗口（transparent）可用
               allowMpv
               // ★ 2026-09-30：图集源（每「集」= 一张图）/ 音乐源 → 图片浏览器 / 音乐播放器显示页码与封面
