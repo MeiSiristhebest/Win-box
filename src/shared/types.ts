@@ -436,6 +436,15 @@ export interface ImportReport {
   items: SiteReportItem[];
 }
 
+/** Stable IPC/use-case result for importing a source configuration. */
+export interface ConfigImportResult {
+  config: SiteConfig;
+  report: ImportReport;
+  /** Present when a multi-repository subscription was recognized. */
+  urls?: MultiConfigEntry[];
+  warnings: string[];
+}
+
 // ---------- 用户配置文件（<userData>/user-config.json，见 docs/config-file.md） ----------
 export interface UserGlobalConfig {
   spider: string; // 顶层全局 jar URL（配置顶层 spider 字段）

@@ -8,6 +8,7 @@ import { parseHosts, parseRules, parseProxy } from './RuleParser';
 import { buildImportReport } from './ImportReport';
 import type {
   SiteConfig,
+  ConfigImportResult,
   SourceBean,
   ParseBean,
   LiveBean,
@@ -106,14 +107,8 @@ export function parseApiCollection(jsonStr: string): MultiConfigEntry[] | null {
   }
 }
 
-export interface ParseResult {
-  config: SiteConfig;
-  report: ImportReport;
-  /** 多仓订阅格式命中时填，主流程不解析 sites */
-  urls?: MultiConfigEntry[];
-  /** 非安卓标准格式（如 storeHouse）时给出提示 */
-  warnings: string[];
-}
+/** Compatibility name retained for parser callers; the value is a shared application/IPC DTO. */
+export type ParseResult = ConfigImportResult;
 
 const EMPTY_CONFIG: SiteConfig = {
   sites: [],
