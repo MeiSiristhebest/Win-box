@@ -23,6 +23,15 @@ describe('SearchCache', () => {
     expect(c.size).toBe(1);
   });
 
+  it('精确键 API 不会对档案身份或复合键做关键词式大小写折叠', () => {
+    const c = new SearchCache<string>();
+    c.setByKey('["ProfileA",1,"Movie"]', 'upper', T0);
+    c.setByKey('["profilea",1,"Movie"]', 'lower', T0 + 1);
+    expect(c.getEntryByKey('["ProfileA",1,"Movie"]', T0 + 2)?.value).toBe('upper');
+    expect(c.getEntryByKey('["profilea",1,"Movie"]', T0 + 2)?.value).toBe('lower');
+    expect(c.size).toBe(2);
+  });
+
   it('TTL 过期即失效并删除（默认 5 分钟）', () => {
     const c = new SearchCache<number>();
     c.set('狂飙', 1, T0);

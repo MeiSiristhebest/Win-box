@@ -3,9 +3,12 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { client } from '../src/renderer/api/client';
 import { useHomeSearchController } from '../src/renderer/features/home/useHomeSearchController';
-import { makeStaleGuard } from '../src/renderer/lib/staleGuard';
-import { uiMem, type HomeSearchMem } from '../src/renderer/lib/uiMemory';
-import type { SortClassView } from '../src/renderer/features/home/useHomeBrowseController';
+import { rendererSearchClock, rendererSearchFrames, rendererSearchWallClock } from '../src/renderer/features/home/adapters/rendererSearchClock';
+import { initialHomeSearchViewState, reduceHomeSearchViewState } from '../src/renderer/features/home/application/homeSearchViewState';
+import { saveUiMemory, uiMem } from '../src/renderer/lib/uiMemory';
+import type { HomeSearchMem } from '../src/renderer/features/home/application/HomeSearchMemory';
+import type { HomeBrowseSnapshot, HomeSearchBrowsePort } from '../src/renderer/features/home/application/homeBrowseSearchSession';
+import type { HomeSortClassView } from '../src/renderer/features/home/application/homePorts';
 import type { SearchAllReport, SourceBean, VodItem } from '../src/shared/types';
 import * as React from 'react';
 
@@ -18,7 +21,7 @@ vi.mock('../src/renderer/api/client', () => ({
   },
 }));
 
-vi.mock('../src/renderer/lib/searchWin', () => ({
+vi.mock('../src/renderer/features/search/adapters/searchWindowNavigationAdapter', () => ({
   isSearchWindow: () => true,
   openSearchWindow: vi.fn(),
 }));
@@ -59,7 +62,11 @@ function useSearchHarness({
   profileReady = false,
   requestedProfileId = 'profile-a',
   pathname = '/search',
+  searchWindow = true,
   browseItems = [],
+  browseReturnDestination,
+  initialBrowseLoading = false,
+  wallClock = rendererSearchWallClock,
   profiles = [
     { id: 'profile-a', name: 'A' },
     { id: 'profile-b', name: 'B' },
@@ -73,109 +80,122 @@ function useSearchHarness({
   profileReady?: boolean;
   requestedProfileId?: string;
   pathname?: string;
+  searchWindow?: boolean;
   browseItems?: VodItem[];
+  browseReturnDestination?: ReturnType<HomeSearchBrowsePort['returnDestination']>;
+  initialBrowseLoading?: boolean;
+  wallClock?: { now(): number };
   profiles?: Array<{ id: string; name: string }>;
 } = {}) {
-  const [term, setTerm] = React.useState(wd);
-  const [allSources, setAllSources] = React.useState(searchAllSources);
-  const [allProfiles, setAllProfiles] = React.useState(searchAllProfiles);
-  const [aggMode, setAggMode] = React.useState(false);
-  const [aggScope, setAggScope] = React.useState<'current' | 'all' | 'all-profiles'>('current');
-  const [agg, setAgg] = React.useState<SearchAllReport | null>(null);
-  const [aggProgress, setAggProgress] = React.useState<{ done: number; total: number; pending: number } | null>(null);
-  const [, setAggCap] = React.useState(60);
-  const [aggSrc, setAggSrc] = React.useState('');
-  const [loading, setLoading] = React.useState(false);
+  const [searchView, dispatchSearch] = React.useReducer(reduceHomeSearchViewState, {
+    ...initialHomeSearchViewState,
+    term: wd,
+    searchAllSources,
+    searchAllProfiles,
+  });
+  const [browseLoading, setBrowseLoading] = React.useState(initialBrowseLoading);
+  const [searchLoading, setSearchLoading] = React.useState(false);
   const [err, setErr] = React.useState('');
   const [items, setItems] = React.useState<VodItem[]>(browseItems);
-  const [classes, setClasses] = React.useState<SortClassView[]>([{ id: 'class-a', name: 'Class A' }]);
+  const [classes, setClasses] = React.useState<HomeSortClassView[]>([{ id: 'class-a', name: 'Class A' }]);
   const [pageInfo, setPageInfo] = React.useState({ page: 2, pagecount: 4, total: 16 });
   const [pg, setPg] = React.useState(2);
   const [tid, setTid] = React.useState('class-a');
   const [filtersActive, setFiltersActive] = React.useState<Record<string, string>>({ year: '2026' });
   const [fallback, setFallback] = React.useState(true);
-  const [, setHomeSearch] = React.useState<HomeSearchMem | null>(null);
+  const [homeMemory, setHomeMemory] = React.useState({
+    search: null as HomeSearchMem | null,
+    profileId: 'profile-a',
+    updatedAt: 0,
+  });
   const [setSearchParams] = React.useState(() => vi.fn());
+  const [openSearchWindow] = React.useState(() => vi.fn(async () => undefined));
   const [loadHome] = React.useState(() => vi.fn());
   const profileIdRef = React.useRef('profile-a');
   const keyRef = React.useRef('source-a');
-  const contentRef = React.useRef<HTMLDivElement | null>(null);
-  const listGen = React.useRef(makeStaleGuard());
-  const searchGen = React.useRef(makeStaleGuard());
-  const browseSnapRef = React.useRef<{
-    key: string;
-    items: VodItem[];
-    classes: SortClassView[];
-    pageInfo: { page: number; pagecount: number; total: number };
-    pg: number;
-    tid: string;
-    filters: Record<string, string>;
-    fallback: boolean;
-  } | null>(null);
+  const browseSession: HomeSearchBrowsePort = {
+    activeProfileId: () => profileIdRef.current,
+    setActiveProfileId: (profileId) => { profileIdRef.current = profileId; },
+    activeSourceKey: () => keyRef.current,
+    invalidateBrowseRequests: () => undefined,
+    preserveBrowseForSearch: vi.fn(),
+    returnDestination: vi.fn(() => browseReturnDestination ?? { kind: 'reload' as const, sourceKey: keyRef.current }),
+  };
   const sites = [{ key: 'source-a', name: 'Source A' } as SourceBean];
   const controller = useHomeSearchController({
-    pathname,
-    setSearchParams,
-    wd: term,
-    setWd: setTerm,
-    searchAllSources: allSources,
-    setSearchAllSources: setAllSources,
-    searchAllProfiles: allProfiles,
-    setSearchAllProfiles: setAllProfiles,
-    profiles,
-    sites,
-    profileIdRef,
-    keyRef,
-    requestedProfileId,
-    aggParam,
-    requestedAllProfiles,
-    profileReady,
-    aggMode,
-    agg,
-    aggScope,
-    aggSrc,
-    setAggMode,
-    setAggScope,
-    setAgg,
-    setAggProgress,
-    setAggCap,
-    setAggSrc,
-    setLoading,
-    setErr,
-    setItems,
-    setClasses,
-    setPageInfo,
-    setPg,
-    setTid,
-    setFiltersActive,
-    setFallback,
-    loadHome,
-    items,
-    classes,
-    pageInfo,
-    pg,
-    tid,
-    filtersActive,
-    fallback,
-    contentRef,
-    listGen,
-    searchGen,
-    browseSnapRef,
-    setHomeSearch,
+    api: {
+      onSearchAllProgress: (listener) => client.onSearchAllProgress(listener),
+      searchAll: (term, options) => client.searchAll(term, options),
+      search: (request) => client.search(request),
+      category: (request) => client.category(request),
+    },
+    runtime: {
+      aggregateClock: rendererSearchClock,
+      wallClock,
+      frames: rendererSearchFrames,
+    },
+    memory: {
+      update: (patch) => setHomeMemory((current) => ({ ...current, ...patch })),
+    },
+    route: {
+      pathname,
+      navigation: {
+        isSearchWindow: () => searchWindow,
+        openSearchWindow,
+        replaceSearchParameters: (parameters) => setSearchParams(parameters, { replace: true }),
+        readRememberedSearch: () => uiMem.home.search ?? null,
+        readHomeScrollTop: () => uiMem.home.scrollTop,
+        persistUiMemory: () => saveUiMemory(),
+      },
+      requestedProfileId,
+      aggParam,
+      requestedAllProfiles,
+      profileReady,
+    },
+    search: {
+      ...searchView,
+      profiles,
+      sites,
+    },
+    browse: browseSession,
+    actions: {
+      dispatchSearch,
+      setSearchLoading,
+      setSearchError: setErr,
+      clearBrowseLoading: () => setBrowseLoading(false),
+      clearBrowseResults: () => setItems([]),
+      restoreBrowse: (snapshot) => {
+        setErr('');
+        setItems(snapshot.items);
+        setClasses(snapshot.classes);
+        setPageInfo(snapshot.pageInfo);
+        setPg(snapshot.pg);
+        setTid(snapshot.tid);
+        setFiltersActive(snapshot.filters);
+        setFallback(snapshot.fallback);
+      },
+      loadHome,
+    },
   });
   return {
     ...controller,
-    wd: term,
-    setWd: setTerm,
-    loading,
+    homeMemory,
+    wd: searchView.term,
+    setWd: (term: string) => dispatchSearch({ type: 'term-changed', term }),
+    loading: searchLoading,
+    browseLoading,
+    setBrowseLoading,
     err,
-    agg,
-    aggScope,
-    aggProgress,
-    allSources,
-    allProfiles,
+    agg: searchView.report,
+    aggScope: searchView.scope,
+    aggProgress: searchView.progress,
+    allSources: searchView.searchAllSources,
+    allProfiles: searchView.searchAllProfiles,
     profileIdRef,
+    keyRef,
+    browseSession,
     setSearchParams,
+    openSearchWindow,
     loadHome,
     items,
     classes,
@@ -254,6 +274,73 @@ describe('useHomeSearchController', () => {
     expect(result.current.allSources).toBe(true);
     expect(result.current.allProfiles).toBe(true);
     expect(result.current.aggScope).toBe('all-profiles');
+  });
+
+  it('keeps search loading owned by search when it supersedes an in-flight browse', async () => {
+    const request = deferred<SearchAllReport>();
+    vi.mocked(client.searchAll).mockReturnValueOnce(request.promise);
+    const { result } = renderHook(() => useSearchHarness({
+      wd: 'show',
+      searchAllSources: true,
+      initialBrowseLoading: true,
+    }));
+    let search!: Promise<void>;
+
+    act(() => { search = result.current.doSearch(true); });
+
+    expect(result.current.browseLoading).toBe(false);
+    expect(result.current.loading).toBe(true);
+
+    // A late browse finally block must not release the loading state of this search.
+    act(() => result.current.setBrowseLoading(false));
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      request.resolve(emptyReport());
+      await search;
+    });
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('clears loading when route cleanup cancels an in-flight aggregate search', async () => {
+    const request = deferred<SearchAllReport>();
+    vi.mocked(client.searchAll).mockReturnValueOnce(request.promise);
+    const { result, rerender } = renderHook(
+      ({ aggParam }) => useSearchHarness({ wd: '', aggParam, profileReady: true, requestedAllProfiles: true }),
+      { initialProps: { aggParam: 'route title' } },
+    );
+
+    await waitFor(() => expect(client.searchAll).toHaveBeenCalledWith('route title', {
+      refresh: false,
+      profileIds: ['profile-a', 'profile-b'],
+    }));
+    expect(result.current.loading).toBe(true);
+
+    rerender({ aggParam: '' });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.err).toBe('');
+
+    await act(async () => {
+      request.resolve(emptyReport());
+      await request.promise;
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.agg).toBeNull();
+  });
+
+  it('delegates search-window navigation through the injected port', async () => {
+    const { result } = renderHook(() => useSearchHarness({
+      wd: 'show',
+      pathname: '/',
+      searchWindow: false,
+    }));
+
+    await act(async () => { await result.current.doSearch(); });
+
+    expect(result.current.openSearchWindow).toHaveBeenCalledWith('show', 'profile-a', false);
+    expect(client.search).not.toHaveBeenCalled();
+    expect(client.searchAll).not.toHaveBeenCalled();
   });
 
   it('restores a matching search route from memory without rerunning it', async () => {
@@ -401,9 +488,48 @@ describe('useHomeSearchController', () => {
     expect(result.current.setSearchParams).toHaveBeenLastCalledWith({}, { replace: true });
   });
 
+  it('persists and clears search memory through the application memory port', () => {
+    let now = 100;
+    const { result } = renderHook(() => useSearchHarness({ wallClock: { now: () => now++ } }));
+
+    act(() => result.current.saveSearchMem('space show', emptyReport(), 'all', true, 'profile-a', true));
+
+    expect(result.current.homeMemory).toMatchObject({
+      profileId: 'profile-a',
+      updatedAt: 100,
+      search: {
+        wd: 'space show',
+        profileId: 'profile-a',
+        aggMode: true,
+        aggScope: 'all',
+        searchAllSources: true,
+        searchAllProfiles: true,
+      },
+    });
+
+    act(() => result.current.clearSearchMemory());
+    expect(result.current.homeMemory).toMatchObject({ profileId: 'profile-a', updatedAt: 101, search: null });
+
+    act(() => result.current.exitSearch());
+    expect(result.current.homeMemory).toMatchObject({ profileId: 'profile-a', updatedAt: 102, search: null });
+  });
+
   it('restores the browse snapshot when exiting search', async () => {
     const browseItem = { id: 'browse-item', name: 'Browse item' } as unknown as VodItem;
-    const { result } = renderHook(() => useSearchHarness({ browseItems: [browseItem] }));
+    const snapshot: HomeBrowseSnapshot = {
+      key: 'source-a',
+      items: [browseItem],
+      classes: [{ id: 'class-a', name: 'Class A' }],
+      pageInfo: { page: 2, pagecount: 4, total: 16 },
+      pg: 2,
+      tid: 'class-a',
+      filters: { year: '2026' },
+      fallback: true,
+    };
+    const { result } = renderHook(() => useSearchHarness({
+      browseItems: [browseItem],
+      browseReturnDestination: { kind: 'restore', snapshot },
+    }));
 
     await act(async () => { await result.current.doSearch(true); });
     expect(result.current.items).toEqual([]);
@@ -417,5 +543,93 @@ describe('useHomeSearchController', () => {
     expect(result.current.filtersActive).toEqual({ year: '2026' });
     expect(result.current.fallback).toBe(true);
     expect(result.current.loadHome).not.toHaveBeenCalled();
+  });
+
+  it('clears search loading when exiting cancels an in-flight request', async () => {
+    const request = deferred<VodItem[]>();
+    vi.mocked(client.search).mockReturnValueOnce(request.promise);
+    const browseItem = { id: 'browse-item', name: 'Browse item' } as unknown as VodItem;
+    const snapshot: HomeBrowseSnapshot = {
+      key: 'source-a',
+      items: [browseItem],
+      classes: [{ id: 'class-a', name: 'Class A' }],
+      pageInfo: { page: 2, pagecount: 4, total: 16 },
+      pg: 2,
+      tid: 'class-a',
+      filters: { year: '2026' },
+      fallback: true,
+    };
+    const { result } = renderHook(() => useSearchHarness({
+      browseItems: [browseItem],
+      browseReturnDestination: { kind: 'restore', snapshot },
+    }));
+    let pending!: Promise<void>;
+
+    act(() => { pending = result.current.doSearch(true); });
+    expect(result.current.loading).toBe(true);
+
+    act(() => result.current.exitSearch());
+    expect(result.current.loading).toBe(false);
+    expect(result.current.items).toEqual([browseItem]);
+
+    await act(async () => {
+      request.resolve([{ id: 'late-result', name: 'Late result' } as unknown as VodItem]);
+      await pending;
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.agg).toBeNull();
+    expect(result.current.items).toEqual([browseItem]);
+  });
+
+  it('clears folder loading when returning to search cancels a pending folder request', async () => {
+    const folderRequest = deferred<Awaited<ReturnType<typeof client.category>>>();
+    vi.mocked(client.category).mockReturnValueOnce(folderRequest.promise);
+    const { result } = renderHook(() => useSearchHarness({ wd: 'show', searchAllSources: true }));
+    await act(async () => { await result.current.doSearch(true); });
+    const previousReport = result.current.agg;
+    let pending!: Promise<void>;
+
+    act(() => { pending = result.current.openFolder('source-a', 'folder-a', 'Folder A'); });
+    expect(result.current.loading).toBe(true);
+
+    act(() => result.current.exitFolder());
+    expect(result.current.loading).toBe(false);
+    expect(result.current.folder).toBeNull();
+    expect(result.current.agg).toBe(previousReport);
+
+    await act(async () => {
+      folderRequest.resolve(categoryResult([{ id: 'late-folder-item', name: 'Late item' } as unknown as VodItem]));
+      await pending;
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.folder).toBeNull();
+    expect(result.current.agg).toBe(previousReport);
+  });
+
+  it('releases loading when a new search invalidates a pending request but has no selected source', async () => {
+    const request = deferred<VodItem[]>();
+    vi.mocked(client.search).mockReturnValueOnce(request.promise);
+    const { result } = renderHook(() => useSearchHarness());
+    let pending!: Promise<void>;
+
+    act(() => { pending = result.current.doSearch(true); });
+    expect(result.current.loading).toBe(true);
+
+    result.current.keyRef.current = '';
+    await act(async () => { await result.current.doSearch(true); });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.err).toBe('当前未选中任何源，无法搜索');
+    expect(result.current.agg).toBeNull();
+
+    await act(async () => {
+      request.resolve([{ id: 'late-result', name: 'Late result' } as unknown as VodItem]);
+      await pending;
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.agg).toBeNull();
   });
 });

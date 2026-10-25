@@ -1,63 +1,78 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { VodItem } from '../../../shared/types';
-import { client } from '../../api/client';
 import { makeStaleGuard } from '../../lib/staleGuard';
 import { appendUniqueItems, pageSignature } from '../../lib/listAppend';
-import { getSessionSort, setSessionSort } from '../../lib/sessionSort';
-import { useWaterfall, setWaterfall as setWaterfallPref } from '../../lib/uiPrefs';
-
-export type SortClassView = { id: string; name: string; flag?: string; filters?: import('../../../shared/types').FilterGroup[] };
+import type { HomeBrowsePort, HomeBrowseSessionPort, HomeCategoryStateMemoryPort, HomeSortClassView } from './application/homePorts';
+import type { HomeBrowseReturnDestination, HomeBrowseSnapshot, HomeSearchBrowsePort } from './application/homeBrowseSearchSession';
 
 type HomeBrowseControllerOptions = {
+  data: HomeBrowsePort;
   key: string;
   setKey: Dispatch<SetStateAction<string>>;
   keyRef: MutableRefObject<string>;
   profileIdRef: MutableRefObject<string>;
   contentRef: MutableRefObject<HTMLDivElement | null>;
-  loading: boolean;
+  browseLoading: boolean;
   aggMode: boolean;
-  setLoading: Dispatch<SetStateAction<boolean>>;
-  setErr: Dispatch<SetStateAction<string>>;
+  waterfall: boolean;
+  categoryState: HomeCategoryStateMemoryPort;
+  setBrowseLoading: Dispatch<SetStateAction<boolean>>;
+  setBrowseError: Dispatch<SetStateAction<string>>;
   onBrowseStart: () => void;
+  onMemoryRestoreStart?: () => void;
 };
 
 export function useHomeBrowseController({
+  data,
   key,
   setKey,
   keyRef,
   profileIdRef,
   contentRef,
-  loading,
+  browseLoading,
   aggMode,
-  setLoading,
-  setErr,
+  waterfall,
+  categoryState,
+  setBrowseLoading,
+  setBrowseError,
   onBrowseStart,
+  onMemoryRestoreStart,
 }: HomeBrowseControllerOptions) {
-  const [classes, setClasses] = useState<SortClassView[]>([]);
+  const [classes, setClasses] = useState<HomeSortClassView[]>([]);
   const [tid, setTid] = useState('');
   const [filtersActive, setFiltersActive] = useState<Record<string, string>>({});
+  const [jumpPageInput, setJumpPageInput] = useState('');
   const [items, setItems] = useState<VodItem[]>([]);
   const [pg, setPg] = useState(1);
   const [pageInfo, setPageInfo] = useState({ page: 0, pagecount: 0, total: 0 });
   const [wfNoMore, setWfNoMore] = useState(false);
   const [fallback, setFallback] = useState(false);
-  const waterfall = useWaterfall();
   const wfBusyRef = useRef(false);
   const wfSentinelRef = useRef<HTMLDivElement | null>(null);
   const wfSigRef = useRef('');
   const listGen = useRef(makeStaleGuard());
+  const homeMetadataGen = useRef(makeStaleGuard());
+  const browseSnapshotRef = useRef<HomeBrowseSnapshot | null>(null);
   const prepRetryCount = useRef(0);
   const prepRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onBrowseStartRef = useRef(onBrowseStart);
   onBrowseStartRef.current = onBrowseStart;
+  const onMemoryRestoreStartRef = useRef(onMemoryRestoreStart);
+  onMemoryRestoreStartRef.current = onMemoryRestoreStart;
+
+  function notifyBrowseStarted(): void {
+    browseSnapshotRef.current = null;
+    onBrowseStartRef.current();
+  }
 
   function clearBrowse(message = '') {
     if (prepRetryTimer.current) clearTimeout(prepRetryTimer.current);
     prepRetryTimer.current = null;
     prepRetryCount.current = 0;
     listGen.current.next();
-    onBrowseStartRef.current();
+    homeMetadataGen.current.next();
+    notifyBrowseStarted();
     keyRef.current = '';
     setKey('');
     setClasses([]);
@@ -67,12 +82,26 @@ export function useHomeBrowseController({
     setPageInfo({ page: 0, pagecount: 0, total: 0 });
     setPg(1);
     setFallback(false);
-    setLoading(false);
-    setErr(message);
+    setBrowseLoading(false);
+    setBrowseError(message);
+  }
+
+  function restoreSnapshot(snapshot: HomeBrowseSnapshot): void {
+    listGen.current.next();
+    homeMetadataGen.current.next();
+    keyRef.current = snapshot.key;
+    setKey(snapshot.key);
+    setItems(snapshot.items);
+    setClasses(snapshot.classes);
+    setPageInfo(snapshot.pageInfo);
+    setPg(snapshot.pg);
+    setTid(snapshot.tid);
+    setFiltersActive(snapshot.filters);
+    setFallback(snapshot.fallback);
   }
 
   async function loadHome(k: string, retry = false) {
-    onBrowseStartRef.current();
+    notifyBrowseStarted();
     if (prepRetryTimer.current) {
       clearTimeout(prepRetryTimer.current);
       prepRetryTimer.current = null;
@@ -80,7 +109,9 @@ export function useHomeBrowseController({
     if (!retry) prepRetryCount.current = 0;
     // A new browse request invalidates category pages and older home requests.
     const gen = listGen.current.next();
+    homeMetadataGen.current.next();
     keyRef.current = k;
+    setKey(k);
     setClasses([]);
     setTid('');
     setFiltersActive({});
@@ -88,10 +119,10 @@ export function useHomeBrowseController({
     setPageInfo({ page: 0, pagecount: 0, total: 0 });
     setPg(1);
     setFallback(false);
-    setLoading(true);
-    setErr('');
+    setBrowseLoading(true);
+    setBrowseError('');
     try {
-      const r = await client.home(k, profileIdRef.current);
+      const r = await data.home(k, profileIdRef.current);
       if (!listGen.current.isCurrent(gen)) return;
       setClasses(r.sortClasses);
       setTid('');
@@ -100,12 +131,12 @@ export function useHomeBrowseController({
       setPageInfo({ page: r.page, pagecount: r.pagecount, total: r.total });
       setPg(1);
       setFallback(!!r.homeFallback);
-      setErr(r.contentNotice || '');
+      setBrowseError(r.contentNotice || '');
       prepRetryCount.current = 0;
     } catch (e) {
       if (!listGen.current.isCurrent(gen)) return;
       const msg = (e as Error).message;
-      setErr(msg);
+      setBrowseError(msg);
       setItems([]);
       setClasses([]);
       setFallback(false);
@@ -118,13 +149,14 @@ export function useHomeBrowseController({
         }, 20_000);
       }
     } finally {
-      if (listGen.current.isCurrent(gen)) setLoading(false);
+      if (listGen.current.isCurrent(gen)) setBrowseLoading(false);
     }
   }
 
   useEffect(() => () => {
     if (prepRetryTimer.current) clearTimeout(prepRetryTimer.current);
     listGen.current.next();
+    homeMetadataGen.current.next();
   }, []);
 
   async function loadCategory(t: string, page: number, extend: Record<string, string> = {}, append = false) {
@@ -135,14 +167,14 @@ export function useHomeBrowseController({
       prepRetryTimer.current = null;
     }
     const gen = listGen.current.next();
-    setLoading(true);
-    setErr('');
+    setBrowseLoading(true);
+    setBrowseError('');
     setFallback(false);
     try {
       const profileId = profileIdRef.current;
       const r = t
-        ? await client.category({ key: k, tid: t, pg: String(page), extend: Object.fromEntries(Object.entries(extend).filter(([, value]) => value !== '')), profileId })
-        : await client.home(k, profileId);
+        ? await data.category({ key: k, tid: t, pg: String(page), extend: Object.fromEntries(Object.entries(extend).filter(([, value]) => value !== '')), profileId })
+        : await data.home(k, profileId);
       if (!listGen.current.isCurrent(gen)) return;
       if (append) {
         const sig = pageSignature(r.items);
@@ -158,34 +190,52 @@ export function useHomeBrowseController({
       setPg(page);
     } catch (e) {
       if (!listGen.current.isCurrent(gen)) return;
-      setErr((e as Error).message);
+      setBrowseError((e as Error).message);
       if (!append) setItems([]);
     } finally {
-      if (listGen.current.isCurrent(gen)) setLoading(false);
+      if (listGen.current.isCurrent(gen)) setBrowseLoading(false);
     }
   }
 
+  async function restoreCategoryFromSession(categoryId: string, page: number, filters: Record<string, string>): Promise<void> {
+    const sourceKey = keyRef.current;
+    if (!sourceKey) return;
+    const metadataGeneration = homeMetadataGen.current.next();
+    const profileId = profileIdRef.current;
+    onMemoryRestoreStartRef.current?.();
+    setTid(categoryId);
+    setFiltersActive(filters);
+    setPg(page);
+    void data.home(sourceKey, profileId)
+      .then((result) => {
+        if (!homeMetadataGen.current.isCurrent(metadataGeneration)) return;
+        setClasses(result.sortClasses);
+        setFallback(!!result.homeFallback);
+      })
+      .catch(() => undefined);
+    await loadCategory(categoryId, page, filters);
+  }
+
+  function clearResults(): void {
+    setItems([]);
+  }
+
   function loadMoreForWaterfall(): void {
-    if (aggMode || !waterfall || !tid || wfNoMore || wfBusyRef.current || loading || items.length === 0) return;
+    if (aggMode || !waterfall || !tid || wfNoMore || wfBusyRef.current || browseLoading || items.length === 0) return;
     if (pageInfo.pagecount <= 1 || (pageInfo.pagecount <= 999 && pg >= pageInfo.pagecount)) return;
     wfBusyRef.current = true;
     void loadCategory(tid, pg + 1, filtersActive, true).finally(() => { wfBusyRef.current = false; });
   }
 
   function wfStatusText(): string {
-    if (loading) return '正在加载下一页…';
+    if (browseLoading) return '正在加载下一页…';
     if (wfNoMore) return `已加载 ${pg} 页 · 共 ${items.length} 条 · 该源已无更多新内容（可能不支持真分页）`;
     if (pageInfo.pagecount <= 999 && pg >= pageInfo.pagecount) return `已全部加载 · 共 ${items.length} 条`;
     return `已加载 ${pg} 页 · 共 ${items.length} 条 · 继续下滑自动加载`;
   }
 
-  function currentClass(): SortClassView | undefined {
-    if (!tid) return undefined;
-    return classes.find((c) => String(c.id) === tid);
-  }
-
   function chooseCategory(t: string) {
-    if (tid) setSessionSort(keyRef.current, tid, { filter: filtersActive, pg: waterfall ? 1 : pg }, profileIdRef.current);
+    if (tid) categoryState.save(keyRef.current, tid, profileIdRef.current, { filters: filtersActive, page: waterfall ? 1 : pg });
     if (!t) {
       setTid('');
       setFiltersActive({});
@@ -193,11 +243,11 @@ export function useHomeBrowseController({
       void loadCategory('', 1);
       return;
     }
-    const restored = getSessionSort(keyRef.current, t, profileIdRef.current);
-    const extend = restored ? restored.filter : {};
+    const restored = categoryState.read(keyRef.current, t, profileIdRef.current);
+    const extend = restored ? restored.filters : {};
     setTid(t);
     setFiltersActive(extend || {});
-    const targetPg = restored ? restored.pg : 1;
+    const targetPg = restored ? restored.page : 1;
     setPg(targetPg);
     void loadCategory(t, targetPg, extend || {});
   }
@@ -207,19 +257,86 @@ export function useHomeBrowseController({
     if (next[gkey] === value) delete next[gkey];
     else next[gkey] = value;
     setFiltersActive(next);
-    setSessionSort(keyRef.current, tid, { filter: next, pg: 1 }, profileIdRef.current);
+    categoryState.save(keyRef.current, tid, profileIdRef.current, { filters: next, page: 1 });
     void loadCategory(tid, 1, next);
   }
 
-  function chooseSource(k: string) {
-    if (!k || k === keyRef.current) return;
-    setKey(k);
-    setTid('');
-    setFiltersActive({});
-    setItems([]);
-    client.cfgSetActiveSource(k).catch(() => undefined);
-    void loadHome(k);
+  function changeJumpPage(value: string): void {
+    setJumpPageInput(value.replace(/[^0-9]/g, ''));
   }
+
+  function jumpToPage(): void {
+    if (browseLoading) return;
+    const requestedPage = parseInt(jumpPageInput.trim(), 10);
+    if (!Number.isFinite(requestedPage) || requestedPage < 1 || pageInfo.pagecount < 1) return;
+    const page = pageInfo.pagecount > 999 ? requestedPage : Math.min(requestedPage, pageInfo.pagecount);
+    if (page === pg) return;
+    setPg(page);
+    void loadCategory(tid, page, filtersActive);
+  }
+
+  function previousPage(): void {
+    if (browseLoading || pg <= 1) return;
+    const page = pg - 1;
+    setPg(page);
+    void loadCategory(tid, page, filtersActive);
+  }
+
+  function nextPage(): void {
+    if (browseLoading || (pageInfo.pagecount > 0 && pageInfo.pagecount <= 999 && pg >= pageInfo.pagecount)) return;
+    const page = pg + 1;
+    setPg(page);
+    void loadCategory(tid, page, filtersActive);
+  }
+
+  const searchBrowsePort: HomeSearchBrowsePort = {
+    activeProfileId: () => profileIdRef.current,
+    setActiveProfileId: (profileId) => { profileIdRef.current = profileId; },
+    activeSourceKey: () => keyRef.current,
+    invalidateBrowseRequests: () => {
+      listGen.current.next();
+      homeMetadataGen.current.next();
+    },
+    preserveBrowseForSearch: (aggregateMode) => {
+      if (aggregateMode || !items.length) return;
+      browseSnapshotRef.current = {
+        key: keyRef.current,
+        items,
+        classes,
+        pageInfo,
+        pg,
+        tid,
+        filters: filtersActive,
+        fallback,
+      };
+    },
+    returnDestination: (): HomeBrowseReturnDestination => {
+      const sourceKey = keyRef.current;
+      const snapshot = browseSnapshotRef.current;
+      if (snapshot && sourceKey && snapshot.key === sourceKey) {
+        browseSnapshotRef.current = null;
+        return { kind: 'restore', snapshot };
+      }
+      return sourceKey ? { kind: 'reload', sourceKey } : { kind: 'none' };
+    },
+  };
+
+  const sessionPort: HomeBrowseSessionPort = {
+    activeSourceKey: () => keyRef.current,
+    selectSource: (sourceKey) => {
+      listGen.current.next();
+      homeMetadataGen.current.next();
+      keyRef.current = sourceKey;
+      setKey(sourceKey);
+    },
+    invalidateRequests: () => {
+      listGen.current.next();
+      homeMetadataGen.current.next();
+    },
+    clear: clearBrowse,
+    loadHome,
+    restoreCategory: restoreCategoryFromSession,
+  };
 
   useEffect(() => {
     if (!waterfall || aggMode || wfNoMore || !tid || pageInfo.pagecount <= 1) return;
@@ -233,28 +350,33 @@ export function useHomeBrowseController({
     return () => io.disconnect();
     // Recreate the observer when paging or list state changes so a visible sentinel can fill the viewport.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waterfall, aggMode, wfNoMore, tid, pg, pageInfo.pagecount, items.length, loading, filtersActive, key]);
+  }, [waterfall, aggMode, wfNoMore, tid, pg, pageInfo.pagecount, items.length, browseLoading, filtersActive, key]);
 
   return {
-    classes, setClasses,
-    tid, setTid,
-    filtersActive, setFiltersActive,
-    items, setItems,
-    pg, setPg,
-    pageInfo, setPageInfo,
-    fallback, setFallback,
+    classes,
+    tid,
+    filtersActive,
+    items,
+    pg,
+    pageInfo,
+    fallback,
     waterfall,
     wfSentinelRef,
     wfNoMore,
-    listGen,
+    searchBrowsePort,
+    sessionPort,
     loadHome,
     clearBrowse,
+    clearResults,
+    restoreSnapshot,
     loadCategory,
     chooseCategory,
     chooseFilter,
-    chooseSource,
-    currentClass,
+    jumpPage: jumpPageInput,
+    changeJumpPage,
+    jumpToPage,
+    previousPage,
+    nextPage,
     wfStatusText,
-    setWaterfallPref,
   };
 }

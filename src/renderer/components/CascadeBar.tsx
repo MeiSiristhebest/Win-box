@@ -7,7 +7,9 @@
 //   · 点某个 chip → 回调 `onPick(该级 key, 选项 id)`；**是否允许再点取消由调用方决定**（组件只管派发）。
 //
 // 皮肤：豆风走已有 `.db-filters` 组（与顶栏胶囊导航同观感）；其余皮肤走基类 `.cascade*`（global.css）。
+import { useId } from 'react';
 import { useSkinLayout } from '../lib/theme';
+import { SelectionButton } from './ui/SelectionButton';
 
 export interface CascadeOption {
   id: string;
@@ -38,31 +40,32 @@ export default function CascadeBar({
 }) {
   /** 筛选条形态由皮肤的 layout 声明决定（`card` = 卡片容器，缺省 = 朴素行） */
   const db = useSkinLayout().filterStyle === 'card';
+  const groupId = useId();
   return (
     <div className={db ? 'db-filters cascade' : 'cascade'} style={style}>
-      {levels.map((lv) => {
+      {levels.map((lv, index) => {
         const opts: CascadeOption[] =
           lv.allLabel !== undefined ? [{ id: '', label: lv.allLabel }, ...lv.options] : lv.options;
         const chosen = lv.value !== null && lv.value !== undefined;
+        const labelId = `${groupId}-level-${index}`;
         return (
-          <div key={lv.key} className={db ? 'db-filter-row' : 'cascade-row'}>
-            <span className={db ? 'db-filter-label' : 'cascade-label'}>{lv.label}</span>
+          <fieldset key={lv.key} className={db ? 'db-filter-row' : 'cascade-row'}>
+            <legend id={labelId} className={db ? 'db-filter-label' : 'cascade-label'}>{lv.label}</legend>
             {opts.length === 0 ? (
-              <span className="muted" style={{ fontSize: 11 }}>{lv.pendingLabel || '加载中…'}</span>
+              <span className="muted" style={{ fontSize: 12 }}>{lv.pendingLabel || '加载中…'}</span>
             ) : (
               opts.map((o) => (
-                <button
-                  type="button"
+                <SelectionButton
                   key={`${lv.key}:${o.id === '' ? '_all' : o.id}`}
-                  className={`tag${chosen && lv.value === o.id ? ' active' : ''}`}
-                  aria-pressed={chosen && lv.value === o.id}
+                  className="cascade-option"
+                  selected={chosen && lv.value === o.id}
                   onClick={() => onPick(lv.key, o.id)}
                 >
                   {o.label}
-                </button>
+                </SelectionButton>
               ))
             )}
-          </div>
+          </fieldset>
         );
       })}
     </div>

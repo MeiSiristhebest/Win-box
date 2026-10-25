@@ -72,7 +72,7 @@ describe('HomePage child repository switching', () => {
     await screen.findByText('A影片');
     state.setConfig(profileConfig('live-only', false));
     act(() => notifyProfileChanged());
-    await screen.findByText('尚未导入站源，请先到「配置」页导入');
+    await screen.findByRole('heading', { name: '添加你的第一个订阅' });
     expect(screen.queryByText('A影片')).toBeNull();
     expect(screen.queryByText('A分类')).toBeNull();
   });
@@ -118,7 +118,7 @@ describe('HomePage child repository switching', () => {
     await waitFor(() => expect(state.home).toHaveBeenCalledTimes(2));
     state.setConfig(profileConfig('live-only', false));
     act(() => notifyProfileChanged());
-    await screen.findByText('尚未导入站源，请先到「配置」页导入');
+    await screen.findByRole('heading', { name: '添加你的第一个订阅' });
     await act(async () => { finishOld(await oldResult); });
     expect(screen.queryByText('A影片')).toBeNull();
     expect(screen.queryByText('A分类')).toBeNull();

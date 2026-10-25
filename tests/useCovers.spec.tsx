@@ -1,14 +1,9 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { useCovers } from '../src/renderer/lib/useCovers';
-
-vi.mock('../src/renderer/api/client', () => ({
-  client: {
-    metaGetSettings: vi.fn(),
-    metaSearch: vi.fn(),
-  },
-}));
+import { useCovers } from '../src/renderer/features/covers/useCovers';
+import { CoversProvider } from '../src/renderer/features/covers/CoverLookupContext';
+import type { CoverLookupPort } from '../src/renderer/features/covers/application/coverLookupPort';
 
 vi.mock('../src/renderer/lib/coverPick', () => ({
   resolveCover: vi.fn(async (_item: unknown, options: { query: (provider: string) => Promise<string> }) => options.query('tmdb')),
@@ -16,15 +11,22 @@ vi.mock('../src/renderer/lib/coverPick', () => ({
 }));
 
 const POSTER = 'https://images.example.test/movie.jpg';
+const coverLookup: CoverLookupPort = {
+  loadSettings: vi.fn(),
+  searchPoster: vi.fn(),
+};
+const coverRuntimePorts = {
+  lookup: coverLookup,
+  settingsChanges: { subscribe: vi.fn(() => () => undefined) },
+  images: { validate: vi.fn(async () => true), relay: (url: string) => url },
+  clock: { now: () => Date.now() },
+};
 
-beforeEach(async () => {
-  const { client } = await import('../src/renderer/api/client');
-  vi.mocked(client.metaGetSettings).mockResolvedValue({
-    tmdbApiKey: '', tmdbApiBase: '', tmdbImageBase: '', hasUserKey: true, metaSource: 'tmdb',
-  } as never);
-  vi.mocked(client.metaSearch).mockResolvedValue({ poster: POSTER } as never);
-  vi.mocked(client.metaGetSettings).mockClear();
-  vi.mocked(client.metaSearch).mockClear();
+beforeEach(() => {
+  vi.mocked(coverLookup.loadSettings).mockResolvedValue({ key: 'tmdb', hasTmdb: true });
+  vi.mocked(coverLookup.searchPoster).mockResolvedValue(POSTER);
+  vi.mocked(coverLookup.loadSettings).mockClear();
+  vi.mocked(coverLookup.searchPoster).mockClear();
 });
 
 function Probe({ id }: { id: string }) {
@@ -35,11 +37,10 @@ function Probe({ id }: { id: string }) {
 
 describe('useCovers', () => {
   it('shares settings and metadata requests across components for the same title', async () => {
-    render(<><Probe id="a" /><Probe id="b" /></>);
+    render(<CoversProvider ports={coverRuntimePorts}><><Probe id="a" /><Probe id="b" /></></CoversProvider>);
 
     await waitFor(() => expect(screen.getAllByText(POSTER)).toHaveLength(2));
-    const { client } = await import('../src/renderer/api/client');
-    expect(client.metaGetSettings).toHaveBeenCalledTimes(1);
-    expect(client.metaSearch).toHaveBeenCalledTimes(1);
+    expect(coverLookup.loadSettings).toHaveBeenCalledTimes(1);
+    expect(coverLookup.searchPoster).toHaveBeenCalledTimes(1);
   });
 });
