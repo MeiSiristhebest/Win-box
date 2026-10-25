@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { SubscriptionGroup, UserProfile } from '../src/shared/types';
 import { SubscriptionGroupsSection } from '../src/renderer/features/subscriptions/SubscriptionGroupsSection';
@@ -26,7 +26,7 @@ describe('SubscriptionGroupsSection', () => {
     const onRemoveMember = vi.fn();
     const onResolveRefresh = vi.fn();
     render(<SubscriptionGroupsSection
-      groups={[group]} profiles={profiles} activeProfileId="other-profile" busy={false} importRunning={false}
+      active groups={[group]} profiles={profiles} activeProfileId="other-profile" busy={false} importRunning={false} error=""
       onRefresh={onRefresh} onActivate={onActivate} onRemoveMember={onRemoveMember} onResolveRefresh={onResolveRefresh}
     />);
 
@@ -62,7 +62,7 @@ describe('SubscriptionGroupsSection', () => {
       sourceCount: 72, importedAt: '2026-10-15T00:00:00.000Z',
     }];
     render(<SubscriptionGroupsSection
-      groups={[group]} profiles={profiles} activeProfileId="other" busy={false} importRunning={false}
+      active groups={[group]} profiles={profiles} activeProfileId="other" busy={false} importRunning={false} error=""
       onRefresh={vi.fn()} onActivate={vi.fn()} onRemoveMember={vi.fn()} onResolveRefresh={vi.fn()}
     />);
 
@@ -70,5 +70,19 @@ describe('SubscriptionGroupsSection', () => {
     expect(screen.getByText(/72\s*个源（上次成功配置）/)).toBeTruthy();
     fireEvent.click(screen.getByText('最后响应为 html（200B）。'));
     expect(screen.getByText(/ECONNRESET/)).toBeTruthy();
+  });
+
+  it('does not render outside its owning settings tab and shows its own errors', () => {
+    const common = {
+      groups: [{ id: 'g', name: '订阅组', url: 'https://example.test', status: 'complete' as const, members: [], createdAt: '', updatedAt: '' }],
+      profiles: [], activeProfileId: '', busy: false, importRunning: false, error: '移除失败',
+      onRefresh: vi.fn(), onActivate: vi.fn(), onRemoveMember: vi.fn(), onResolveRefresh: vi.fn(),
+    };
+    const { container, rerender } = render(<SubscriptionGroupsSection {...common} active={false} />);
+    expect(container.querySelector('#cfg-subscription-groups')).toBeNull();
+
+    rerender(<SubscriptionGroupsSection {...common} active />);
+    expect(within(container).getByRole('heading', { name: '多仓订阅组' })).toBeTruthy();
+    expect(within(container).getByRole('alert').textContent).toBe('移除失败');
   });
 });

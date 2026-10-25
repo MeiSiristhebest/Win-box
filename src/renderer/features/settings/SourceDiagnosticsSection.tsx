@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { SourceDebugReport } from '../../../shared/types';
-import { client } from '../../api/client';
+import type { SourceDiagnosticsPort } from './application/settingsSectionPorts';
 
 interface SourceDiagnosticsRequest {
   sourceKey: string;
@@ -9,6 +9,7 @@ interface SourceDiagnosticsRequest {
 
 interface SourceDiagnosticsSectionProps {
   request: SourceDiagnosticsRequest | null;
+  port: SourceDiagnosticsPort;
   onClose: () => void;
 }
 
@@ -17,7 +18,7 @@ type SourceDiagnosticsState =
   | { revision: number; status: 'ready'; report: SourceDebugReport }
   | { revision: number; status: 'error'; error: string };
 
-export function SourceDiagnosticsSection({ request, onClose }: SourceDiagnosticsSectionProps) {
+export function SourceDiagnosticsSection({ request, port, onClose }: SourceDiagnosticsSectionProps) {
   const [state, setState] = useState<SourceDiagnosticsState | null>(null);
 
   useEffect(() => {
@@ -26,7 +27,7 @@ export function SourceDiagnosticsSection({ request, onClose }: SourceDiagnostics
     let current = true;
 
     void Promise.resolve()
-      .then(() => client.vodDebug(request.sourceKey))
+      .then(() => port.debugSource(request.sourceKey))
       .then((result) => {
         if (current) setState({ revision: request.revision, status: 'ready', report: result });
       })
@@ -41,7 +42,7 @@ export function SourceDiagnosticsSection({ request, onClose }: SourceDiagnostics
     return () => {
       current = false;
     };
-  }, [request]);
+  }, [request, port]);
 
   if (!request) return null;
   const currentState = state?.revision === request.revision

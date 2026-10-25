@@ -1,7 +1,7 @@
 import { PluginKeymapList } from './PluginKeymapList';
 import { useEffect, useState, type KeyboardEvent } from 'react';
-import { client } from '../../api/client';
 import type { BossKeySettings } from '../../../shared/types';
+import type { PluginKeymapListPort, ShortcutSettingsPort } from './application/settingsSectionPorts';
 
 const DEFAULT_ACCELERATOR = 'CommandOrControl+Shift+B';
 
@@ -25,20 +25,20 @@ function acceleratorFromEvent(event: KeyboardEvent<HTMLInputElement>): string | 
   return [...modifiers, isLetterDigit ? key.toUpperCase() : key].join('+');
 }
 
-export function ShortcutSettingsSection({ active }: { active: boolean }) {
+export function ShortcutSettingsSection({ active, port, keymaps }: { active: boolean; port: ShortcutSettingsPort; keymaps: PluginKeymapListPort }) {
   const [bossKey, setBossKey] = useState<BossKeySettings | null>(null);
   const [acceleratorDraft, setAcceleratorDraft] = useState('');
   const [message, setMessage] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
 
   useEffect(() => {
-    client.bossGet().then(setBossKey).catch(() => setBossKey({ enabled: false, accel: DEFAULT_ACCELERATOR }));
-  }, []);
+    port.loadBossKey().then(setBossKey).catch(() => setBossKey({ enabled: false, accel: DEFAULT_ACCELERATOR }));
+  }, [port]);
 
   async function save() {
     if (!bossKey) return;
     const accelerator = (acceleratorDraft || bossKey.accel).trim();
     try {
-      const result = await client.bossSet({ enabled: bossKey.enabled, accel: accelerator });
+      const result = await port.saveBossKey({ enabled: bossKey.enabled, accel: accelerator });
       setBossKey(result.settings);
       setAcceleratorDraft('');
       if (result.settings.enabled && !result.registered) {
@@ -55,7 +55,7 @@ export function ShortcutSettingsSection({ active }: { active: boolean }) {
 
   return (
     <>
-      <PluginKeymapList active={active} />
+      <PluginKeymapList active={active} port={keymaps} />
     <div className="card" id="cfg-shortcut" style={{ padding: 12, marginBottom: 16 }}>
       {bossKey ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -68,12 +68,12 @@ export function ShortcutSettingsSection({ active }: { active: boolean }) {
               />
               <span style={{ fontWeight: 600 }}>启用老板键</span>
             </label>
-            <span className="muted" style={{ fontSize: 11 }}>
+            <span className="muted" style={{ fontSize: 12 }}>
               当前：{bossKey.enabled ? displayAccelerator(bossKey.accel || DEFAULT_ACCELERATOR) : '未启用'}
             </span>
           </div>
           <div className="row" style={{ alignItems: 'center', gap: 8 }}>
-            <span className="muted" style={{ fontSize: 11, flex: 'none' }}>快捷键：</span>
+            <span className="muted" style={{ fontSize: 12, flex: 'none' }}>快捷键：</span>
             <input
               aria-label="全局快捷键"
               style={{ width: 220, fontFamily: 'monospace' }}
@@ -90,9 +90,9 @@ export function ShortcutSettingsSection({ active }: { active: boolean }) {
                 }
               }}
             />
-            <span className="muted" style={{ fontSize: 11 }}>点击输入框后按下快捷键组合</span>
+            <span className="muted" style={{ fontSize: 12 }}>点击输入框后按下快捷键组合</span>
           </div>
-          <div className="muted" style={{ fontSize: 11, lineHeight: 1.7 }}>
+          <div className="muted" style={{ fontSize: 12, lineHeight: 1.7 }}>
             按下快捷键后，视频暂停并静音，软件最小化并隐藏任务栏图标。再次按下可恢复播放状态和窗口模式。快捷键在软件未获焦点时也能使用。
           </div>
           <div className="row" style={{ alignItems: 'center', gap: 10 }}>

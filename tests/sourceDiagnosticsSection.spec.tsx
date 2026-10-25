@@ -2,7 +2,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { SourceDebugReport } from '../src/shared/types';
-import { client } from '../src/renderer/api/client';
 import { SourceDiagnosticsSection } from '../src/renderer/features/settings/SourceDiagnosticsSection';
 
 const report: SourceDebugReport = {
@@ -33,23 +32,23 @@ afterEach(() => {
 
 describe('SourceDiagnosticsSection', () => {
   it('loads and displays a source report, then closes through its callback', async () => {
-    const debug = vi.spyOn(client, 'vodDebug').mockResolvedValue(report);
+    const port = { debugSource: vi.fn().mockResolvedValue(report) };
     const onClose = vi.fn();
 
-    render(<SourceDiagnosticsSection request={{ sourceKey: 'source-a', revision: 1 }} onClose={onClose} />);
+    render(<SourceDiagnosticsSection request={{ sourceKey: 'source-a', revision: 1 }} port={port} onClose={onClose} />);
 
     expect(await screen.findByText('探测正常，调用成功')).toBeTruthy();
     expect(screen.getByText('结果：HTTP 200 · 42 字节 · 类型 application/json')).toBeTruthy();
-    expect(debug).toHaveBeenCalledWith('source-a');
+    expect(port.debugSource).toHaveBeenCalledWith('source-a');
 
     fireEvent.click(screen.getByRole('button', { name: '关闭' }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
   it('shows an API error without discarding the selected source', async () => {
-    vi.spyOn(client, 'vodDebug').mockRejectedValue(new Error('diagnostic unavailable'));
+    const port = { debugSource: vi.fn().mockRejectedValue(new Error('diagnostic unavailable')) };
 
-    render(<SourceDiagnosticsSection request={{ sourceKey: 'source-a', revision: 1 }} onClose={vi.fn()} />);
+    render(<SourceDiagnosticsSection request={{ sourceKey: 'source-a', revision: 1 }} port={port} onClose={vi.fn()} />);
 
     expect((await screen.findByRole('alert')).textContent).toContain('diagnostic unavailable');
     expect(screen.getByRole('heading', { name: '诊断：source-a' })).toBeTruthy();

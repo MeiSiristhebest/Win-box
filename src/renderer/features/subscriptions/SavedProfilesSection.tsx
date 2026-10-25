@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { UserProfile } from '../../../shared/types';
-import { client } from '../../api/client';
+import type { SavedProfilesManagementPort } from './application/savedProfilesManagementPort';
+import { useSavedProfilesManagement } from './useSavedProfilesManagement';
 
 interface SavedProfilesSectionProps {
   profiles: readonly UserProfile[];
   activeProfileId: string;
   busy: boolean;
   onActivate: (profileId: string) => void;
+  activationError?: string;
   onRefresh: () => Promise<void>;
-  onError: (message: string) => void;
+  managementPort: SavedProfilesManagementPort;
 }
 
 export function SavedProfilesSection({
@@ -16,56 +18,22 @@ export function SavedProfilesSection({
   activeProfileId,
   busy,
   onActivate,
+  activationError,
   onRefresh,
-  onError,
+  managementPort,
 }: SavedProfilesSectionProps) {
-  const [profileName, setProfileName] = useState('');
-  const [renameId, setRenameId] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState('');
-  const [saving, setSaving] = useState(false);
+  const { model, actions } = useSavedProfilesManagement({ port: managementPort, onRefresh });
+  const { profileName, renameId, renameDraft, saving, error } = model;
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (renameId) renameInputRef.current?.focus();
   }, [renameId]);
 
-  async function saveProfile() {
-    setSaving(true);
-    try {
-      await client.cfgSaveAsProfile(profileName || '未命名配置');
-      setProfileName('');
-      await onRefresh();
-    } catch (error) {
-      onError((error as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function saveRename(id: string) {
-    const name = renameDraft.trim();
-    setRenameId(null);
-    setRenameDraft('');
-    if (!name) return;
-    try {
-      await client.cfgUpdateProfileName({ id, name });
-      await onRefresh();
-    } catch (error) {
-      onError((error as Error).message);
-    }
-  }
-
-  async function deleteProfile(id: string) {
-    try {
-      await client.cfgDeleteProfile(id);
-      await onRefresh();
-    } catch (error) {
-      onError((error as Error).message);
-    }
-  }
-
   return (
     <section className="card" id="cfg-profiles" style={{ padding: 12, marginBottom: 16 }}>
+      {activationError && <div className="err" role="alert">{activationError}</div>}
+      {error && <div className="err" role="alert">{error}</div>}
       <details>
         <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
           已保存配置（多份订阅离线切换）
@@ -89,23 +57,23 @@ export function SavedProfilesSection({
                       <>
                         <input
                           ref={renameInputRef}
-                          style={{ width: 130, fontSize: 11 }}
+                          style={{ width: 130, fontSize: 12 }}
                           value={renameDraft}
-                          onChange={(event) => setRenameDraft(event.target.value)}
+                          onChange={(event) => actions.changeRenameDraft(event.target.value)}
                           onKeyDown={(event) => {
-                            if (event.key === 'Enter' && !event.nativeEvent.isComposing) void saveRename(profile.id);
-                            if (event.key === 'Escape') { setRenameId(null); setRenameDraft(''); }
+                            if (event.key === 'Enter' && !event.nativeEvent.isComposing) void actions.saveRename(profile.id);
+                            if (event.key === 'Escape') actions.cancelRename();
                           }}
                         />
-                        <button className="linkbtn" onClick={() => void saveRename(profile.id)}>确定</button>
-                        <button className="linkbtn" onClick={() => { setRenameId(null); setRenameDraft(''); }}>取消</button>
+                        <button className="linkbtn" onClick={() => void actions.saveRename(profile.id)}>确定</button>
+                        <button className="linkbtn" onClick={actions.cancelRename}>取消</button>
                       </>
                     ) : (
                       <>
                         {profile.name}{active ? ' ✓' : ''} <span className="muted">({profile.sourceCount})</span>
-                        <button className="linkbtn" title="重命名该配置" onClick={() => { setRenameId(profile.id); setRenameDraft(profile.name); }}>改名</button>
+                        <button className="linkbtn" title="重命名该配置" onClick={() => actions.beginRename(profile.id, profile.name)}>改名</button>
                         {!active && <button className="linkbtn" onClick={() => onActivate(profile.id)}>切换</button>}
-                        {<button className="linkbtn danger" onClick={() => void deleteProfile(profile.id)}>删</button>}
+                        {<button className="linkbtn danger" onClick={() => void actions.deleteProfile(profile.id)}>删</button>}
                       </>
                     )}
                   </span>
@@ -114,8 +82,8 @@ export function SavedProfilesSection({
             </div>
           )}
           <div className="row" style={{ flexWrap: 'wrap' }}>
-            <input style={{ width: 220 }} placeholder="把当前源列表存为新配置的名称…" value={profileName} onChange={(event) => setProfileName(event.target.value)} />
-            <button disabled={busy || saving} onClick={() => void saveProfile()}>{saving ? '保存中…' : '存为新配置'}</button>
+            <input style={{ width: 220 }} placeholder="把当前源列表存为新配置的名称…" value={profileName} onChange={(event) => actions.changeProfileName(event.target.value)} />
+            <button disabled={busy || saving} onClick={() => void actions.saveProfile()}>{saving ? '保存中…' : '存为新配置'}</button>
           </div>
         </div>
       </details>

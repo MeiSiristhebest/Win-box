@@ -7,12 +7,9 @@ type ImportFlow = ReturnType<typeof useSubscriptionImport>;
 interface SubscriptionImportSectionProps {
   active: boolean;
   flow: ImportFlow;
-  error: string;
-  notice: string;
-  onErrorClear: () => void;
 }
 
-export function SubscriptionImportSection({ active, flow, error, notice, onErrorClear }: SubscriptionImportSectionProps) {
+export function SubscriptionImportSection({ active, flow }: SubscriptionImportSectionProps) {
   const { busy, job, jobHidden, importRunning } = flow;
   const packageNameInputRef = useRef<HTMLInputElement>(null);
   const liveNameInputRef = useRef<HTMLInputElement>(null);
@@ -77,8 +74,8 @@ export function SubscriptionImportSection({ active, flow, error, notice, onError
               <button disabled={busy || importRunning} onClick={() => void flow.importPackage()} title='可选择仅含 .py 文件的文件夹，自动在应用副本中生成订阅 JSON'>导入本地包</button>
               <button disabled={busy || importRunning} onClick={() => void flow.importLiveLocal()} title='选择本地 .txt / .m3u / .m3u8 直播源文件；导入后到「直播」页顶部线路下拉切换'>导入直播源（TXT / M3U）</button>
             </div></details>
-            {notice && <output className='status' style={{ display: 'block', marginTop: 12 }}>{notice}</output>}
-            {error && <div className='err' role='alert' style={{ marginBottom: 8 }}>操作失败：{error}</div>}
+            {flow.notice && <output className='status' style={{ display: 'block', marginTop: 12 }}>{flow.notice}</output>}
+            {flow.error && <div className='err' role='alert' style={{ marginBottom: 8 }}>操作失败：{flow.error}</div>}
             {flow.warnings.length > 0 && <div className='banner'>{flow.warnings.join('；')}</div>}
             {flow.report && (
               <div className='status'>
@@ -147,11 +144,11 @@ export function SubscriptionImportSection({ active, flow, error, notice, onError
             disabled={busy}
             aria-label='生成的 JSON 文件名'
             placeholder='例如：我的 Python 源'
-            onChange={(event) => { onErrorClear(); flow.setPackageNamePrompt({ ...flow.packageNamePrompt!, name: event.target.value }); }}
+            onChange={(event) => { flow.clearError(); flow.setPackageNamePrompt({ ...flow.packageNamePrompt!, name: event.target.value }); }}
             onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) void flow.confirmPackageName(); }}
             className='app-dialog-input'
           />
-          {error && <div role='alert' className='err app-dialog-error'>{error}</div>}
+          {flow.error && <div role='alert' className='err app-dialog-error'>{flow.error}</div>}
           <div className='app-dialog-actions'>
             <button className='app-dialog-action-secondary' disabled={busy} onClick={() => flow.setPackageNamePrompt(null)}>取消</button>
             <button className='primary' disabled={busy || !flow.packageNamePrompt.name.trim()} onClick={() => void flow.confirmPackageName()}>
@@ -184,11 +181,11 @@ export function SubscriptionImportSection({ active, flow, error, notice, onError
             disabled={busy}
             aria-label='直播线路名称'
             placeholder='例如：我的直播源'
-            onChange={(event) => { onErrorClear(); flow.setLiveNamePrompt({ ...flow.liveNamePrompt!, name: event.target.value }); }}
+            onChange={(event) => { flow.clearError(); flow.setLiveNamePrompt({ ...flow.liveNamePrompt!, name: event.target.value }); }}
             onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) void flow.confirmLiveName(); }}
             className='app-dialog-input'
           />
-          {error && <div role='alert' className='err app-dialog-error'>{error}</div>}
+          {flow.error && <div role='alert' className='err app-dialog-error'>{flow.error}</div>}
           <div className='app-dialog-actions'>
             <button className='app-dialog-action-secondary' disabled={busy} onClick={() => flow.setLiveNamePrompt(null)}>取消</button>
             <button className='primary' disabled={busy || !flow.liveNamePrompt.name.trim()} onClick={() => void flow.confirmLiveName()}>

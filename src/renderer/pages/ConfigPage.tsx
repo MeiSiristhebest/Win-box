@@ -1,28 +1,72 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { client } from '../api/client';
-import type { UserConfig, SubscriptionRefreshResolution } from '../../shared/types';
-import type { AuditItem } from '../../shared/types';
 import { useAppDialog } from '../components/AppDialog';
 import { SubscriptionGroupsSection } from '../features/subscriptions/SubscriptionGroupsSection';
 import { SavedProfilesSection } from '../features/subscriptions/SavedProfilesSection';
+import { savedProfilesManagementAdapter } from '../features/subscriptions/adapters/savedProfilesManagementAdapter';
+import { subscriptionGroupManagementAdapter } from '../features/subscriptions/adapters/subscriptionGroupManagementAdapter';
+import { useSubscriptionGroupManagement } from '../features/subscriptions/useSubscriptionGroupManagement';
 import { AppearanceSection } from '../features/settings/AppearanceSection';
 import { AccountServicesSection } from '../features/settings/AccountServicesSection';
+import { browserAccountSettingsEventsAdapter } from '../features/settings/adapters/browserAccountSettingsEventsAdapter';
+import { rendererAccountServicesAdapter } from '../features/settings/adapters/rendererAccountServicesAdapter';
+import { browserBackupStorageAdapter } from '../features/settings/adapters/browserBackupStorageAdapter';
+import { rendererBackupOperationsAdapter } from '../features/settings/adapters/rendererBackupOperationsAdapter';
 import { NetworkSection } from '../features/settings/NetworkSection';
 import { PlaybackSettingsSection } from '../features/settings/PlaybackSettingsSection';
+import { playerPreferencesStorageAdapter } from '../features/playback/adapters/playerPreferencesStorageAdapter';
 import { ShortcutSettingsSection } from '../features/settings/ShortcutSettingsSection';
 import { BackupSettingsSection } from '../features/settings/BackupSettingsSection';
 import { StorageSettingsSection } from '../features/settings/StorageSettingsSection';
-import { SourceHealthAuditSection, type AuditFilter } from '../features/settings/SourceHealthAuditSection';
+import { SourceHealthAuditSection } from '../features/settings/SourceHealthAuditSection';
+import { sourceHealthAuditAdapter } from '../features/settings/adapters/sourceHealthAuditAdapter';
+import { useSourceHealthAuditPresenter } from '../features/settings/useSourceHealthAuditPresenter';
+import { MergeProfilesExportSection } from '../features/settings/MergeProfilesExportSection';
+import { mergeProfileExportAdapter } from '../features/settings/adapters/mergeProfileExportAdapter';
+import { useMergeProfileExportPresenter } from '../features/settings/useMergeProfileExportPresenter';
 import { CacheMaintenanceSection } from '../features/settings/CacheMaintenanceSection';
+import { cacheMaintenanceAdapter } from '../features/settings/adapters/cacheMaintenanceAdapter';
+import { networkSettingsAdapter } from '../features/settings/adapters/networkSettingsAdapter';
+import { storageSettingsAdapter } from '../features/settings/adapters/storageSettingsAdapter';
+import { shortcutSettingsAdapter } from '../features/settings/adapters/shortcutSettingsAdapter';
+import { pluginKeymapListAdapter } from '../features/settings/adapters/pluginKeymapListAdapter';
+import { sourceManagementAdapter } from '../features/settings/adapters/sourceManagementAdapter';
+import { sourceDiagnosticsAdapter } from '../features/settings/adapters/sourceDiagnosticsAdapter';
+import { playerEngineSettingsAdapter } from '../features/settings/adapters/playerEngineSettingsAdapter';
+import { browserPlayerEngineSettingsEventsAdapter } from '../features/settings/adapters/browserPlayerEngineSettingsEventsAdapter';
+import {
+  pluginCommandExecutionAdapter,
+  pluginLifecycleAdapter,
+  pluginPanelSettingsAdapter,
+  pluginSettingsCatalogAdapter,
+  pluginSettingsEventsAdapter,
+  pluginSkinRegistryAdapter,
+} from '../features/settings/adapters/pluginSettingsAdapters';
+import type { PluginSettingsDependencies } from '../features/settings/application/settingsSectionPorts';
+import {
+  externalPlayerDiscoveryAdapter,
+  mediaRuntimeManagementAdapter,
+  mpvSettingsAdapter,
+  playerSettingsAdapter,
+} from '../features/settings/adapters/playbackSettingsAdapters';
 import { SourceManagementSection } from '../features/settings/SourceManagementSection';
 import { LiveSourcesSection } from '../features/subscriptions/LiveSourcesSection';
+import { liveSourcesManagementAdapter } from '../features/subscriptions/adapters/liveSourcesAdapter';
 import { SubscriptionImportSection } from '../features/subscriptions/SubscriptionImportSection';
 import { useSubscriptionImport } from '../features/subscriptions/useSubscriptionImport';
+import {
+  browserSubscriptionImportJobMemory,
+  localSourceImportAdapter,
+  subscriptionImportJobsAdapter,
+} from '../features/subscriptions/adapters/subscriptionImportAdapters';
 import { Tabs } from '../components/ui/Tabs';
 import { Icon, type IconName } from '../components/ui/Icon';
 import { PluginSettingsSection } from '../features/settings/PluginSettingsSection';
-import { notifyProfileChanged } from '../lib/configEvents';
+import { configurationSnapshotAdapter } from '../features/settings/adapters/configurationSnapshotAdapter';
+import { profileActivationAdapter } from '../features/settings/adapters/profileActivationAdapter';
+import { useConfigurationSnapshotSession } from '../features/settings/useConfigurationSnapshotSession';
+import { useConfigurationProfileActivation } from '../features/settings/useConfigurationProfileActivation';
+import { useConfigSectionNavigation } from '../features/settings/useConfigSectionNavigation';
 
 type TabId = 'sources' | 'health' | 'profiles' | 'account' | 'storage' | 'appearance' | 'play' | 'shortcut' | 'network' | 'backup' | 'plugins';
 
@@ -53,227 +97,89 @@ const SETTINGS_ICONS: Record<TabId, IconName> = {
   shortcut: 'keyboard', account: 'key', storage: 'storage', network: 'globe', plugins: 'plug', backup: 'archive',
 };
 
+const pluginSettingsDependencies: PluginSettingsDependencies = {
+  catalog: pluginSettingsCatalogAdapter,
+  lifecycle: pluginLifecycleAdapter,
+  panels: pluginPanelSettingsAdapter,
+  commands: pluginCommandExecutionAdapter,
+  skins: pluginSkinRegistryAdapter,
+  events: pluginSettingsEventsAdapter,
+};
+
 export default function ConfigPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedSection = searchParams.get('section') || '';
   const requestedTab = SETTINGS_SECTIONS.find(item => item.id === requestedSection)?.id
     ?? SETTINGS_CARD_TABS[requestedSection]
-    ?? (requestedSection.startsWith('plugin-') ? 'plugins' : undefined);
+    ?? (requestedSection.startsWith('plugin-') ? 'plugins' : undefined)
+    ?? SETTINGS_SECTIONS.find(item => item.id === searchParams.get('tab'))?.id;
   const dialog = useAppDialog();
   const [busy, setBusy] = useState(false);
-  const [cfg, setCfg] = useState<UserConfig | null>(null);
-  const [err, setErr] = useState('');
-  const [lastOk, setLastOk] = useState('');
+  const { configuration: cfg, refresh } = useConfigurationSnapshotSession(configurationSnapshotAdapter);
+  const [configurationError, setConfigurationError] = useState('');
 
   // 档案改名（内联编辑）
-  const [mergePick, setMergePick] = useState<Set<string>>(new Set());
-  const [mergeMsg, setMergeMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
-  // 体检
-  const [audit, setAudit] = useState<AuditItem[] | null>(null);
-  const [auditBusy, setAuditBusy] = useState(false);
-  const [auditFilter, setAuditFilter] = useState<AuditFilter>('all');
+  const mergeExport = useMergeProfileExportPresenter(mergeProfileExportAdapter);
   // 多配置档案
 
-  /**
-   * 源列表变更后广播 —— 顶栏/侧栏的 SourcePicker 与点播页据此**立即重取**源列表。
-   * ★ 2026-09-26（用户反馈「刚导入 JSON 右上角还是显示没有源，得重启才能选」）：
-   *   SourcePicker 常驻在 App 里、只在挂载/focus/换源时取列表，导入后不会自己刷新。
-   * 事件名沿用本仓库既有约定（裸字符串，同 winbox:source-changed）。
-   */
-  const SOURCES_CHANGED = 'winbox:sources-changed';
-
-  const refresh = useCallback(async () => {
-    const c = await client.cfgGet();
-    setCfg(c);
-    window.dispatchEvent(new Event(SOURCES_CHANGED));
-  }, []);
+  const subscriptionGroupManagement = useSubscriptionGroupManagement({
+    port: subscriptionGroupManagementAdapter,
+    confirm: (message, options) => dialog.confirm(message, options),
+    refresh,
+  });
 
   const importFlow = useSubscriptionImport({
     busy,
     setBusy,
-    setError: setErr,
-    setNotice: setLastOk,
     onRefresh: refresh,
+    jobs: subscriptionImportJobsAdapter,
+    localSources: localSourceImportAdapter,
+    jobMemory: browserSubscriptionImportJobMemory,
   });
   const importRunning = importFlow.importRunning;
+  const profileActivation = useConfigurationProfileActivation({
+    profile: profileActivationAdapter,
+    refreshConfiguration: refresh,
+    busy,
+    setBusy,
+    importRunning,
+  });
 
   useEffect(() => {
     async function loadInitialConfig() {
       try {
         await refresh();
+        setConfigurationError('');
       } catch (error) {
-        setErr((error as Error).message);
+        setConfigurationError((error as Error).message);
       }
     }
     void loadInitialConfig();
   }, [refresh]);
 
-  async function removeSubscriptionGroupMember(groupId: string, memberId: string, name: string) {
-    const confirmed = await dialog.confirm(
-      `从订阅组移除「${name}」？已保存的子仓档案会保留为独立配置。`,
-      { title: '移除订阅组成员', confirmLabel: '移除', tone: 'danger' },
-    );
-    if (!confirmed) return;
-    try {
-      await client.cfgRemoveSubscriptionGroupMember(groupId, memberId);
-      await refresh();
-    } catch (error) {
-      setErr((error as Error).message);
-    }
-  }
-
-  async function resolveSubscriptionGroupRefresh(groupId: string, memberId: string, resolution: SubscriptionRefreshResolution) {
-    if (resolution === 'use-upstream') {
-      const confirmed = await dialog.confirm('采用上游配置会替换该子仓当前的源、排序和本地改名。继续吗？', {
-        title: '采用上游配置',
-        confirmLabel: '采用上游配置',
-        tone: 'danger',
-      });
-      if (!confirmed) return;
-    }
-    try {
-      await client.cfgResolveSubscriptionGroupRefresh(groupId, memberId, resolution);
-      await refresh();
-    } catch (error) {
-      setErr((error as Error).message);
-    }
-  }
-
   const sources = cfg?.sources ?? [];
   const activeKey = cfg?.ui.activeSourceKey ?? '';
-
-  async function activateProfile(id: string) {
-    if (busy || importRunning) return;
-    setErr('');
-    setBusy(true);
-    try { await client.cfgActivateProfile(id); notifyProfileChanged(); await refresh(); }
-    catch (e) { setErr((e as Error).message); }
-    finally { setBusy(false); }
-  }
-  /** 一键删除体检"失败"（error）的源 —— 仅删除当前管理列表中的源，不触碰任何原始/档案 JSON */
-  async function deleteFailedSources() {
-    if (!audit) return;
-    const failed = audit.filter((a) => a.health === 'error');
-    if (!failed.length) { setMergeMsg({ text: '没有体检为「失败/报错」的源可删', kind: 'err' }); return; }
-    if (!(await dialog.confirm(`确定删除 ${failed.length} 个体检失败源吗？\n（${failed.slice(0, 6).map((a) => a.name).join('、')}${failed.length > 6 ? '…' : ''}）\n此操作只影响当前列表并写入应用配置，不会改动任何导入的原始 JSON 文件。`, { title: '删除体检失败源', confirmLabel: '删除', tone: 'danger' }))) return;
-    setErr('');
-    for (const a of failed) {
-      try { await client.cfgDeleteSource(a.key); } catch { /* 单个失败继续 */ }
-    }
-    await refresh();
-    const left = (cfg?.sources ?? []).filter((s) => !failed.some((f) => f.key === s.key)).length;
-    if (left === 0) {
-      setMergeMsg({ text: `已删除全部 ${failed.length} 个失败源（没有剩余源，未生成新配置）`, kind: 'ok' });
-    } else {
-      // ★ 2026-10-14（用户要求）：不再生成超长的「清理后(N源) MM-DD HH:MM」——
-      //   改用**当前档案名**，只把括号里的源数更新为新值（反复清理时只有那个数字变化）。
-      //   当前档案的存档 json 已随删除自动同步（见 UserConfigManager.withActiveProfileSynced），
-      //   因此直接改名即可，无需再新建一份重复档案。
-      const cur = cfg?.profiles.find((p) => p.id === cfg.activeProfileId)?.name || '';
-      const base = cur
-        .replace(/[（(]\s*\d+\s*源\s*[）)]\s*$/, '') // 已存在的 (N源) 后缀 → 去掉后重填
-        .replace(/\s*\d{2}-\d{2}\s+\d{2}:\d{2}\s*$/, '') // 旧版「清理后(…) MM-DD HH:MM」的时间戳
-        .replace(/^清理后\s*/, '') // 旧版前缀
-        .trim() || '订阅';
-      const name = `${base}(${left}源)`;
-      if (cfg?.activeProfileId) {
-        await client.cfgUpdateProfileName({ id: cfg.activeProfileId, name });
-        setMergeMsg({ text: `已删除 ${failed.length} 个失败源；当前配置已更新为「${name}」（源数 ${left}，见上方「已保存配置」）`, kind: 'ok' });
-      } else {
-        const p = await client.cfgSaveAsProfile(name);
-        setMergeMsg({ text: `已删除 ${failed.length} 个失败源；剩余 ${left} 个源已保存为配置「${p.name}」并切换到它（见上方「已保存配置」）`, kind: 'ok' });
-      }
-    }
-    setAudit(null);
-    await refresh();
-  }
-
-  async function doMergeExport() {
-    const ids = [...mergePick];
-    if (!ids.length) { setMergeMsg({ text: '请先勾选要合并的配置档案', kind: 'err' }); return; }
-    setErr('');
-    try {
-      const r = await client.mergeExport(ids);
-      const sum = r.summary;
-      const kept = sum.reduce((a, b) => a + (b.kept ?? 0), 0);
-      const total = sum.reduce((a, b) => a + (b.total ?? 0), 0);
-      const saved = await client.mergeSave({ content: r.content, defaultName: `merged-subscription-${new Date().toISOString().slice(0, 10)}.json` });
-      if (saved.saved) {
-        setMergeMsg({ text: `已导出到：${saved.path}（合并 ${sum.length} 个配置 · 去重后 ${kept} 个源 / 原共 ${total} 个）`, kind: 'ok' });
-      } else {
-        setMergeMsg({ text: '已取消保存（合并内容未落盘，原始文件未受影响）', kind: 'ok' });
-      }
-    } catch (e) {
-      setMergeMsg({ text: `合并失败：${(e as Error).message}`, kind: 'err' });
-    }
-  }
-
-  async function runAudit() {
-    setErr('');
-    setAuditBusy(true);
-    setAudit(null);
-    try {
-      const r = await client.audit();
-      setAudit(r);
-      // 体检后自动刷新（可能新增了 homeFallback 之类影响不大）
-    } catch (e) {
-      setErr(`体检失败：${(e as Error).message}`);
-    } finally {
-      setAuditBusy(false);
-    }
-  }
+  const activeProfileName = cfg?.profiles.find((profile) => profile.id === cfg.activeProfileId)?.name ?? '';
+  const sourceHealthAudit = useSourceHealthAuditPresenter({
+    port: sourceHealthAuditAdapter,
+    sources,
+    activeProfileId: cfg?.activeProfileId ?? '',
+    activeProfileName,
+    confirm: (message, options) => dialog.confirm(message, options),
+    refresh,
+  });
 
   // ---- 选项卡（替代原 <a href="#cfg-*"> 锚点跳转，避免 HashRouter 下触发路由跳到空页）----
   const TABS = SETTINGS_SECTIONS.map(item => ({ ...item, icon: <Icon name={SETTINGS_ICONS[item.id]} size={16} /> }));
   const [settingsQuery, setSettingsQuery] = useState('');
   const searchTerm = settingsQuery.trim().toLocaleLowerCase();
   const matchingSections = SETTINGS_SECTIONS.filter(item => `${item.label} ${item.description} ${item.keywords}`.toLocaleLowerCase().includes(searchTerm));
-  const CFG_TAB_KEY = 'winbox-cfg-tab';
-  // 记住上次打开的选项卡：从配置页跳走再返回时仍停在原 tab
-  const [tab, setTab] = useState<TabId>(() => {
-    if (requestedTab) return requestedTab;
-    try {
-      const s = localStorage.getItem(CFG_TAB_KEY) as TabId | null;
-      return s && TABS.some((t) => t.id === s) ? s : 'sources';
-    } catch {
-      return 'sources';
-    }
-  });
-  const [lastRequestedSection, setLastRequestedSection] = useState(requestedSection);
-  if (lastRequestedSection !== requestedSection) {
-    setLastRequestedSection(requestedSection);
-    if (requestedTab) setTab(requestedTab);
-    setSettingsQuery('');
-  }
+  const tab: TabId = requestedTab ?? 'sources';
+  const configNavigation = useConfigSectionNavigation({ requestedSection, requestedTab, activeTab: tab });
   const selectTab = (t: TabId) => {
-    setTab(t);
-    if (requestedSection) setSearchParams({}, { replace: true });
-    try { localStorage.setItem(CFG_TAB_KEY, t); } catch { /* ignore */ }
+    setSettingsQuery('');
+    setSearchParams({ tab: t }, { replace: true });
   };
-  useEffect(() => {
-    if (!requestedTab) return;
-    try { localStorage.setItem(CFG_TAB_KEY, requestedTab); } catch { /* Storage may be disabled. */ }
-  }, [requestedTab]);
-  useEffect(() => {
-    if (!requestedSection || requestedTab !== tab) return;
-    const revealAndScroll = (): boolean => {
-      const targetId = requestedSection === requestedTab ? 'cfg-section-title' : `cfg-${requestedSection}`;
-      const element = document.getElementById(targetId);
-      if (!element) return false;
-      for (let parent = element.parentElement; parent; parent = parent.parentElement) {
-        if (parent instanceof HTMLDetailsElement) parent.open = true;
-      }
-      element.scrollIntoView({ block: 'start' });
-      return true;
-    };
-    if (revealAndScroll()) return;
-    const panel = document.getElementById('config-panel');
-    if (!panel) return;
-    const observer = new MutationObserver(() => { if (revealAndScroll()) observer.disconnect(); });
-    observer.observe(panel, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, [requestedSection, requestedTab, tab]);
-
   return (
     <div className="content cfg-content">
       <header className="page-heading cfg-page-heading">
@@ -282,21 +188,21 @@ export default function ConfigPage() {
       </header>
       <div className="cfg-layout">
       <aside className="cfg-navigation" aria-label="设置分类">
-        <Tabs items={TABS} value={tab} onChange={value => { selectTab(value); setSettingsQuery(''); }} orientation="vertical" label="配置分区" idPrefix="config" className="cfg-tab-control" />
+        <Tabs items={TABS} value={tab} onChange={value => { selectTab(value); setSettingsQuery(''); }} orientation="vertical" label="配置分区" idPrefix="config" panelId="config-panel" className="cfg-tab-control" />
       </aside>
 
       <div className="cfg-panel" id="config-panel" role="tabpanel" aria-labelledby={searchTerm ? 'cfg-results-title' : `config-tab-${tab}`} tabIndex={0}>
         {searchTerm && <section className="cfg-search-results">
           <div className="cfg-section-heading"><h2 id="cfg-results-title">搜索结果</h2><output>找到 {matchingSections.length} 个相关分类</output></div>
-          {matchingSections.map(item => <button key={item.id} className="cfg-search-result" onClick={() => { selectTab(item.id); setSettingsQuery(''); requestAnimationFrame(() => document.getElementById('cfg-section-title')?.focus()); }}>
+          {matchingSections.map(item => <button key={item.id} className="cfg-search-result" onClick={() => { selectTab(item.id); configNavigation.focusSectionHeading(); }}>
             <strong>{item.label}</strong><span>{item.description}</span><span aria-hidden="true">›</span>
           </button>)}
           {!matchingSections.length && <div className="empty"><h3>没有匹配的设置</h3><p>试试“播放”“订阅”或“网络”等关键词。</p><button onClick={() => setSettingsQuery('')}>清除搜索</button></div>}
         </section>}
         <div className="cfg-section-content" hidden={Boolean(searchTerm)}>
         <div className="cfg-section-heading"><h2 id="cfg-section-title" tabIndex={-1}>{TABS.find(item => item.id === tab)?.label}</h2><p>{TABS.find(item => item.id === tab)?.description}</p></div>
-        {err && tab !== 'sources' && <div className="err" role="alert">{err}</div>}
-        <SubscriptionImportSection active={tab === 'sources'} flow={importFlow} error={err} notice={lastOk} onErrorClear={() => setErr('')} />
+        {configurationError && <div className="err" role="alert">{configurationError}</div>}
+        <SubscriptionImportSection active={tab === 'sources'} flow={importFlow} />
 
       {/* ===== 一、订阅与源 ===== */}
       <SourceManagementSection
@@ -307,34 +213,38 @@ export default function ConfigPage() {
         profileId={cfg?.activeProfileId ?? ''}
         busy={busy}
         onRefresh={refresh}
-        onError={setErr}
-        onNotice={setLastOk}
+        confirmDangerousAction={(message, title, confirmLabel) => dialog.confirm(message, { title, confirmLabel, tone: 'danger' })}
+        sourcesPort={sourceManagementAdapter}
+        diagnosticsPort={sourceDiagnosticsAdapter}
       />
       <LiveSourcesSection
         active={tab === 'sources'}
         lives={cfg?.lives ?? []}
         activeIndex={cfg?.ui.activeLiveIndex ?? 0}
+        managementPort={liveSourcesManagementAdapter}
         onRefresh={refresh}
-        onError={setErr}
+        confirmRemoval={(displayName) => dialog.confirm('确定删除直播线路「' + displayName + '」吗？\n删除后直播页顶部线路下拉将不再出现它（原始文件不会被改动）。', { title: '删除直播线路', confirmLabel: '删除', tone: 'danger' })}
       />
       {/* ===== 二、源健康与维护 ===== */}
       {tab === 'health' && (
       <>
 
       <SourceHealthAuditSection
-        audit={audit}
-        auditBusy={auditBusy}
-        filter={auditFilter}
+        audit={sourceHealthAudit.audit}
+        auditBusy={sourceHealthAudit.auditBusy}
+        filter={sourceHealthAudit.filter}
         sources={sources}
-        onRunAudit={() => void runAudit()}
-        onDeleteFailedSources={() => void deleteFailedSources()}
-        onFilterChange={setAuditFilter}
+        onRunAudit={() => void sourceHealthAudit.runAudit()}
+        onDeleteFailedSources={() => void sourceHealthAudit.deleteFailedSources()}
+        onFilterChange={sourceHealthAudit.setFilter}
+        error={sourceHealthAudit.error}
+        notice={sourceHealthAudit.notice}
       />
       {/* ===== 三、配置档案 ===== */}
       </>
       )}
 
-      <CacheMaintenanceSection active={tab === 'health'} />
+      <CacheMaintenanceSection active={tab === 'health'} port={cacheMaintenanceAdapter} />
 
       {/* ===== 三、配置档案 ===== */}
       {tab === 'profiles' && (
@@ -343,60 +253,34 @@ export default function ConfigPage() {
         profiles={cfg?.profiles ?? []}
         activeProfileId={cfg?.activeProfileId ?? ''}
         busy={busy}
-        onActivate={(profileId) => { void activateProfile(profileId); }}
+        onActivate={(profileId) => { void profileActivation.activate(profileId); }}
+        activationError={profileActivation.error}
         onRefresh={refresh}
-        onError={setErr}
+        managementPort={savedProfilesManagementAdapter}
       />
 
       <SubscriptionGroupsSection
+        active={tab === 'profiles'}
         groups={cfg?.subscriptionGroups ?? []}
         profiles={cfg?.profiles ?? []}
         activeProfileId={cfg?.activeProfileId ?? ''}
         busy={busy}
         importRunning={importRunning}
+        error={subscriptionGroupManagement.error}
         onRefresh={(groupUrl, groupName) => { void importFlow.startSubscriptionImport(groupUrl, groupName); }}
-        onActivate={(profileId) => { void activateProfile(profileId); }}
-        onRemoveMember={(groupId, memberId, name) => { void removeSubscriptionGroupMember(groupId, memberId, name); }}
-        onResolveRefresh={(groupId, memberId, resolution) => { void resolveSubscriptionGroupRefresh(groupId, memberId, resolution); }}
+        onActivate={(profileId) => { void profileActivation.activate(profileId); }}
+        onRemoveMember={(groupId, memberId, name) => { void subscriptionGroupManagement.removeMember(groupId, memberId, name); }}
+        onResolveRefresh={(groupId, memberId, resolution) => { void subscriptionGroupManagement.resolveRefresh(groupId, memberId, resolution); }}
       />
 
       {/* 0b) 合并导出（多配置 → 去重 → 新 JSON，不写原文件） */}
-      <div className="card" id="cfg-merge" style={{ padding: 12, marginBottom: 16 }}>
-        <div className="row" style={{ marginBottom: 6 }}>
-          <span className="muted" style={{ fontWeight: 600 }}>合并导出（把多份配置的源合并去重成一份订阅 JSON）</span>
-          <button className="primary" disabled={!mergePick.size} onClick={doMergeExport}>合并并另存为…</button>
-        </div>
-        {cfg?.profiles && cfg.profiles.length > 0 ? (
-          <div className="row" style={{ flexWrap: 'wrap', marginBottom: 4 }}>
-            {cfg.profiles.map((p) => {
-              const checked = mergePick.has(p.id);
-              return (
-                <label key={p.id} className={`tag ${checked ? 'active' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    style={{ accentColor: 'var(--accent)', margin: 0 }}
-                    checked={checked}
-                    onChange={() => {
-                      const next = new Set(mergePick);
-                      if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
-                      setMergePick(next);
-                    }}
-                  />
-                  {p.name} <span className="muted">({p.sourceCount})</span>
-                  {!p.json && <span className="muted" title="该档案来自早期版本，无原始数据可合并">· 无数据</span>}
-                </label>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="muted" style={{ fontSize: 12 }}>没有可合并的档案——先在上方「已保存配置」里存下至少两份配置。</div>
-        )}
-        {mergeMsg && (
-          <div style={{ marginTop: 6, fontSize: 12, color: mergeMsg.kind === 'ok' ? 'var(--text-success)' : 'var(--text-danger)', wordBreak: 'break-all' }}>
-            {mergeMsg.text}
-          </div>
-        )}
-      </div>
+      <MergeProfilesExportSection
+        profiles={cfg?.profiles ?? []}
+        selectedProfileIds={mergeExport.selectedProfileIds}
+        message={mergeExport.message}
+        onToggleProfile={mergeExport.toggleProfile}
+        onExport={() => { void mergeExport.exportSelected(); }}
+      />
 
 
       {/* ===== 四、凭据 ===== */}
@@ -404,21 +288,25 @@ export default function ConfigPage() {
       )}
 
       {/* ===== 四、凭据 ===== */}
-      <AccountServicesSection active={tab === 'account'} />
+      <AccountServicesSection active={tab === 'account'} services={rendererAccountServicesAdapter} events={browserAccountSettingsEventsAdapter} />
 
       {tab === 'appearance' && <AppearanceSection />}
 
       {/* ===== 六、播放（去广告） ===== */}
-      {tab === 'play' && <PlaybackSettingsSection active requestedSection={requestedTab === 'play' ? requestedSection : ''} key={requestedTab === 'play' ? requestedSection : 'play'} />}
+      {tab === 'play' && <PlaybackSettingsSection active requestedSection={requestedTab === 'play' ? requestedSection : ''} preferences={playerPreferencesStorageAdapter} engineSettings={playerEngineSettingsAdapter} engineEvents={browserPlayerEngineSettingsEventsAdapter} playerSettings={playerSettingsAdapter} externalPlayers={externalPlayerDiscoveryAdapter} mpvSettings={mpvSettingsAdapter} mediaRuntimes={mediaRuntimeManagementAdapter} key={requestedTab === 'play' ? requestedSection : 'play'} />}
 
       {/* ===== 七、快捷键（老板键） ===== */}
-      <PluginSettingsSection active={tab === 'plugins'} />
-      <ShortcutSettingsSection active={tab === 'shortcut'} />
+      <PluginSettingsSection active={tab === 'plugins'} dependencies={pluginSettingsDependencies} />
+      <ShortcutSettingsSection active={tab === 'shortcut'} port={shortcutSettingsAdapter} keymaps={pluginKeymapListAdapter} />
 
-      <NetworkSection active={tab === 'network'} />
+      <NetworkSection active={tab === 'network'} port={networkSettingsAdapter} />
 
-      <StorageSettingsSection active={tab === 'storage'} />
-      <BackupSettingsSection active={tab === 'backup'} />
+      <StorageSettingsSection
+        active={tab === 'storage'}
+        port={storageSettingsAdapter}
+        confirmRemoval={(message, options) => dialog.confirm(message, options)}
+      />
+      <BackupSettingsSection active={tab === 'backup'} backup={rendererBackupOperationsAdapter} storage={browserBackupStorageAdapter} />
       </div>
       </div>
       </div>

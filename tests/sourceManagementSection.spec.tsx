@@ -1,15 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { client } from '../src/renderer/api/client';
 import type { SourceBean } from '../src/shared/types';
 import { SourceManagementSection } from '../src/renderer/features/settings/SourceManagementSection';
 
-const { confirm } = vi.hoisted(() => ({ confirm: vi.fn() }));
-
-vi.mock('../src/renderer/components/AppDialog', () => ({
-  useAppDialog: () => ({ confirm }),
-}));
+const confirm = vi.fn();
 
 function source(key: string, name: string): SourceBean {
   return {
@@ -36,8 +31,16 @@ function props(sources = [source('source-a', 'Source A')]) {
     profileId: 'profile-a',
     busy: false,
     onRefresh: vi.fn().mockResolvedValue(undefined),
-    onError: vi.fn(),
-    onNotice: vi.fn(),
+    confirmDangerousAction: confirm,
+    sourcesPort: {
+      activateSource: vi.fn().mockResolvedValue(undefined),
+      deleteSource: vi.fn().mockResolvedValue(undefined),
+      deleteSources: vi.fn().mockResolvedValue(undefined),
+      setGlobalSourceBlock: vi.fn().mockResolvedValue(undefined),
+      moveSource: vi.fn().mockResolvedValue(undefined),
+      updateSource: vi.fn().mockResolvedValue(undefined),
+    },
+    diagnosticsPort: { debugSource: vi.fn().mockResolvedValue({}) },
   };
 }
 
@@ -45,11 +48,11 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   confirm.mockReset();
+  confirm.mockResolvedValue(true);
 });
 
 describe('SourceManagementSection', () => {
   it('edits a source and refreshes the configuration after save', async () => {
-    const update = vi.spyOn(client, 'cfgUpdateSource').mockResolvedValue({} as never);
     const page = props();
 
     render(<SourceManagementSection {...page} />);
@@ -57,23 +60,35 @@ describe('SourceManagementSection', () => {
     fireEvent.change(screen.getByLabelText('名称'), { target: { value: 'Updated source' } });
     fireEvent.click(screen.getByRole('button', { name: '保存' }));
 
-    await waitFor(() => expect(update).toHaveBeenCalledWith('source-a', expect.objectContaining({ name: 'Updated source' })));
+    await waitFor(() => expect(page.sourcesPort.updateSource).toHaveBeenCalledWith('source-a', expect.objectContaining({ name: 'Updated source' })));
     expect(page.onRefresh).toHaveBeenCalledOnce();
   });
 
   it('deletes the selected sources after confirmation', async () => {
     confirm.mockResolvedValue(true);
-    const remove = vi.spyOn(client, 'cfgDeleteSources').mockResolvedValue({} as never);
     const page = props([source('source-a', 'Source A'), source('source-b', 'Source B')]);
 
     render(<SourceManagementSection {...page} />);
     fireEvent.click(screen.getByRole('checkbox', { name: '全选源' }));
     fireEvent.click(screen.getByRole('button', { name: '删除所选（2）' }));
 
-    await waitFor(() => expect(remove).toHaveBeenCalledWith(['source-a', 'source-b']));
+    await waitFor(() => expect(page.sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a', 'source-b']));
     expect(confirm).toHaveBeenCalledOnce();
-    expect(page.onNotice).toHaveBeenCalledWith('已删除 2 个源');
+    expect(screen.getByRole('status').textContent).toContain('已删除 2 个源');
     expect(page.onRefresh).toHaveBeenCalledOnce();
+  });
+
+  it('reports a completed mutation separately when refreshing the list fails', async () => {
+    const page = props([source('source-a', 'Source A'), source('source-b', 'Source B')]);
+    page.onRefresh.mockRejectedValue(new Error('configuration unavailable'));
+
+    render(<SourceManagementSection {...page} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: '选择源 Source A' }));
+    fireEvent.click(screen.getByRole('button', { name: '删除所选（1）' }));
+
+    await waitFor(() => expect(page.sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a']));
+    expect(screen.getByRole('status').textContent).toContain('操作已完成，但源列表刷新失败');
+    expect(screen.getByRole('status').textContent).toContain('configuration unavailable');
   });
 
   it('clears selection when the active profile changes', async () => {

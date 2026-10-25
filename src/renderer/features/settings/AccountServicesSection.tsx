@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { client } from '../../api/client';
 import { DEFAULT_META_SETTINGS, type MetaSettings } from '../../../shared/meta';
 import type { SubtitleProviderView } from '../../../shared/subtitle';
-import DriveBindModal from '../../components/DriveBindModal';
+import { DriveBindingDialog } from '../driveBinding/DriveBindingDialog';
+import type { AccountServicesPort } from './application/accountServicesPort';
+import type { AccountSettingsEventsPort } from './application/accountSettingsEventsPort';
 
-export function AccountServicesSection({ active }: { active: boolean }) {
+export function AccountServicesSection({ active, services, events }: { active: boolean; services: AccountServicesPort; events: AccountSettingsEventsPort }) {
   const [driveOpen, setDriveOpen] = useState(false);
   const [subToken, setSubToken] = useState('');
   const [subTokenSaved, setSubTokenSaved] = useState(false);
@@ -14,19 +15,19 @@ export function AccountServicesSection({ active }: { active: boolean }) {
   const [metaMsg, setMetaMsg] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
 
   const refreshSubProviders = useCallback(() => {
-    client.subtitleProviders().then(setSubProviders).catch(() => undefined);
-  }, []);
+    services.getSubtitleProviders().then(setSubProviders).catch(() => undefined);
+  }, [services]);
 
   useEffect(() => {
-    client.subtitleGet().then((settings) => {
+    services.getSubtitleSettings().then((settings) => {
       setSubToken(settings.assrtToken || '');
       setSubTokenSaved(!!settings.assrtToken);
     }).catch(() => undefined);
     refreshSubProviders();
-  }, [refreshSubProviders]);
+  }, [refreshSubProviders, services]);
 
   useEffect(() => {
-    client.metaGetSettings().then((settings) => {
+    services.getMetaSettings().then((settings) => {
       setMetaDraft({
         tmdbApiKey: settings.tmdbApiKey,
         tmdbApiBase: settings.tmdbApiBase,
@@ -34,11 +35,11 @@ export function AccountServicesSection({ active }: { active: boolean }) {
         metaSource: settings.metaSource,
       });
     }).catch(() => undefined);
-  }, []);
+  }, [services]);
 
   const saveMeta = async () => {
     try {
-      const settings = await client.metaSetSettings(metaDraft);
+      const settings = await services.setMetaSettings(metaDraft);
       setMetaDraft({
         tmdbApiKey: settings.tmdbApiKey,
         tmdbApiBase: settings.tmdbApiBase,
@@ -46,8 +47,7 @@ export function AccountServicesSection({ active }: { active: boolean }) {
         metaSource: settings.metaSource,
       });
       setMetaDirty(false);
-      localStorage.setItem('winbox-meta-revision', String(Date.now()));
-      window.dispatchEvent(new Event('winbox:meta-changed'));
+      events.notifyMetaSettingsChanged();
       setMetaMsg({ text: '已保存，立即生效。', kind: 'ok' });
     } catch (error) {
       setMetaMsg({ text: `保存失败：${(error as Error).message}`, kind: 'err' });
@@ -62,7 +62,7 @@ export function AccountServicesSection({ active }: { active: boolean }) {
         <h2>全局网盘账号</h2><p>登录状态独立保存在本机，跨子仓和站点共享。可在这里统一登录、更新或解绑。</p>
         <button type="button" onClick={() => setDriveOpen(true)}>管理网盘登录状态</button>
       </div>
-      {driveOpen && <DriveBindModal siteName="所有子仓与站点" onClose={() => setDriveOpen(false)} onSaved={() => window.dispatchEvent(new Event('winbox:drives-changed'))} />}
+      {driveOpen && <DriveBindingDialog siteName="所有子仓与站点" onClose={() => setDriveOpen(false)} onSaved={events.notifyDriveAccountsChanged} />}
       <div className="card" id="cfg-subtitle" style={{ padding: 12, marginBottom: 16 }}>
         <div className="row" style={{ marginBottom: 8 }}>
           <span className="muted" style={{ fontWeight: 600 }}>外挂字幕（多源在线检索）</span>
@@ -78,7 +78,7 @@ export function AccountServicesSection({ active }: { active: boolean }) {
                   const next: Record<string, boolean> = {};
                   for (const item of subProviders) next[item.id] = item.enabled;
                   next[provider.id] = !provider.enabled;
-                  await client.subtitleSet({ providers: next }).catch(() => undefined);
+                  await services.setSubtitleSettings({ providers: next }).catch(() => undefined);
                   refreshSubProviders();
                 }}
               >
@@ -96,12 +96,12 @@ export function AccountServicesSection({ active }: { active: boolean }) {
             onChange={(event) => { setSubToken(event.target.value); setSubTokenSaved(false); }}
           />
           <button className="primary" disabled={!subToken.trim()} onClick={async () => {
-            await client.subtitleSet({ assrtToken: subToken.trim() }).catch(() => undefined);
+            await services.setSubtitleSettings({ assrtToken: subToken.trim() }).catch(() => undefined);
             setSubTokenSaved(true);
             refreshSubProviders();
           }}>保存</button>
         </div>
-        <div className="muted" style={{ fontSize: 11, marginTop: 8 }}>
+        <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>
           {subTokenSaved ? '已保存' : 'assrt 需到 assrt.net 免费注册后取 token；SubtitleCat 免 token，开箱可用。'}
         </div>
       </div>
@@ -141,7 +141,7 @@ export function AccountServicesSection({ active }: { active: boolean }) {
           封面优先级：已配置的 TMDB → 源自带封面 → 豆瓣 → 暂无封面。未配置 TMDB 时直接使用源封面。
           图片搜索仅用于详情页背景图，简介使用源提供的信息。
         </div>
-        <div className={metaMsg?.kind === 'err' ? 'err' : 'muted'} style={{ fontSize: 11, marginTop: 8 }} aria-live="polite">
+        <div className={metaMsg?.kind === 'err' ? 'err' : 'muted'} style={{ fontSize: 12, marginTop: 8 }} aria-live="polite">
           {metaMsg?.text}
         </div>
       </div>

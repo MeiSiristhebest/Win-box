@@ -1,62 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
-import { client } from '../../api/client';
+import { useEffect, useRef } from 'react';
 import type { LiveBean } from '../../../shared/types';
-import { useAppDialog } from '../../components/AppDialog';
+import type { LiveSourcesManagementPort } from './application/liveSourcesPort';
+import { useLiveSourcesManagement } from './useLiveSourcesManagement';
 
 interface LiveSourcesSectionProps {
   active: boolean;
   lives: LiveBean[];
   activeIndex: number;
+  managementPort: LiveSourcesManagementPort;
   onRefresh: () => Promise<void>;
-  onError: (message: string) => void;
+  confirmRemoval: (displayName: string, index: number) => Promise<boolean>;
 }
 
-export function LiveSourcesSection({ active, lives, activeIndex, onRefresh, onError }: LiveSourcesSectionProps) {
-  const dialog = useAppDialog();
-  const [liveEditIdx, setLiveEditIdx] = useState<number | null>(null);
-  const [liveEditName, setLiveEditName] = useState('');
+export function LiveSourcesSection({ active, lives, activeIndex, managementPort, onRefresh, confirmRemoval }: LiveSourcesSectionProps) {
   const liveEditNameInputRef = useRef<HTMLInputElement>(null);
+  const { model, actions } = useLiveSourcesManagement({ port: managementPort, onRefresh, confirmRemoval });
 
   useEffect(() => {
-    if (liveEditIdx !== null) liveEditNameInputRef.current?.focus();
-  }, [liveEditIdx]);
-
-  async function setActiveLive(index: number) {
-    try {
-      await client.cfgSetActiveLive(index);
-      await onRefresh();
-    } catch (error) {
-      onError((error as Error).message);
-    }
-  }
-
-  async function deleteLive(index: number, name: string) {
-    const displayName = name || '线路' + (index + 1);
-    const confirmed = await dialog.confirm('确定删除直播线路「' + displayName + '」吗？\n删除后直播页顶部线路下拉将不再出现它（原始文件不会被改动）。', { title: '删除直播线路', confirmLabel: '删除', tone: 'danger' });
-    if (!confirmed) return;
-    onError('');
-    try {
-      await client.cfgDeleteLive(index);
-      if (liveEditIdx === index) { setLiveEditIdx(null); setLiveEditName(''); }
-      await onRefresh();
-    } catch (error) {
-      onError((error as Error).message);
-    }
-  }
-
-  async function saveLiveName(index: number) {
-    const name = liveEditName.trim();
-    setLiveEditIdx(null);
-    setLiveEditName('');
-    if (!name) return;
-    onError('');
-    try {
-      await client.cfgUpdateLive({ index, name });
-      await onRefresh();
-    } catch (error) {
-      onError((error as Error).message);
-    }
-  }
+    if (model.editingIndex !== null) liveEditNameInputRef.current?.focus();
+  }, [model.editingIndex]);
 
   return (
     <div hidden={!active} aria-hidden={!active}>
@@ -66,6 +28,8 @@ export function LiveSourcesSection({ active, lives, activeIndex, onRefresh, onEr
           直播线路（{lives.length}）
         </summary>
         <div style={{ marginTop: 10 }}>
+          {model.error && <div className="err" role="alert">{model.error}</div>}
+          {model.notice && <output className="ok">{model.notice}</output>}
           {lives.length === 0 ? (
             <div className="empty" style={{ padding: 12 }}>尚无直播线路，可点上方「导入直播源（TXT / M3U）」添加</div>
           ) : (
@@ -83,11 +47,11 @@ export function LiveSourcesSection({ active, lives, activeIndex, onRefresh, onEr
               <tbody>
                 {lives.map((l, i) => {
                   const isActive = i === activeIndex;
-                  const editing = liveEditIdx === i;
+                  const editing = model.editingIndex === i;
                   return (
                     <tr
                       key={i}
-                      onClick={() => { if (!editing) void setActiveLive(i); }}
+                      onClick={() => { if (!editing) void actions.select(i); }}
                       style={{ cursor: editing ? 'default' : 'pointer', background: isActive && !editing ? 'var(--bg-elev2)' : undefined }}
                     >
                       <td style={{ padding: 6, borderBottom: '1px solid var(--border)', textAlign: 'center', color: 'var(--accent)' }}>{isActive ? '●' : '○'}</td>
@@ -96,12 +60,12 @@ export function LiveSourcesSection({ active, lives, activeIndex, onRefresh, onEr
                           <input
                             ref={liveEditNameInputRef}
                             style={{ width: 180, fontSize: 12 }}
-                            value={liveEditName}
+                            value={model.draftName}
                             onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => setLiveEditName(e.target.value)}
+                            onChange={(e) => actions.changeDraftName(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !e.nativeEvent.isComposing) void saveLiveName(i);
-                              if (e.key === 'Escape') { setLiveEditIdx(null); setLiveEditName(''); }
+                              if (e.key === 'Enter' && !e.nativeEvent.isComposing) void actions.saveName(i);
+                              if (e.key === 'Escape') actions.cancelRename();
                             }}
                           />
                         ) : (l.name || `线路${i + 1}`)}
@@ -110,13 +74,13 @@ export function LiveSourcesSection({ active, lives, activeIndex, onRefresh, onEr
                       <td style={{ padding: 6, borderBottom: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
                         {editing ? (
                           <>
-                            <button className="linkbtn" onClick={() => void saveLiveName(i)}>确定</button>
-                            <button className="linkbtn" onClick={() => { setLiveEditIdx(null); setLiveEditName(''); }}>取消</button>
+                            <button className="linkbtn" onClick={() => void actions.saveName(i)}>确定</button>
+                            <button className="linkbtn" onClick={actions.cancelRename}>取消</button>
                           </>
                         ) : (
                           <>
-                            <button className="linkbtn" title="重命名该直播线路" onClick={() => { setLiveEditIdx(i); setLiveEditName(l.name || `线路${i + 1}`); }}>改名</button>
-                            <button className="linkbtn danger" title="删除该直播线路" onClick={() => void deleteLive(i, l.name)}>删除</button>
+                            <button className="linkbtn" title="重命名该直播线路" onClick={() => actions.beginRename(i, l.name || `线路${i + 1}`)}>改名</button>
+                            <button className="linkbtn danger" title="删除该直播线路" onClick={() => void actions.remove(i, l.name)}>删除</button>
                           </>
                         )}
                       </td>
@@ -127,7 +91,7 @@ export function LiveSourcesSection({ active, lives, activeIndex, onRefresh, onEr
             </table>
             </section>
           )}
-          <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
             点某行可把它设为直播页当前线路；「删除」只从应用线路列表移除，不改动你导入的原始文件。
           </div>
         </div>

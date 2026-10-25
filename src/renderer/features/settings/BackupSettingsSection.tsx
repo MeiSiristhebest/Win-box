@@ -1,33 +1,18 @@
 import { useState } from 'react';
-import { client } from '../../api/client';
 import { useAppDialog } from '../../components/AppDialog';
-import { prepareRendererBackupRestore, STORAGE_EPOCH_KEY } from '../../lib/storageEpoch';
+import type { BackupOperationsPort } from './application/backupOperationsPort';
+import type { BackupStoragePort } from './application/backupStoragePort';
 
-export function BackupSettingsSection({ active }: { active: boolean }) {
+export function BackupSettingsSection({ active, backup, storage }: { active: boolean; backup: BackupOperationsPort; storage: BackupStoragePort }) {
   const dialog = useAppDialog();
   const [message, setMessage] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
   const [busy, setBusy] = useState(false);
-
-  function collectLocalStorage(): Record<string, string> {
-    const out: Record<string, string> = {};
-    try {
-      for (let index = 0; index < localStorage.length; index++) {
-        const key = localStorage.key(index);
-        if (!key || key === STORAGE_EPOCH_KEY) continue;
-        const value = localStorage.getItem(key);
-        if (typeof value === 'string') out[key] = value;
-      }
-    } catch {
-      // Back up main-process settings when renderer storage is unavailable.
-    }
-    return out;
-  }
 
   async function exportBackup() {
     setBusy(true);
     setMessage(null);
     try {
-      const result = await client.backupExport(collectLocalStorage());
+      const result = await backup.exportSnapshot(storage.collectSnapshot());
       setMessage(result.saved ? { text: `已导出到：${result.path}`, kind: 'ok' } : { text: '已取消导出', kind: 'ok' });
     } catch (error) {
       setMessage({ text: (error as Error).message, kind: 'err' });
@@ -41,7 +26,7 @@ export function BackupSettingsSection({ active }: { active: boolean }) {
     setBusy(true);
     setMessage(null);
     try {
-      const result = await client.backupImport();
+      const result = await backup.chooseImportFile();
       if (result.canceled) {
         setMessage({ text: '已取消导入', kind: 'ok' });
         return;
@@ -51,16 +36,16 @@ export function BackupSettingsSection({ active }: { active: boolean }) {
         return;
       }
       if (!result.restoreId) throw new Error('备份恢复会话缺失，请重新选择文件');
-      let transaction: ReturnType<typeof prepareRendererBackupRestore> | undefined;
+      let transaction: ReturnType<BackupStoragePort['prepareRestore']> | undefined;
       try {
-        transaction = prepareRendererBackupRestore(result.renderer || {});
-        await client.backupCommit(result.restoreId);
+        transaction = storage.prepareRestore(result.renderer || {});
+        await backup.commitImport(result.restoreId);
       } catch (error) {
         transaction?.rollback();
-        await client.backupCancel(result.restoreId).catch(() => undefined);
+        await backup.cancelImport(result.restoreId).catch(() => undefined);
         throw error;
       }
-      window.location.reload();
+      backup.reloadAfterRestore();
     } catch (error) {
       setMessage({ text: (error as Error).message, kind: 'err' });
     } finally {

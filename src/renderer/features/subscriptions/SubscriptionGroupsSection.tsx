@@ -1,11 +1,13 @@
 import type { SubscriptionGroup, SubscriptionRefreshResolution, UserProfile } from '../../../shared/types';
 
 interface SubscriptionGroupsSectionProps {
+  active: boolean;
   groups: readonly SubscriptionGroup[];
   profiles: readonly UserProfile[];
   activeProfileId: string;
   busy: boolean;
   importRunning: boolean;
+  error: string;
   onRefresh: (url: string, name: string) => void;
   onActivate: (profileId: string) => void;
   onRemoveMember: (groupId: string, memberId: string, name: string) => void;
@@ -13,17 +15,19 @@ interface SubscriptionGroupsSectionProps {
 }
 
 export function SubscriptionGroupsSection({
+  active,
   groups,
   profiles,
   activeProfileId,
   busy,
   importRunning,
+  error,
   onRefresh,
   onActivate,
   onRemoveMember,
   onResolveRefresh,
 }: SubscriptionGroupsSectionProps) {
-  if (groups.length === 0) return null;
+  if (!active || groups.length === 0) return null;
 
   const errorPreview = (error: string): string => {
     const attemptsAt = error.indexOf('已尝试：');
@@ -36,6 +40,7 @@ export function SubscriptionGroupsSection({
     <section className="card" id="cfg-subscription-groups" style={{ padding: 12, marginBottom: 16 }}>
       <h3 style={{ fontWeight: 600, margin: '0 0 8px' }}>多仓订阅组</h3>
       <p className="muted">状态表示配置获取和解析结果。配置未导入不等于其中所有影片源已失效；已导入的配置也需分别检查搜索和播放。</p>
+      {error && <div className="err" role="alert">{error}</div>}
       {groups.map((group) => {
         const ready = group.members.filter((member) => member.status === 'ready').length;
         const failed = group.members.filter((member) => member.status === 'failed').length;

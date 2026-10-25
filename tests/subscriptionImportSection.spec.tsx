@@ -4,6 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { client } from '../src/renderer/api/client';
 import { SubscriptionImportSection } from '../src/renderer/features/subscriptions/SubscriptionImportSection';
+import {
+  browserSubscriptionImportJobMemory,
+  localSourceImportAdapter,
+  subscriptionImportJobsAdapter,
+} from '../src/renderer/features/subscriptions/adapters/subscriptionImportAdapters';
 import { useSubscriptionImport } from '../src/renderer/features/subscriptions/useSubscriptionImport';
 
 vi.mock('../src/renderer/components/AppDialog', () => ({
@@ -12,10 +17,15 @@ vi.mock('../src/renderer/components/AppDialog', () => ({
 
 function Harness({ active = true, onRefresh }: { active?: boolean; onRefresh: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const flow = useSubscriptionImport({ busy, setBusy, setError, setNotice, onRefresh });
-  return <SubscriptionImportSection active={active} flow={flow} error={error} notice={notice} onErrorClear={() => setError('')} />;
+  const flow = useSubscriptionImport({
+    busy,
+    setBusy,
+    onRefresh,
+    jobs: subscriptionImportJobsAdapter,
+    localSources: localSourceImportAdapter,
+    jobMemory: browserSubscriptionImportJobMemory,
+  });
+  return <SubscriptionImportSection active={active} flow={flow} />;
 }
 
 function mockImportJobLookup() {
@@ -67,5 +77,15 @@ describe('SubscriptionImportSection', () => {
     await waitFor(() => expect(importPackage).toHaveBeenLastCalledWith('My Package', 'C:\\packages\\my-source'));
     expect(onRefresh).toHaveBeenCalledOnce();
     expect(await screen.findByText(/已导入本地包：My Package/)).toBeTruthy();
+  });
+
+  it('keeps subscription import errors in the import workflow feedback', async () => {
+    mockImportJobLookup();
+    vi.spyOn(client, 'cfgImportJsonLocal').mockRejectedValue(new Error('import failed'));
+    render(<Harness onRefresh={vi.fn().mockResolvedValue(undefined)} />);
+    fireEvent.click(screen.getByText('从本地文件导入'));
+    fireEvent.click(screen.getByRole('button', { name: 'JSON 文件' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('操作失败：import failed');
   });
 });

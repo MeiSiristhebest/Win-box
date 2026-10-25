@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import PosterSizeControl from '../../components/PosterSizeControl';
-import { setUiScale, useUiScaleState } from '../../lib/displayPrefs';
+import { setUiScale, useUiScaleState } from '../display';
 import { UI_SCALE_OPTIONS } from '../../../shared/uiScale';
 import { applyTheme, useTheme, useSkins } from '../../lib/theme';
 import { setShowDiscover, setMotionPref, useShowDiscover, useMotionPref, setNavMode, useNavMode, setWaterfall, useWaterfall, type MotionPref } from '../../lib/uiPrefs';

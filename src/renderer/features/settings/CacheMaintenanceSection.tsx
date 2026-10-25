@@ -1,22 +1,22 @@
 import { useEffect, useState } from 'react';
-import { client } from '../../api/client';
 import type { DataDirInfo } from '../../../shared/types';
+import type { CacheMaintenancePort } from './application/settingsSectionPorts';
 
-export function CacheMaintenanceSection({ active }: { active: boolean }) {
+export function CacheMaintenanceSection({ active, port }: { active: boolean; port: CacheMaintenancePort }) {
   const [message, setMessage] = useState<{ text: string; kind: 'ok' | 'err' } | null>(null);
   const [busy, setBusy] = useState(false);
   const [dataDir, setDataDir] = useState<DataDirInfo | null>(null);
 
   useEffect(() => {
     if (!active) return;
-    client.dataDir().then(setDataDir).catch(() => undefined);
-  }, [active]);
+    port.loadDataDirectory().then(setDataDir).catch(() => undefined);
+  }, [active, port]);
 
   async function clearCache() {
     setBusy(true);
     setMessage(null);
     try {
-      const result = await client.cacheClear();
+      const result = await port.clearCache();
       const megabytes = (result.freedBytes / 1024 / 1024).toFixed(1);
       setMessage({
         text: `已清理 ${result.cleared.length} 类缓存，释放约 ${megabytes} MB${result.failed.length ? `（${result.failed.length} 项暂被占用跳过）` : ''}`,
@@ -41,9 +41,9 @@ export function CacheMaintenanceSection({ active }: { active: boolean }) {
           {busy ? '清理中…' : '立即清理'}
         </button>
       </div>
-      {message && <div className="muted" style={{ fontSize: 11, marginTop: 4, color: message.kind === 'ok' ? 'var(--text-success)' : 'var(--text-warn)' }} aria-live="polite">{message.text}</div>}
+      {message && <div className="muted" style={{ fontSize: 12, marginTop: 4, color: message.kind === 'ok' ? 'var(--text-success)' : 'var(--text-warn)' }} aria-live="polite">{message.text}</div>}
       {dataDir && (
-        <div className="muted" style={{ fontSize: 11, marginTop: 6 }} title={`计划目录：${dataDir.planned}`}>
+        <div className="muted" style={{ fontSize: 12, marginTop: 6 }} title={`计划目录：${dataDir.planned}`}>
           数据目录：{dataDir.path}
           {dataDir.mode === 'activated' && dataDir.migration?.cleanedLegacy ? '（已迁移，旧目录已清理）' : ''}
           {dataDir.mode === 'activated' && !dataDir.migration?.cleanedLegacy ? '（安装目录/data）' : ''}

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { client } from '../../api/client';
 import type { PlayerEngineView } from '../../../shared/plugin';
 import { DEFAULT_PLAYER_SETTINGS, type PlayerSettings } from '../../../shared/player';
 import { useAppDialog } from '../../components/AppDialog';
+import type { PlayerEngineSettingsEventsPort, PlayerEngineSettingsPort } from './application/settingsSectionPorts';
 
-export function PlayerEngineSettings({ active }: { active: boolean }) {
+export function PlayerEngineSettings({ active, port, events }: { active: boolean; port: PlayerEngineSettingsPort; events: PlayerEngineSettingsEventsPort }) {
   const dialog = useAppDialog();
   const [items, setItems] = useState<PlayerEngineView[]>([]);
   const [settings, setSettings] = useState<PlayerSettings>(DEFAULT_PLAYER_SETTINGS);
@@ -13,33 +13,33 @@ export function PlayerEngineSettings({ active }: { active: boolean }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const load = useCallback(async () => {
-    const [engines, values] = await Promise.all([client.engineList(), client.playerPrefsGet()]);
+    const [engines, values] = await Promise.all([port.listEngines(), port.loadPlayerSettings()]);
     setItems(engines.filter(item => item.pluginId !== 'builtin'));
     setSettings(values);
-  }, []);
+  }, [port]);
   useEffect(() => {
     if (!active) return;
     let alive = true;
-    void Promise.all([client.engineList(), client.playerPrefsGet()]).then(([engines, values]) => {
+    void Promise.all([port.listEngines(), port.loadPlayerSettings()]).then(([engines, values]) => {
       if (!alive) return;
       setItems(engines.filter(item => item.pluginId !== 'builtin')); setSettings(values);
     }).catch(cause => { if (alive) setError(cause instanceof Error ? cause.message : String(cause)); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [active]);
+  }, [active, port]);
   async function toggle(item: PlayerEngineView, enabled: boolean) {
     if (enabled && !settings.engineEnabled[item.id] && !(await dialog.confirm('启用插件播放内核「' + item.label + '」后，应用会运行该内核提供的本机程序' + (item.path ? '（' + item.path + '）' : '') + '。继续吗？', { title: '启用插件播放内核', confirmLabel: '启用' }))) return;
     setBusy(true); setError('');
     try {
-      const result = await client.engineSetEnabled({ id: item.id, enabled });
+      const result = await port.setEngineEnabled({ id: item.id, enabled });
       if (!result.ok) throw new Error(result.reason || '保存失败');
-      await load(); window.dispatchEvent(new Event('winbox:engines-changed'));
+      await load(); events.notifyChanged();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); }
   }
   async function savePath(item: PlayerEngineView) {
     setBusy(true); setError('');
     try {
-      await client.playerPrefsSet({ enginePaths: { ...settings.enginePaths, [item.id]: (drafts[item.id] ?? settings.enginePaths[item.id] ?? '').trim() } });
-      await load(); window.dispatchEvent(new Event('winbox:engines-changed'));
+      await port.savePlayerSettings({ enginePaths: { ...settings.enginePaths, [item.id]: (drafts[item.id] ?? settings.enginePaths[item.id] ?? '').trim() } });
+      await load(); events.notifyChanged();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); }
   }
   if (!active) return null;

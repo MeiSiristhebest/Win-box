@@ -1,6 +1,5 @@
 import type { AuditItem, SourceBean } from '../../../shared/types';
-
-export type AuditFilter = 'all' | 'usable' | 'needs-ext' | 'bad';
+import type { AuditFilter, SourceHealthAuditNotice } from './sourceHealthAuditTypes';
 
 interface SourceHealthAuditSectionProps {
   audit: AuditItem[] | null;
@@ -10,6 +9,8 @@ interface SourceHealthAuditSectionProps {
   onRunAudit: () => void;
   onDeleteFailedSources: () => void;
   onFilterChange: (filter: AuditFilter) => void;
+  error?: string;
+  notice?: SourceHealthAuditNotice | null;
 }
 
 const HEALTH_LABEL: Record<string, string> = {
@@ -36,6 +37,8 @@ export function SourceHealthAuditSection({
   onRunAudit,
   onDeleteFailedSources,
   onFilterChange,
+  error,
+  notice,
 }: SourceHealthAuditSectionProps) {
   return (
     <div className="card" id="cfg-audit" style={{ padding: 12, marginBottom: 16 }}>
@@ -62,6 +65,8 @@ export function SourceHealthAuditSection({
           </span>
         )}
       </div>
+      {error && <div className="err" role="alert">{error}</div>}
+      {notice && <div role={notice.kind === 'err' ? 'alert' : 'status'} style={{ marginBottom: 8, color: notice.kind === 'ok' ? 'var(--text-success)' : 'var(--text-danger)' }}>{notice.text}</div>}
       {audit && (
         <div style={{ fontSize: 12 }}>
           <div className="row" style={{ marginBottom: 6 }}>
@@ -102,7 +107,7 @@ export function SourceHealthAuditSection({
                 ))}
             </tbody>
           </table>
-          <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
             有效标准：主页真实拉到内容条目或分类。
           </div>
         </div>
