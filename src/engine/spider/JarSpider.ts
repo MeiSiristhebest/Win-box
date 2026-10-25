@@ -8,8 +8,8 @@ import { formatDuration } from './formatDuration';
 import type { JarSpiderRuntimePort } from './JarSpiderPorts';
 import { SourceProblemError } from './errors';
 import { enrichExt } from './driveExt';
-import { spiderCallOutput } from './spiderCallResult';
-import { awaitWithAbort, throwIfAborted } from '../util/abort';
+import { spiderCallOutput, type SpiderCallResult } from './spiderCallResult';
+import { abortError, awaitWithAbort, throwIfAborted } from '../util/abort';
 
 /** 首次使用该源时「jar 未转换」的最长等待（超过就先放行，让后台继续转换，用户稍后重试） */
 const PREPARE_WAIT_MS = 8000;
@@ -181,7 +181,17 @@ export class JarSpider extends Spider {
       throw new SourceProblemError('SPIDER_ERROR', this.loadError, { sourceKey: this.siteKey });
     }
     throwIfAborted(signal);
-    const result = await this.runtime.call(paths, this.clsName, method, [this.enrichedExt(), ...args], timeoutMs ?? this.timeoutMs, this.siteKey, signal);
+    let result: SpiderCallResult;
+    try {
+      result = await this.runtime.call(paths, this.clsName, method, [this.enrichedExt(), ...args], timeoutMs ?? this.timeoutMs, this.siteKey, signal);
+    } catch (error) {
+      if (signal?.aborted) throw abortError(signal);
+      if (error instanceof SourceProblemError) throw error;
+      throw new SourceProblemError('SPIDER_ERROR', error instanceof Error ? error.message : String(error), {
+        sourceKey: this.siteKey,
+        operation: method,
+      });
+    }
     throwIfAborted(signal);
     return spiderCallOutput(result, this.siteKey, method);
   }

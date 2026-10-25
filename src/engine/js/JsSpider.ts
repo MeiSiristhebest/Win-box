@@ -81,16 +81,44 @@ export class JsSpider extends Spider {
   /** 调用一组候选名并字符串化结果 */
   private async callStr(names: string[], args: unknown[], timeoutMs: number): Promise<string> {
     const sb = await this.getSandbox();
-    return this.stringify(await sb.callMethod(names, args, timeoutMs));
+    return this.stringify(await this.callRuntimeMethod(sb, names, args, timeoutMs, names[0] ?? 'unknown'));
+  }
+
+  /** Normalize failures from any substitutable runtime to the Spider boundary error contract. */
+  private async callRuntimeMethod(
+    sandbox: JsSpiderRuntimePort,
+    names: string[],
+    args: unknown[],
+    timeoutMs: number,
+    operation: string,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    try {
+      const result = signal
+        ? await sandbox.callMethod(names, args, timeoutMs, signal)
+        : await sandbox.callMethod(names, args, timeoutMs);
+      throwIfAborted(signal);
+      return result;
+    } catch (error) {
+      if (signal?.aborted) throw abortError(signal);
+      if (error instanceof SourceProblemError) throw error;
+      if (error instanceof UnsupportedSourceError) {
+        throw new SourceProblemError(sourceProblemCodeForReason(error.message), error.reason || error.message, {
+          sourceKey: this.siteKey,
+          operation,
+        });
+      }
+      throw new SourceProblemError('SPIDER_ERROR', error instanceof Error ? error.message : String(error), {
+        sourceKey: this.siteKey,
+        operation,
+      });
+    }
   }
 
   /** 多传的分页参数会被 JS 忽略；不能根据合法 undefined 结果重复执行带副作用的搜索。 */
   private async callSearch(key: string, quick: boolean, pg: string, timeoutMs = TIMEOUT_OTHER, signal?: AbortSignal): Promise<string> {
     const sb = await this.getSandbox(signal);
-    const r = signal
-      ? await sb.callMethod(['searchContent', 'search'], [key, quick, pg], timeoutMs, signal)
-      : await sb.callMethod(['searchContent', 'search'], [key, quick, pg], timeoutMs);
-    throwIfAborted(signal);
+    const r = await this.callRuntimeMethod(sb, ['searchContent', 'search'], [key, quick, pg], timeoutMs, 'searchContent', signal);
     return this.stringify(r);
   }
 
@@ -186,7 +214,7 @@ export class JsSpider extends Spider {
     const sb = await this.getSandbox();
     let r: unknown;
     try {
-      r = await sb.callMethod(['localProxy', 'proxy', 'proxyLocal'], [params ?? {}], TIMEOUT_OTHER);
+      r = await this.callRuntimeMethod(sb, ['localProxy', 'proxy', 'proxyLocal'], [params ?? {}], TIMEOUT_OTHER, 'proxy');
     } catch (error) {
       if (error instanceof SourceProblemError && error.code === 'OPERATION_UNSUPPORTED') return null;
       throw error;

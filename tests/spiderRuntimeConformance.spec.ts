@@ -15,6 +15,8 @@ type RuntimeCase = {
   name: string;
   result: SpiderCallResult;
   expectedCode?: SourceProblemCode;
+  expectedMessage?: string;
+  runtimeError?: Error;
 };
 
 type RuntimeHarness = {
@@ -30,16 +32,26 @@ const cases: RuntimeCase[] = [
     name: 'unsupported operation',
     result: spiderCallFailed('', '该源未提供搜索功能', null, 'OPERATION_UNSUPPORTED'),
     expectedCode: 'OPERATION_UNSUPPORTED',
+    expectedMessage: '该源未提供搜索功能',
   },
   {
     name: 'execution failure',
     result: spiderCallFailed('', '蜘蛛执行失败', null, 'SPIDER_ERROR'),
     expectedCode: 'SPIDER_ERROR',
+    expectedMessage: '蜘蛛执行失败',
   },
   {
     name: 'timeout',
     result: spiderCallFailed('', '蜘蛛调用超时', null, 'SPIDER_TIMEOUT'),
     expectedCode: 'SPIDER_TIMEOUT',
+    expectedMessage: '蜘蛛调用超时',
+  },
+  {
+    name: 'untyped runtime rejection',
+    result: spiderCallSucceeded('unused'),
+    runtimeError: new Error('bridge transport failed'),
+    expectedCode: 'SPIDER_ERROR',
+    expectedMessage: 'bridge transport failed',
   },
 ];
 
@@ -59,7 +71,7 @@ function resultToJsValue(result: SpiderCallResult): string {
   throw new SourceProblemError(result.problemCode, result.reason);
 }
 
-function makeJsHarness(result: SpiderCallResult): RuntimeHarness {
+function makeJsHarness(result: SpiderCallResult, runtimeError?: Error): RuntimeHarness {
   let preparationCalls = 0;
   let invocationCalls = 0;
   const runtime: JsSpiderRuntimePort = {
@@ -67,7 +79,11 @@ function makeJsHarness(result: SpiderCallResult): RuntimeHarness {
     spiderStyle: 'unknown',
     setExt: () => undefined,
     ensureLoaded: async () => { preparationCalls += 1; },
-    callMethod: async () => { invocationCalls += 1; return resultToJsValue(result); },
+    callMethod: async () => {
+      invocationCalls += 1;
+      if (runtimeError) throw runtimeError;
+      return resultToJsValue(result);
+    },
     destroy: () => undefined,
   };
   const host = makeHost(() => runtime);
@@ -75,14 +91,18 @@ function makeJsHarness(result: SpiderCallResult): RuntimeHarness {
   return { name: 'JS', spider, preparationCalls: () => preparationCalls, invocationCalls: () => invocationCalls };
 }
 
-function makePythonHarness(result: SpiderCallResult): RuntimeHarness {
+function makePythonHarness(result: SpiderCallResult, runtimeError?: Error): RuntimeHarness {
   let preparationCalls = 0;
   let invocationCalls = 0;
   const runtime: PythonSpiderRuntimePort = {
     pyRuntimeReady: () => true,
     prewarmPythonRuntime: async () => 'C:/runtime',
     prewarmPython: () => 0,
-    callPython: async () => { invocationCalls += 1; return result; },
+    callPython: async () => {
+      invocationCalls += 1;
+      if (runtimeError) throw runtimeError;
+      return result;
+    },
   };
   const scripts: PythonSpiderScriptPort = {
     status: () => ({ path: 'C:/cache/source.py', available: true }),
@@ -97,7 +117,7 @@ function makePythonHarness(result: SpiderCallResult): RuntimeHarness {
   return { name: 'Python', spider, preparationCalls: () => preparationCalls, invocationCalls: () => invocationCalls };
 }
 
-function makeJarHarness(result: SpiderCallResult): RuntimeHarness {
+function makeJarHarness(result: SpiderCallResult, runtimeError?: Error): RuntimeHarness {
   let preparationCalls = 0;
   let invocationCalls = 0;
   const runtime: JarSpiderRuntimePort = {
@@ -110,7 +130,11 @@ function makeJarHarness(result: SpiderCallResult): RuntimeHarness {
     pendingConvert: () => null,
     conversionFailure: () => '',
     warmup: async () => undefined,
-    call: async () => { invocationCalls += 1; return result; },
+    call: async () => {
+      invocationCalls += 1;
+      if (runtimeError) throw runtimeError;
+      return result;
+    },
     proxyPortForTag: () => null,
   };
   const spider = new JarSpider({
@@ -119,16 +143,19 @@ function makeJarHarness(result: SpiderCallResult): RuntimeHarness {
   return { name: 'JVM', spider, preparationCalls: () => preparationCalls, invocationCalls: () => invocationCalls };
 }
 
-function makeRuntimes(result: SpiderCallResult): RuntimeHarness[] {
-  return [makeJsHarness(result), makePythonHarness(result), makeJarHarness(result)];
+function makeRuntimes(result: SpiderCallResult, runtimeError?: Error): RuntimeHarness[] {
+  return [makeJsHarness(result, runtimeError), makePythonHarness(result, runtimeError), makeJarHarness(result, runtimeError)];
 }
 
 describe('Spider runtime replacement contract', () => {
-  it.each(cases)('exposes $name consistently from JS, Python, and JVM spiders', async ({ result, expectedCode }) => {
-    for (const { name, spider } of makeRuntimes(result)) {
+  it.each(cases)('exposes $name consistently from JS, Python, and JVM spiders', async ({ result, expectedCode, expectedMessage, runtimeError }) => {
+    for (const { name, spider } of makeRuntimes(result, runtimeError)) {
       const call = spider.searchContent('query', false, 750);
       if (expectedCode) {
-        await expect(call, `${name} should preserve the typed failure`).rejects.toMatchObject({ code: expectedCode });
+        await expect(call, `${name} should preserve the typed failure`).rejects.toMatchObject({
+          code: expectedCode,
+          message: expectedMessage,
+        });
       } else {
         await expect(call, `${name} should preserve a legal empty result`).resolves.toBe('');
       }
