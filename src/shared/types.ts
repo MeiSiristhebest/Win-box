@@ -142,6 +142,8 @@ export interface EpgChannelRef {
 export interface LiveEpgEntry {
   current?: EpgProgram;
   next?: EpgProgram;
+  /** 全天节目时间轴清单（用于展示完整节目单与时移回看） */
+  programs?: EpgProgram[];
 }
 
 /** `live:epg` 返回：键（tvg-id / tvg-name / 频道名）→ 当前与下一档 */

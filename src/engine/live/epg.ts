@@ -256,6 +256,7 @@ export function buildEpgMap(docs: ParsedXmltv[], refs: EpgChannelRef[], timeZone
 export interface EpgCurrentNext {
   current?: EpgProgram;
   next?: EpgProgram;
+  programs?: EpgProgram[];
 }
 
 /** 当前节目 = 落在 [start, end] 内的第一条（对齐上游 `EpgData.isInRange`）；下一档 = 其后第一条 */
@@ -263,7 +264,7 @@ export function pickCurrentNext(programs: EpgProgram[] | undefined, now: number)
   if (!programs || !programs.length) return {};
   const current = programs.find((p) => p.startTime <= now && now <= p.endTime);
   const next = programs.find((p) => p.startTime > now);
-  return { current, next };
+  return { current, next, programs };
 }
 
 /** 按 tvg-id → tvg-name → 频道名 的顺序取该频道的节目表 */
