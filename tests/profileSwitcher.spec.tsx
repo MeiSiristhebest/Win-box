@@ -2,8 +2,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { client } from '../src/renderer/api/client';
+import type { UserConfig } from '../src/shared/types';
 import { ProfileSwitcher } from '../src/renderer/features/subscriptions/ProfileSwitcher';
+import type { ProfileSwitcherPort } from '../src/renderer/features/subscriptions/application/profileSwitcherPort';
 import { profileChoices } from '../src/renderer/features/subscriptions/profileChoices';
 import { profileConfig } from './fixtures/profileSwitchData';
 
@@ -13,10 +14,20 @@ function setup() {
   const a = profileConfig('A');
   const b = profileConfig('B', false);
   let config = { ...a, profiles: [...a.profiles, ...b.profiles], subscriptionGroups: [{ id: 'group', name: '测试多仓', url: 'https://example.test/repos', status: 'partial' as const, createdAt: '', updatedAt: '', members: [{ id: 'a', name: 'A子仓', url: a.apiUrl, profileId: 'A', status: 'ready' as const }, { id: 'b', name: 'B子仓', url: b.apiUrl, profileId: 'B', status: 'ready' as const }, { id: 'failed', name: '失败子仓', url: 'https://example.test/missing', status: 'failed' as const, error: 'HTTP 404' }] }] };
-  vi.spyOn(client, 'cfgGet').mockImplementation(async () => config);
-  const activate = vi.spyOn(client, 'cfgActivateProfile').mockImplementation(async id => { config = { ...config, ...(id === 'B' ? b : a), profiles: config.profiles, subscriptionGroups: config.subscriptionGroups }; });
-  render(<MemoryRouter><ProfileSwitcher /></MemoryRouter>);
-  return { a, b, config, activate };
+  const port: ProfileSwitcherPort = {
+    loadConfiguration: vi.fn(async () => config as unknown as UserConfig),
+    activateProfile: vi.fn(async id => { config = { ...config, ...(id === 'B' ? b : a), profiles: config.profiles, subscriptionGroups: config.subscriptionGroups }; }),
+    publishProfileChanged: vi.fn(() => {
+      window.dispatchEvent(new CustomEvent('winbox:profile-changed'));
+      window.dispatchEvent(new CustomEvent('winbox:sources-changed'));
+    }),
+    subscribeToProfileRefresh: vi.fn(listener => {
+      window.addEventListener('winbox:sources-changed', listener);
+      return () => window.removeEventListener('winbox:sources-changed', listener);
+    }),
+  };
+  render(<MemoryRouter><ProfileSwitcher port={port} /></MemoryRouter>);
+  return { a, b, config, activate: vi.mocked(port.activateProfile) };
 }
 
 describe('ProfileSwitcher', () => {

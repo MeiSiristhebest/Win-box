@@ -1,4 +1,4 @@
-import type { UserConfig } from '../../shared/types';
+import type { SourceBean, UserConfig } from '../../shared/types';
 
 type DeletionConfig = Pick<UserConfig, 'activeProfileId' | 'deletedSourceKeys' | 'deletedSourceKeysByProfile'>;
 
@@ -32,4 +32,22 @@ export function withSourceDeletionKeys<T extends DeletionConfig>(config: T, valu
     deletedSourceKeysByProfile: { ...config.deletedSourceKeysByProfile, [profileId]: next },
     ...(profileId === config.activeProfileId ? { deletedSourceKeys: next } : {}),
   };
+}
+
+/** Apply a profile's deletion policy without logging or mutating either snapshot. */
+export function filterDeletedProfileSources(config: DeletionConfig, sources: readonly SourceBean[], profileId = config.activeProfileId) {
+  const deleted = new Set(sourceDeletionKeys(config, profileId));
+  return {
+    sources: sources.filter((source) => !deleted.has(source.key)),
+    filteredSourceKeys: sources.filter((source) => deleted.has(source.key)).map((source) => source.key),
+  };
+}
+
+/** Restore explicitly re-imported source keys only in their owning profile. */
+export function restoreProfileSourceKeys<T extends DeletionConfig>(config: T, restoredKeys: readonly string[]): T {
+  if (!restoredKeys.length) return config;
+  const restored = new Set(restoredKeys.map(String));
+  const current = sourceDeletionKeys(config);
+  const next = current.filter((key) => !restored.has(key));
+  return next.length === current.length ? config : withSourceDeletionKeys(config, next);
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseSiteConfig } from '../src/engine/config/ApiConfigParser';
-import { PROFILE_SNAPSHOT_VERSION, serializeImport } from '../src/main/store/UserConfigManager';
+import { PROFILE_SNAPSHOT_VERSION, serializeImport } from '../src/main/store/UserConfigApplicationService';
 
 describe('profile snapshots', () => {
   it('round-trips every supported subscription-level field', () => {

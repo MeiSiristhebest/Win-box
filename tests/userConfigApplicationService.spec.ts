@@ -1,5 +1,5 @@
 // tests/userConfigManager.spec.ts
-// UserConfigManager 单测（任务 B5）：真实 JsonStore 落在临时目录文件上。
+// UserConfigApplicationService 单测（任务 B5）：真实 JsonStore 落在临时目录文件上。
 // 覆盖：add/delete/move/update/setActive/persist-reload 往返、非法 patch、损坏 JSON 重建、
 //      重复 key 拒绝、move 边界、replaceFromImport 全量替换。
 import { describe, it, expect, afterEach } from 'vitest';
@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JsonStore } from '../src/main/store/JsonStore';
-import { UserConfigManager, USER_CONFIG_KEY, serializeImport } from '../src/main/store/UserConfigManager';
+import { UserConfigApplicationService, USER_CONFIG_KEY, serializeImport } from '../src/main/store/UserConfigApplicationService';
 import { parseSubscriptionSourceOverrides } from '../src/main/store/subscriptionProfileMerge';
 import { parseSiteConfig } from '../src/engine/config/ApiConfigParser';
 import { NullLogger } from '../src/engine/util/logger';
@@ -25,9 +25,9 @@ function bean(key: string, type = 0, api = 'https://x/api.php/provide/vod'): Sou
   return { key, name: key, type, api } as SourceBean;
 }
 
-function newManager(dir: string): UserConfigManager {
+function newUserConfigService(dir: string): UserConfigApplicationService {
   const store = new JsonStore(join(dir, 'user-config.json'));
-  return new UserConfigManager(store, NullLogger);
+  return new UserConfigApplicationService(store, NullLogger);
 }
 
 function fullConfig(sources: SourceBean[]): SiteConfig {
@@ -51,7 +51,7 @@ function fullConfig(sources: SourceBean[]): SiteConfig {
 describe('source deletions belong to one child profile', () => {
   it('global blocks preserve snapshots and apply to existing and future profiles until explicitly removed', () => {
     const directory = tmpDir();
-    const manager = newManager(directory);
+    const manager = newUserConfigService(directory);
     manager.replaceFromImport(fullConfig([bean('shared'), bean('a')]), 'https://a.test/config');
     const first = manager.activeProfileId();
     const second = manager.saveAsProfile('B', { parsed: fullConfig([bean('shared'), bean('b')]), apiUrl: 'https://b.test/config' });
@@ -64,7 +64,7 @@ describe('source deletions belong to one child profile', () => {
     expect(manager.sources().map(item => item.key)).toEqual(['a']);
     manager.saveAsProfile('C', { parsed: fullConfig([bean('shared'), bean('c')]), apiUrl: 'https://c.test/config' });
     expect(manager.sources().map(item => item.key)).toEqual(['c']);
-    const restarted = newManager(directory);
+    const restarted = newUserConfigService(directory);
     restarted.load();
     expect(restarted.sources().map(item => item.key)).toEqual(['c']);
     restarted.setGlobalSourceBlock(['shared'], false);
@@ -75,7 +75,7 @@ describe('source deletions belong to one child profile', () => {
   });
 
   it('unblocking does not restore a source deleted only from the active profile', () => {
-    const manager = newManager(tmpDir());
+    const manager = newUserConfigService(tmpDir());
     manager.replaceFromImport(fullConfig([bean('shared')]), 'https://a.test/config');
     const first = manager.activeProfileId();
     manager.saveAsProfile('B', { parsed: fullConfig([bean('shared')]), apiUrl: 'https://b.test/config' });
@@ -89,7 +89,7 @@ describe('source deletions belong to one child profile', () => {
 
   it('deleting a shared key in B preserves A across switching and restart', () => {
     const directory = tmpDir();
-    const manager = newManager(directory);
+    const manager = newUserConfigService(directory);
     manager.replaceFromImport(fullConfig([bean('shared'), bean('a')]), 'https://a.test/config');
     const first = manager.activeProfileId();
     const second = manager.saveAsProfile('B', { parsed: fullConfig([bean('shared'), bean('b')]), apiUrl: 'https://b.test/config' });
@@ -98,7 +98,7 @@ describe('source deletions belong to one child profile', () => {
     manager.activateProfile(first);
     expect(manager.sources().map(item => item.key)).toEqual(['shared', 'a']);
     expect(manager.snapshot().deletedSourceKeys).toEqual([]);
-    const restarted = newManager(directory);
+    const restarted = newUserConfigService(directory);
     restarted.load();
     restarted.activateProfile(second.id);
     expect(restarted.sources().map(item => item.key)).toEqual(['b']);
@@ -109,7 +109,7 @@ describe('source deletions belong to one child profile', () => {
 
   it('legacy global records migrate only to the saved active profile', () => {
     const directory = tmpDir();
-    const manager = newManager(directory);
+    const manager = newUserConfigService(directory);
     manager.replaceFromImport(fullConfig([bean('shared'), bean('a')]), 'https://a.test/config');
     const first = manager.activeProfileId();
     manager.saveAsProfile('B', { parsed: fullConfig([bean('shared'), bean('b')]), apiUrl: 'https://b.test/config' });
@@ -120,7 +120,7 @@ describe('source deletions belong to one child profile', () => {
     const store = new JsonStore(join(directory, 'legacy.json'));
     store.setObject(USER_CONFIG_KEY, legacy);
     store.flushStrict();
-    const restored = new UserConfigManager(store, NullLogger);
+    const restored = new UserConfigApplicationService(store, NullLogger);
     restored.load();
     expect(restored.snapshot().deletedSourceKeys).toEqual(['shared']);
     restored.activateProfile(first);
@@ -129,7 +129,7 @@ describe('source deletions belong to one child profile', () => {
   });
 
   it('clearing or manually adding the same key in another profile cannot clear B deletion', () => {
-    const manager = newManager(tmpDir());
+    const manager = newUserConfigService(tmpDir());
     manager.replaceFromImport(fullConfig([bean('shared')]), 'https://a.test/config');
     const first = manager.activeProfileId();
     const second = manager.saveAsProfile('B', { parsed: fullConfig([bean('shared'), bean('b')]) });
@@ -150,16 +150,16 @@ afterEach(() => {
   dirs.length = 0;
 });
 
-describe('UserConfigManager — 变更类别（★ 2026-09-27 切源不再触发重活）', () => {
+describe('UserConfigApplicationService — 变更类别（★ 2026-09-27 切源不再触发重活）', () => {
   /** 记录每次 onChange 的 kind */
-  function spyKinds(m: UserConfigManager): string[] {
+  function spyKinds(m: UserConfigApplicationService): string[] {
     const kinds: string[] = [];
     m.setOnChange((_snap, kind) => kinds.push(kind));
     return kinds;
   }
 
   it('★ setActiveSource / setActiveLiveIndex → kind = "ui"（宿主据此跳过热活）', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     m.addSource(bean('a'));
     m.addSource(bean('b'));
     // 先建两条 live 以便真正切换线路（默认 activeLiveIndex=0，切到自己不产生变更）
@@ -199,7 +199,7 @@ describe('UserConfigManager — 变更类别（★ 2026-09-27 切源不再触发
   });
 
   it('★ 真正的配置变更仍报 "content"（源/解析/直播/全局）', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     m.addSource(bean('a'));
     const kinds = spyKinds(m);
     m.addSource(bean('b'));
@@ -211,7 +211,7 @@ describe('UserConfigManager — 变更类别（★ 2026-09-27 切源不再触发
   });
 
   it('切源只动 ui.*，其余字段一字不变（宿主因此可以安全跳过重放）', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     m.addSource(bean('a'));
     m.addSource(bean('b'));
     const before = m.snapshot();
@@ -224,11 +224,11 @@ describe('UserConfigManager — 变更类别（★ 2026-09-27 切源不再触发
   });
 });
 
-describe('UserConfigManager — 多仓快照提交', () => {
+describe('UserConfigApplicationService — 多仓快照提交', () => {
   it('持久化失败时恢复提交前的订阅组和配置版本', () => {
     const dir = tmpDir();
     const store = new JsonStore(join(dir, 'user-config.json'));
-    const manager = new UserConfigManager(store, NullLogger);
+    const manager = new UserConfigApplicationService(store, NullLogger);
     manager.replaceFromImport(fullConfig([bean('active')]), 'https://example.test/active.json');
     const previous = manager.snapshot();
     const previousRevision = manager.revision;
@@ -256,7 +256,7 @@ describe('UserConfigManager — 多仓快照提交', () => {
     expect(manager.snapshot()).toEqual(previous);
     expect(manager.revision).toBe(previousRevision);
     expect(store.getObject(USER_CONFIG_KEY, null)).toEqual(previous);
-    const reloaded = newManager(dir);
+    const reloaded = newUserConfigService(dir);
     expect(reloaded.load()).toBe(true);
     // Loading normalizes legacy or partial SourceBean records with defaults.
     // The strict raw store equality above checks rollback; after reload, check
@@ -265,7 +265,7 @@ describe('UserConfigManager — 多仓快照提交', () => {
   });
 
   it('配置版本变化后拒绝提交过期多仓结果', () => {
-    const manager = newManager(tmpDir());
+    const manager = newUserConfigService(tmpDir());
     manager.replaceFromImport(fullConfig([bean('before')]), 'https://example.test/active.json');
     const expectedRevision = manager.revision;
     const now = new Date().toISOString();
@@ -287,7 +287,7 @@ describe('UserConfigManager — 多仓快照提交', () => {
   });
 
   it('失败与已移除成员保留旧快照；确认移除只解除分组关联', () => {
-    const manager = newManager(tmpDir());
+    const manager = newUserConfigService(tmpDir());
     manager.replaceFromImport(fullConfig([bean('active')]), 'https://example.test/active.json');
     const before = manager.snapshot();
     const previous = manager.rawProfiles().find((profile) => profile.id === before.activeProfileId)!;
@@ -325,7 +325,7 @@ describe('UserConfigManager — 多仓快照提交', () => {
   });
 
   it('同名 key 的两个子仓仍保存为独立快照', () => {
-    const manager = newManager(tmpDir());
+    const manager = newUserConfigService(tmpDir());
     const now = new Date().toISOString();
     const profiles: UserProfile[] = [
       { id: 'child-a', name: '仓 A', apiUrl: 'https://a.test/config.json', json: JSON.stringify({ sites: [{ key: 'same', name: 'A', type: 0, api: 'https://a.test/api' }] }), sourceCount: 1, importedAt: now, groupId: 'group', memberId: 'a' },
@@ -344,7 +344,7 @@ describe('UserConfigManager — 多仓快照提交', () => {
 
   it('活动子仓的手动修改单独记录，刷新基线保持不变', () => {
     const dir = tmpDir();
-    const manager = newManager(dir);
+    const manager = newUserConfigService(dir);
     const now = new Date().toISOString();
     const upstream = fullConfig([bean('a'), bean('b')]);
     const upstreamJson = serializeImport(upstream);
@@ -374,7 +374,7 @@ describe('UserConfigManager — 多仓快照提交', () => {
     expect(overrides?.additions.map((item) => item.key)).toEqual(['local']);
     expect(overrides?.patches).toEqual([{ key: 'a', values: { name: '固定名称' }, removedFields: [] }]);
 
-    const reloaded = newManager(dir);
+    const reloaded = newUserConfigService(dir);
     expect(reloaded.load()).toBe(true);
     const restored = reloaded.rawProfiles().find((item) => item.id === profile.id)!;
     expect(restored.upstreamJson).toBe(upstreamJson);
@@ -383,7 +383,7 @@ describe('UserConfigManager — 多仓快照提交', () => {
 
   it('旧子仓首次刷新先保留当前配置，用户确认后才建立基线', () => {
     const dir = tmpDir();
-    const manager = newManager(dir);
+    const manager = newUserConfigService(dir);
     const now = new Date().toISOString();
     const current = fullConfig([bean('a'), bean('legacy-only')]);
     current.sites[0].name = '本地改名';
@@ -405,7 +405,7 @@ describe('UserConfigManager — 多仓快照提交', () => {
     };
 
     manager.commitSubscriptionGroup(group, [profile], profile.id);
-    const afterRestart = newManager(dir);
+    const afterRestart = newUserConfigService(dir);
     expect(afterRestart.load()).toBe(true);
     expect(afterRestart.snapshot().sources.map((source) => source.key)).toEqual(['a', 'legacy-only']);
     expect(afterRestart.snapshot().subscriptionGroups[0].members[0].refreshDiff?.addedKeys).toEqual(['fresh']);
@@ -427,7 +427,7 @@ describe('UserConfigManager — 多仓快照提交', () => {
   });
 
   it('首次刷新选择上游配置会替换旧源并清除本地覆盖', () => {
-    const manager = newManager(tmpDir());
+    const manager = newUserConfigService(tmpDir());
     const now = new Date().toISOString();
     const current = serializeImport(fullConfig([bean('old')]));
     const upstream = serializeImport(fullConfig([bean('new')]));
@@ -457,9 +457,9 @@ describe('UserConfigManager — 多仓快照提交', () => {
   });
 });
 
-describe('UserConfigManager — 增删改排序与选中', () => {
+describe('UserConfigApplicationService — 增删改排序与选中', () => {
   it('addSource 后 snapshot 有序返回；重复 key 拒绝并抛中文错', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     m.addSource(bean('a'));
     m.addSource(bean('b'));
     expect(m.sources().map((s) => s.key)).toEqual(['a', 'b']);
@@ -467,12 +467,12 @@ describe('UserConfigManager — 增删改排序与选中', () => {
   });
 
   it('addSource 会经 parseSite 归一化：缺 api → 拒绝', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     expect(() => m.addSource({ key: 'x', type: 0 } as SourceBean)).toThrow(/校验失败|缺少必填/);
   });
 
   it('deleteSource 删除；删到当前选中源时清空 activeSourceKey', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     m.addSource(bean('a'));
     m.addSource(bean('b'));
     m.setActiveSource('b');
@@ -483,7 +483,7 @@ describe('UserConfigManager — 增删改排序与选中', () => {
   });
 
   it('deleteSources 一次删除多个源，并只触发一次 content 变更', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     m.addSource(bean('a'));
     m.addSource(bean('b'));
     m.addSource(bean('c'));
@@ -503,7 +503,7 @@ describe('UserConfigManager — 增删改排序与选中', () => {
    */
   describe('已删除源墓碑（★ 2026-10-15 用户报「删了还在」）', () => {
     it('删掉的源不会被「订阅往返」带回来（replaceFromImport 全量替换后仍不在）', () => {
-      const m = newManager(tmpDir());
+      const m = newUserConfigService(tmpDir());
       m.replaceFromImport(fullConfig([bean('a'), bean('b'), bean('c')]), 'https://h/s.json');
       m.deleteSource('b');
       expect(m.sources().map((s) => s.key)).toEqual(['a', 'c']);
@@ -515,7 +515,7 @@ describe('UserConfigManager — 增删改排序与选中', () => {
     });
 
     it('切换档案（从存档 json 全量重建）同样按墓碑过滤', () => {
-      const m = newManager(tmpDir());
+      const m = newUserConfigService(tmpDir());
       m.replaceFromImport(fullConfig([bean('a'), bean('b')]), 'https://h/one.json');
       const first = m.activeProfileId();
       m.deleteSource('b');
@@ -526,7 +526,7 @@ describe('UserConfigManager — 增删改排序与选中', () => {
     });
 
     it('手动重新添加同一 key = 明确要它回来 → 墓碑清除，后续往返不再被挡', () => {
-      const m = newManager(tmpDir());
+      const m = newUserConfigService(tmpDir());
       m.replaceFromImport(fullConfig([bean('a'), bean('b')]), 'https://h/s.json');
       m.deleteSource('b');
       expect(m.snapshot().deletedSourceKeys).toEqual(['b']);
@@ -538,11 +538,11 @@ describe('UserConfigManager — 增删改排序与选中', () => {
 
     it('墓碑落盘：重启读取后仍在（不会被 normalizeLoaded 丢掉）', () => {
       const dir = tmpDir();
-      const m = newManager(dir);
+      const m = newUserConfigService(dir);
       m.replaceFromImport(fullConfig([bean('a'), bean('b')]), 'https://h/s.json');
       m.deleteSource('b');
       m.replaceFromImport(fullConfig([bean('a'), bean('b')]), 'https://h/s.json');
-      const m2 = newManager(dir);
+      const m2 = newUserConfigService(dir);
       m2.load();
       expect(m2.snapshot().deletedSourceKeys).toEqual(['b']);
       m2.replaceFromImport(fullConfig([bean('a'), bean('b')]), 'https://h/s.json');
@@ -550,7 +550,7 @@ describe('UserConfigManager — 增删改排序与选中', () => {
     });
 
     it('删除未收录的 key 是 no-op，不写墓碑（避免墓碑无端膨胀）', () => {
-      const m = newManager(tmpDir());
+      const m = newUserConfigService(tmpDir());
       m.replaceFromImport(fullConfig([bean('a')]), 'https://h/s.json');
       m.deleteSource('不存在');
       expect(m.snapshot().deletedSourceKeys).toEqual([]);
@@ -562,7 +562,7 @@ describe('UserConfigManager — 增删改排序与选中', () => {
      *   后台自动刷新不清墓碑 ⇒ 「删掉的不被刷新带回来」口径不变。
      */
     it('clearDeletedSourceKeys 只清指定 key，其余墓碑保留（主动重导用）', () => {
-      const m = newManager(tmpDir());
+      const m = newUserConfigService(tmpDir());
       m.replaceFromImport(fullConfig([bean('a'), bean('b'), bean('c')]), 'https://h/s.json');
       m.deleteSources(['a', 'b']);
       expect(m.snapshot().deletedSourceKeys).toEqual(['a', 'b']);
@@ -574,7 +574,7 @@ describe('UserConfigManager — 增删改排序与选中', () => {
     });
 
     it('clearDeletedSourceKeys 无墓碑/无变化时不触发 content 变更（不写盘）', () => {
-      const m = newManager(tmpDir());
+      const m = newUserConfigService(tmpDir());
       m.replaceFromImport(fullConfig([bean('a')]), 'https://h/s.json');
       const kinds: string[] = [];
       m.setOnChange((_snap, kind) => kinds.push(kind));
@@ -590,7 +590,7 @@ describe('UserConfigManager — 增删改排序与选中', () => {
   });
 
   it('moveSource：up/down/top/bottom 排序正确；边界 no-op 不抛', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     m.addSource(bean('a'));
     m.addSource(bean('b'));
     m.addSource(bean('c'));
@@ -608,7 +608,7 @@ describe('UserConfigManager — 增删改排序与选中', () => {
   });
 
   it('updateSource：只改白名单字段；key/type/api 不可改（抛）', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     m.addSource(bean('a', 0));
     m.updateSource('a', { name: '改名', timeout: 30, searchable: 0 } as SourceUpdatePatch);
     const s = m.sources()[0];
@@ -621,7 +621,7 @@ describe('UserConfigManager — 增删改排序与选中', () => {
   });
 
   it('setActiveSource：存在才生效；不存在忽略', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     m.addSource(bean('a'));
     m.setActiveSource('a');
     expect(m.activeSourceKey()).toBe('a');
@@ -630,16 +630,16 @@ describe('UserConfigManager — 增删改排序与选中', () => {
   });
 
   it('setActiveLiveIndex 越界 clamp；lives 为空 → 0', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     m.setActiveLiveIndex(99);
     expect(m.activeLiveIndex()).toBe(0);
     m.replaceFromImport(fullConfig([]), '');
   });
 });
 
-describe('UserConfigManager — replaceFromImport 全量替换', () => {
+describe('UserConfigApplicationService — replaceFromImport 全量替换', () => {
   it('sources/lives/global 被替换；active 源消失则清空', () => {
-    const m = newManager(tmpDir());
+    const m = newUserConfigService(tmpDir());
     m.addSource(bean('old'));
     m.setActiveSource('old');
     const cfg = fullConfig([bean('n1'), bean('n2', 1, 'https://x2/vod.json')]);
@@ -653,7 +653,7 @@ describe('UserConfigManager — replaceFromImport 全量替换', () => {
   });
 });
 
-describe('UserConfigManager — parses（解析接口）持久化', () => {
+describe('UserConfigApplicationService — parses（解析接口）持久化', () => {
   it('replaceFromImport 保存 parses（滤掉合成超级解析）；重载后仍在；档案切换可恢复', () => {
     const dir = tmpDir();
     const cfg = fullConfig([bean('p1')]);
@@ -662,17 +662,17 @@ describe('UserConfigManager — parses（解析接口）持久化', () => {
       { name: 'jx1', url: 'https://jx.example/?url=', ext: '', type: 0 },
       { name: 'jx2', url: 'https://jx2.example/api', ext: '', type: 1 },
     ];
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     m.replaceFromImport(cfg, 'https://sub.example/c.json');
     // 合成的 type=4 不落库（避免往返时被 parseParses 反复 unshift 出重复项）
     expect(m.snapshot().parses.map((p) => p.name)).toEqual(['jx1', 'jx2']);
 
-    const m2 = newManager(dir);
+    const m2 = newUserConfigService(dir);
     expect(m2.load()).toBe(true);
     expect(m2.snapshot().parses.map((p) => p.name)).toEqual(['jx1', 'jx2']);
 
     // 切走再切回：档案 JSON 里也带着 parses（可离线重建）
-    const m3 = newManager(dir);
+    const m3 = newUserConfigService(dir);
     m3.load();
     const first = m3.profiles()[0].id;
     m3.saveAsProfile('临时');
@@ -681,17 +681,17 @@ describe('UserConfigManager — parses（解析接口）持久化', () => {
   });
 });
 
-describe('UserConfigManager — 持久化往返与损坏恢复', () => {
+describe('UserConfigApplicationService — 持久化往返与损坏恢复', () => {
   it('变更即写盘：新 manager 实例 load 后恢复同源列表与选中源', () => {
     const dir = tmpDir();
-    const m1 = newManager(dir);
+    const m1 = newUserConfigService(dir);
     m1.addSource(bean('a'));
     m1.addSource(bean('b'));
     m1.updateSource('a', { name: 'A源' });
     m1.moveSource('b', 'top');
     m1.setActiveSource('b');
 
-    const m2 = newManager(dir);
+    const m2 = newUserConfigService(dir);
     expect(m2.load()).toBe(true);
     expect(m2.sources().map((s) => [s.key, s.name])).toEqual([['b', 'b'], ['a', 'A源']]);
     expect(m2.activeSourceKey()).toBe('b');
@@ -707,27 +707,27 @@ describe('UserConfigManager — 持久化往返与损坏恢复', () => {
     const backups = readdirSync(dir).filter((f) => f.includes('.corrupt-'));
     expect(backups.length).toBe(1);
 
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     expect(m.load()).toBe(false); // 损坏后重建为空档
     expect(m.sources()).toEqual([]);
 
     // 重建路径可用：addSource 后写回新文件，再 reload 能读到
     m.addSource(bean('reborn'));
-    const m2 = newManager(dir);
+    const m2 = newUserConfigService(dir);
     expect(m2.load()).toBe(true);
     expect(m2.sources()[0].key).toBe('reborn');
   });
 
   it('未持久化过：load() 返回 false，sources 为空', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     expect(m.load()).toBe(false);
     expect(m.sources()).toEqual([]);
   });
 
   it('坏 source 条目在 load 时被剔除并可用 parseSite 校验日志说明', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     m.addSource(bean('good'));
     // 手动在 store 里塞一条缺 api 的坏源
     const store = new JsonStore(join(dir, 'user-config.json'));
@@ -736,16 +736,16 @@ describe('UserConfigManager — 持久化往返与损坏恢复', () => {
     store.setObject(USER_CONFIG_KEY, snap as never);
     store.flush();
 
-    const m2 = newManager(dir);
+    const m2 = newUserConfigService(dir);
     expect(m2.load()).toBe(true);
     expect(m2.sources().map((s) => s.key)).toEqual(['good']);
   });
 });
 
-describe('UserConfigManager v2 — 多配置档案（profiles）', () => {
+describe('UserConfigApplicationService v2 — 多配置档案（profiles）', () => {
   it('导入（URL）自动建档；存为新档案可离线切换；激活后恢复源列表', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     const cfgA = fullConfig([bean('a1'), bean('a2')]);
     m.replaceFromImport(cfgA, 'https://host/a.json');
     expect(m.activeProfileId()).not.toBe('');
@@ -766,7 +766,7 @@ describe('UserConfigManager v2 — 多配置档案（profiles）', () => {
 
   it('重载后档案与选中源恢复（重启等价）', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     m.replaceFromImport(fullConfig([bean('x1'), bean('x2')]), 'https://h/x.json');
     const x1 = m.sources()[0];
     m.setActiveSource(x1.key);
@@ -774,7 +774,7 @@ describe('UserConfigManager v2 — 多配置档案（profiles）', () => {
     m.activateProfile(m.profiles()[0].id);
     m.setActiveSource('x1');
 
-    const m2 = newManager(dir);
+    const m2 = newUserConfigService(dir);
     expect(m2.load()).toBe(true);
     expect(m2.profiles().length).toBe(2);
     expect(m2.activeSourceKey()).toBe('x1');
@@ -784,7 +784,7 @@ describe('UserConfigManager v2 — 多配置档案（profiles）', () => {
 
   it('删除档案：非生效直接移除；删除生效档自动切到剩下的那份；删唯一一份清空订阅内容', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     m.replaceFromImport(fullConfig([bean('p1')]), 'https://h/p.json');
     const pa = m.activeProfileId();
     m.saveAsProfile('另一个'); // active 移到新档，两份内容都还是 p1
@@ -807,7 +807,7 @@ describe('UserConfigManager v2 — 多配置档案（profiles）', () => {
   describe('导入新订阅的档案命名（旧订阅/新订阅）', () => {
     it('自动命名的当前档案 → 改名「旧订阅 xx」；新导入存为「新订阅 xx」并生效', () => {
       const dir = tmpDir();
-      const m = newManager(dir);
+      const m = newUserConfigService(dir);
       // 首次导入：无档案 → replaceFromImport 自动建默认档案（名「新订阅 xx」，属自动命名）
       m.replaceFromImport(fullConfig([bean('old1')]), 'https://host/old.json');
       expect(m.profiles()[0].name).toMatch(/^新订阅 /);
@@ -826,7 +826,7 @@ describe('UserConfigManager v2 — 多配置档案（profiles）', () => {
 
     it('用户手动命名过的档案不被「旧订阅」覆盖；再次导入时旧档案名保持', () => {
       const dir = tmpDir();
-      const m = newManager(dir);
+      const m = newUserConfigService(dir);
       m.replaceFromImport(fullConfig([bean('o1')]), 'https://host/o.json');
       m.updateProfileName(m.activeProfileId(), '我的主力订阅');
 
@@ -845,7 +845,7 @@ describe('UserConfigManager v2 — 多配置档案（profiles）', () => {
   });
 });
 
-describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播源导入', () => {
+describe('UserConfigApplicationService — ★ 2026-09-30 换源弹层数据与本地直播源导入', () => {
   /** 构造一条本地导入的直播源 bean（字段口径同 ipc 侧 parseLive 产物） */
   function liveBean(name: string, url: string): LiveBean {
     return { name, url, api: '', type: '0', jar: '', ext: '', epg: '', playerType: '', timeout: 15 };
@@ -853,7 +853,7 @@ describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播
 
   it('profileSitesView：当前档案取运行期真实源；其它档案取存档 JSON（已与运行期对齐）', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     m.replaceFromImport(fullConfig([bean('a1'), bean('a2')]), 'https://host/a.json'); // 建档：json = a1/a2
     const aId = m.activeProfileId();
     m.addSource(bean('a3')); // 手动加源 → ★ 2026-09-30 起同步写回 A 的存档 json（内容变更即对齐）
@@ -869,7 +869,7 @@ describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播
 
   it('★ 2026-09-30：手动改过的源列表在「切走再切回」后保持不变（档案 json 与运行期同步）', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     m.replaceFromImport(fullConfig([bean('a1'), bean('a2'), bean('a3')]), 'https://h/a.json');
     const aId = m.activeProfileId();
     const pb = m.saveAsProfile('B'); // B 快照当前 3 源并成为生效档案
@@ -887,7 +887,7 @@ describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播
 
   it('activateProfile(id, pickKey)：一步切换档案 + 选中源；非法 pickKey 不硬塞', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     m.replaceFromImport(fullConfig([bean('a1'), bean('a2')]), 'https://h/a.json');
     const aId = m.activeProfileId();
     const pb = m.saveAsProfile('B'); // active 移到 B（内容同为 a1/a2）
@@ -901,7 +901,7 @@ describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播
 
   it('addLive：同 url 视为同一条（只更新名字）；空地址抛中文错', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     const url = 'http://127.0.0.1:9978/file/local-live/x.txt';
     expect(m.addLive(liveBean('X', url))).toEqual({ index: 0, replaced: false });
     expect(m.snapshot().lives.length).toBe(1);
@@ -920,7 +920,7 @@ describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播
 
   it('订阅导入（自动刷新路径）替换 lives 后，本地导入线路仍在；重载（重启等价）后仍在', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     m.addLive(liveBean('我的直播', LOCAL));
     // 启动时自动刷新 = importConfig → replaceFromImport：订阅自带一条远端线路
     const cfg = fullConfig([bean('s1')]);
@@ -928,7 +928,7 @@ describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播
     m.replaceFromImport(cfg, 'https://host/sub.json');
     expect(m.lives().map((l) => l.name)).toEqual(['远端线路', '我的直播']);
 
-    const m2 = newManager(dir);
+    const m2 = newUserConfigService(dir);
     expect(m2.load()).toBe(true);
     expect(m2.lives().map((l) => l.url)).toContain(LOCAL);
     expect(m2.lives().map((l) => l.name)).toEqual(['远端线路', '我的直播']);
@@ -936,7 +936,7 @@ describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播
 
   it('本地线路不写进档案 json；切走再切回仍在；重命名保留', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     m.replaceFromImport(fullConfig([bean('a1')]), 'https://host/a.json');
     const aId = m.activeProfileId();
     m.addLive(liveBean('本地X', LOCAL));
@@ -955,7 +955,7 @@ describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播
 
   it('★ deleteLives：批量按下标删除，收敛 activeLiveIndex，越界忽略', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     m.addLive(liveBean('A', LOCAL + '?a'));
     m.addLive(liveBean('B', LOCAL + '?b'));
     m.addLive(liveBean('C', LOCAL + '?c'));
@@ -969,7 +969,7 @@ describe('UserConfigManager — ★ 2026-09-30 换源弹层数据与本地直播
 
   it('删除本地线路后，后续订阅替换不会让它复活', () => {
     const dir = tmpDir();
-    const m = newManager(dir);
+    const m = newUserConfigService(dir);
     m.addLive(liveBean('本地Y', LOCAL));
     m.deleteLive(0);
     expect(m.lives()).toEqual([]);

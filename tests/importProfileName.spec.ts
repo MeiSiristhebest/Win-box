@@ -27,7 +27,7 @@ vi.mock('electron', async () => {
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SpiderHost } from '../src/main/spider/SpiderHost';
+import { createSpiderHostServicesTestFixture } from './spiderHostIntegrationFixture';
 import { nameFromLocalFile } from '../src/main/util/importNaming';
 
 const g = globalThis as unknown as { __shostDir?: string };
@@ -46,47 +46,47 @@ function cfg(key: string): string {
   return JSON.stringify({ sites: [{ key, name: key, type: 0, api: 'https://x/api.php/provide/vod' }] });
 }
 
-function activeName(host: SpiderHost): string {
-  const id = host.cfgSnapshot().activeProfileId;
-  return host.cfgProfiles().find((p) => p.id === id)?.name ?? '';
+function activeName(host: ReturnType<typeof createSpiderHostServicesTestFixture>): string {
+  const id = host.sourceConfiguration.getSnapshot().activeProfileId;
+  return host.profileConfiguration.listProfiles().find((p) => p.id === id)?.name ?? '';
 }
 
 describe('导入订阅的档案命名（★ 用户自填名优先）', () => {
   it('首次导入 + 自填名 → 档案直接用自填名（不再是「新订阅 xx」）', async () => {
-    const host = new SpiderHost();
-    await host.importConfig({ json: cfg('a'), name: '我的影视仓' });
+    const host = createSpiderHostServicesTestFixture();
+    await host.subscriptionImports.importConfig({ json: cfg('a'), name: '我的影视仓' });
     expect(activeName(host)).toBe('我的影视仓');
   });
 
   it('首次导入 + 留空 → 退回自动命名「新订阅 xx」', async () => {
-    const host = new SpiderHost();
-    await host.importConfig({ json: cfg('a') });
+    const host = createSpiderHostServicesTestFixture();
+    await host.subscriptionImports.importConfig({ json: cfg('a') });
     expect(activeName(host)).toMatch(/^新订阅 /);
   });
 
   it('再次导入（不同来源）+ 自填名 → 旧档案「旧订阅 xx」+ 新档案用自填名', async () => {
-    const host = new SpiderHost();
-    await host.importConfig({ json: cfg('a') });
-    await host.importConfig({ json: cfg('b'), name: '第二个订阅' });
-    const names = host.cfgProfiles().map((p) => p.name);
+    const host = createSpiderHostServicesTestFixture();
+    await host.subscriptionImports.importConfig({ json: cfg('a') });
+    await host.subscriptionImports.importConfig({ json: cfg('b'), name: '第二个订阅' });
+    const names = host.profileConfiguration.listProfiles().map((p) => p.name);
     expect(names).toHaveLength(2);
     expect(names.some((n) => n.startsWith('旧订阅 '))).toBe(true);
     expect(activeName(host)).toBe('第二个订阅');
   });
 
   it('同来源刷新（snapshot:false）+ 自填名 → 就地改名，不新建档案', async () => {
-    const host = new SpiderHost();
-    await host.importConfig({ json: cfg('a') });
-    const before = host.cfgProfiles().length;
-    await host.importConfig({ json: cfg('a2'), name: '改过名的' }, { snapshot: false });
-    expect(host.cfgProfiles()).toHaveLength(before);
+    const host = createSpiderHostServicesTestFixture();
+    await host.subscriptionImports.importConfig({ json: cfg('a') });
+    const before = host.profileConfiguration.listProfiles().length;
+    await host.subscriptionImports.importConfig({ json: cfg('a2'), name: '改过名的' }, { snapshot: false });
+    expect(host.profileConfiguration.listProfiles()).toHaveLength(before);
     expect(activeName(host)).toBe('改过名的');
   });
 
   it('同来源刷新留空 → 档案名保持原样（不得被「新订阅 xx」覆盖）', async () => {
-    const host = new SpiderHost();
-    await host.importConfig({ json: cfg('a'), name: '保留名' });
-    await host.importConfig({ json: cfg('a2') }, { snapshot: false });
+    const host = createSpiderHostServicesTestFixture();
+    await host.subscriptionImports.importConfig({ json: cfg('a'), name: '保留名' });
+    await host.subscriptionImports.importConfig({ json: cfg('a2') }, { snapshot: false });
     expect(activeName(host)).toBe('保留名');
   });
 });
