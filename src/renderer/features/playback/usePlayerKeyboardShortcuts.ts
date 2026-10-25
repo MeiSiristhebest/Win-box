@@ -18,6 +18,9 @@ interface PlayerKeyboardShortcutsOptions {
   setBoost?: (on: boolean) => void;
   onStepSubtitleOffset?: (delta: -0.5 | 0.5) => void;
   onToggleDanmaku?: () => void;
+  onToggleMini?: () => void;
+  onCycleFit?: () => void;
+  onToggleFullscreen?: () => void;
 }
 
 
@@ -69,6 +72,15 @@ export function usePlayerKeyboardShortcuts(
         event.preventDefault();
         current.onToggleDanmaku?.();
         current.revealControls();
+      } else if (event.key === 'p' || event.key === 'P') {
+        event.preventDefault();
+        current.onToggleMini?.();
+      } else if (event.key === 'a' || event.key === 'A') {
+        event.preventDefault();
+        current.onCycleFit?.();
+      } else if (event.key === 'f' || event.key === 'F') {
+        event.preventDefault();
+        current.onToggleFullscreen?.();
       }
     };
     const onKeyUp = (event: PlayerKeyboardShortcutEvent) => {

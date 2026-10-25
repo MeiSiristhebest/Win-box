@@ -31,6 +31,7 @@ import { useMpvTechnicalState } from './useMpvTechnicalState';
 import type { PlayerControlsViewModel } from './presentation/PlayerControlsViewModel';
 import { resolvePlayerControlAvailability } from './presentation/playerControlAvailability';
 import { usePlayerPreferencePersistence, usePlayerPreferences } from './usePlayerPreferences';
+import type { PlayerFit } from './application/playerPreferences';
 import { usePlayerPanelSession } from './usePlayerPanelSession';
 import { usePlayerKernelTransitions } from './usePlayerKernelTransitions';
 import type { BossKeyPlaybackPort } from './application/bossKeyPlaybackSession';
@@ -607,6 +608,26 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
     else kPause();
   };
 
+  const toggleMiniMode = useCallback(() => {
+    void dependencies.playerViewport.setMini(!mini);
+  }, [dependencies.playerViewport, mini]);
+
+  const cycleFitMode = useCallback(() => {
+    const FIT_ORDER: PlayerFit[] = ['contain', 'cover', 'r169', 'r43', 'fill', 'none'];
+    const FIT_LABELS: Record<PlayerFit, string> = {
+      contain: '适应窗口（默认等比）',
+      cover: '铺满裁剪（去除黑边）',
+      r169: '强制 16:9 比例',
+      r43: '强制 4:3 比例',
+      fill: '拉伸全屏填充',
+      none: '原始尺寸 1:1',
+    };
+    const nextIdx = (FIT_ORDER.indexOf(fit) + 1) % FIT_ORDER.length;
+    const nextFit = FIT_ORDER[nextIdx];
+    setFit(nextFit);
+    showSkipToast(`画面比例：${FIT_LABELS[nextFit]}`);
+  }, [fit, setFit, showSkipToast]);
+
   const onSurfaceClick = usePlayerSurfaceGesture({
     mini,
     onTogglePlayback: togglePlay,
@@ -617,6 +638,7 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
   //   空格：播放/暂停；
   //   ←/→ 单击：±5s；长按(>500ms 仍按住)：每 40ms 持续 ±2s（连续快退/快进）；
   //   ↑/↓：音量 +/− 5%（0..1）。
+  //   P：画中画小窗置顶切换；A：画面比例切换；F：全屏切换；D：弹幕开关；[ / ]：字幕微调。
   //   用 window 级监听（video 元素不可聚焦）；输入框内不拦截；返回键(Backspace/Alt+←)仍在 App 全局处理。
   usePlayerKeyboardShortcuts({
     videoRef: ref,
@@ -636,6 +658,9 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
     setBoost: boost.setBoost,
     onStepSubtitleOffset: (delta: -0.5 | 0.5) => subtitle.onAppearanceCommand({ type: 'step-offset', delta }),
     onToggleDanmaku: toggleDanmaku,
+    onToggleMini: toggleMiniMode,
+    onCycleFit: cycleFitMode,
+    onToggleFullscreen: () => { if (!mini) void toggleFull(); },
   }, dependencies.keyboardShortcuts);
 
   // ---- 老板键：进入 → 暂停 + 静音（窗口被主进程隐藏）；退出 → 恢复原音量与原播放状态 ----
