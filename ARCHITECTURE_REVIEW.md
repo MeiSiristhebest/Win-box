@@ -893,3 +893,11 @@
 - **取消契约：** 修复 JS Worker 丢失后自动重开路径漏查取消信号的问题。新增真实 Worker 集成测试，先摘除正在路由的 worker，再在恢复调用结果与调用方取消之间制造竞态，断言最终向调用者报告取消。提交 `pxy`：`fix:worker-retry-abort`。
 - **本轮增量验证：** DAV/目录解析测试 13 项通过；JS 沙箱与真实 Worker 测试 33 项通过；`pnpm run typecheck` 的 main、renderer、test 三个项目通过。全量 Vitest、lint、生产构建尚未在这两个增量后重跑。
 - **仍未完成：** 14 项总评仍为 11 项部分符合、3 项局部大体符合、0 项全仓验收通过。跨 JS/Worker/JVM/Python 的准备失败、执行失败、取消和超时完整矩阵；`VideoPlayerPresenter` 跨子域协调；全仓 UI/IPC 与 Atomic Design/对比度审计；真实桌面播放和安装验收仍开放。
+
+## 本轮架构整改（2026-10-26，主题状态边界）
+
+- **确认并修复的边界：** 原 `renderer/lib/theme.ts` 同时负责主题用例协调、文档 DOM/token 写入、偏好持久化、插件 CSS 注入和 React 外部 store 订阅。现拆为 React-free 的 `themeApplication`（通过偏好、注册表、文档和事件端口协调）、`themeDocumentAdapter`（DOM/token/CSS）、`useThemeStore`（React 订阅）及 renderer composition runtime；页面和设置调用点已迁移，旧混合模块已删除。
+- **行为覆盖：** 新增主题应用用例测试，覆盖主题应用与写入顺序、启动读取不回写、注册表加载中的保留行为，以及皮肤移除后归一化并持久化默认主题。既有主题应用、外观设置和注册表测试继续通过。
+- **本轮增量验证：** 主题及架构边界 5 个测试文件、245 项通过；`pnpm run typecheck` 的 main、renderer、test 三套检查通过。全量 Vitest、lint、生产构建与桌面视觉验收尚未在本轮变更后执行。
+- **原则影响与限制：** 此次关闭主题设置链路中 #1、#5、#6、#7、#8、#14 的一处具体职责与可替换性缺口；它不改变全仓 14 项总评。JS/Worker/JVM/Python 共同行为矩阵、播放器真实状态所有权审查、余下 UI/IPC 依赖分类、Atomic Design/全窗口视觉验收仍开放。
+- **提交：** `zqm` — `refactor:split-theme-application-boundaries`。`libnc.so` 保持独立、未提交。
