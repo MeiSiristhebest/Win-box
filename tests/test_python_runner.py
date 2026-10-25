@@ -22,7 +22,38 @@ class RunnerCompatibility(unittest.TestCase):
         class Source:
             def searchContent(self, key, quick, pg): return [key, quick, pg]
         self.assertEqual(runner._call_method(Source(), 'searchContent', ['book']), ['book', False, '1'])
+        self.assertEqual(runner._call_method(Source(), 'searchContent', ['book', 'true']), ['book', True, '1'])
+        self.assertEqual(runner._call_method(Source(), 'searchContent', ['book', 'false']), ['book', False, '1'])
+        self.assertEqual(runner._call_method(Source(), 'searchContent', ['book', 'true', '3']), ['book', True, '3'])
+        self.assertEqual(runner._call_method(Source(), 'searchContent', ['book', 'false', '4']), ['book', False, '4'])
+        # Previous CPython/Jython bridge layouts remain accepted.
         self.assertEqual(runner._call_method(Source(), 'searchContent', ['book', '', '3']), ['book', False, '3'])
+        self.assertEqual(runner._call_method(Source(), 'searchContent', ['book', '5']), ['book', False, '5'])
+
+    def test_missing_spider_operations_have_a_machine_readable_unsupported_result(self):
+        class Source:
+            pass
+
+        missing = [
+            ('homeContent', []),
+            ('homeVideoContent', []),
+            ('categoryContent', ['id', '1', '{}']),
+            ('detailContent', ['[]']),
+            ('searchContent', ['title', '', '1']),
+            ('playerContent', ['', 'id', '[]']),
+            ('liveContent', ['']),
+        ]
+        for method, args in missing:
+            with self.subTest(method=method):
+                with self.assertRaises(runner._UnsupportedSpiderOperation) as caught:
+                    runner._call_method(Source(), method, args)
+                self.assertEqual(str(caught.exception), 'WINBOX_OPERATION_UNSUPPORTED:' + method)
+
+    def test_an_implemented_operation_may_return_a_valid_empty_string(self):
+        class Source:
+            def playerContent(self, flag, pid, vip): return ''
+
+        self.assertEqual(runner._call_method(Source(), 'playerContent', ['', 'id', '[]']), '')
 
     def test_internal_type_error_is_not_retried(self):
         class Source:

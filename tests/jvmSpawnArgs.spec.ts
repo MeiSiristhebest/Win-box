@@ -53,7 +53,7 @@ describe('JarSpiderBridge.call — spawn argv 强制 UTF-8（任务 A）', () =>
     const child = spawnMock.mock.results[0].value as ReturnType<typeof fakeChild>;
     (child as ReturnType<typeof fakeChild>).stdout.emit('data', Buffer.from('{"list":[]}'));
     (child as ReturnType<typeof fakeChild>).emit('close', 0);
-    expect(await p).toBe('{"list":[]}');
+    expect(await p).toEqual({ ok: true, output: '{"list":[]}', reason: '', failureKind: null, problemCode: null });
 
     const argv = spawnMock.mock.calls[0][1] as string[];
     // ★ argv[0] = -noverify：关闭字节码校验。dex2jar 产物的 StackMapTable 常不完整，
@@ -140,16 +140,16 @@ describe('JarSpiderBridge.call — spawn argv 强制 UTF-8（任务 A）', () =>
     const c1 = spawnMock.mock.results[0].value as ReturnType<typeof fakeChild>;
     c1.stderr.emit('data', Buffer.from('[SpiderRunner.ERROR] boom'));
     c1.emit('close', 1);
-    await expect(p1).resolves.toBe(''); // 非零退出 → 无 stdout 结果
+    await expect(p1).resolves.toMatchObject({ ok: false, output: '', reason: expect.stringContaining('boom') });
 
     const opts = spawnMock.mock.calls[0][2] as { windowsHide: boolean; timeout: number };
     expect(opts.windowsHide).toBe(true);
     expect(opts.timeout).toBe(12345);
 
-    // spawn 'error' 事件（如 JRE 缺失被外部删除）→ resolve('') 不挂起
+    // spawn 'error' 事件（如 JRE 缺失被外部删除）返回该调用的错误，不挂起
     const p2 = bridge.call([join(dir, 'a.jar')], 'X', 'm', []);
     (spawnMock.mock.results[1].value as ReturnType<typeof fakeChild>).emit('error', new Error('nope'));
-    await expect(p2).resolves.toBe('');
+    await expect(p2).resolves.toMatchObject({ ok: false, output: '', reason: expect.stringContaining('nope') });
   });
 
   // ★ 2026-10-14（用户指令「不允许给用户系统建盘符」）：曾经的「蜘蛛沙箱盘」用 `subst` 建 V:\ 虚拟盘 +

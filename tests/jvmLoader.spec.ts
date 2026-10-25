@@ -37,12 +37,12 @@ describe.skipIf(!runnable)('真实 JVM 私有蜘蛛类加载（设置 JAVA_HOME�
   }, 60000);
   afterAll(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
 
-  async function run(method: string, serve = false, shell = false): Promise<string> {
+  async function run(method: string, serve = false, shell = false, methodArgs: string[] = []): Promise<string> {
     const args = ['-noverify', '-Dfile.encoding=UTF-8', '-Dtvbox.spiderCacheDir=' + join(dir, 'sandbox'),
       ...(shell ? ['-Dtvbox.shellShimClasses=' + helperJar] : []), '-cp', cp, 'SpiderRunner'];
     const cls = 'com.github.catvod.spider.LoaderProbe';
     if (serve) args.push('--serve', shell ? shellJar : fullJar);
-    else args.push(shell ? shellJar : fullJar, cls, method, '');
+    else args.push(shell ? shellJar : fullJar, cls, method, '', ...methodArgs);
     if (serve) return new Promise<string>((resolve, reject) => {
       const child = spawn(java, args, { windowsHide: true });
       let out = '', err = '', value: string | undefined;
@@ -65,7 +65,7 @@ describe.skipIf(!runnable)('真实 JVM 私有蜘蛛类加载（设置 JAVA_HOME�
         if (code !== 0 || value === undefined) reject(new Error('serve exited: ' + err));
         else resolve(value);
       });
-      child.stdin.write(JSON.stringify({ id: '1', className: cls, method, args: [''] }) + '\n');
+      child.stdin.write(JSON.stringify({ id: '1', className: cls, method, args: ['', ...methodArgs] }) + '\n');
     });
     const result = spawnSync(java, args, { encoding: 'utf8', timeout: 15000 });
     expect(result.error).toBeUndefined(); expect(result.status, result.stderr).toBe(0);
@@ -75,7 +75,24 @@ describe.skipIf(!runnable)('真实 JVM 私有蜘蛛类加载（设置 JAVA_HOME�
   it('Context 能看到已加载蜘蛛的私有类', async () => expect(await run('homeContent')).toBe('private-helper-ok'));
   it('一次性调用 TCCL 能看到私有类', async () => expect(await run('searchContent')).toBe('private-helper-ok'));
   it('常驻工作线程 TCCL 能看到私有类', async () => expect(await run('searchContent', true)).toBe('private-helper-ok'));
+  it('一次性与常驻调用都透传 quick 和 page，并兼容旧版 [key, page] 参数', async () => {
+    expect(await run('searchContent', false, false, ['book', 'true', '3'])).toBe('private-helper-ok:book:true:3');
+    expect(await run('searchContent', true, false, ['book', 'false', '4'])).toBe('private-helper-ok:book:false:4');
+    expect(await run('searchContent', false, false, ['book', '5'])).toBe('private-helper-ok:book:false:5');
+  });
   it('蜘蛛子线程继承正确加载器', async () => expect(await run('liveContent', true)).toBe('private-helper-ok'));
+  it('保留已实现方法的合法空结果（一次性与常驻 JVM）', async () => {
+    expect(await run('playerContent')).toBe('');
+    expect(await run('playerContent', true)).toBe('');
+  });
+  it('把继承的兼容空桩报告为未实现操作', async () => {
+    const result = spawnSync(java, [
+      '-noverify', '-Dfile.encoding=UTF-8', '-Dtvbox.spiderCacheDir=' + join(dir, 'sandbox'),
+      '-cp', cp, 'SpiderRunner', fullJar, 'com.github.catvod.spider.LoaderProbe', 'categoryContent', '', 'movie', '1', '',
+    ], { encoding: 'utf8', timeout: 15000 });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('WINBOX_OPERATION_UNSUPPORTED:categoryContent');
+  });
   it('shell-shim 缓存加载器仍绑定后续 Context 和 TCCL', async () =>
     expect(await run('homeVideoContent', true, true)).toBe('private-helper-ok:private-helper-ok:private-helper-ok'));
 });
