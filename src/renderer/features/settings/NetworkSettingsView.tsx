@@ -36,7 +36,7 @@ export function NetworkSettingsView({ model, actions }: { model: NetworkSettings
             <button type="button" className="primary" disabled={model.saving} onClick={() => void actions.save()}>
               {model.saving ? '正在保存…' : '保存代理'}
             </button>
-            {model.message && <span className={model.message.kind === 'err' ? 'err' : 'status'} style={{ margin: 0 }} role="status">{model.message.text}</span>}
+            {model.message && <output className={model.message.kind === 'err' ? 'err' : 'status'} style={{ margin: 0 }}>{model.message.text}</output>}
           </div>
         </div>
       )}

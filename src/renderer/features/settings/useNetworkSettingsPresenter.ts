@@ -17,13 +17,12 @@ export function useNetworkSettingsPresenter(active: boolean, port: NetworkSettin
   useEffect(() => {
     if (!active) return;
     let current = true;
-    setLoadState('loading');
-    setMessage(null);
     void port.loadProxy().then((settings) => {
       if (!current) return;
       setProxy(settings);
       setUrlDraft(settings.url);
       setLoadState('ready');
+      setMessage(null);
     }).catch((error: unknown) => {
       if (!current) return;
       setProxy(null);

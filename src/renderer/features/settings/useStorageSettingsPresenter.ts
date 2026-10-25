@@ -27,7 +27,6 @@ export function useStorageSettingsPresenter(
   const [message, setMessage] = useState<StorageSettingsViewModel['message']>(null);
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadRevision, setLoadRevision] = useState(0);
   const busyRef = useRef(false);
   const listRevision = useRef(0);
 
@@ -35,19 +34,18 @@ export function useStorageSettingsPresenter(
     if (!active) return;
     let current = true;
     const requestRevision = ++listRevision.current;
-    setLoadState('loading');
-    setMessage(null);
     void port.listServers().then((next) => {
       if (!current || requestRevision !== listRevision.current) return;
       setServers(next);
       setLoadState('ready');
+      setMessage(null);
     }).catch((error: unknown) => {
       if (!current || requestRevision !== listRevision.current) return;
       setLoadState('error');
       setMessage({ text: `存储列表读取失败：${errorMessage(error)}`, kind: 'err' });
     });
     return () => { current = false; };
-  }, [active, loadRevision, port]);
+  }, [active, port]);
 
   const refresh = useCallback(async () => {
     if (busyRef.current) return;
