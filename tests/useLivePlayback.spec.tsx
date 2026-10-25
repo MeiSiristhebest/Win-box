@@ -67,4 +67,59 @@ describe('useLivePlayback', () => {
       { groupName: '综合', channelName: '电影', lineIdx: 0 },
     );
   });
+
+  it('supports automatic line failover and catchup timeshift switching', async () => {
+    const data: LivePlaybackDataPort = {
+      readConfiguration: vi.fn().mockResolvedValue(profile),
+      loadLineup: vi.fn().mockResolvedValue({ groups, liveName: 'IPTV' }),
+      setActiveLineup: vi.fn().mockResolvedValue(undefined),
+      loadProgramGuide: vi.fn().mockResolvedValue({ byKey: {} }),
+    };
+    const memory: LiveSelectionMemoryPort = {
+      read: vi.fn().mockReturnValue({ groupName: '综合', channelName: '新闻', lineIdx: 0 }),
+      write: vi.fn(),
+    };
+    const refresh: LivePlaybackRefreshPort = {
+      onSourcesChanged: vi.fn().mockReturnValue(vi.fn()),
+      onWindowFocus: vi.fn().mockReturnValue(vi.fn()),
+    };
+    const clock: LivePlaybackClockPort = {
+      now: () => 0,
+      schedule: vi.fn().mockReturnValue('timer'),
+      cancel: vi.fn(),
+    };
+    const { result } = renderHook(() => useLivePlayback({ data, memory, refresh, clock }));
+
+    await waitFor(() => expect(result.current.playUrl).toBe('https://one.test/live'));
+    expect(result.current.lineIdx).toBe(0);
+
+    // Failover from line 0 to line 1
+    act(() => {
+      const switched = result.current.failoverToNextLine('网络超时');
+      expect(switched).toBe(true);
+    });
+    await waitFor(() => expect(result.current.playUrl).toBe('https://two.test/live'));
+    expect(result.current.lineIdx).toBe(1);
+    expect(result.current.liveToast).toContain('已自动为您切至线路 2');
+
+    // Timeshift catchup playback
+    act(() => {
+      result.current.playCatchup({
+        title: '早间新闻',
+        start: '07:00',
+        end: '08:00',
+        startTime: 1700000000000,
+        endTime: 1700003600000,
+      });
+    });
+    expect(result.current.isCatchupActive).toBe(true);
+    expect(result.current.playUrl).toContain('playseek=');
+
+    // Return to live
+    act(() => {
+      result.current.exitCatchup();
+    });
+    expect(result.current.isCatchupActive).toBe(false);
+    expect(result.current.playUrl).toBe('https://two.test/live');
+  });
 });
