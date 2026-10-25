@@ -60,7 +60,7 @@
   --fs-xl: 18px;
   --fs-2xl: 22px;
   /* ===== 宿主自用（**不在皮肤词表内**）：布局度量 + 字体栈 + 焦点环 =====
-     布局度量由 `layout` 声明的 navHeight / sideWidth / cardWidth 写入（见 lib/theme.ts）。 */
+     布局度量由 `layout` 声明的 navHeight / sideWidth / cardWidth 写入（见 themeDocumentAdapter）。 */
   --nav-h: 54px;
   --side-w: 208px;
   --card-w: 132px;

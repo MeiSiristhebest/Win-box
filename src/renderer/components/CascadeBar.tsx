@@ -8,7 +8,7 @@
 //
 // 皮肤：豆风走已有 `.db-filters` 组（与顶栏胶囊导航同观感）；其余皮肤走基类 `.cascade*`（global.css）。
 import { useId } from 'react';
-import { useSkinLayout } from '../lib/theme';
+import { useSkinLayout } from '../features/theme/adapters/useThemeStore';
 import { SelectionButton } from './ui/SelectionButton';
 
 export interface CascadeOption {

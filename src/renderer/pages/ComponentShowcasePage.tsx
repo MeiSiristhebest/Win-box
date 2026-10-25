@@ -3,7 +3,8 @@ import { AppModal } from '../components/AppDialog';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Field } from '../components/ui/Field';
-import { applyTheme, useTheme } from '../lib/theme';
+import { useTheme } from '../features/theme/adapters/useThemeStore';
+import { themeApplication } from '../features/theme/themeRuntime';
 import { themes, type Theme } from '../lib/themeTokens';
 import styles from './ComponentShowcasePage.module.css';
 
@@ -22,7 +23,7 @@ export default function ComponentShowcasePage() {
         </div>
         <label className={styles.themePicker}>
           <span>主题</span>
-          <select aria-label="展示主题" value={theme} onChange={(event) => applyTheme(event.target.value as Theme)}>
+          <select aria-label="展示主题" value={theme} onChange={(event) => themeApplication.applyTheme(event.target.value as Theme)}>
             {Object.entries(themes).map(([id, definition]) => (
               <option key={id} value={id}>{definition.label}</option>
             ))}

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import PosterSizeControl from '../../components/PosterSizeControl';
 import { setUiScale, useUiScaleState } from '../display';
 import { UI_SCALE_OPTIONS } from '../../../shared/uiScale';
-import { applyTheme, useTheme, useSkins } from '../../lib/theme';
+import { useTheme, useSkins } from '../theme/adapters/useThemeStore';
+import { themeApplication } from '../theme/themeRuntime';
 import { setShowDiscover, setMotionPref, useShowDiscover, useMotionPref, setNavMode, useNavMode, setWaterfall, useWaterfall, type MotionPref } from '../../lib/uiPrefs';
 import styles from './AppearanceSection.module.css';
 
@@ -35,7 +36,7 @@ export function AppearanceSection() {
                 name="appearance-theme"
                 value={id}
                 checked={theme === id}
-                onChange={() => applyTheme(id)}
+                onChange={() => themeApplication.applyTheme(id)}
               />
               <span className="theme-preview" data-mode={id} aria-hidden="true"><span className="theme-preview-nav" /><span className="theme-preview-cards"><span /><span /><span /></span></span>
               <span>{label}{theme === id ? <small>已选</small> : null}</span>

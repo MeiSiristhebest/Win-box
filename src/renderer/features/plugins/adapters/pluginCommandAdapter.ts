@@ -1,6 +1,6 @@
 import { client } from '../../../api/client';
 import type { PluginCommandPort } from '../application/pluginCommand';
-import { applyTheme } from '../../../lib/theme';
+import { themeApplication } from '../../theme/themeRuntime';
 import { findSkin } from '../../../lib/themeTokens';
 
 export const pluginCommandAdapter: PluginCommandPort = {
@@ -13,7 +13,7 @@ export const pluginCommandAdapter: PluginCommandPort = {
   setTheme(id) {
     const skin = findSkin(id);
     if (!skin) return undefined;
-    applyTheme(id);
+    themeApplication.applyTheme(id);
     return skin.label || id;
   },
   async exportLive(templateId) {

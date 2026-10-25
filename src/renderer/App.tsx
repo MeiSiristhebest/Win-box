@@ -31,7 +31,7 @@ import { useShowDiscover } from './lib/uiPrefs';
 // 详情打开方式统一入口 + 固定窗口身份判定。
 import { isDetailWindow, openDetailRoute } from './lib/detailWin';
 import { isSearchWindow, bindSearchNavigation, openSearchWindow } from './features/search/adapters/searchWindowNavigationAdapter';
-import { useTheme } from './lib/theme';
+import { useTheme } from './features/theme/adapters/useThemeStore';
 import { setImageFreezeActive } from './lib/freezeImages';
 import { presentationFor } from './lib/themeTokens';
 import { isNativeModalOpen } from './lib/modalScope';

@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
-import { applyTheme, useTheme, useSkinLayout } from '../src/renderer/lib/theme';
+import { themeApplication } from '../src/renderer/features/theme/themeRuntime';
+import { useTheme, useSkinLayout } from '../src/renderer/features/theme/adapters/useThemeStore';
 import { registerPluginSkins, SEMANTIC_TOKEN_NAMES, themes, type Theme } from '../src/renderer/lib/themeTokens';
 
 describe('theme application', () => {
@@ -32,7 +33,7 @@ describe('theme application', () => {
   it('applies a complete token snapshot and persists each selected theme', () => {
     const themeIds = Object.keys(themes) as Theme[];
     for (const theme of themeIds) {
-      applyTheme(theme);
+      themeApplication.applyTheme(theme);
       expect(document.documentElement.getAttribute('data-theme')).toBe(theme);
       for (const token of SEMANTIC_TOKEN_NAMES) {
         expect(document.documentElement.style.getPropertyValue(`--${token}`)).toBe(themes[theme].tokens[token]);
@@ -44,11 +45,11 @@ describe('theme application', () => {
   });
 
   it('publishes the selected theme and layout from the same subscribed snapshot', () => {
-    applyTheme('dark');
+    themeApplication.applyTheme('dark');
     const { result } = renderHook(() => ({ theme: useTheme(), layout: useSkinLayout() }));
     expect(result.current.theme).toBe('dark');
     expect(result.current.layout.shell).toBe('topbar');
-    act(() => applyTheme('light'));
+    act(() => themeApplication.applyTheme('light'));
     expect(result.current.theme).toBe('light');
     expect(result.current.layout.shell).toBe('topbar');
     act(() => {
@@ -57,7 +58,7 @@ describe('theme application', () => {
         tokens: { '--surface-0': '#ffffff' },
         layout: { shell: 'sidebar' },
       }]);
-      applyTheme('plugin:test-layout');
+      themeApplication.applyTheme('plugin:test-layout');
     });
     expect(result.current.theme).toBe('plugin:test-layout');
     expect(result.current.layout.shell).toBe('sidebar');

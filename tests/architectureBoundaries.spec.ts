@@ -40,13 +40,13 @@ describe('architecture dependency rules', () => {
   });
 
   it.each([
-    ['renderer/lib/theme.ts', "import { client } from '../api/client';"],
+    ['renderer/features/theme/application/themeApplication.ts', "import { client } from '../../../api/client';"],
     ['renderer/features/theme/application/pluginThemeRegistry.ts', "import { client } from '../../../api/client';"],
   ])('keeps theme registry orchestration independent from renderer IPC: %s', (file, source) => {
     const result = inspect(file, source);
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('theme registry coordination must use its application port');
+    expect(result.stderr).toContain('feature application use cases may not depend on UI, IPC clients, or feature adapters');
   });
 
   it('allows a feature application use case to consume contracts and its own ports', () => {

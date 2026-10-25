@@ -12,7 +12,7 @@ import PluginSlot from '../components/PluginSlot';
 import { useNavigate } from 'react-router-dom';
 import { discoverDetailRoute } from '../../shared/discoverDetail';
 import type { DiscoverItem } from '../../shared/types';
-import { useTheme } from '../lib/theme';
+import { useTheme } from '../features/theme/adapters/useThemeStore';
 import { discoverPresentationView } from '../lib/presentationRegistry';
 import DiscoverShelf from '../components/DiscoverShelf';
 import { Icon } from '../components/ui/Icon';

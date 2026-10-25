@@ -4,7 +4,7 @@ import { HashRouter } from 'react-router-dom';
 import App from './App';
 import { AppDialogProvider } from './components/AppDialog';
 import { FluentDesignProvider } from './components/FluentDesignProvider';
-import { initTheme } from './lib/theme';
+import { themeApplication } from './features/theme/themeRuntime';
 import { loadPluginThemeRegistry } from './features/theme/adapters/pluginThemeRegistryAdapter';
 import { dropSessionUiMemoryIfRestarted } from './lib/uiMemory';
 import { initDisplayPrefs } from './features/display';
@@ -31,13 +31,13 @@ async function bootUiMemory(): Promise<void> {
 }
 
 // 挂载前应用持久化的亮/深色主题，避免首屏白屏/闪错主题
-initTheme();
+themeApplication.initialize();
 void loadPluginThemeRegistry();
 // ★ 2026-10-08：挂载前应用「界面动效」偏好（写 <html data-motion>）——首屏就按用户档位渲染动效
 initMotionPref();
 
 void Promise.all([bootUiMemory(), syncUiPreferencesFromMain().catch(() => undefined)]).finally(() => {
-  initTheme();
+  themeApplication.initialize();
   void loadPluginThemeRegistry();
   initMotionPref();
   void initDisplayPrefs().finally(() => createRoot(document.getElementById('root')!).render(

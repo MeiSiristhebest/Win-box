@@ -11,7 +11,7 @@ import { useCovers } from '../features/covers/useCovers';
 import HeroBackdrop from '../components/HeroBackdrop';
 import { detailIsEmpty } from '../../engine/config/sourceKind';
 import { DriveBindingDialog } from '../features/driveBinding/DriveBindingDialog';
-import { useTheme } from '../lib/theme';
+import { useTheme } from '../features/theme/adapters/useThemeStore';
 import { detailPresentationView } from '../lib/presentationRegistry';
 import { useDetailDataController } from '../features/detail/useDetailDataController';
 import { detailDataAdapter } from '../features/detail/adapters/detailDataAdapter';

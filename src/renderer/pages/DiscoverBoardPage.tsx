@@ -8,7 +8,7 @@ import { useBoardPageCapacity } from '../features/discovery/useBoardPageCapacity
 import DiscoverItemCard, { discoverCoverItem } from '../components/DiscoverItemCard';
 import { Icon } from '../components/ui/Icon';
 import { useCovers } from '../features/covers/useCovers';
-import { useTheme } from '../lib/theme';
+import { useTheme } from '../features/theme/adapters/useThemeStore';
 import { usePageActive } from '../lib/keepAlive';
 import { discoverPresentationView } from '../lib/presentationRegistry';
 import { discoverDetailRoute } from '../../shared/discoverDetail';

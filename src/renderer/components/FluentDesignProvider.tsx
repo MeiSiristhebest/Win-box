@@ -1,6 +1,6 @@
 import { FluentProvider, createDarkTheme, createLightTheme, type BrandVariants } from '@fluentui/react-components';
 import { useMemo, type ReactNode } from 'react';
-import { useTheme } from '../lib/theme';
+import { useTheme } from '../features/theme/adapters/useThemeStore';
 import { skinBase } from '../lib/themeTokens';
 
 /** Fluent 2 brand ramp: shared by desktop navigation, controls and dialog primitives. */
