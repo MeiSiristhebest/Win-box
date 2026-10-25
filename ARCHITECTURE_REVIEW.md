@@ -907,3 +907,5 @@
 - **本轮继续：跨运行时消费者契约矩阵（2026-10-26）：** 新增 source-level conformance 用例，让 JS、Python、JVM 三个来源适配器对合法空结果、能力缺失、执行失败、超时和调用前取消保持相同的调用者可见结果；取消用例同时断言不会启动准备或执行。它验证的是 `Spider` 消费者边界，不代替 Worker/JVM/Python 进程池内部的完整故障矩阵。
 - **本轮继续：运行时拒绝异常归一（2026-10-26）：** `PySpider` 会把运行时抛出的普通异常映射为带 source/operation 的 `SPIDER_ERROR`，`JsSpider` 与 `JarSpider` 则允许部分可替换端口的普通异常直接漏出。现在两个边界也保留既有 `SourceProblemError`、尊重取消，并将未知拒绝规范为含来源和操作身份的 `SPIDER_ERROR`；同一消费者矩阵新增该场景。
 - **验证与原则影响：** Python 池适配器 5 项测试、JS/Python/JVM 消费者契约 6 项测试及相关 JS/Python/JVM 测试 53 项通过；三套 TypeScript 检查及仓库 lint 通过。改善 #3 LSP、#6 SoC、#14 可测试性的一处错误语义漂移；进程准备失败、池内部取消/超时和真实 Worker 的完整行为矩阵仍开放，14 项总评未完成。
+- **本轮全量复验（2026-10-26，包含 JS/JVM 异常边界改动）：** `pnpm test` 通过 422 个测试文件，3 个跳过；3642 项通过、5 项跳过。`pnpm run typecheck` 三套项目、`pnpm run lint`（边界/React/perf/a11y）通过；`pnpm run build` 主进程与 renderer 生产构建通过。构建仍有 `hls` 574.41 KB 超过 500 KB chunk 阈值及 Babel transform 耗时提示；本轮未处理 chunk 拆分或做桌面真实播放/安装验收。
+- **当前结论：** 以上是当前代码快照的验证，不是 14 项完成证明。仍开放：播放器跨域状态所有权和细节 UI/Atomic Design 审计、全窗口对比度与真实视觉验收、Worker/JVM/Python 进程内部的准备失败/取消/超时 conformance、renderer 剩余视图/适配器分类及桌面播放/安装验收。
