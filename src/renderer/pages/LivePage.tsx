@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import PluginSlot from '../components/PluginSlot';
 import VideoPlayer from '../components/VideoPlayer';
 import { useLivePlayback } from '../features/live/useLivePlayback';
@@ -15,6 +15,11 @@ export default function LivePage() {
     pickLive, pickChannel,
   } = useLivePlayback(livePlaybackDependencies);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const exportKey = JSON.stringify([profileId, liveIdx, liveName]);
   const liveExport = useLiveExportPresenter(exportKey, liveExportAdapter);
 
@@ -111,7 +116,6 @@ export default function LivePage() {
                   {showSchedule && curEpg.programs && (
                     <div className="live-schedule-drawer">
                       {curEpg.programs.map((prog, idx) => {
-                        const now = Date.now();
                         const isCurrent = prog.startTime <= now && now <= prog.endTime;
                         const isPast = prog.endTime < now;
                         return (
