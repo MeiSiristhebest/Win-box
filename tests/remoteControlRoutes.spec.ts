@@ -123,7 +123,7 @@ describe('RemoteControlRoutes — 9978 局域网控制台与手机推送', () =>
       url: 'https://cdn.example/video.mp4',
     }).toString();
     const req = createMockReq('POST', '/action', body);
-    const { res, getOutput } = createMockRes();
+    const { res } = createMockRes();
     await routes.handle(new URL('http://127.0.0.1:9978/action'), req, res);
     expect(actions.length).toBe(1);
     expect(actions[0].do).toBe('push');

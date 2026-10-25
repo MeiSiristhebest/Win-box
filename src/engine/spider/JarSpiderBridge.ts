@@ -50,7 +50,6 @@ import { isUsableConvertedJar as isUsableConvertedJarFile } from './convertedJar
 import { ConversionInFlightError, JarConversionRegistry } from './JarConversionRegistry';
 import { JarClasspathResolver } from './JarClasspathResolver';
 import { normalizeSpiderRuntimeFailure } from './spiderRuntimeFailure';
-import { SourceProblemError } from './errors';
 import { abortError, throwIfAborted } from '../util/abort';
 import { spiderPoolTimeoutResult } from './spiderPoolFailure';
 import { Dex2jarConversion } from './Dex2jarConversion';
