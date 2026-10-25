@@ -905,4 +905,5 @@
 - **提交：** `zqm`（主题职责拆分）、`nmm`（lint 清理）、`tvx`（Python runner 测试）、`wvz`（存储错误展示）、`lmv`（主题状态记录）。`libnc.so` 保持独立、未提交。
 - **本轮继续：Python 进程池取消边界（2026-10-26）：** Python 适配器原先将结果处理也包在池提交的宽泛 `catch` 中；若可替换的池端口返回 `reason: 'cancelled'` 而调用侧没有已中止信号，适配器抛出的取消异常会被自己捕获并落到一次性进程重跑。现将 `catch` 缩到提交操作，取消从运行时边界明确传播；合法空结果、蜘蛛执行错误、池超时均不重跑，传输故障仍走一次性回退。现有 `SpiderProcPool` 只会因传入的 AbortSignal 中止而返回取消，因此生产实现通常会被前置 `throwIfAborted` 拦截；这次修复明确了替换端口也必须遵守的边界契约。
 - **本轮继续：跨运行时消费者契约矩阵（2026-10-26）：** 新增 source-level conformance 用例，让 JS、Python、JVM 三个来源适配器对合法空结果、能力缺失、执行失败、超时和调用前取消保持相同的调用者可见结果；取消用例同时断言不会启动准备或执行。它验证的是 `Spider` 消费者边界，不代替 Worker/JVM/Python 进程池内部的完整故障矩阵。
-- **验证与原则影响：** Python 池适配器 5 项测试、跨运行时消费者矩阵 5 项测试通过；`pnpm run typecheck` 三套项目和 `pnpm run lint`（架构边界、React/perf、JSX a11y）通过。改善 #3 LSP、#6 SoC、#8 副作用隔离、#14 可测试性中的局部缺口；14 项总评仍为阶段性整改，准备失败、进程内取消/超时及 Worker/进程池替换矩阵仍开放。
+- **本轮继续：运行时拒绝异常归一（2026-10-26）：** `PySpider` 会把运行时抛出的普通异常映射为带 source/operation 的 `SPIDER_ERROR`，`JsSpider` 与 `JarSpider` 则允许部分可替换端口的普通异常直接漏出。现在两个边界也保留既有 `SourceProblemError`、尊重取消，并将未知拒绝规范为含来源和操作身份的 `SPIDER_ERROR`；同一消费者矩阵新增该场景。
+- **验证与原则影响：** Python 池适配器 5 项测试、JS/Python/JVM 消费者契约 6 项测试及相关 JS/Python/JVM 测试 53 项通过；三套 TypeScript 检查及仓库 lint 通过。改善 #3 LSP、#6 SoC、#14 可测试性的一处错误语义漂移；进程准备失败、池内部取消/超时和真实 Worker 的完整行为矩阵仍开放，14 项总评未完成。
