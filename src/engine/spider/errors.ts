@@ -4,11 +4,13 @@
 // 取代"静默返回空 + 只写日志"的旧行为。
 export type SourceProblemCode =
   | 'TYPE_UNSUPPORTED' // type=2/-1 在桌面版无分发实现
+  | 'OPERATION_UNSUPPORTED' // 运行时存在，但没有实现请求的来源操作
   | 'PY_UNSUPPORTED' // type=3 + api .py（安卓 normal flavor 同为空实现）
   | 'JAR_NO_RUNTIME' // jar(dex) 蜘蛛缺少 JVM 桥运行时
   | 'JAR_DOWNLOAD_FAIL' // jar(dex) 下载/转换失败
   | 'JS_FORMAT_UNSUPPORTED' // JS 蜘蛛导出格式不受支持
   | 'JS_BYTECODE' // QuickJS //bb 字节码，node:vm 无法执行
+  | 'SPIDER_TIMEOUT' // 蜘蛛操作超过本次调用时限
   | 'NETWORK' // HTTP 网络层失败（超时/非 2xx/连接异常）
   | 'SPIDER_ERROR' // 蜘蛛调用返回了空/非法内容
   | 'EMPTY_RESULT' // 蜘蛛正常返回但确无数据
@@ -17,13 +19,15 @@ export type SourceProblemCode =
 /** 每个 code 的用户可读中文文案（UI/日志共用，保证提示一致） */
 export const SOURCE_PROBLEM_TEXT: Record<SourceProblemCode, string> = {
   TYPE_UNSUPPORTED: '该源类型在桌面版不可用',
+  OPERATION_UNSUPPORTED: '该源未提供此项功能',
   PY_UNSUPPORTED: 'python 源需要嵌入式 CPython3 运行时（缺失或下载失败）',
   JAR_NO_RUNTIME: 'jar(dex) 蜘蛛缺少 JVM 桥运行时',
   JAR_DOWNLOAD_FAIL: 'jar(dex) 蜘蛛下载或转换失败',
   JS_FORMAT_UNSUPPORTED: 'JS 蜘蛛导出格式不受支持',
   JS_BYTECODE: 'JS 蜘蛛为 QuickJS 字节码，桌面版无法执行',
   NETWORK: '网络请求失败',
-  SPIDER_ERROR: '蜘蛛返回空结果（可能源站失效或需配置 ext）',
+  SPIDER_ERROR: '蜘蛛调用失败（脚本或源站返回异常）',
+  SPIDER_TIMEOUT: '蜘蛛操作超时',
   EMPTY_RESULT: '源暂无数据',
   NO_SPIDER: '未找到对应蜘蛛实现',
 };
@@ -57,6 +61,10 @@ export function sourceProblemCodeForReason(reason: string | undefined): SourcePr
     case 'UNSUPPORTED_FORMAT':
     case 'JS_FORMAT_UNSUPPORTED':
       return 'JS_FORMAT_UNSUPPORTED';
+    case 'SCRIPT_ERROR':
+      return 'SPIDER_ERROR';
+    case 'FETCH_FAILED':
+      return 'NETWORK';
     case 'UNSUPPORTED_PUSH':
       return 'TYPE_UNSUPPORTED';
     default:
