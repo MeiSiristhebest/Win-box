@@ -186,4 +186,46 @@ describe('JsWorkerPool — invocation failure contract', () => {
     await expect(queued).resolves.toBeNull();
     await expect(sandbox.callMethod(['homeContent'], [], 1000)).resolves.toBeNull();
   });
+
+  it('worker 丢失后重开并重试时，若重试结果到达前调用方取消，仍报告取消', async () => {
+    const recoveryPool = new JsWorkerPool(makeHost(), workerFile);
+    const sourceKey = 'cancel-recovered-call';
+    const sandbox = recoveryPool.createSandbox({ siteKey: sourceKey, api, ext: '' });
+    const internals = recoveryPool as unknown as {
+      route: Map<string, { w: { terminate(): Promise<number> } }>;
+      onDown(worker: { w: { terminate(): Promise<number> } }, reason: string): void;
+    };
+    const mutablePool = recoveryPool as unknown as {
+      call: (key: string, names: string[], args: unknown[], timeoutMs: number, signal?: AbortSignal) => Promise<unknown>;
+    };
+    const call = recoveryPool.call.bind(recoveryPool);
+    const controller = new AbortController();
+    let calls = 0;
+
+    try {
+      await sandbox.ensureLoaded();
+      mutablePool.call = (key, names, args, timeoutMs, signal) => {
+        calls += 1;
+        if (calls === 1) {
+          const worker = internals.route.get(key);
+          if (!worker) throw new Error('expected a routed worker');
+          void worker.w.terminate();
+          internals.onDown(worker, 'contract test worker loss');
+        }
+        const result = call(key, names, args, timeoutMs, signal);
+        return calls === 2
+          ? result.then((value) => {
+            controller.abort(new Error('search superseded after recovered result'));
+            return value;
+          })
+          : result;
+      };
+
+      await expect(sandbox.callMethod(['homeContent'], [], 1000, controller.signal))
+        .rejects.toThrow('search superseded after recovered result');
+      expect(calls).toBe(2);
+    } finally {
+      recoveryPool.dispose();
+    }
+  });
 });

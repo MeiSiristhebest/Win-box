@@ -106,7 +106,9 @@ class PooledSandbox implements JsSpiderRuntimePort {
       if (!(e instanceof WorkerSandboxMissingError)) throw e;
       this.opened = false;
       await this.ensureLoaded(signal);
-      return this.pool.call(this.siteKey, names, args, timeoutMs, signal);
+      const value = await this.pool.call(this.siteKey, names, args, timeoutMs, signal);
+      throwIfAborted(signal);
+      return value;
     }
   }
 
