@@ -14,6 +14,7 @@ import {
   rewriteM3u8WithHeaders,
 } from '../src/main/server/LocalProxyServer';
 import { wrapPlayUrlWithHeaders } from '../src/shared/driveProvider';
+import { isHlsPlaylistUrl } from '../src/shared/playbackResult';
 
 let upstream: Server;
 let proxy: LocalProxyServer;
@@ -49,12 +50,28 @@ beforeEach(() => { seen.length = 0; });
 beforeAll(async () => {
   upstream = createServer((req, res) => {
     seen.push({ url: req.url || '', headers: req.headers });
+    const path = new URL(req.url || '/', 'http://fixture').pathname;
+    if (path === '/browser/list.m3u8' || path === '/browser/segment.ts' ||
+      path === '/browser/hls/live/master' || path === '/browser/hls/live/segment.ts') {
+      if (req.headers['user-agent'] !== 'Chromium Acceptance/1.0') {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('missing browser user agent');
+        return;
+      }
+      if (path === '/browser/list.m3u8' || path === '/browser/hls/live/master') {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('#EXTM3U\n#EXTINF:1,\nsegment.ts\n#EXT-X-ENDLIST\n');
+      } else {
+        res.writeHead(200, { 'Content-Type': 'video/mp2t' });
+        res.end('fixture-segment');
+      }
+      return;
+    }
     if (!Object.entries(expectedHeaders).every(([k, v]) => req.headers[k] === v)) {
       res.writeHead(403, { 'Content-Type': 'text/plain' });
       res.end('missing media headers');
       return;
     }
-    const path = new URL(req.url || '/', 'http://fixture').pathname;
     if (path === '/playlist.m3u8' || path === '/entry') {
       res.writeHead(302, { Location: '/hls/final/master' + tokenQuery });
       res.end();
@@ -74,6 +91,7 @@ beforeAll(async () => {
     if (path === '/hls/media/list') {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="key.bin' + tokenQuery + '"\n' +
+        '#EXT-X-SESSION-KEY:METHOD=AES-128,URI="key' + tokenQuery + '"\n' +
         '#EXT-X-MAP:URI="init.mp4' + tokenQuery + '"\n#EXTINF:1,\nseg-01.ts' + tokenQuery + '\n#EXT-X-ENDLIST\n');
       return;
     }
@@ -95,8 +113,8 @@ beforeAll(async () => {
       setTimeout(() => res.end(Buffer.concat([prefix.subarray(2), ts])), 10);
       return;
     }
-    if (path === '/hls/media/key.bin' || path === '/hls/media/init.mp4' || path === '/hls/media/seg-01.ts') {
-      const body = Buffer.from(path.endsWith('key.bin') ? 'fixture-key-12345' : 'fixture-segment');
+    if (path === '/hls/media/key.bin' || path === '/hls/media/key' || path === '/hls/media/init.mp4' || path === '/hls/media/seg-01.ts') {
+      const body = Buffer.from(path.endsWith('/key.bin') || path.endsWith('/key') ? 'fixture-key-12345' : 'fixture-segment');
       const range = req.headers.range;
       res.writeHead(range ? 206 : 200, {
         'Content-Type': 'application/octet-stream', 'Content-Length': String(body.length),
@@ -127,6 +145,52 @@ afterAll(async () => {
 });
 
 describe('CatVod do=m3u8', () => {
+  it('recognizes HLS manifests with query strings and ignores non-HLS/local relays', () => {
+    expect(isHlsPlaylistUrl('https://cdn.example/list.m3u8?token=abc')).toBe(true);
+    expect(isHlsPlaylistUrl('https://cdn.example/watch?format=hls')).toBe(true);
+    expect(isHlsPlaylistUrl('https://cdn.example/hls/live/channel')).toBe(true);
+    expect(isHlsPlaylistUrl('https://cdn.example/hls/live/segment.ts')).toBe(false);
+    expect(isHlsPlaylistUrl('https://cdn.example/hls/live/key.bin')).toBe(false);
+    expect(isHlsPlaylistUrl('https://cdn.example/hls/live/captions.vtt')).toBe(false);
+    expect(isHlsPlaylistUrl('https://cdn.example/watch?TYPE=M3U8')).toBe(true);
+    expect(isHlsPlaylistUrl('https://cdn.example/movie.mp4')).toBe(false);
+    expect(isHlsPlaylistUrl('http://127.0.0.1:9978/play?url=https%3A%2F%2Fcdn.example%2Flist.m3u8')).toBe(false);
+  });
+
+  it('proxies ordinary HLS direct URLs with the Chromium UA and rewrites their segments', async () => {
+    const browserUA = 'Chromium Acceptance/1.0';
+    const response = await fetch(`${proxyBase}/play?url=${formEncode(upstreamBase + '/browser/list.m3u8')}`, {
+      headers: { 'User-Agent': browserUA },
+    });
+    expect(response.status).toBe(200);
+    const manifest = await response.text();
+    const segmentUrl = manifest.split('\n').find(line => line.startsWith('http'))!;
+    expect(new URL(segmentUrl).origin).toBe(proxyBase);
+    expect(new URL(segmentUrl).searchParams.get('ua')).toBe(browserUA);
+    const segment = await fetch(segmentUrl);
+    expect(segment.status).toBe(200);
+    expect(await segment.text()).toBe('fixture-segment');
+    expect(seen.map(item => item.url)).toEqual(['/browser/list.m3u8', '/browser/segment.ts']);
+    expect(seen.every(item => item.headers['user-agent'] === browserUA)).toBe(true);
+  });
+
+  it('rewrites extensionless /hls/ manifests even when the origin labels them text/plain', async () => {
+    const browserUA = 'Chromium Acceptance/1.0';
+    const response = await fetch(`${proxyBase}/play?url=${formEncode(upstreamBase + '/browser/hls/live/master')}`, {
+      headers: { 'User-Agent': browserUA },
+    });
+    expect(response.status).toBe(200);
+    const manifest = await response.text();
+    expect(manifest).toContain('#EXTM3U');
+    const segmentUrl = manifest.split('\n').find(line => line.startsWith('http'))!;
+    expect(new URL(segmentUrl).origin).toBe(proxyBase);
+    expect(new URL(segmentUrl).searchParams.get('ua')).toBe(browserUA);
+    const segment = await fetch(segmentUrl);
+    expect(segment.status).toBe(200);
+    expect(await segment.text()).toBe('fixture-segment');
+    expect(seen.map(item => item.url)).toEqual(['/browser/hls/live/master', '/browser/hls/live/segment.ts']);
+  });
+
   it('WebP TS_D 分片流式剥离前导、正确 MIME/长度，且使用 .ts 路由', async () => {
     const playlist = await (await fetch(proxyUrl('/webp-list.m3u8'))).text();
     const segment = playlist.split('\n').find(line => line.startsWith('http'))!;
@@ -151,20 +215,23 @@ describe('CatVod do=m3u8', () => {
     expect(childResponse.status).toBe(200);
     const child = await childResponse.text();
     const assets = [...child.matchAll(/URI="([^"]+)"/g)].map((m) => m[1]);
-    assets.push(child.split('\n')[4]);
-    expect(assets).toHaveLength(3);
+    assets.push(child.split('\n')[5]);
+    expect(assets).toHaveLength(4);
     for (const asset of assets) {
       expect(new URL(asset).origin).toBe(proxyBase);
       expect(new URL(asset).searchParams.get('url')).toContain(upstreamBase + '/hls/media/');
       expect(new URL(asset).searchParams.get('url')).toContain(tokenQuery);
+      expect(new URL(asset).searchParams.get('hlsResource')).toBe('asset');
       const result = await fetch(asset);
       expect(result.status).toBe(200);
-      expect(await result.text()).toBe(asset === assets[0] ? 'fixture-key-12345' : 'fixture-segment');
+      const target = new URL(asset).searchParams.get('url') || '';
+      expect(await result.text()).toBe(/\/key(?:\.bin)?\?/.test(target) ? 'fixture-key-12345' : 'fixture-segment');
     }
     expect(seen.map((r) => r.url)).toEqual([
       '/entry' + tokenQuery, '/hls/final/master' + tokenQuery,
       '/hls/final/child.m3u8' + tokenQuery, '/hls/media/list' + tokenQuery,
-      '/hls/media/key.bin' + tokenQuery, '/hls/media/init.mp4' + tokenQuery, '/hls/media/seg-01.ts' + tokenQuery,
+      '/hls/media/key.bin' + tokenQuery, '/hls/media/key' + tokenQuery,
+      '/hls/media/init.mp4' + tokenQuery, '/hls/media/seg-01.ts' + tokenQuery,
     ]);
     for (const r of seen) expect(r.headers).toMatchObject(expectedHeaders);
   });
@@ -287,4 +354,39 @@ describe('CatVod do=m3u8', () => {
     expect(output).toContain('URI="skd://fixture"');
     expect(new URL(output.split('\n')[2]).searchParams.get('url')).toBe('http://127.0.0.1:9978@cdn.example/seg.ts');
   });
+});
+
+
+describe('CatVod Adm3u8 Base64 manifest relay', () => {
+  it('decodes the URL once and rewrites child playlists with the original headers', async () => {
+    const encoded = Buffer.from(upstreamBase + '/playlist.m3u8').toString('base64');
+    const url = proxyBase + '/proxy?do=Adm3u8&url=' + encodeURIComponent(encoded) + '&headers=' + encodeURIComponent(catvodHeaders(headers));
+    const response = await fetch(url);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('mpegurl');
+    const text = await response.text();
+    expect(text).toContain('#EXTM3U');
+    const child = text.split('\n').find(line => line.startsWith('http'))!;
+    expect(new URL(child).searchParams.get('url')).toBe(upstreamBase + '/hls/final/child.m3u8' + tokenQuery);
+    const nested = await fetch(child);
+    expect(nested.status).toBe(200);
+    expect(await nested.text()).toContain('#EXT-X-KEY');
+  });
+  it.each(['not base64!', 'aW52YWxpZA==', 'ZmlsZTovLy9wcml2YXRl'])('rejects invalid or non-HTTP targets: %s', async encoded => {
+    const before = seen.length;
+    const response = await fetch(proxyBase + '/proxy?do=Adm3u8&url=' + encodeURIComponent(encoded));
+    expect(response.status).toBe(400);
+    await response.text();
+    expect(seen).toHaveLength(before);
+  });
+});
+
+
+it('merges player headers through a nested Adm3u8 Base64 relay', async () => {
+  const inner = proxyBase + '/proxy?do=Adm3u8&url=' + encodeURIComponent(Buffer.from(upstreamBase + '/playlist.m3u8').toString('base64'));
+  const outer = wrapPlayUrlWithHeaders(inner, headers).replace('http://127.0.0.1:9978', proxyBase);
+  const response = await fetch(outer);
+  expect(response.status).toBe(200);
+  expect(await response.text()).toContain('#EXT-X-STREAM-INF');
+  expect(seen.at(-1)?.headers).toMatchObject(expectedHeaders);
 });

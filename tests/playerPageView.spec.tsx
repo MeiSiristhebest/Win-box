@@ -22,6 +22,7 @@ describe('PlayerPageView', () => {
       canNext: false,
       selectEpisode: vi.fn(),
       retryCurrent,
+      autoChangeParse: vi.fn(),
       dismissDriveBinding: vi.fn(),
       onDriveBound: vi.fn(),
     };

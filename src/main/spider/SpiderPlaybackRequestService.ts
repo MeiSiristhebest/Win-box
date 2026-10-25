@@ -19,7 +19,7 @@ export interface PlaybackRequestDiagnostic extends Record<string, unknown> {
 export interface SpiderPlaybackRequestPorts {
   execution: SourceExecutionResolverPort;
   playback: {
-    execute(key: string, flag: string, id: string, context: SourceExecutionContextValue, source: SourceBean): Promise<PlayResult>;
+    execute(key: string, flag: string, id: string, context: SourceExecutionContextValue, source: SourceBean, parseOffset?: number): Promise<PlayResult>;
   };
   startTimer(): { ms(): number };
   episodeFingerprint(id: string): string;
@@ -32,14 +32,16 @@ export interface SpiderPlaybackRequestPorts {
 export class SpiderPlaybackRequestService {
   constructor(private readonly ports: SpiderPlaybackRequestPorts) {}
 
-  async execute(key: string, flag: string, id: string, profileId?: string): Promise<PlayResult> {
+  async execute(key: string, flag: string, id: string, profileId?: string, parseOffset?: number): Promise<PlayResult> {
     const timer = this.ports.startTimer();
     try {
       const context = this.ports.execution.forProfile(profileId);
       const source: SourceBean | null = this.ports.execution.forSource(context, key);
       if (!source) throw new Error(`源不存在: ${key}`);
 
-      let result = await this.ports.playback.execute(key, flag, id, context, source);
+      let result = parseOffset
+        ? await this.ports.playback.execute(key, flag, id, context, source, parseOffset)
+        : await this.ports.playback.execute(key, flag, id, context, source);
       if (result.parse === 0) {
         const error = this.ports.directPlayUrlError(result.url);
         if (error) result = { ...result, parse: 1, url: '', playUrl: '', message: result.message || error };

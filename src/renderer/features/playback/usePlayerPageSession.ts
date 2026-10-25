@@ -147,10 +147,10 @@ export function usePlayerPageSession(
     const nextInit: PlayerInitData = currentPosition != null && currentPosition > 0
       ? { ...current, startTime: currentPosition }
       : current;
-    initRef.current = nextInit;
+    updateInit(nextInit);
     await resolve(nextInit, epIndex, '', { parseOffset: parseOffsetRef.current });
     return true;
-  }, [epIndex, resolve]);
+  }, [epIndex, resolve, updateInit]);
 
   const dismissDriveBinding = useCallback(() => dispatch({ type: 'drive-bind-dismissed' }), []);
   const onDriveBound = useCallback(() => {

@@ -30,7 +30,9 @@ export class PlaybackParseFallback {
 
     const target = result.url.split('#').filter(Boolean)[0] || result.url;
     try {
-      const hit = await this.ports.parser.resolve(parses, target, offset);
+      const hit = offset
+        ? await this.ports.parser.resolve(parses, target, offset)
+        : await this.ports.parser.resolve(parses, target);
       if (hit?.url) {
         this.ports.logger.i(`parse: 「${result.flag}」解析成功（${hit.via}）${hit.url.slice(0, 100)}`);
         return {

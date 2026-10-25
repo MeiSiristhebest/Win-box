@@ -26,7 +26,7 @@ export interface SelfResolveMediaProbePort {
 }
 
 export interface PlaybackParseFallbackPort {
-  resolve(result: PlayResult, parses?: ParseBean[]): Promise<PlayResult>;
+  resolve(result: PlayResult, parses?: ParseBean[], parseOffset?: number): Promise<PlayResult>;
 }
 
 export type TorrentPlaybackOutcome =
@@ -69,8 +69,9 @@ export class SpiderPlaybackService {
     id: string,
     context: SourceExecutionContextValue,
     source: SourceBean,
+    parseOffset = 0,
   ): Promise<PlayResult> {
-    return this.playInner(key, flag, id, source, context);
+    return this.playInner(key, flag, id, source, context, false, parseOffset);
   }
   private async playInner(
     key: string,
@@ -79,6 +80,7 @@ export class SpiderPlaybackService {
     b: SourceBean,
     context: SourceExecutionContextValue,
     retried = false,
+    parseOffset = 0,
   ): Promise<PlayResult> {
     const nativeShare = await this.ports.nativeDriveSharePlayback.resolve(id, flag);
     if (nativeShare.result) return nativeShare.result;
@@ -155,7 +157,7 @@ export class SpiderPlaybackService {
             //   沙箱/%TEMP% 被清缓存清掉、或旧版本从未写过时，这一步自愈），再重置池让新 JVM 读到。
             this.ports.syncDriveFiles();
             this.ports.resetSpidersAfterDriveChange();
-            return this.playInner(key, flag, id, b, context, true);
+            return this.playInner(key, flag, id, b, context, true, parseOffset);
           }
           if (bound) {
             if (prov === 'uc' && /\[uc\]\(auth\)/i.test(String(r.message))) {
@@ -294,7 +296,7 @@ export class SpiderPlaybackService {
         r.url = wrapPlayUrlWithHeaders(r.url, r.header || {});
       }
       return r;
-      }).then((r) => this.ports.playbackParseFallback.resolve(r, context.config?.parses as ParseBean[] | undefined)).catch((e) => {
+      }).then((r) => this.ports.playbackParseFallback.resolve(r, context.config?.parses as ParseBean[] | undefined, parseOffset)).catch((e) => {
       // ★ 2026-09-27（缺口 B，别删）：**未绑定网盘 Cookie 时的失败要翻译成「去绑定」**。
       //   实测 wex 玩偶（夸克盘）：蜘蛛抛 `org.json.JSONException: JSONObject["data"] not found.`
       //   —— 上游网盘接口无 Cookie 时回的是错误 JSON（没有 data 字段），蜘蛛没做兜底。
@@ -316,7 +318,7 @@ export class SpiderPlaybackService {
           this.ports.logger.w(`play: 蜘蛛抛网盘授权错但本地已绑定 → 重置蜘蛛池并重试一次: ${key} — ${msg.slice(0, 160)}`);
           this.ports.syncDriveFiles();
           this.ports.resetSpidersAfterDriveChange();
-          return this.playInner(key, flag, id, b, context, true);
+          return this.playInner(key, flag, id, b, context, true, parseOffset);
         }
         this.ports.logger.w(`play 判定需要网盘 Cookie（已记入绑定清单${bound ? '；该网盘已绑定' : ''}）: ${key} — ${msg}`);
         return {

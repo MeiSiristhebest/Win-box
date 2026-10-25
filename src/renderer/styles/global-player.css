@@ -135,6 +135,38 @@
   transition: background .13s, color .13s;
 }
 :root[data-theme] .vp-epclose:hover { background: var(--accent-soft); color: var(--text-primary, var(--text)); }
+:root[data-theme] .vp-ep-ranges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+:root[data-theme] .vp-ep-ranges::-webkit-scrollbar {
+  display: none;
+}
+:root[data-theme] .vp-ep-range-tab {
+  all: unset;
+  cursor: pointer;
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-secondary, var(--text-dim));
+  background: var(--surface-2, rgba(255, 255, 255, 0.05));
+  transition: all 0.15s ease;
+}
+:root[data-theme] .vp-ep-range-tab:hover {
+  background: var(--accent-soft);
+  color: var(--text-primary, var(--text));
+}
+:root[data-theme] .vp-ep-range-tab.active {
+  background: var(--text-accent, var(--accent, #3b82f6));
+  color: #fff;
+  font-weight: 600;
+}
 :root[data-theme] .vp-eplist { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain;
   padding: 0 8px 12px; display: flex; flex-direction: column; gap: 2px; }
 :root[data-theme] .vp-epitem {

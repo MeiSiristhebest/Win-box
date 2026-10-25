@@ -135,4 +135,65 @@ describe('ParseService — 解析接口链', () => {
     const r = await svc.resolve([P({ name: 'j', url: 'https://jx.example/api', type: 1 })], 'https://v.qq.com/x.html');
     expect(r).toBeNull();
   });
+
+  it('多网页解析并发竞速（Racing Sniffer）：先命中的快速线路胜出并取消慢速线路', async () => {
+    const target = 'https://v.qq.com/x.html';
+    const calls: string[] = [];
+    let aborted = false;
+    const sniffWithRace: SniffFn = async (url, _logger, _timeout, signal) => {
+      calls.push(url);
+      signal?.addEventListener('abort', () => {
+        aborted = true;
+      });
+      if (url.includes('fast.test')) {
+        return { url: 'https://cdn.test/fast.m3u8', headers: { referer: 'fast' } };
+      }
+      // slow.test 延时
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      return { url: 'https://cdn.test/slow.m3u8', headers: { referer: 'slow' } };
+    };
+
+    const svc = new ParseService(fakeHttp({}), logger, sniffWithRace);
+    const result = await svc.resolve([
+      P({ name: '慢速解析', url: 'https://slow.test/?url=', type: 0 }),
+      P({ name: '快速解析', url: 'https://fast.test/?url=', type: 0 }),
+    ], target);
+
+    expect(result?.url).toBe('https://cdn.test/fast.m3u8');
+    expect(result?.via).toBe('sniff:快速解析');
+    expect(calls).toContain('https://slow.test/?url=' + target);
+    expect(calls).toContain('https://fast.test/?url=' + target);
+    expect(aborted).toBe(true);
+  });
+
+  it('容错轮转（AutoChangeParse offset）：通过 offset 跳过之前失败的解析接口', async () => {
+    const target = 'https://v.qq.com/x.html';
+    const calls: string[] = [];
+    const svc = new ParseService(fakeHttp({}), logger, fakeSniff({ url: 'https://cdn.test/hit.m3u8', headers: {} }, calls));
+    const parses = [
+      P({ name: '线路1', url: 'https://p1.test/?url=', type: 0 }),
+      P({ name: '线路2', url: 'https://p2.test/?url=', type: 0 }),
+    ];
+    // offset = 1 时优先尝试线路2
+    const result = await svc.resolve(parses, target, 1);
+    expect(result?.via).toBe('sniff:线路2');
+    expect(calls[0]).toBe('https://p2.test/?url=' + target);
+  });
+});
+
+
+describe('CMS share playback pages', () => {
+  it('sniffs the source player before subscription parse services', async () => {
+    const target = 'https://cdn.test/share/episode';
+    const calls: string[] = [];
+    const svc = new ParseService(fakeHttp({}), logger, fakeSniff({ url: 'https://cdn.test/index.m3u8', headers: { Referer: target } }, calls));
+    const result = await svc.resolve([P({ name: 'other', type: 0 })], target);
+    expect(result?.via).toBe('sniff:direct');
+    expect(calls).toEqual([target]);
+  });
+  it('does not accept a share page returned as a media result', async () => {
+    const target = 'https://cdn.test/share/episode';
+    const svc = new ParseService(fakeHttp({}), logger, async () => ({ url: target, headers: {} }));
+    expect(await svc.resolve([], target)).toBeNull();
+  });
 });

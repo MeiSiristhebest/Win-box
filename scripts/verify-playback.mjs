@@ -27,7 +27,7 @@ async function showConfigTab(page, name) {
 
 async function selectKernel(player, label) {
   await player.locator('.vplayer').hover();
-  await player.locator('.vp-kernel').click();
+  await player.getByRole('button', { name: /^播放方式：/ }).click();
   await player.getByRole('button', { name: label, exact: true }).click();
 }
 
@@ -163,6 +163,26 @@ export async function verifyPlayback() {
     await player.waitForFunction(() => JSON.parse(localStorage.getItem('winbox-player-prefs') || '{}').kernel === 'auto');
     await player.waitForFunction(() => { const video = document.querySelector('video'); return video?.videoWidth === 320 && video.paused && video.currentTime > 2; });
     record('restore-auto-and-preserve-paused-position', await player.locator('video').evaluate(video => ({ time: video.currentTime, paused: video.paused })));
+
+    await call(main, 'playerPrefs', 'set', { kernel: 'html5' });
+    await player.close();
+    await main.waitForFunction(async () => !(await window.api.player.isOpen()).data.open);
+    const deniedPlayerEvent = application.waitForEvent('window');
+    await call(main, 'player', 'open', {
+      key: 'shared-site', flag: 'fixture', episodes: [{ name: '403 HLS', url: fixture.base + '/denied.m3u8' }],
+      epIndex: 0, title: '403 HLS 验收', lastUrl: fixture.base + '/denied.m3u8', lastName: '403 HLS 验收',
+      meta: { profileId: profileB.id, fromKey: 'shared-site', vodId: '403-hls', sourceName: '验收乙站点' },
+    });
+    const deniedPlayer = await deniedPlayerEvent;
+    await deniedPlayer.waitForURL(url => url.hash === '#/player');
+    await deniedPlayer.getByText(/HLS 播放失败.*HTTP 403/).waitFor({ timeout: 15_000 });
+    const hls403Message = await deniedPlayer.locator('body').innerText();
+    assert.ok(!hls403Message.includes('PipelineStatus::DEMUXER_ERROR_COULD_NOT_PARSE'));
+    const hlsRequest = fixture.requests.find(request => request.path === '/denied.m3u8');
+    assert.equal(hlsRequest?.range, '', 'Electron must request HLS manifests through hls.js instead of native media demuxing');
+    record('hls-http-403-reported-as-source-error', { httpStatus: 403, messageContainsHlsFailure: hls403Message.includes('HLS 播放失败'), requestUsedHlsLoader: hlsRequest?.range === '' });
+    await deniedPlayer.close();
+    await main.waitForFunction(async () => !(await window.api.player.isOpen()).data.open);
 
     const pluginDir = join(directory, 'dialog-plugin');
     await mkdir(pluginDir);

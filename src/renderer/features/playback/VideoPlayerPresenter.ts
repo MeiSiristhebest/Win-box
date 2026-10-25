@@ -6,7 +6,7 @@ import { useSuperResolution } from './useSuperResolution';
 import { usePlaybackBoost } from './usePlaybackBoost';
 import { usePlayerContextMenu } from './usePlayerContextMenu';
 import { openConfiguredExternalFallback, type ExternalPlaybackFallbackPort } from './externalPlayback';
-import { useCallback, useLayoutEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type MouseEvent as ReactMouseEvent, type RefObject } from 'react';
 import { playbackProgressKey, type PlaybackSourceRef } from '../../lib/playbackProgress';
 // ★ 2026-09-30（用户要求）：图片/音乐分流 + 直播态判定（纯函数，见 lib/mediaKind.ts）
 import { detectMediaKind, isLikelyLive } from '../../lib/mediaKind';

@@ -11,6 +11,7 @@ export async function startAcceptanceFixture() {
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.setHeader('Cache-Control', 'no-store');
     const json = value => { response.setHeader('Content-Type', 'application/json; charset=utf-8'); response.end(JSON.stringify(value)); };
+    if (url.pathname === '/denied.m3u8') { response.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8' }); response.end('<html>Forbidden</html>'); return; }
     if (url.pathname === '/repos.json') return json({ urls: [{ name: '验收甲仓', url: base + '/a.json' }, { name: '验收乙仓', url: base + '/b.json' }] });
     if (url.pathname === '/a.json' || url.pathname === '/b.json') {
       const id = url.pathname[1];

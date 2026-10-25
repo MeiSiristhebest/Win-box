@@ -115,13 +115,6 @@ export async function sniffMediaUrl(
     };
 
     const onAbort = (): void => settle();
-    if (signal) {
-      if (signal.aborted) {
-        settle();
-        return;
-      }
-      signal.addEventListener('abort', onAbort, { once: true });
-    }
 
     const settle = (): void => {
       if (settled) return;
@@ -139,6 +132,14 @@ export async function sniffMediaUrl(
       else logger.w(`sniff: 未命中媒体地址（${url.slice(0, 90)}）`);
       resolve(hit);
     };
+
+    if (signal) {
+      if (signal.aborted) {
+        settle();
+        return;
+      }
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
 
     const note = (u: string): void => {
       if (!u || candidates.includes(u)) return;

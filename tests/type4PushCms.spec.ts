@@ -1,6 +1,11 @@
 // tests/type4PushCms.spec.ts — type=4「推送聚合」= 苹果 CMS JSON 变体，走 CmsSource（ac=detail）
 import { describe, it, expect } from 'vitest';
 import { CmsSource } from '../src/engine/vod/CmsSource';
+import { SourceGateway } from '../src/engine/vod/SourceGateway';
+import { SpiderSourceAdapter } from '../src/engine/vod/SpiderSourceAdapter';
+import { SpiderSourceRuntimeAdapter } from '../src/engine/spider/SpiderSourceRuntimeAdapter';
+import { CmsSourceAdapter } from '../src/engine/vod/CmsSourceAdapter';
+import { SpiderFactory } from '../src/engine/spider/SpiderFactory';
 import type { EngineHost } from '../src/engine/ports';
 import { NullLogger } from '../src/engine/util/logger';
 
@@ -51,5 +56,20 @@ describe('CmsSource — type=4 与 type=1 同为 CMS JSON（ac=detail）', () =>
     const u = urlOf(record[0]);
     expect(u.searchParams.get('ac')).toBe('detail');
     expect(u.searchParams.get('wd')).toBe('关键字');
+  });
+});
+
+describe('CMS playback address classification', () => {
+  it.each([0, 1, 4])('type %i sends share/html pages to resolution while preserving opaque media links', async type => {
+    const host = capturingHost([]);
+    const factory = new SpiderFactory();
+    const cmsAdapter = new CmsSourceAdapter(new CmsSource(host));
+    const spiderAdapter = new SpiderSourceAdapter(new SpiderSourceRuntimeAdapter(factory, host), NullLogger);
+    const vm = new SourceGateway({ catalog: [cmsAdapter, spiderAdapter], playback: [cmsAdapter, spiderAdapter], proxy: [spiderAdapter] }, NullLogger);
+    const source = { key: 'cms', type, playUrl: '' } as never;
+    expect((await vm.play(source, 'liangzi', 'https://cdn.test/share/abc', [])).parse).toBe(1);
+    expect((await vm.play(source, 'liangzi', 'https://cdn.test/watch.html', [])).parse).toBe(1);
+    expect((await vm.play(source, 'lzm3u8', 'https://cdn.test/index.m3u8', [])).parse).toBe(0);
+    expect((await vm.play(source, 'direct', 'https://cdn.test/opaque-signature?token=x', [])).parse).toBe(0);
   });
 });

@@ -2,7 +2,7 @@
 // 不触真进程：用 fake spawnFn + fake ChildProcess 模拟 stdin/stdout 行协议。
 // 覆盖：①同 key 请求复用空闲进程；②同 key 并发 → 多进程并行（PER_KEY_CAP 内）；
 // ③达 PER_KEY_CAP 后排队（空闲即执行）；④排队超时只失败该请求、不牵连进程；
-// ⑤执行超时 kill 进程 + 失败语义；⑥exit 崩溃 → 失败语义；⑦全局上限 LRU 回收；
+// ⑤执行超时占槽到迟到响应、无人等待时回收进程；⑥exit 崩溃 → 失败语义；⑦全局上限 LRU 回收；
 // ⑧空闲回收（并行多开的进程收敛到每 key 1 个）；⑨行协议信封不被日志碎片打穿；
 // ⑩★ 空结果是**合法结果**（ok:true, data=''）—— 不再被误判失败去回退一次性；
 // ⑪★ 2026-10-17（B1）播放期收缩：布防后池整体空闲 30s 收敛到 1 个热进程。
@@ -196,6 +196,64 @@ describe('SpiderProcPool — 复用 / 并行 / 排队 / 失败语义', () => {
     await Promise.all(busy);
   });
 
+  it('取消尚未派发的排队请求，不触碰共享进程中的其它在途请求', async () => {
+    vi.useFakeTimers();
+    const children: FakeChild[] = [];
+    const pool = new SpiderProcPool(() => {
+      const child = muteChild();
+      children.push(child);
+      return child as never;
+    });
+    const total = Math.min(PER_KEY_CAP, effectiveGlobalCap()) * MAX_INFLIGHT_PER_PROC;
+    const active = Array.from({ length: total }, (_, index) => pool.submit('k1', SPEC, REQ(`active-${index}`), 60_000));
+    const controller = new AbortController();
+    const queued = pool.submit('k1', SPEC, REQ('cancelled-search'), 60_000, undefined, controller.signal);
+
+    controller.abort(new Error('search superseded'));
+    await expect(queued).resolves.toEqual({ ok: false, data: '', reason: 'cancelled' });
+    const writes = children.flatMap((child) => child.stdin.write.mock.calls.map(([line]) => line));
+    expect(writes.some((line) => line.includes('cancelled-search'))).toBe(false);
+    expect(children.every((child) => vi.mocked(child.kill).mock.calls.length === 0)).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(61_000);
+    await Promise.all(active);
+    pool.dispose();
+  });
+
+  it('取消已派发调用者立即返回，但保留并发槽直到完成，并忽略迟到结果', async () => {
+    const { pool, spawned } = makeEnv(false);
+    const requestCount = Math.min(PER_KEY_CAP, effectiveGlobalCap()) * MAX_INFLIGHT_PER_PROC;
+    const controller = new AbortController();
+    const active = Array.from({ length: requestCount }, (_, index) =>
+      pool.submit('k1', SPEC, REQ(`active-${index}`), 60_000, undefined, index === 0 ? controller.signal : undefined),
+    );
+    const queued = pool.submit('k1', SPEC, REQ('queued-after-cancel'), 60_000);
+    expect(spawned).toHaveLength(Math.min(PER_KEY_CAP, effectiveGlobalCap()));
+
+    controller.abort(new Error('search superseded'));
+    await expect(active[0]).resolves.toEqual({ ok: false, data: '', reason: 'cancelled' });
+
+    const firstChild = spawned[0].child;
+    const writtenBeforeLateResponse = firstChild.stdin.write.mock.calls.map(([line]) => JSON.parse(line).id);
+    expect(writtenBeforeLateResponse).not.toContain('queued-after-cancel');
+
+    // The shared runtime cannot interrupt one invocation safely. Its slot remains occupied
+    // until the response arrives, then queued work starts and the canceled result stays discarded.
+    reply(firstChild, 'active-0', 'late result');
+    const writtenAfterLateResponse = firstChild.stdin.write.mock.calls.map(([line]) => JSON.parse(line).id);
+    expect(writtenAfterLateResponse).toContain('queued-after-cancel');
+    reply(firstChild, 'queued-after-cancel', 'queued result');
+    await expect(queued).resolves.toEqual({ ok: true, data: 'queued result', proxyPort: undefined });
+
+    for (let index = 1; index < requestCount; index++) {
+      const child = spawned[Math.floor(index / MAX_INFLIGHT_PER_PROC)].child;
+      reply(child, `active-${index}`, `result-${index}`);
+    }
+    await expect(Promise.all(active.slice(1))).resolves.toHaveLength(requestCount - 1);
+    expect(spawned.every(({ child }) => vi.mocked(child.kill).mock.calls.length === 0)).toBe(true);
+    pool.dispose();
+  });
+
   it('响应含内嵌换行 → 信封按物理行解析不截断（日志碎片行被忽略）', async () => {
     const spawned: number[] = [];
     const pool = new SpiderProcPool(() => {
@@ -213,16 +271,49 @@ describe('SpiderProcPool — 复用 / 并行 / 排队 / 失败语义', () => {
     expect(r).toEqual({ ok: true, data: '{"list":[{"n":"a\nb"}]}' }); // GARBAGE 行被忽略，data 原样返回
   });
 
-  it('执行超时 → 只失败该请求，**不杀进程**（★ 三轮：进程里还有别的源的在途请求）', async () => {
+  it('一个调用超时后保留槽，兄弟请求仍在跑时不杀进程；迟到响应释放槽并排入队请求', async () => {
+    vi.useFakeTimers();
+    const { pool, spawned } = makeEnv(false);
+    const processCount = Math.min(PER_KEY_CAP, effectiveGlobalCap());
+    const activeCount = processCount * MAX_INFLIGHT_PER_PROC;
+    const active = Array.from({ length: activeCount }, (_, index) =>
+      pool.submit('k1', SPEC, REQ(`active-${index}`), index === 0 ? 8000 : 60_000),
+    );
+    const queued = pool.submit('k1', SPEC, REQ('queued-after-timeout'), 60_000);
+    expect(spawned).toHaveLength(processCount);
+
+    await vi.advanceTimersByTimeAsync(8_100);
+    // reason='timeout' is returned immediately, but the real JVM/Python worker is still occupied.
+    expect(await active[0]).toEqual({ ok: false, data: '', reason: 'timeout' });
+    expect(spawned.every(({ child }) => vi.mocked(child.kill).mock.calls.length === 0)).toBe(true);
+    const owner = spawned[0].child;
+    expect(owner.stdin.write.mock.calls.map(([line]) => JSON.parse(line).id)).not.toContain('queued-after-timeout');
+
+    // Its late response releases the actual slot; only then may queued work be sent.
+    reply(owner, 'active-0', 'late-but-discarded');
+    expect(owner.stdin.write.mock.calls.map(([line]) => JSON.parse(line).id)).toContain('queued-after-timeout');
+    reply(owner, 'queued-after-timeout', 'queued-result');
+    await expect(queued).resolves.toMatchObject({ ok: true, data: 'queued-result' });
+
+    for (let index = 1; index < activeCount; index++) {
+      reply(spawned[Math.floor(index / MAX_INFLIGHT_PER_PROC)].child, `active-${index}`, `result-${index}`);
+    }
+    await expect(Promise.all(active.slice(1))).resolves.toHaveLength(activeCount - 1);
+    expect(spawned.every(({ child }) => vi.mocked(child.kill).mock.calls.length === 0)).toBe(true);
+    pool.dispose();
+  });
+
+  it('同一进程所有在途调用都已超时且无人等待时回收进程', async () => {
     vi.useFakeTimers();
     const killed: string[] = [];
     const pool = new SpiderProcPool(() => muteChild(() => killed.push('kill')) as never);
-    const p = pool.submit('k1', SPEC, REQ('t'), 8000); // 源级超时 8s
+    const request = pool.submit('k1', SPEC, REQ('only-request'), 8000);
+
     await vi.advanceTimersByTimeAsync(8_100);
-    // ★ reason='timeout' 是「不回退一次性」的判据（见 JarSpiderBridge）：死源只等一个超时，不再 ×2
-    expect(await p).toEqual({ ok: false, data: '', reason: 'timeout' });
-    expect(killed).toHaveLength(0); // ★ 不再 kill 进程（并发下会连带杀掉其它源）
-    expect(pool.aliveCount).toBe(1);
+
+    await expect(request).resolves.toEqual({ ok: false, data: '', reason: 'timeout' });
+    expect(killed).toHaveLength(1);
+    expect(pool.aliveCount).toBe(0);
   });
 
   it('进程 exit 崩溃 → 拒绝 pending（ok=false）', async () => {

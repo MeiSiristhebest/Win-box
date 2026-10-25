@@ -94,7 +94,7 @@ export function useDanmakuController({
           time: 0,
           text: text.trim(),
           color: '#FFFFFF',
-          mode: 1,
+          type: 'scroll',
           size: 25,
         },
       ]);

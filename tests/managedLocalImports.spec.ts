@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { JsonStore } from '../src/main/store/JsonStore';
 import { LocalPkgStore } from '../src/main/store/LocalPkgStore';
-import { UserConfigManager } from '../src/main/store/UserConfigManager';
+import { UserConfigApplicationService } from '../src/main/store/UserConfigApplicationService';
 import { NullLogger } from '../src/engine/util/logger';
 import { pkgSubUrl } from '../src/engine/config/localPkg';
 import { parseSiteConfig } from '../src/engine/config/ApiConfigParser';
@@ -21,7 +21,7 @@ function setup() {
   dirs.push(dir);
   const imports = join(dir, 'install', 'imports');
   const store = new LocalPkgStore(new JsonStore(join(dir, 'data', 'local-pkgs.json')), 'http://127.0.0.1:9978', imports);
-  const manager = new UserConfigManager(new JsonStore(join(dir, 'data', 'user-config.json')), NullLogger);
+  const manager = new UserConfigApplicationService(new JsonStore(join(dir, 'data', 'user-config.json')), NullLogger);
   const source = join(dir, 'original');
   mkdirSync(join(source, 'py', 'base'), { recursive: true });
   writeFileSync(join(source, 'py', '源.py'), 'from base.helper import value\nclass Spider: pass\n');
@@ -30,7 +30,7 @@ function setup() {
   return { dir, imports, store, manager, source };
 }
 
-function addPython(manager: UserConfigManager, api: string, key = 'py') {
+function addPython(manager: UserConfigApplicationService, api: string, key = 'py') {
   manager.addSource({ key, name: key, type: 3, api, ext: '', jar: '' } as SourceBean);
 }
 
