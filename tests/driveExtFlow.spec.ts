@@ -17,17 +17,18 @@ import * as JsSandboxModule from '../src/engine/js/JsSandbox';
 
 // mock JsSandbox：捕获构造参数与 setExt 调用（避免真实加载远程脚本）
 vi.mock('../src/engine/js/JsSandbox', () => {
-  const instances: { opts: Record<string, unknown>; extSet: string[] }[] = [];
+  const instances: { opts: Record<string, unknown>; extSet: string[]; callArgs: unknown[][] }[] = [];
   class JsSandboxMock {
     opts: Record<string, unknown>;
     extSet: string[] = [];
+    callArgs: unknown[][] = [];
     constructor(opts: Record<string, unknown>) {
       this.opts = opts;
       instances.push(this);
     }
     setExt(ext: string): void { this.extSet.push(ext); }
     ensureLoaded(): Promise<void> { return Promise.resolve(); }
-    callMethod(): Promise<undefined> { return Promise.resolve(undefined); }
+    callMethod(...args: unknown[]): Promise<undefined> { this.callArgs.push(args); return Promise.resolve(undefined); }
   }
   return { JsSandbox: JsSandboxMock, __instances: instances };
 });
@@ -146,7 +147,7 @@ describe('端到端：DriveStore.set → host.driveTokens → JarSpider.call 的
       resolvePaths: (urls: string[]) => urls,
       call: async (_jars: string[], _cls: string, method: string, args: string[]) => {
         calls.push({ method, args });
-        return '{}';
+        return { ok: true, output: '{}', reason: '', failureKind: null, problemCode: null };
       },
     };
     return { bridge: bridge as unknown as JarSpiderBridge, calls };
@@ -205,7 +206,17 @@ describe('端到端：DriveStore.set → host.driveTokens → JarSpider.call 的
 
 describe('端到端：JsSpider 的 ext 注入（沙箱 setExt / forwardInit 收到合并后的 ext）', () => {
   // __instances 是 mock 工厂里的独立导出（不是 JsSandbox 类的属性），从命名空间取
-  const instances = (JsSandboxModule as unknown as { __instances: { opts: Record<string, unknown>; extSet: string[] }[] }).__instances;
+  const instances = (JsSandboxModule as unknown as { __instances: { opts: Record<string, unknown>; extSet: string[]; callArgs: unknown[][] }[] }).__instances;
+
+  it('把聚合搜索的调用方时限传给 JS 蜘蛛运行时', async () => {
+    const host: EngineHost = { http: http404, kv: memKv(), logger: NullLogger };
+    const before = instances.length;
+    const spider = new JsSpider({ key: 'search-budget', api: 'https://x/sp.js', ext: '', jar: '', host });
+
+    await spider.searchContent('title', false, 1_750);
+
+    expect(instances[before].callArgs).toEqual([[['searchContent', 'search'], ['title', false, '1'], 1_750]]);
+  });
 
   it('构造时把 driveTokens 并入 ext 再交给沙箱（P0 缺口①修复）', () => {
     const host: EngineHost = {

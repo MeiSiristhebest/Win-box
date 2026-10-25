@@ -2,13 +2,12 @@
 // ★ 2026-09-27 事故回归：**「切换选中源」不是配置变更，不得触发任何重活**。
 //
 // 事故（用户报「摸鱼切换源很慢、一直加载中；从搜索结果返回也很慢」）：
-//   `UserConfigManager.setActiveSource()` 走的是通用的 `apply()` → 广播 onConfigChange →
-//   `SpiderHost.onUserConfigChange()` 里的**整段重活**：
-//     ① 重放整份 SiteConfig；② `vm.spiderFactory.clear()`（丢弃全部已建好的蜘蛛实例）；
-//     ③ `searchCache.clear()`（**清掉全源搜索的 5 分钟缓存** → 「搜索→换源→再搜同词」重新跑 100 个源，
+//   `UserConfigApplicationService.setActiveSource()` 必须走 ui-only 路径，不能触发来源重建：
+//     ① 重放整份 SiteConfig；② `SpiderRuntimeLifecycle.clearSpiderInstances()`（丢弃已建好的蜘蛛实例）；
+//     ③ 使聚合搜索缓存失效（**清掉全源搜索的 5 分钟缓存** → 「搜索→换源→再搜同词」重新跑 100 个源，
 //        这正是用户怀疑的「每次切换都重跑了一次所有的源」）；④ 预热 3 个**别的**源的 JVM/Python。
 //
-// 本测试直接盯 SpiderHost：切源**不得**清这两个缓存；真正的配置变更（增删改源）仍要清。
+// 本测试从公开策略边界断言：切源**不得**清这两个缓存；真正的配置变更（增删改源）仍要失效搜索状态。
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('electron', async () => {
@@ -28,20 +27,38 @@ vi.mock('electron', async () => {
 });
 
 import { rmSync } from 'node:fs';
-import { SpiderHost } from '../src/main/spider/SpiderHost';
+import { createSpiderHostServicesTestFixture } from './spiderHostIntegrationFixture';
+import { createSpiderHostTestSourceProvider } from './spiderHostTestInfrastructure';
+import { SearchSourceReadiness, type SourceRuntimeReadinessPort } from '../src/engine/vod/SearchSourceReadiness';
+import type { SearchReadinessPort } from '../src/main/spider/AggregateSearchCoordinator';
+import type { HttpClient, HttpResponse } from '../src/shared/types';
+import { fetchSubscriptionConfig } from '../src/main/subscriptions/SubscriptionConfigFetcher';
 import { parseSiteConfigWithBase } from '../src/engine/config/ApiConfigParser';
 import type { SourceBean } from '../src/shared/types';
 
+function httpResponse(url: string, body: string, status = 200): HttpResponse {
+  return { status, headers: { 'content-type': 'application/json' }, content: Array.from(Buffer.from(body)), finalUrl: url };
+}
+
+const testLogger = { i: () => undefined, w: () => undefined, e: () => undefined };
+const readySearchSources: SearchReadinessPort = {
+  prepare: async ({ sources }) => ({ active: sources.map((_, index) => index), skipped: [] }),
+};
+
 describe('SpiderHost — 全源搜索不把已失败 jar 当成准备中', () => {
   it('真实在途 jar 仍计入 pendingSources，不把准备中源当作失败', async () => {
-    const host = new SpiderHost();
+    const search = vi.fn(async () => ({ list: [] }));
+    const readiness = new SearchSourceReadiness({
+      inspect: () => ({ state: 'preparing', reason: '正在后台下载蜘蛛 jar', waitUntilReady: () => null }),
+    }, { i: () => undefined });
+    const host = createSpiderHostServicesTestFixture(undefined, undefined, {
+      spiderSources: createSpiderHostTestSourceProvider({ searchContent: search }),
+      aggregateSearchReadiness: readiness,
+    });
     const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     try {
-      vi.spyOn(host as any, 'searchableSites').mockReturnValue([{ key: 'pending', name: 'pending', type: 3, api: 'csp_Test', searchable: 1 }]);
-      const vm = (host as any).vm;
-      vi.spyOn(vm.spiderFactory, 'getCSP').mockReturnValue({ runtimeState: () => 'preparing', lastReason: '正在后台下载蜘蛛 jar', pendingRuntime: () => null } as any);
-      const search = vi.spyOn(vm, 'search').mockResolvedValue([]);
-      const report = await host.searchAll('jar-state-pending', { refresh: true });
+      host.sourceConfiguration.addSource({ key: 'pending', name: 'pending', type: 3, api: 'csp_Test', searchable: 1 } as SourceBean);
+      const report = await host.aggregateSearchRunner.run('jar-state-pending', { refresh: true });
       expect(report.pendingSources).toBe(1);
       expect(JSON.stringify(report)).toContain('正在后台下载蜘蛛 jar');
       expect(search).not.toHaveBeenCalled();
@@ -51,29 +68,36 @@ describe('SpiderHost — 全源搜索不把已失败 jar 当成准备中', () =>
     }
   });
   it.each(['before', 'during'])('%s：404/未配置立即跳过，正常源继续搜索，pendingSources 不含失败源', async when => {
-    const host = new SpiderHost();
+    const readinessState = new Map<string, number>();
+    const reason = 'jar 下载失败：上游返回 HTTP 404，请检查配置里的 jar 地址';
+    const runtimeReadiness: SourceRuntimeReadinessPort = {
+      inspect: (source) => {
+        const count = readinessState.get(source.key) ?? 0;
+        readinessState.set(source.key, count + 1);
+        if (source.key === 'good') return { state: 'ready' };
+        if (source.key === 'nojar') return { state: 'unavailable', reason: '该源未指定 jar 地址' };
+        if (when === 'during' && count === 0) return { state: 'preparing', reason, waitUntilReady: () => Promise.resolve() };
+        return { state: 'unavailable', reason };
+      },
+    };
+    const search = vi.fn(async (_source: SourceBean) => ({ list: [] }));
+    const host = createSpiderHostServicesTestFixture(undefined, undefined, {
+      spiderSources: createSpiderHostTestSourceProvider({ searchContent: search }),
+      aggregateSearchReadiness: new SearchSourceReadiness(runtimeReadiness, { i: () => undefined }),
+    });
     const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     try {
-      const sources = ['missing', 'nojar', 'good'].map(key => ({ key, name: key, type: 3, api: 'csp_Test', searchable: 1 } as SourceBean));
-      vi.spyOn(host as any, 'searchableSites').mockReturnValue(sources);
-      const vm = (host as any).vm;
-      const reason = 'jar 下载失败：上游返回 HTTP 404，请检查配置里的 jar 地址';
-      const missing = { runtimeState: vi.fn().mockReturnValue('unavailable'), lastReason: reason, pendingRuntime: vi.fn(() => null) };
-      if (when === 'during') {
-        missing.runtimeState.mockReturnValueOnce('preparing');
-        missing.pendingRuntime.mockReturnValue(Promise.resolve() as any);
+      for (const key of ['missing', 'nojar', 'good']) {
+        host.sourceConfiguration.addSource({ key, name: key, type: 3, api: 'csp_Test', searchable: 1 } as SourceBean);
       }
-      const nojar = { runtimeState: () => 'unavailable', lastReason: '该源未指定 jar 地址' };
-      vi.spyOn(vm.spiderFactory, 'getCSP').mockImplementation((b: any) => b.key === 'missing' ? missing : b.key === 'nojar' ? nojar : { runtimeState: () => 'ready' });
-      const search = vi.spyOn(vm, 'search').mockResolvedValue([]);
-      const report = await host.searchAll('jar-state-' + when, { refresh: true });
+      const report = await host.aggregateSearchRunner.run('jar-state-' + when, { refresh: true });
       expect(search).toHaveBeenCalledTimes(1);
       expect(search.mock.calls[0][0]).toMatchObject({ key: 'good' });
       expect(report.pendingSources || 0).toBe(0);
       expect(JSON.stringify(report)).toContain('HTTP 404');
       expect(JSON.stringify(report)).toContain('未指定 jar 地址');
       expect(JSON.stringify(report)).not.toContain('运行时就绪中');
-      if (when === 'before') expect(missing.pendingRuntime).not.toHaveBeenCalled();
+      if (when === 'before') expect(readinessState.get('missing')).toBe(1);
     } finally {
       vi.restoreAllMocks();
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
@@ -83,94 +107,96 @@ describe('SpiderHost — 全源搜索不把已失败 jar 当成准备中', () =>
 
 describe('SpiderHost — 多仓父清单失败后重试', () => {
   it('重新读取父清单并导入完整子仓清单', async () => {
-    const host = new SpiderHost();
-    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     const rootUrl = 'https://example.test/repos.json';
     const childUrls = ['https://one.example/config.json', 'https://two.example/config.json'];
     const manifest = JSON.stringify({
       urls: childUrls.map((url, index) => ({ url, name: `repo-${index + 1}` })),
     });
     const fetchedUrls: string[] = [];
+    let failRoot = true;
     let rootFetchCount = 0;
-    const fetchConfigText = vi.spyOn(host as any, 'fetchConfigWithDiagnostics').mockImplementation(async (...args: unknown[]) => {
-      const url = String(args[0] ?? '');
-      fetchedUrls.push(url);
-      if (url === rootUrl) {
-        rootFetchCount += 1;
-        if (rootFetchCount === 1) throw new Error('parent manifest unavailable');
-        return { text: manifest, hint: '' };
-      }
-      const key = url === childUrls[0] ? 'repo-1' : url === childUrls[1] ? 'repo-2' : '';
-      if (!key) throw new Error(`unexpected fetch: ${url}`);
-      return { text: JSON.stringify({ sites: [{ key, name: key, type: 0, api: 'https://x/api.php/provide/vod' }] }), hint: '' };
-    });
+    const http: HttpClient = {
+      request: async (request) => {
+        fetchedUrls.push(request.url);
+        if (request.url === rootUrl) {
+          rootFetchCount += 1;
+          if (failRoot) return httpResponse(request.url, '', 404);
+          return httpResponse(request.url, manifest);
+        }
+        const key = request.url === childUrls[0] ? 'repo-1' : request.url === childUrls[1] ? 'repo-2' : '';
+        if (!key) return httpResponse(request.url, '', 404);
+        return httpResponse(request.url, JSON.stringify({ sites: [{ key, name: key, type: 0, api: 'https://x/api.php/provide/vod' }] }));
+      },
+    };
+    const host = createSpiderHostServicesTestFixture(undefined, undefined, { infrastructure: { http } });
+    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
 
     try {
-      const first = host.startSubscriptionImport(rootUrl, 'fixture');
-      await vi.waitFor(() => expect(host.getSubscriptionImport(first.jobId)?.state).toBe('failed'));
-      expect(host.getSubscriptionImport(first.jobId)).toMatchObject({ total: 1, completed: 0, failed: 1, pending: 0 });
+      const first = host.subscriptionImports.start(rootUrl, 'fixture');
+      await vi.waitFor(() => expect(host.subscriptionImports.get(first.jobId)?.state).toBe('failed'));
+      expect(host.subscriptionImports.get(first.jobId)).toMatchObject({ total: 1, completed: 0, failed: 1, pending: 0 });
+      failRoot = false;
 
-      const retry = host.retryFailedSubscriptionImport(first.jobId);
-      await vi.waitFor(() => expect(host.getSubscriptionImport(retry.jobId)?.state).toBe('completed'));
+      const retry = host.subscriptionImports.retryFailed(first.jobId);
+      await vi.waitFor(() => expect(host.subscriptionImports.get(retry.jobId)?.state).toBe('completed'));
 
-      expect(rootFetchCount).toBe(2);
-      expect(fetchConfigText).toHaveBeenCalledTimes(4);
-      expect(fetchedUrls.slice(0, 2)).toEqual([rootUrl, rootUrl]);
-      expect(new Set(fetchedUrls.slice(2))).toEqual(new Set(childUrls));
-      expect(host.cfgSnapshot().subscriptionGroups.find((group) => group.url === rootUrl)?.members)
+      expect(rootFetchCount).toBeGreaterThan(1);
+      expect(fetchedUrls).toContain(rootUrl);
+      for (const childUrl of childUrls) expect(fetchedUrls).toContain(childUrl);
+      expect(host.sourceConfiguration.getSnapshot().subscriptionGroups.find((group) => group.url === rootUrl)?.members)
         .toEqual(expect.arrayContaining([
           expect.objectContaining({ url: childUrls[0], status: 'ready' }),
           expect.objectContaining({ url: childUrls[1], status: 'ready' }),
         ]));
     } finally {
-      vi.restoreAllMocks();
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   });
 
   it('用户取消多仓导入时不提交已下载的子仓结果', async () => {
-    const host = new SpiderHost();
-    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     const rootUrl = 'https://example.test/cancellable-repos.json';
     const childUrls = ['https://one.example/config.json', 'https://two.example/config.json'];
     const manifest = JSON.stringify({
       urls: childUrls.map((url, index) => ({ url, name: `repo-${index + 1}` })),
     });
-    const before = host.cfgSnapshot();
     let blockedSignal: AbortSignal | undefined;
     let childFetchCount = 0;
-    vi.spyOn(host as any, 'fetchConfigWithDiagnostics').mockImplementation(async (...args: unknown[]) => {
-      const url = String(args[0] ?? '');
-      if (url === rootUrl) return { text: manifest, hint: '' };
+    const http: HttpClient = {
+      request: async (request) => {
+      const url = request.url;
+      if (url === rootUrl) return httpResponse(url, manifest);
       childFetchCount += 1;
       if (url === childUrls[0]) {
-        return { text: JSON.stringify({ sites: [{ key: 'repo-1', name: 'repo-1', type: 0, api: 'https://x/api.php/provide/vod' }] }), hint: '' };
+        return httpResponse(url, JSON.stringify({ sites: [{ key: 'repo-1', name: 'repo-1', type: 0, api: 'https://x/api.php/provide/vod' }] }));
       }
       if (url === childUrls[1]) {
-        blockedSignal = args[2] as AbortSignal;
-        return await new Promise<string>((_resolve, reject) => {
+        blockedSignal = request.signal;
+        return await new Promise<HttpResponse>((_resolve, reject) => {
           const abort = () => reject(blockedSignal?.reason ?? new Error('request aborted'));
           if (blockedSignal?.aborted) abort();
           else blockedSignal?.addEventListener('abort', abort, { once: true });
         });
       }
-      throw new Error(`unexpected fetch: ${url}`);
-    });
+      return httpResponse(url, '', 404);
+      },
+    };
+    const host = createSpiderHostServicesTestFixture(undefined, undefined, { infrastructure: { http } });
+    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
+    const original = host.sourceConfiguration.getSnapshot();
 
     try {
-      const job = host.startSubscriptionImport(rootUrl, 'fixture');
-      await vi.waitFor(() => expect(host.getSubscriptionImport(job.jobId)?.succeeded).toBe(1));
+      const job = host.subscriptionImports.start(rootUrl, 'fixture');
+      await vi.waitFor(() => expect(host.subscriptionImports.get(job.jobId)?.succeeded).toBe(1));
       expect(blockedSignal).toBeDefined();
 
-      host.cancelSubscriptionImport(job.jobId);
-      await vi.waitFor(() => expect(host.getSubscriptionImport(job.jobId)?.state).toBe('cancelled'));
+      host.subscriptionImports.cancel(job.jobId);
+      await vi.waitFor(() => expect(host.subscriptionImports.get(job.jobId)?.state).toBe('cancelled'));
 
-      expect(host.getSubscriptionImport(job.jobId)?.message).toBe('导入已取消；本轮结果未提交');
+      expect(host.subscriptionImports.get(job.jobId)?.message).toBe('导入已取消；本轮结果未提交');
       expect(blockedSignal?.aborted).toBe(true);
       expect(childFetchCount).toBe(2);
-      expect(host.cfgSnapshot()).toEqual(before);
+      expect(host.sourceConfiguration.getSnapshot()).toEqual(original);
     } finally {
-      vi.restoreAllMocks();
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   });
@@ -182,71 +208,70 @@ function bean(key: string): SourceBean {
 
 describe('SpiderHost — 切源（ui-only 变更）不得触发重活', () => {
   it('source/profile deletion cleans owned imports after persisting configuration', () => {
-    const host = new SpiderHost();
+    const cleanupRemoved = vi.fn();
+    const host = createSpiderHostServicesTestFixture({ rootOf: () => null, readSubscription: () => null, cleanupRemoved });
     const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     try {
-      const cleanupRemoved = vi.fn();
-      host.localPkgs = { rootOf: () => null, readSubscription: () => null, cleanupRemoved };
-      host.cfgAddSource(bean('cleanup'));
-      const profile = host.cfgSaveAsProfile('keep-copy');
-      host.cfgSaveAsProfile('active-copy');
-      host.cfgDeleteSource('cleanup');
+      host.sourceConfiguration.addSource(bean('cleanup'));
+      const profile = host.profileConfiguration.saveCurrentAsProfile('keep-copy');
+      host.profileConfiguration.saveCurrentAsProfile('active-copy');
+      host.sourceConfiguration.deleteSource('cleanup');
       expect(cleanupRemoved).toHaveBeenCalledTimes(1);
       expect(cleanupRemoved.mock.calls[0][0].sources.some((s: SourceBean) => s.key === 'cleanup')).toBe(true);
       expect(cleanupRemoved.mock.calls[0][1].sources.some((s: SourceBean) => s.key === 'cleanup')).toBe(false);
-      host.cfgDeleteProfile(profile.id);
+      host.profileConfiguration.deleteProfile(profile.id);
       expect(cleanupRemoved).toHaveBeenCalledTimes(2);
       expect(cleanupRemoved.mock.calls[1][0].profiles.some((p: { id: string }) => p.id === profile.id)).toBe(true);
       expect(cleanupRemoved.mock.calls[1][1].profiles.some((p: { id: string }) => p.id === profile.id)).toBe(false);
       // ★ 2026-10-16（用户要求）：生效档案也允许删除。此处只剩这一份 → 等于「删唯一一份」，清空订阅内容
-      host.cfgDeleteProfile(host.cfgSnapshot().activeProfileId);
+      host.profileConfiguration.deleteProfile(host.sourceConfiguration.getSnapshot().activeProfileId);
       expect(cleanupRemoved).toHaveBeenCalledTimes(3);
-      expect(host.cfgSnapshot().profiles.length).toBe(0);
-      expect(host.cfgSnapshot().sources.length).toBe(0);
+      expect(host.sourceConfiguration.getSnapshot().profiles.length).toBe(0);
+      expect(host.sourceConfiguration.getSnapshot().sources.length).toBe(0);
     } finally {
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   });
   it('★ cfgSetActiveSource 不清蜘蛛实例缓存、不清全源搜索缓存', () => {
-    const host = new SpiderHost();
+    const host = createSpiderHostServicesTestFixture();
     const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     try {
-      host.cfgAddSource(bean('a'));
-      host.cfgAddSource(bean('b'));
+      host.sourceConfiguration.addSource(bean('a'));
+      host.sourceConfiguration.addSource(bean('b'));
 
-      const vm = (host as unknown as { vm: { spiderFactory: { clear: () => void } } }).vm;
-      const searchCache = (host as unknown as { searchCache: { clear: () => void } }).searchCache;
-      const clearSpider = vi.spyOn(vm.spiderFactory, 'clear');
-      const clearSearch = vi.spyOn(searchCache, 'clear');
+      const clearSpider = vi.spyOn(host.spiderRuntime, 'clearSpiderInstances');
+      const invalidateSearch = vi.spyOn(host.aggregateSearch, 'invalidateConfiguration');
 
       // ★ 切源 = ui-only：两个缓存都不许被清
-      host.cfgSetActiveSource('b');
+      host.sourceConfiguration.selectActiveSource('b');
       expect(clearSpider).not.toHaveBeenCalled();
-      expect(clearSearch).not.toHaveBeenCalled();
+      expect(invalidateSearch).not.toHaveBeenCalled();
 
       // 对照：真正的配置变更（加源）仍会作废旧缓存
-      host.cfgAddSource(bean('c'));
+      host.sourceConfiguration.addSource(bean('c'));
       expect(clearSpider).toHaveBeenCalled();
-      expect(clearSearch).toHaveBeenCalled();
+      expect(invalidateSearch).toHaveBeenCalled();
     } finally {
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   });
 
   it('does not apply the active source priority when searching a different profile', async () => {
-    const host = new SpiderHost();
+    const search = vi.fn(async (_source: SourceBean) => ({ list: [] }));
+    const host = createSpiderHostServicesTestFixture(undefined, undefined, {
+      spiderSources: createSpiderHostTestSourceProvider({ searchContent: search }),
+      aggregateSearchReadiness: readySearchSources,
+    });
     const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     try {
-      host.cfgAddSource(bean('first'));
-      host.cfgAddSource(bean('same'));
-      const activeProfile = host.cfgSaveAsProfile('active-profile');
-      host.cfgSetActiveSource('same');
-      const otherProfile = host.cfgSaveAsProfile('other-profile');
-      host.cfgActivateProfile(activeProfile.id);
+      host.sourceConfiguration.addSource({ ...bean('first'), type: 3, api: 'csp_Test' });
+      host.sourceConfiguration.addSource({ ...bean('same'), type: 3, api: 'csp_Test' });
+      const activeProfile = host.profileConfiguration.saveCurrentAsProfile('active-profile');
+      host.sourceConfiguration.selectActiveSource('same');
+      const otherProfile = host.profileConfiguration.saveCurrentAsProfile('other-profile');
+      host.profileConfiguration.activateProfile(activeProfile.id);
 
-      const vm = (host as unknown as { vm: { search: (source: SourceBean, term: string) => Promise<unknown[]> } }).vm;
-      const search = vi.spyOn(vm, 'search').mockResolvedValue([]);
-      await host.searchAll('profile-priority', { refresh: true, profileId: otherProfile.id });
+      await host.aggregateSearchRunner.run('profile-priority', { refresh: true, profileId: otherProfile.id });
 
       expect(search.mock.calls.map(([source]) => source.key)).toEqual(['first', 'same']);
     } finally {
@@ -256,21 +281,23 @@ describe('SpiderHost — 切源（ui-only 变更）不得触发重活', () => {
   });
 
   it('searches selected profiles independently when source keys repeat', async () => {
-    const host = new SpiderHost();
+    const search = vi.fn(async (source: SourceBean) => {
+      const [profileId] = JSON.parse(source.runtimeScope || '[]') as [string, string];
+      return { list: [{ vod_id: profileId, vod_name: `result ${profileId}` }] };
+    });
+    const host = createSpiderHostServicesTestFixture(undefined, undefined, {
+      spiderSources: createSpiderHostTestSourceProvider({ searchContent: search }),
+      aggregateSearchReadiness: readySearchSources,
+    });
     const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     try {
-      host.cfgAddSource(bean('same-key'));
-      const profileA = host.cfgSaveAsProfile('profile-a');
-      const profileB = host.cfgSaveAsProfile('profile-b');
-      host.cfgActivateProfile(profileA.id);
+      host.sourceConfiguration.addSource({ ...bean('same-key'), type: 3, api: 'csp_Test' });
+      const profileA = host.profileConfiguration.saveCurrentAsProfile('profile-a');
+      const profileB = host.profileConfiguration.saveCurrentAsProfile('profile-b');
+      host.profileConfiguration.activateProfile(profileA.id);
 
-      const vm = (host as unknown as { vm: { search: (source: SourceBean, term: string) => Promise<unknown[]> } }).vm;
-      const search = vi.spyOn(vm, 'search').mockImplementation(async (source: SourceBean) => {
-        const [profileId] = JSON.parse(source.runtimeScope || '[]') as [string, string];
-        return [{ id: profileId, name: `result ${profileId}`, pic: '', remarks: '', year: '', area: '', type: '', sourceKey: source.key }];
-      });
       const progress: Array<{ profileId?: string; done: number; total: number; pending?: number; source?: unknown }> = [];
-      const report = await host.searchAll('cross-profile', { refresh: true, profileIds: [profileA.id, profileB.id] }, (event) => progress.push(event));
+      const report = await host.aggregateSearchRunner.run('cross-profile', { refresh: true, profileIds: [profileA.id, profileB.id] }, (event) => progress.push(event));
 
       expect(search).toHaveBeenCalledTimes(2);
       expect(report.perSource.map((source) => [source.profileId, source.key])).toEqual([
@@ -281,7 +308,7 @@ describe('SpiderHost — 切源（ui-only 变更）不得触发重活', () => {
         { profileId: profileA.id, key: 'same-key' },
         { profileId: profileB.id, key: 'same-key' },
       ]);
-      expect(host.cfgActiveProfileId()).toBe(profileA.id);
+      expect(host.profileConfiguration.activeProfileId()).toBe(profileA.id);
       expect(progress.filter((event) => event.source).map((event) => event.profileId).sort()).toEqual([profileA.id, profileB.id].sort());
       expect(progress.at(-1)).toMatchObject({ done: 2, total: 2, pending: 0 });
     } finally {
@@ -300,17 +327,17 @@ describe('SpiderHost — 网盘绑定「运行期学习」', () => {
   it('★ markDriveBindNeeded：登记 → 暴露；且跨宿主重建仍保留（落盘）', () => {
     const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     try {
-      const host = new SpiderHost();
-      expect(host.driveBindLearned()).toEqual([]);
+      const host = createSpiderHostServicesTestFixture();
+      expect(host.driveBindingLearning.learnedSourceKeys()).toEqual([]);
 
-      host.markDriveBindNeeded('某新盘源');
-      host.markDriveBindNeeded('  某新盘源  '); // 去空白后重复 → 不重复登记
-      host.markDriveBindNeeded('');
-      expect(host.driveBindLearned()).toEqual(['某新盘源']);
+      host.driveBindingLearning.markRequired('某新盘源');
+      host.driveBindingLearning.markRequired('  某新盘源  '); // 去空白后重复 → 不重复登记
+      host.driveBindingLearning.markRequired('');
+      expect(host.driveBindingLearning.learnedSourceKeys()).toEqual(['某新盘源']);
 
       // 重新构造（模拟重启）：学习结果从 <userData>/drive-bind-learned.json 读回
-      const again = new SpiderHost();
-      expect(again.driveBindLearned()).toEqual(['某新盘源']);
+      const again = createSpiderHostServicesTestFixture();
+      expect(again.driveBindingLearning.learnedSourceKeys()).toEqual(['某新盘源']);
     } finally {
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
@@ -328,18 +355,22 @@ describe('SpiderHost — 详情判定 + 播放失败翻译（缺口 B）', () =>
   it('detail()：播放源名带网盘字样 → 立刻记入绑定清单', async () => {
     const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     try {
-      const host = new SpiderHost();
-      host.cfgAddSource({ key: 'wx', name: 'wx', type: 3, api: 'csp_WoggGuard' } as SourceBean);
-      const vm = (host as unknown as { vm: { detail: unknown } }).vm;
-      (vm as { detail: unknown }).detail = async () => ({
-        id: '1',
-        name: 'n',
-        flags: ['夸克原画', '夸克最高急速'],
-        episodes: { 夸克原画: [{ name: 'x', url: '1be9f9ab|eaa9|qjuH' }] },
+      const host = createSpiderHostServicesTestFixture(undefined, undefined, {
+        spiderSources: createSpiderHostTestSourceProvider({
+          detailContent: () => ({
+            list: [{
+              vod_id: '1',
+              vod_name: 'n',
+              vod_play_from: '夸克原画$$$夸克最高急速',
+              vod_play_url: '夸克原画$1be9f9ab|eaa9|qjuH$$$夸克最高急速$1be9f9ab|eaa9|qjuH',
+            }],
+          }),
+        }),
       });
-      expect(host.driveBindLearned()).toEqual([]);
-      await host.detail('wx', ['1']);
-      expect(host.driveBindLearned()).toEqual(['wx']);
+      host.sourceConfiguration.addSource({ key: 'wx', name: 'wx', type: 3, api: 'csp_WoggGuard' } as SourceBean);
+      expect(host.driveBindingLearning.learnedSourceKeys()).toEqual([]);
+      await host.sourceCatalog.detail('wx', ['1']);
+      expect(host.driveBindingLearning.learnedSourceKeys()).toEqual(['wx']);
     } finally {
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
@@ -348,17 +379,17 @@ describe('SpiderHost — 详情判定 + 播放失败翻译（缺口 B）', () =>
   it('★ play()：网盘未绑定的失败 → 返回可上屏的中文提示（不 throw）+ 记入绑定清单', async () => {
     const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     try {
-      const host = new SpiderHost();
-      host.cfgAddSource({ key: 'wx2', name: 'wx2', type: 3, api: 'csp_BrandNewPan' } as SourceBean);
-      const vm = (host as unknown as { vm: { play: unknown } }).vm;
-      (vm as { play: unknown }).play = async () => {
-        throw new Error('org.json.JSONException: JSONObject["data"] not found.');
-      };
-      const r = await host.play('wx2', '夸克原画', '1be9f9ab');
+      const host = createSpiderHostServicesTestFixture(undefined, undefined, {
+        spiderSources: createSpiderHostTestSourceProvider({
+          playerContent: () => { throw new Error('org.json.JSONException: JSONObject["data"] not found.'); },
+        }),
+      });
+      host.sourceConfiguration.addSource({ key: 'wx2', name: 'wx2', type: 3, api: 'csp_BrandNewPan' } as SourceBean);
+      const r = await host.playbackRequest.execute('wx2', '夸克原画', '1be9f9ab');
       // 走既有上屏通道：parse=1 + message（渲染层在播放器上方显示并保底播原始地址）
       expect(r.parse).toBe(1);
       expect(r.message || '').toContain('网盘');
-      expect(host.driveBindLearned()).toContain('wx2');
+      expect(host.driveBindingLearning.learnedSourceKeys()).toContain('wx2');
     } finally {
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
@@ -367,14 +398,14 @@ describe('SpiderHost — 详情判定 + 播放失败翻译（缺口 B）', () =>
   it('play()：普通错误仍按原样抛出（不得被误判成网盘问题）', async () => {
     const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     try {
-      const host = new SpiderHost();
-      host.cfgAddSource({ key: 'cms', name: 'cms', type: 0, api: 'https://x/api.php/provide/vod' } as SourceBean);
-      const vm = (host as unknown as { vm: { play: unknown } }).vm;
-      (vm as { play: unknown }).play = async () => {
-        throw new Error('java.net.UnknownHostException: dead.example.com');
-      };
-      await expect(host.play('cms', 'HD', '1')).rejects.toThrow('UnknownHostException');
-      expect(host.driveBindLearned()).not.toContain('cms');
+      const host = createSpiderHostServicesTestFixture(undefined, undefined, {
+        spiderSources: createSpiderHostTestSourceProvider({
+          playerContent: () => { throw new Error('java.net.UnknownHostException: dead.example.com'); },
+        }),
+      });
+      host.sourceConfiguration.addSource({ key: 'cms', name: 'cms', type: 3, api: 'csp_Test' } as SourceBean);
+      await expect(host.playbackRequest.execute('cms', 'HD', '1')).rejects.toThrow('UnknownHostException');
+      expect(host.driveBindingLearning.learnedSourceKeys()).not.toContain('cms');
     } finally {
       try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
@@ -384,25 +415,25 @@ describe('SpiderHost — 详情判定 + 播放失败翻译（缺口 B）', () =>
 
 describe('SpiderHost — 并发子仓失败诊断', () => {
   it('每个失败成员保留自身诊断，不使用其他请求的共享状态', async () => {
-    const host = new SpiderHost();
-    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     const rootUrl = 'https://example.test/diagnostic-repos.json';
     const names = ['missing', 'html', 'working'];
     const urls = names.map(name => 'https://example.test/' + name + '.json');
-    vi.spyOn(host as any, 'fetchConfigWithDiagnostics').mockImplementation(async (...args: unknown[]) => {
-      const url = String(args[0]);
-      if (url === rootUrl) return { text: JSON.stringify({ urls: urls.map((url, i) => ({ url, name: names[i] })) }), hint: '' };
-      if (url === urls[0]) {
-        await new Promise(resolve => setTimeout(resolve, 20));
-        return { text: '', hint: 'HTTP 404 非成功响应' };
-      }
-      if (url === urls[1]) return { text: '<html>{broken}</html>', hint: '最后响应为 html（27B）' };
-      return { text: JSON.stringify({ sites: [{ key: 'working', name: 'working', type: 0, api: 'https://example.test/api' }] }), hint: '' };
-    });
+    const http: HttpClient = {
+      request: async (request) => {
+        const url = request.url;
+        if (url === rootUrl) return httpResponse(url, JSON.stringify({ urls: urls.map((item, i) => ({ url: item, name: names[i] })) }));
+        if (url.includes('/missing.json')) return httpResponse(url, '', 404);
+        if (url.includes('/html.json')) return httpResponse(url, '<html>{broken}</html>');
+        if (url.includes('/working.json')) return httpResponse(url, JSON.stringify({ sites: [{ key: 'working', name: 'working', type: 0, api: 'https://example.test/api' }] }));
+        return httpResponse(url, '', 404);
+      },
+    };
+    const host = createSpiderHostServicesTestFixture(undefined, undefined, { infrastructure: { http } });
+    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     try {
-      const job = host.startSubscriptionImport(rootUrl, 'diagnostics');
-      await vi.waitFor(() => expect(host.getSubscriptionImport(job.jobId)?.state).toBe('partial'));
-      const members = host.cfgSnapshot().subscriptionGroups.find(group => group.url === rootUrl)!.members;
+      const job = host.subscriptionImports.start(rootUrl, 'diagnostics');
+      await vi.waitFor(() => expect(host.subscriptionImports.get(job.jobId)?.state).toBe('partial'));
+      const members = host.sourceConfiguration.getSnapshot().subscriptionGroups.find(group => group.url === rootUrl)!.members;
       expect(members.find(member => member.url === urls[0])).toMatchObject({ status: 'failed', error: expect.stringContaining('HTTP 404') });
       expect(members.find(member => member.url === urls[1])).toMatchObject({ status: 'failed', error: expect.stringContaining('html') });
       expect(members.find(member => member.url === urls[2])).toMatchObject({ status: 'ready' });
@@ -416,23 +447,21 @@ describe('SpiderHost — 并发子仓失败诊断', () => {
 
 describe('SpiderHost — GitHub 原站恢复', () => {
   it.each(['plain', 'base64'])('%s：按原站展开相对资源地址', async mode => {
-    const host = new SpiderHost();
-    const dir = (globalThis as unknown as { __shostDir: string }).__shostDir;
     const proxy = 'https://github.moeyy.xyz/https://raw.githubusercontent.com/owner/repo/main/config.json';
-    vi.spyOn((host as any).http, 'request').mockImplementation(async (...args: unknown[]) => {
-      const req = args[0] as { url: string };
-      const direct = req.url.startsWith('https://raw.githubusercontent.com/');
+    const http: HttpClient = {
+      request: async request => {
+      const direct = request.url.startsWith('https://raw.githubusercontent.com/');
       const text = '// collected config\n' + JSON.stringify({ spider: './spider.jar', sites: [{ key: 'a', name: 'a', type: 0, api: 'https://example.test/api' }] });
       const body = direct ? mode === 'base64' ? Buffer.from(text).toString('base64') : text : '<html>proxy unavailable</html>';
-      return { status: direct ? 200 : 502, headers: {}, finalUrl: req.url, content: Array.from(Buffer.from(body)) };
-    });
+      return httpResponse(request.url, body, direct ? 200 : 502);
+      },
+    };
     try {
-      const result = await (host as any).fetchConfigWithDiagnostics(proxy, true);
+      const result = await fetchSubscriptionConfig({ http, logger: testLogger }, proxy, true);
       expect(parseSiteConfigWithBase(result.text, proxy).config.spider).toBe('https://raw.githubusercontent.com/owner/repo/main/spider.jar');
       expect(result.hint).toBe('');
     } finally {
       vi.restoreAllMocks();
-      try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   });
 });

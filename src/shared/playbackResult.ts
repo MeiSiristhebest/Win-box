@@ -1,4 +1,44 @@
-import type { PlayResult } from './types';
+import type { PlayResult, VodDetail } from './types';
+
+/** Identify an HTTP(S) HLS manifest before it is handed to the renderer. */
+export function isHlsPlaylistUrl(raw: string): boolean {
+  const value = (raw || '').trim();
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    const format = Array.from(url.searchParams.entries())
+      .find(([name]) => /^(?:type|format)$/i.test(name))?.[1] || '';
+    if (/\.m3u8$/i.test(url.pathname) || /^(?:hls|m3u8)$/i.test(format)) return true;
+    // HLS assets often live below /hls/ too (including AES keys such as
+    // key.bin). Only use the /hls/ fallback for extensionless manifest URLs.
+    // A file extension is not enough to identify a playlist unless it is
+    // explicitly .m3u8 or the URL carries a format/type hint above.
+    if (/\.[a-z0-9]{1,10}$/i.test(url.pathname.split('/').pop() || '')) return false;
+    return /\/hls\//i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+/** CMS share/watch pages contain a player; they are not media byte streams. */
+export function isPlaybackPageUrl(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    if (!/^https?:$/.test(url.protocol)) return false;
+    return /\.html?$/i.test(url.pathname) || /^\/(?:share|play)\/[^/.]+\/?$/i.test(url.pathname);
+  } catch { return false; }
+}
+
+/** Prefer a direct media line over a CMS player page on the first visit. */
+export function preferredPlaybackFlag(detail: Pick<VodDetail, 'flags' | 'episodes'>): string {
+  const first = detail.flags[0] || '';
+  const firstUrl = detail.episodes[first]?.[0]?.url || '';
+  if (!isPlaybackPageUrl(firstUrl)) return first;
+  return detail.flags.find(flag => {
+    const url = detail.episodes[flag]?.[0]?.url || '';
+    return isHlsPlaylistUrl(url) || /^https?:\/\/.+\.(?:mp4|webm|flv)(?:[?#]|$)/i.test(url);
+  }) || first;
+}
 
 /** 源站已确认的错误占位视频；不能因为扩展名是 mp4 就当作取链成功。 */
 export function isErrorVideoUrl(raw: string): boolean {

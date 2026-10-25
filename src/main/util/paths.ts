@@ -53,6 +53,10 @@ export const APP_CACHE_DIR_NAME = 'winbox-cache';
 export function cacheDir(): string {
   return join(userDataDir(), APP_CACHE_DIR_NAME);
 }
+/** Optional media tools installed per-user by the playback settings panel. */
+export function mediaRuntimesDir(): string {
+  return join(userDataDir(), 'media-runtimes');
+}
 export function logsDir(): string {
   return join(userDataDir(), 'logs');
 }

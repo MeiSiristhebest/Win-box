@@ -162,7 +162,7 @@ export function buildMergedSubscription(profiles: MergeProfileInput[]): MergeExp
       if (v) flags.add(v);
     }
     for (const pe of parsed.parses || []) {
-      // 与 UserConfigManager.realParses 同口径：丢弃缺 name/url 的坏项与内置超级解析（type=4）
+      // 与 UserConfigApplicationService.realParses 同口径：丢弃缺 name/url 的坏项与内置超级解析（type=4）
       if (!pe || !pe.name || !pe.url || pe.type === 4) continue;
       const k = pe.name + '\u0001' + pe.url;
       if (seenParse.has(k)) continue;

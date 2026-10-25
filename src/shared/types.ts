@@ -291,6 +291,8 @@ export interface PlayResult {
   flag: string;
   header?: Record<string, string>;
   message?: string;
+  /** 解析命中的线路名称（用于 AutoChangeParse 状态展示） */
+  parseName?: string;
   /** 蜘蛛解析标记：生态里可能是 0/1，也可能是解析站 URL → 透传不加工 */
   jx?: number | string;
   /** ★ 播放地址属于「cookie 型」网盘且该 provider 未绑定 → 渲染层提示去配置页绑定（值为网盘 provider，如 quark/uc/baidu/115） */
@@ -609,7 +611,7 @@ export interface SourceDebugReport {
 
 export type SourceMoveDirection = 'up' | 'down' | 'top' | 'bottom';
 
-/** 允许 UI 修改的源字段（key/type/api 一经创建不可改，见 UserConfigManager） */
+/** 允许 UI 修改的源字段（key/type/api 一经创建不可改，见 UserConfigApplicationService） */
 export type MutableSourceField =
   | 'name'
   | 'ext'

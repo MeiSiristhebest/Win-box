@@ -2,33 +2,53 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../src/main/util/logger', () => ({
   fileLogger: { i: () => undefined, w: () => undefined, e: () => undefined },
 }));
-import { SpiderHost } from '../src/main/spider/SpiderHost';
+import { AggregateSearchCoordinator } from '../src/main/spider/AggregateSearchCoordinator';
+import type { SearchReadinessPort } from '../src/main/spider/AggregateSearchCoordinator';
+import { FairProfileWorkerBudget, raceTimeout } from '../src/engine/vod/searchRuntime';
 import type { SourceBean } from '../src/shared/types';
 
-function makeHost(
+function makeSearchCoordinator(
   profileIds: string[],
   sitesByProfile: Map<string, SourceBean[]>,
-  vm: { search: (bean: SourceBean) => Promise<[]>; spiderFactory?: { getCSP: (bean: SourceBean) => unknown } },
-): SpiderHost {
+  search: (bean: SourceBean) => Promise<[]>,
+  readiness?: SearchReadinessPort,
+): AggregateSearchCoordinator {
   const profiles = profileIds.map((id) => ({ id, name: id }));
-  return Object.assign(Object.create(SpiderHost.prototype), {
-    manager: {
-      rawProfiles: () => profiles,
-      activeProfileId: () => profileIds[0],
-      activeSourceKey: () => '',
-    },
-    profileExecutionConfig: (profileId: string) => ({ profileId, config: null }),
-    searchableSites: (profileId: string) => sitesByProfile.get(profileId) ?? [],
-    searchCache: {
-      getEntry: () => undefined,
-      delete: () => undefined,
-      set: () => undefined,
-    },
-    sourceHealth: new Map(),
-    unsupportedSources: new Set(),
-    logger: { i: () => undefined, w: () => undefined },
-    vm,
-  }) as SpiderHost;
+  return new AggregateSearchCoordinator({
+      profiles: {
+        list: () => profiles,
+        executionContext: (profileId = profileIds[0]) => ({ profileId, config: null }),
+        revision: () => 0,
+        activeProfileId: () => profileIds[0],
+        activeSourceKey: () => '',
+      },
+      sources: {
+        searchable: (profileId) => sitesByProfile.get(profileId ?? profileIds[0]) ?? [],
+        search,
+      },
+      readiness: readiness ?? {
+        prepare: async ({ sources, unsupportedScopes }) => {
+          const skipped = sources.map((source) => unsupportedScopes.has(source.runtimeScope || source.key)
+            ? { key: source.key, name: source.name, status: 'error' as const, error: 'unsupported in this session', ms: 0 }
+            : null);
+          return { active: sources.map((_source, index) => index).filter((index) => skipped[index] === null), skipped };
+        },
+      },
+      createWorkerBudget: (limit, ids, initiallyActive) => new FairProfileWorkerBudget(limit, ids, initiallyActive),
+      health: {
+        scheduleOrder: (sources) => sources.map((_source, index) => index),
+        sourceBudget: (_source, maximumMs) => maximumMs,
+        succeeded: () => undefined,
+        failed: () => undefined,
+      },
+      timing: {
+        now: () => Date.now(),
+        setTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
+        clearTimeout: (handle) => clearTimeout(handle),
+        withTimeout: raceTimeout,
+      },
+      logger: { i: () => undefined, w: () => undefined },
+    });
 }
 
 function profileSources(profileId: string, count: number, type = 0): SourceBean[] {
@@ -40,14 +60,14 @@ function profileSources(profileId: string, count: number, type = 0): SourceBean[
   } as SourceBean));
 }
 
-describe('SpiderHost.searchAll across profiles', () => {
+describe('aggregate search runner across profiles', () => {
   it('does not permanently skip recoverable errors just because their message says unsupported', async () => {
     const search = vi.fn<() => Promise<[]>>()
       .mockRejectedValueOnce(new Error('ARM 兼容桥未实现此调用；源返回不支持当前登录状态'))
       .mockResolvedValue([]);
-    const host = makeHost(['a'], new Map([['a', profileSources('a', 1)]]), { search });
-    expect((await host.searchAll('first', { profileIds: ['a'] })).failedSources).toBe(1);
-    expect((await host.searchAll('second', { profileIds: ['a'] })).failedSources).toBe(0);
+    const runner = makeSearchCoordinator(['a'], new Map([['a', profileSources('a', 1)]]), search);
+    expect((await runner.run('first', { profileIds: ['a'] })).failedSources).toBe(1);
+    expect((await runner.run('second', { profileIds: ['a'] })).failedSources).toBe(0);
     expect(search).toHaveBeenCalledTimes(2);
   });
 
@@ -55,11 +75,11 @@ describe('SpiderHost.searchAll across profiles', () => {
     const search = vi.fn<() => Promise<[]>>()
       .mockRejectedValueOnce(Object.assign(new Error('QuickJS 字节码'), { code: 'JS_BYTECODE' }))
       .mockResolvedValue([]);
-    const host = makeHost(['a'], new Map([['a', profileSources('a', 1)]]), { search });
-    await host.searchAll('first', { profileIds: ['a'] });
-    await host.searchAll('second', { profileIds: ['a'] });
+    const runner = makeSearchCoordinator(['a'], new Map([['a', profileSources('a', 1)]]), search);
+    await runner.run('first', { profileIds: ['a'] });
+    await runner.run('second', { profileIds: ['a'] });
     expect(search).toHaveBeenCalledTimes(1);
-    await host.searchAll('second', { profileIds: ['a'], refresh: true });
+    await runner.run('second', { profileIds: ['a'], refresh: true });
     expect(search).toHaveBeenCalledTimes(2);
   });
 
@@ -68,10 +88,10 @@ describe('SpiderHost.searchAll across profiles', () => {
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
     const search = vi.fn(async () => { await gate; return [] as []; });
-    const host = makeHost(ids, new Map(ids.map(id => [id, profileSources(id, 2, 4)])), { search });
+    const runner = makeSearchCoordinator(ids, new Map(ids.map(id => [id, profileSources(id, 2, 4)])), search);
     const progressA = vi.fn(), progressB = vi.fn();
-    const first = host.searchAll('same movie', { profileIds: ids }, progressA);
-    const second = host.searchAll('same movie', { profileIds: ids }, progressB);
+    const first = runner.run('same movie', { profileIds: ids }, progressA);
+    const second = runner.run('same movie', { profileIds: ids }, progressB);
     await new Promise(resolve => setTimeout(resolve, 0));
     release();
     const [a, b] = await Promise.all([first, second]);
@@ -81,9 +101,9 @@ describe('SpiderHost.searchAll across profiles', () => {
     expect(progressB).toHaveBeenCalledTimes(progressA.mock.calls.length);
     expect(a.perSource).toHaveLength(4);
   });
-  it('keeps one shared 24-source cap while searching more than 24 sources across profiles', async () => {
+  it('keeps one shared 48-source cap while searching large profiles concurrently', async () => {
     const profileIds = ['profile-a', 'profile-b', 'profile-c'];
-    const sitesByProfile = new Map(profileIds.map((id) => [id, profileSources(id, 16)]));
+    const sitesByProfile = new Map(profileIds.map((id) => [id, profileSources(id, 80)]));
     let active = 0;
     let peak = 0;
     let started = 0;
@@ -92,14 +112,13 @@ describe('SpiderHost.searchAll across profiles', () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const releaseTimer = setTimeout(release, 1_000);
-    const fakeHost = makeHost(profileIds, sitesByProfile, {
-      search: async (bean) => {
+    const runner = makeSearchCoordinator(profileIds, sitesByProfile, async (bean) => {
         active++;
         started++;
         peak = Math.max(peak, active);
         const profileId = profileIds.find((id) => bean.key.startsWith(`${id}-`));
         if (profileId) startedProfiles.add(profileId);
-        if (active === 24) {
+        if (active === 48) {
           profilesAtConcurrencyLimit = new Set(startedProfiles);
           release();
         }
@@ -109,25 +128,24 @@ describe('SpiderHost.searchAll across profiles', () => {
         } finally {
           active--;
         }
-      },
     });
 
     try {
-      await fakeHost.searchAll('test', { profileIds });
+      await runner.run('test', { profileIds });
     } finally {
       clearTimeout(releaseTimer);
     }
 
-    expect(peak).toBe(24);
+    expect(peak).toBe(48);
     expect(profilesAtConcurrencyLimit).toEqual(new Set(profileIds));
     expect(startedProfiles).toEqual(new Set(profileIds));
-    expect(started).toBe(48);
+    expect(started).toBe(240);
   });
 
   it('reallocates idle profile capacity to a large profile', async () => {
     const profileIds = ['large-profile', 'small-profile-b', 'small-profile-c'];
     const sitesByProfile = new Map([
-      ['large-profile', profileSources('large-profile', 120)],
+      ['large-profile', profileSources('large-profile', 240)],
       ['small-profile-b', profileSources('small-profile-b', 1)],
       ['small-profile-c', profileSources('small-profile-c', 1)],
     ]);
@@ -138,33 +156,31 @@ describe('SpiderHost.searchAll across profiles', () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const releaseTimer = setTimeout(release, 1_000);
-    const fakeHost = makeHost(profileIds, sitesByProfile, {
-      search: async (bean) => {
+    const runner = makeSearchCoordinator(profileIds, sitesByProfile, async (bean) => {
         const profileId = profileIds.find((id) => bean.key.startsWith(`${id}-`));
         if (profileId) startedProfiles.add(profileId);
         started++;
         if (profileId !== 'large-profile') return [];
         activeLarge++;
         peakLarge = Math.max(peakLarge, activeLarge);
-        if (activeLarge === 24) release();
+        if (activeLarge === 48) release();
         try {
           await gate;
           return [];
         } finally {
           activeLarge--;
         }
-      },
     });
 
     try {
-      await fakeHost.searchAll('test', { profileIds });
+      await runner.run('test', { profileIds });
     } finally {
       clearTimeout(releaseTimer);
     }
 
-    expect(peakLarge).toBe(24);
+    expect(peakLarge).toBe(48);
     expect(startedProfiles).toEqual(new Set(profileIds));
-    expect(started).toBe(122);
+    expect(started).toBe(242);
   });
 
   it('keeps permits occupied until timed-out VM requests actually settle', async () => {
@@ -177,8 +193,7 @@ describe('SpiderHost.searchAll across profiles', () => {
     let active = 0;
     let peak = 0;
     let started = 0;
-    const fakeHost = makeHost(profileIds, sitesByProfile, {
-      search: async () => {
+    const runner = makeSearchCoordinator(profileIds, sitesByProfile, async () => {
         active++;
         started++;
         peak = Math.max(peak, active);
@@ -188,21 +203,20 @@ describe('SpiderHost.searchAll across profiles', () => {
         } finally {
           active--;
         }
-      },
     });
 
     try {
-      const search = fakeHost.searchAll('test', { profileIds });
+      const search = runner.run('test', { profileIds });
       await vi.advanceTimersByTimeAsync(5_501);
-      expect(started).toBe(24);
-      expect(active).toBe(24);
-      expect(peak).toBe(24);
+      expect(started).toBe(27);
+      expect(active).toBe(27);
+      expect(peak).toBe(27);
 
       await vi.advanceTimersByTimeAsync(20_000);
       await expect(search).resolves.toMatchObject({ perSource: expect.any(Array) });
       expect(started).toBe(27);
       expect(active).toBe(0);
-      expect(peak).toBe(24);
+      expect(peak).toBe(27);
     } finally {
       vi.useRealTimers();
     }
@@ -217,8 +231,7 @@ describe('SpiderHost.searchAll across profiles', () => {
     let active = 0;
     let started = 0;
     let preparationFinished = false;
-    const fakeHost = makeHost(profileIds, sitesByProfile, {
-      search: async () => {
+    const runner = makeSearchCoordinator(profileIds, sitesByProfile, async () => {
         active++;
         started++;
         try {
@@ -227,20 +240,19 @@ describe('SpiderHost.searchAll across profiles', () => {
         } finally {
           active--;
         }
-      },
-      spiderFactory: {
-        getCSP: () => ({
-          runtimeState: () => 'preparing',
-          pendingRuntime: () => new Promise((_, reject) => setTimeout(() => {
+    }, {
+      prepare: async ({ sources, profileId }) => {
+        if (profileId === 'failing-profile') {
+          await new Promise<void>((_, reject) => setTimeout(() => {
             preparationFinished = true;
             reject(new Error('runtime preparation failed'));
-          }, 30)),
-          lastReason: '',
-        }),
+          }, 30));
+        }
+        return { active: sources.map((_source, index) => index), skipped: sources.map(() => null) };
       },
     });
 
-    await expect(fakeHost.searchAll('test', { profileIds })).rejects.toThrow('runtime preparation failed');
+    await expect(runner.run('test', { profileIds })).rejects.toThrow('runtime preparation failed');
     const startedAtFailure = started;
     await new Promise((resolve) => setTimeout(resolve, 100));
 

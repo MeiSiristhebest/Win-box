@@ -82,7 +82,11 @@ export class SearchCache<T> {
 
   /** 取缓存条目（过期即删并返回 null；命中会刷新 LRU 顺序） */
   getEntry(wd: string, now = Date.now()): CacheEntry<T> | null {
-    const k = searchCacheKey(wd);
+    return this.getEntryByKey(searchCacheKey(wd), now);
+  }
+
+  /** 以调用方提供的精确键读取，供 profile/version 等复合身份使用。 */
+  getEntryByKey(k: string, now = Date.now()): CacheEntry<T> | null {
     if (!k) return null;
     const e = this.map.get(k);
     if (!e) return null;
@@ -96,7 +100,11 @@ export class SearchCache<T> {
   }
 
   set(wd: string, value: T, now = Date.now()): void {
-    const k = searchCacheKey(wd);
+    this.setByKey(searchCacheKey(wd), value, now);
+  }
+
+  /** 以调用方提供的精确键写入，关键词归一化由 set() 单独负责。 */
+  setByKey(k: string, value: T, now = Date.now()): void {
     if (!k) return;
     for (const [existingKey, entry] of this.map) {
       if (now - entry.at > this.ttlMs) this.remove(existingKey);
@@ -121,7 +129,11 @@ export class SearchCache<T> {
   }
 
   delete(wd: string): void {
-    this.remove(searchCacheKey(wd));
+    this.deleteByKey(searchCacheKey(wd));
+  }
+
+  deleteByKey(k: string): void {
+    this.remove(k);
   }
 
   /** 配置变更（源列表变了）→ 整表作废（旧报告里的源可能已不存在） */

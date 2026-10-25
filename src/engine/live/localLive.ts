@@ -28,7 +28,7 @@ const LOCAL_LIVE_URL_PREFIX = `${LOCAL_PROXY_BASE}/file/local-live/`;
 /**
  * ★ 2026-10-15（用户报「导入的 TXT 直播源重启后消失」）：是否为**本机导入的 TXT / M3U 直播线路**。
  *   这些线路是一份独立于订阅的本地订阅：订阅导入 / 7 天自动刷新 / 档案切换都会用「订阅自带线路」
- *   全量替换 lives，必须把它们单独并回来（见 UserConfigManager 的 withLocalLives）。
+ *   全量替换 lives，必须把它们单独并回来（见 UserConfigApplicationService 的 withLocalLives）。
  */
 export function isLocalLiveUrl(url: string): boolean {
   return String(url || '').trim().startsWith(LOCAL_LIVE_URL_PREFIX);

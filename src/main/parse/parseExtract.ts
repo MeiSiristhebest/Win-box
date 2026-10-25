@@ -6,7 +6,7 @@
 // 约定对齐 TVBox 生态：普通 JSON 解析接口返回 `{"url":"…"}` / `{"data":{"url":"…"}}`，
 // 也有直接返回裸地址或 JSONP 包裹的；超级解析（type=4）不走这里（由内置嗅探负责）。
 import type { ParseBean } from '../../shared/types';
-import { isErrorVideoUrl } from '../../shared/playbackResult';
+import { isErrorVideoUrl, isPlaybackPageUrl } from '../../shared/playbackResult';
 
 /** 媒体地址特征（用于「无需解析」判定与嗅探候选打分） */
 const MEDIA_RE = /\.(m3u8|mp4|flv|mkv|mov|m4v|mp2t|ts|m4s)([?#]|$)/i;
@@ -62,7 +62,7 @@ function collectUrls(root: unknown): string[] {
     if (typeof v === 'string') {
       let t = v.trim();
       if (t.startsWith('//')) t = `https:${t}`; // 协议相对地址
-      if (!/^https?:\/\//i.test(t) || /[\s<>"']/.test(t) || isErrorVideoUrl(t)) return;
+      if (!/^https?:\/\//i.test(t) || /[\s<>"']/.test(t) || isErrorVideoUrl(t) || isPlaybackPageUrl(t)) return;
       let score = 0;
       if (isMediaUrl(t)) score += 4;
       if (URL_KEYS.has(key.toLowerCase())) score += 2;
@@ -121,7 +121,7 @@ export function extractParseResult(text: string): ParseExtract | null {
   const s = (text || '').trim();
   if (!s) return null;
   // ① 裸地址
-  if (/^https?:\/\//i.test(s) && !/[\s<>]/.test(s) && !isErrorVideoUrl(s)) return { url: s, headers: {} };
+  if (/^https?:\/\//i.test(s) && !/[\s<>]/.test(s) && !isErrorVideoUrl(s) && !isPlaybackPageUrl(s)) return { url: s, headers: {} };
   // ② JSON / JSONP
   let root: unknown = null;
   try {
