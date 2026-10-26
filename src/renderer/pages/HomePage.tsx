@@ -10,6 +10,7 @@ import {
   homeSourceSelectionAdapter,
   homeWebSourceAdapter,
 } from '../features/home/adapters/homePageAdapters';
+import { homeWaterfallObserverAdapter } from '../features/home/adapters/homeWaterfallObserverAdapter';
 import { homePageMemoryAdapter } from '../features/home/adapters/homePageMemoryAdapter';
 import { homeSourceSessionEventsAdapter } from '../features/home/adapters/homeSourceSessionEventsAdapter';
 import { useHomeFilterPanelPreference } from '../features/home/adapters/homeFilterPreferenceAdapter';
@@ -55,6 +56,7 @@ export default function HomePage({ onOpenDetail }: HomePageProps) {
       webSource: homeWebSourceAdapter,
       categoryState: homeCategoryStateMemoryAdapter,
       memory: homePageMemoryAdapter,
+      waterfallObserver: homeWaterfallObserverAdapter,
     },
   });
   return <HomePageView model={model} />;

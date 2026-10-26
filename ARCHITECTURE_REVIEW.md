@@ -920,3 +920,10 @@
 - **已修正：** 启动端口及其环境准备同步失败现在统一记录启动诊断并返回 `SPIDER_ERROR` 的 `SpiderCallResult`；取消仍以 `AbortError` 拒绝，不会被错误归一化成普通启动失败。
 - **回归覆盖：** `spiderSubprocessRunner.spec.ts` 覆盖异步启动错误只结算一次、同步端口抛错映射、运行中取消会终止子进程并保留取消原因，共 3 项。
 - **验证：** 定向测试 3 项通过；`pnpm run typecheck` 三套项目通过；`pnpm run lint`（含架构边界与 renderer React/perf/a11y）通过。本项只关闭单次进程同步启动异常这一格，不代表蜘蛛各运行时的准备失败、进程内部取消/超时 conformance matrix 已完成。
+
+## 本轮继续：首页瀑布流观察器边界（2026-10-26）
+
+- **确认的问题：** `useHomeBrowseController` 同时维护浏览数据/分页状态并直接实例化全局 `IntersectionObserver`，DOM 可见性生命周期和浏览查询控制因此耦合在一个 hook 中，且无法以替身观察器独立验证。
+- **已调整：** 新增 `HomeWaterfallObserverPort`、浏览器 adapter 与生命周期 hook；HomePage composition root 注入 adapter。浏览控制器保留分页与数据状态，observer hook 管理建立/断开与刷新，回调通过 ref 读取最新分页动作。
+- **回归覆盖：** 新增 observer 生命周期与停用状态测试 2 项；既有浏览控制器行为测试 7 项继续通过。
+- **验证：** 两个定向测试文件共 9 项通过；`pnpm run typecheck` 三套项目通过；`pnpm run lint`（含架构边界和 renderer React/perf/a11y）通过。首页搜索/浏览跨会话协调、其余 renderer DOM/IPC 分类与全局 UI/Atomic Design 审计仍开放。

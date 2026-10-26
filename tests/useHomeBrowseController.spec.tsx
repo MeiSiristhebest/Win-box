@@ -66,6 +66,7 @@ function useBrowseHarness(categoryState: HomeCategoryStateMemoryPort = { read: (
     browseLoading,
     aggMode: false,
     waterfall: false,
+    waterfallObserver: { observe: () => () => undefined },
     categoryState,
     setBrowseLoading,
     setBrowseError: setErr,

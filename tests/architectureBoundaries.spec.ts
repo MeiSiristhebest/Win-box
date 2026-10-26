@@ -907,6 +907,13 @@ describe('architecture dependency rules', () => {
     expect(result.stderr).toContain('home browse workflows must receive preferences and category state through injected values and ports');
   });
 
+  it('keeps waterfall visibility tracking behind the injected browser observer adapter', () => {
+    const result = inspect('renderer/features/home/useHomeBrowseController.ts', 'new IntersectionObserver(() => undefined);');
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('waterfall visibility tracking must use the injected observer port');
+  });
+
   it.each([
     "import React from 'react';",
     "import { useHomeBrowseController } from '../useHomeBrowseController';",

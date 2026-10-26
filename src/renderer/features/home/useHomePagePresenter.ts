@@ -16,6 +16,7 @@ import { useHomeWebSource } from './useHomeWebSource';
 import { initialHomeSearchViewState, reduceHomeSearchViewState, visibleHomeSearchItems } from './application/homeSearchViewState';
 import type { HomePageViewModel } from './homePageViewModel';
 import type { HomePageMemoryPort } from './application/homePageMemoryPort';
+import type { HomeWaterfallObserverPort } from './application/homeWaterfallObserverPort';
 import type { HomeBrowsePort, HomeCategoryStateMemoryPort, HomeDrivePort, HomeSearchPort, HomeSearchNavigationPort, HomeSourceSelectionPort, HomeSourceSessionEventsPort, HomeWebSourcePort } from './application/homePorts';
 import type { HomeSearchWorkflowPorts } from './application/HomeSearchWorkflow';
 import { useHomeItemNavigationPresenter } from './useHomeItemNavigationPresenter';
@@ -31,6 +32,7 @@ export type HomePagePresenterPorts = {
   webSource: HomeWebSourcePort;
   categoryState: HomeCategoryStateMemoryPort;
   memory: HomePageMemoryPort;
+  waterfallObserver: HomeWaterfallObserverPort;
 };
 
 export type HomePagePresenterOptions = {
@@ -102,6 +104,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
     browseLoading,
     aggMode,
     waterfall: waterfallMode,
+    waterfallObserver: ports.waterfallObserver,
     categoryState: ports.categoryState,
     setBrowseLoading,
     setBrowseError,

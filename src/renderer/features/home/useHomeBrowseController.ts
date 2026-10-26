@@ -5,6 +5,8 @@ import { makeStaleGuard } from '../../lib/staleGuard';
 import { appendUniqueItems, pageSignature } from '../../lib/listAppend';
 import type { HomeBrowsePort, HomeBrowseSessionPort, HomeCategoryStateMemoryPort, HomeSortClassView } from './application/homePorts';
 import type { HomeBrowseReturnDestination, HomeBrowseSnapshot, HomeSearchBrowsePort } from './application/homeBrowseSearchSession';
+import type { HomeWaterfallObserverPort } from './application/homeWaterfallObserverPort';
+import { useHomeWaterfallObserver } from './useHomeWaterfallObserver';
 
 type HomeBrowseControllerOptions = {
   data: HomeBrowsePort;
@@ -16,6 +18,7 @@ type HomeBrowseControllerOptions = {
   browseLoading: boolean;
   aggMode: boolean;
   waterfall: boolean;
+  waterfallObserver: HomeWaterfallObserverPort;
   categoryState: HomeCategoryStateMemoryPort;
   setBrowseLoading: Dispatch<SetStateAction<boolean>>;
   setBrowseError: Dispatch<SetStateAction<string>>;
@@ -33,6 +36,7 @@ export function useHomeBrowseController({
   browseLoading,
   aggMode,
   waterfall,
+  waterfallObserver,
   categoryState,
   setBrowseLoading,
   setBrowseError,
@@ -49,7 +53,6 @@ export function useHomeBrowseController({
   const [wfNoMore, setWfNoMore] = useState(false);
   const [fallback, setFallback] = useState(false);
   const wfBusyRef = useRef(false);
-  const wfSentinelRef = useRef<HTMLDivElement | null>(null);
   const wfSigRef = useRef('');
   const listGen = useRef(makeStaleGuard());
   const homeMetadataGen = useRef(makeStaleGuard());
@@ -234,6 +237,25 @@ export function useHomeBrowseController({
     return `已加载 ${pg} 页 · 共 ${items.length} 条 · 继续下滑自动加载`;
   }
 
+  const waterfallObserverKey = JSON.stringify([
+    key,
+    tid,
+    pg,
+    pageInfo.pagecount,
+    items.length,
+    browseLoading,
+    Object.entries(filtersActive).sort(([left], [right]) => left.localeCompare(right)),
+  ]);
+  const waterfallSentinelRef = useRef<HTMLDivElement | null>(null);
+  useHomeWaterfallObserver({
+    active: waterfall && !aggMode && !wfNoMore && !!tid && pageInfo.pagecount > 1,
+    refreshKey: waterfallObserverKey,
+    rootRef: contentRef,
+    targetRef: waterfallSentinelRef,
+    onVisible: loadMoreForWaterfall,
+    observer: waterfallObserver,
+  });
+
   function chooseCategory(t: string) {
     if (tid) categoryState.save(keyRef.current, tid, profileIdRef.current, { filters: filtersActive, page: waterfall ? 1 : pg });
     if (!t) {
@@ -338,20 +360,6 @@ export function useHomeBrowseController({
     restoreCategory: restoreCategoryFromSession,
   };
 
-  useEffect(() => {
-    if (!waterfall || aggMode || wfNoMore || !tid || pageInfo.pagecount <= 1) return;
-    const root = contentRef.current;
-    const sentinel = wfSentinelRef.current;
-    if (!root || !sentinel || typeof IntersectionObserver === 'undefined') return;
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) loadMoreForWaterfall();
-    }, { root, rootMargin: '700px 0px' });
-    io.observe(sentinel);
-    return () => io.disconnect();
-    // Recreate the observer when paging or list state changes so a visible sentinel can fill the viewport.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [waterfall, aggMode, wfNoMore, tid, pg, pageInfo.pagecount, items.length, browseLoading, filtersActive, key]);
-
   return {
     classes,
     tid,
@@ -361,7 +369,7 @@ export function useHomeBrowseController({
     pageInfo,
     fallback,
     waterfall,
-    wfSentinelRef,
+    wfSentinelRef: waterfallSentinelRef,
     wfNoMore,
     searchBrowsePort,
     sessionPort,

@@ -65,6 +65,9 @@ const rendererHomeModelForbiddenImports = new Map([
 const rendererHomePresenterForbiddenBrowserEffects = new Set([
   'renderer/features/home/useHomePagePresenter.ts',
 ]);
+const rendererHomeBrowseForbiddenBrowserGlobals = new Set([
+  'renderer/features/home/useHomeBrowseController.ts',
+]);
 const rendererSettingsPageForbiddenBrowserEffects = new Set([
   'renderer/pages/ConfigPage.tsx',
 ]);
@@ -1210,6 +1213,9 @@ for (const filePath of await sourceFiles(sourceRoot)) {
   if (rendererHomePresenterForbiddenBrowserEffects.has(normalizedFile) &&
       /\.addEventListener\(['"]scroll['"]|\.removeEventListener\(['"]scroll['"]|\.scrollTo\(/.test(source)) {
     violations.push(`${normalizedFile}: home-page scroll DOM events and imperative scrolling belong in the page memory lifecycle hook`);
+  }
+  if (rendererHomeBrowseForbiddenBrowserGlobals.has(normalizedFile) && /\bIntersectionObserver\b/.test(source)) {
+    violations.push(`${normalizedFile}: waterfall visibility tracking must use the injected observer port, not the browser global`);
   }
   if (normalizedFile === 'renderer/features/home/useHomePagePresenter.ts' && /type\s+SortClassView\b/.test(source)) {
     violations.push(`${normalizedFile}: home presentation coordination must use the feature-owned sort-class contract, not a controller-exported view type`);
