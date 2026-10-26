@@ -960,3 +960,5 @@
 - **结构调整：** 浏览快照暂存、同源恢复/异源重载与浏览开始时的快照失效，从 `useHomeBrowseController` 移入框架无关的 `HomeBrowseSearchSession`；React 控制器只提供当前状态及请求代际端口。新增独立测试覆盖一次性恢复、聚合搜索不保留结果列表、切源重载和浏览操作失效旧快照。
 - **验证：** 相关 Home 搜索/浏览/档案切换定向测试 32 项通过；三套 TypeScript 检查、lint 通过；全量 Vitest 通过 425 个文件、3656 项测试，跳过 3 个文件和 5 项测试；main 与 renderer 生产构建通过。
 - **剩余边界：** 此次把一个跨浏览/搜索状态生命周期从 React hook 移到应用会话，未拆完 `useHomePagePresenter` 中的搜索与浏览协调；播放器 Presenter、全仓 UI/IPC 与 Atomic Design/对比度审计、进程池内部故障竞态及桌面实机播放/安装验收仍未完成。构建仍报告 HLS chunk 574.41 KB 和 Babel transform 耗时。
+- **本轮继续（2026-10-26）：** 新增通用被动视图依赖规则，renderer 中 `*View.tsx/jsx` 不得直接导入 IPC client 或 adapters；首页“开始浏览”导致的搜索结果清空、搜索取消、loading 释放及记忆失效由 `HomeSearchWorkflow.browseStarted` 统一处理，Presenter 只转发动作。共享 `CascadeBarView` 不再读取全局主题 store，Home/发现组合层把 `cardStyle` 显式注入。该变更改善 #5、#6、#7、#11、#14 的具体边界；首页剩余协调、播放器跨域状态所有权、全仓 UI/IPC 与 Atomic Design/对比度、运行时完整故障矩阵及桌面播放/安装验收仍开放，14 项总体结论不变。
+- **本轮验证：** 被动视图约束、级联筛选与首页会话相关定向测试 245 项通过；`pnpm run typecheck` 与 `pnpm run lint` 通过。此前 workflow 定向测试 17 项也通过。该记录只覆盖上述边界，不代表全仓完成。
