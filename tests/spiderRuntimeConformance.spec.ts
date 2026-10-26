@@ -71,14 +71,17 @@ function resultToJsValue(result: SpiderCallResult): string {
   throw new SourceProblemError(result.problemCode, result.reason);
 }
 
-function makeJsHarness(result: SpiderCallResult, runtimeError?: Error): RuntimeHarness {
+function makeJsHarness(result: SpiderCallResult, runtimeError?: Error, preparationError?: Error): RuntimeHarness {
   let preparationCalls = 0;
   let invocationCalls = 0;
   const runtime: JsSpiderRuntimePort = {
     siteKey: 'js-source',
     spiderStyle: 'unknown',
     setExt: () => undefined,
-    ensureLoaded: async () => { preparationCalls += 1; },
+    ensureLoaded: async () => {
+      preparationCalls += 1;
+      if (preparationError) throw preparationError;
+    },
     callMethod: async () => {
       invocationCalls += 1;
       if (runtimeError) throw runtimeError;
@@ -91,7 +94,7 @@ function makeJsHarness(result: SpiderCallResult, runtimeError?: Error): RuntimeH
   return { name: 'JS', spider, preparationCalls: () => preparationCalls, invocationCalls: () => invocationCalls };
 }
 
-function makePythonHarness(result: SpiderCallResult, runtimeError?: Error): RuntimeHarness {
+function makePythonHarness(result: SpiderCallResult, runtimeError?: Error, preparationError?: Error): RuntimeHarness {
   let preparationCalls = 0;
   let invocationCalls = 0;
   const runtime: PythonSpiderRuntimePort = {
@@ -108,6 +111,7 @@ function makePythonHarness(result: SpiderCallResult, runtimeError?: Error): Runt
     status: () => ({ path: 'C:/cache/source.py', available: true }),
     load: async () => {
       preparationCalls += 1;
+      if (preparationError) throw preparationError;
       return { status: 'ready', path: 'C:/cache/source.py' };
     },
   };
@@ -117,12 +121,16 @@ function makePythonHarness(result: SpiderCallResult, runtimeError?: Error): Runt
   return { name: 'Python', spider, preparationCalls: () => preparationCalls, invocationCalls: () => invocationCalls };
 }
 
-function makeJarHarness(result: SpiderCallResult, runtimeError?: Error): RuntimeHarness {
+function makeJarHarness(result: SpiderCallResult, runtimeError?: Error, preparationError?: Error): RuntimeHarness {
   let preparationCalls = 0;
   let invocationCalls = 0;
   const runtime: JarSpiderRuntimePort = {
     defaultJar: 'https://source.test/spider.jar',
-    ensureConverted: async () => { preparationCalls += 1; return 'C:/cache/spider.jar'; },
+    ensureConverted: async () => {
+      preparationCalls += 1;
+      if (preparationError) throw preparationError;
+      return 'C:/cache/spider.jar';
+    },
     conversionProgress: () => null,
     resolvePaths: () => ['C:/cache/spider.jar'],
     peekConverted: () => 'C:/cache/spider.jar',
@@ -143,8 +151,12 @@ function makeJarHarness(result: SpiderCallResult, runtimeError?: Error): Runtime
   return { name: 'JVM', spider, preparationCalls: () => preparationCalls, invocationCalls: () => invocationCalls };
 }
 
-function makeRuntimes(result: SpiderCallResult, runtimeError?: Error): RuntimeHarness[] {
-  return [makeJsHarness(result, runtimeError), makePythonHarness(result, runtimeError), makeJarHarness(result, runtimeError)];
+function makeRuntimes(result: SpiderCallResult, runtimeError?: Error, preparationError?: Error): RuntimeHarness[] {
+  return [
+    makeJsHarness(result, runtimeError, preparationError),
+    makePythonHarness(result, runtimeError, preparationError),
+    makeJarHarness(result, runtimeError, preparationError),
+  ];
 }
 
 describe('Spider runtime replacement contract', () => {
@@ -170,6 +182,19 @@ describe('Spider runtime replacement contract', () => {
       await expect(spider.searchContent('query', false, 750, controller.signal))
         .rejects.toMatchObject({ name: 'AbortError', message: 'search cancelled' });
       expect(preparationCalls(), `${name} preparation`).toBe(0);
+      expect(invocationCalls(), `${name} invocation`).toBe(0);
+    }
+  });
+
+  it('normalizes preparation failures and never invokes a spider that did not finish preparing', async () => {
+    for (const { name, spider, preparationCalls, invocationCalls } of makeRuntimes(
+      spiderCallSucceeded('unused'),
+      undefined,
+      new Error('runtime preparation failed'),
+    )) {
+      await expect(spider.searchContent('query', false, 750), `${name} preparation failure`)
+        .rejects.toMatchObject({ code: 'SPIDER_ERROR' });
+      expect(preparationCalls(), `${name} preparation`).toBe(1);
       expect(invocationCalls(), `${name} invocation`).toBe(0);
     }
   });
