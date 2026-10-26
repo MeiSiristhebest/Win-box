@@ -27,6 +27,14 @@ export function usePlayerPreferences(storage: PlayerPreferencesPort) {
 
   /** Temporary boss-key mute must not overwrite the user's remembered volume. */
   const bossKeyActiveRef = useRef(false);
+  const setBossKeyActive = useCallback((active: boolean) => {
+    bossKeyActiveRef.current = active;
+  }, []);
+  const applyPlaybackSettings = useCallback(({ volume: nextVolume, rate: nextRate }: { volume: number; rate: number }) => {
+    volumeRef.current = nextVolume;
+    setVolume(nextVolume);
+    setRate(nextRate);
+  }, [setVolume, setRate]);
 
   const syncPreferences = useCallback((subtitleOffset: number) => {
     preferencesRef.current = {
@@ -46,6 +54,8 @@ export function usePlayerPreferences(storage: PlayerPreferencesPort) {
     initialSubtitleOffset,
     volumeRef,
     bossKeyActiveRef,
+    setBossKeyActive,
+    applyPlaybackSettings,
     kernelPreferenceRef,
     syncPreferences,
     volume,

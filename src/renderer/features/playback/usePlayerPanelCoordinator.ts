@@ -1,7 +1,14 @@
 import { useCallback, useRef } from 'react';
+import {
+  PLAYER_PANEL_NAMES,
+  transitionPlayerPanelVisibility,
+  type PlayerPanelName,
+  type PlayerPanelVisibility,
+  type PlayerPanelVisibilityEvent,
+} from './application/playerPanelVisibility';
 
 export type PlayerSettingsPanel = 'subtitle' | 'danmaku' | 'fit' | 'audio' | 'superResolution';
-type ExclusivePlayerPanel = PlayerSettingsPanel | 'skip' | 'episodes' | 'stats' | 'keys';
+export type PlayerPanelVisibilitySetters = Record<PlayerPanelName, (open: boolean) => void>;
 
 export interface PlayerPanelHoverCancellers {
   subtitle: () => void;
@@ -10,19 +17,8 @@ export interface PlayerPanelHoverCancellers {
 }
 
 interface PlayerPanelCoordinatorOptions {
-  setSubtitleOpen: (open: boolean) => void;
-  setDanmakuOpen: (open: boolean) => void;
-  setFitOpen: (open: boolean) => void;
-  setAudioOpen: (open: boolean) => void;
-  setSuperResolutionOpen: (open: boolean) => void;
-  skipOpen: boolean;
-  setSkipOpen: (open: boolean) => void;
-  episodesOpen: boolean;
-  setEpisodesOpen: (open: boolean) => void;
-  statsOpen: boolean;
-  setStatsOpen: (open: boolean) => void;
-  keysOpen: boolean;
-  setKeysOpen: (open: boolean) => void;
+  visibility: PlayerPanelVisibility;
+  setVisibility: PlayerPanelVisibilitySetters;
   setVolumeHovered: (hovered: boolean) => void;
   clearVolumeFlash: () => void;
   revealControls: () => void;
@@ -36,24 +32,7 @@ const noCancel = () => undefined;
  * only visibility transitions and transient hover timers.
  */
 export function usePlayerPanelCoordinator(options: PlayerPanelCoordinatorOptions) {
-  const {
-    setSubtitleOpen,
-    setDanmakuOpen,
-    setFitOpen,
-    setAudioOpen,
-    setSuperResolutionOpen,
-    skipOpen,
-    setSkipOpen,
-    episodesOpen,
-    setEpisodesOpen,
-    statsOpen,
-    setStatsOpen,
-    keysOpen,
-    setKeysOpen,
-    setVolumeHovered,
-    clearVolumeFlash,
-    revealControls,
-  } = options;
+  const { visibility, setVisibility, setVolumeHovered, clearVolumeFlash, revealControls } = options;
   const hoverCancellers = useRef<PlayerPanelHoverCancellers>({
     subtitle: noCancel,
     danmaku: noCancel,
@@ -74,17 +53,10 @@ export function usePlayerPanelCoordinator(options: PlayerPanelCoordinatorOptions
     hoverCancellers.current.volume();
   }, [cancelSubtitleDanmakuHover]);
 
-  const closeOtherPanels = useCallback((keep: ExclusivePlayerPanel | null) => {
-    if (keep !== 'subtitle') setSubtitleOpen(false);
-    if (keep !== 'danmaku') setDanmakuOpen(false);
-    if (keep !== 'fit') setFitOpen(false);
-    if (keep !== 'audio') setAudioOpen(false);
-    if (keep !== 'superResolution') setSuperResolutionOpen(false);
-    if (keep !== 'skip') setSkipOpen(false);
-    if (keep !== 'episodes') setEpisodesOpen(false);
-    if (keep !== 'stats') setStatsOpen(false);
-    if (keep !== 'keys') setKeysOpen(false);
-  }, [setSubtitleOpen, setDanmakuOpen, setFitOpen, setAudioOpen, setSuperResolutionOpen, setSkipOpen, setEpisodesOpen, setStatsOpen, setKeysOpen]);
+  const applyVisibilityEvent = useCallback((event: PlayerPanelVisibilityEvent) => {
+    const next = transitionPlayerPanelVisibility(visibility, event);
+    for (const panel of PLAYER_PANEL_NAMES) setVisibility[panel](next[panel]);
+  }, [visibility, setVisibility]);
 
   const prepareForExclusivePanel = useCallback(() => {
     cancelPanelHover();
@@ -94,62 +66,53 @@ export function usePlayerPanelCoordinator(options: PlayerPanelCoordinatorOptions
 
   const openPanel = useCallback((panel: PlayerSettingsPanel) => {
     prepareForExclusivePanel();
-    closeOtherPanels(panel);
-    if (panel === 'subtitle') setSubtitleOpen(true);
-    if (panel === 'danmaku') setDanmakuOpen(true);
-    if (panel === 'fit') setFitOpen(true);
-    if (panel === 'audio') setAudioOpen(true);
-    if (panel === 'superResolution') setSuperResolutionOpen(true);
+    applyVisibilityEvent({ type: 'open', panel });
     revealControls();
-  }, [prepareForExclusivePanel, closeOtherPanels, setSubtitleOpen, setDanmakuOpen, setFitOpen, setAudioOpen, setSuperResolutionOpen, revealControls]);
+  }, [prepareForExclusivePanel, applyVisibilityEvent, revealControls]);
 
   const toggleSkipPanel = useCallback(() => {
     prepareForExclusivePanel();
-    closeOtherPanels('skip');
-    setSkipOpen(!skipOpen);
+    applyVisibilityEvent({ type: 'toggle', panel: 'skip' });
     revealControls();
-  }, [prepareForExclusivePanel, closeOtherPanels, skipOpen, setSkipOpen, revealControls]);
+  }, [prepareForExclusivePanel, applyVisibilityEvent, revealControls]);
 
   const toggleEpisodesPanel = useCallback(() => {
     prepareForExclusivePanel();
-    closeOtherPanels('episodes');
-    setEpisodesOpen(!episodesOpen);
+    applyVisibilityEvent({ type: 'toggle', panel: 'episodes' });
     revealControls();
-  }, [prepareForExclusivePanel, closeOtherPanels, episodesOpen, setEpisodesOpen, revealControls]);
+  }, [prepareForExclusivePanel, applyVisibilityEvent, revealControls]);
 
   const openKernelPanel = useCallback(() => {
     prepareForExclusivePanel();
-    closeOtherPanels(null);
+    applyVisibilityEvent({ type: 'close-all' });
     revealControls();
-  }, [prepareForExclusivePanel, closeOtherPanels, revealControls]);
+  }, [prepareForExclusivePanel, applyVisibilityEvent, revealControls]);
 
   const onVolumeHoverChange = useCallback((open: boolean) => {
     if (open) {
       cancelSubtitleDanmakuHover();
-      closeOtherPanels(null);
+      applyVisibilityEvent({ type: 'close-all' });
     }
     setVolumeHovered(open);
-  }, [cancelSubtitleDanmakuHover, closeOtherPanels, setVolumeHovered]);
+  }, [cancelSubtitleDanmakuHover, applyVisibilityEvent, setVolumeHovered]);
 
   const flashVolume = useCallback((flash: () => void) => {
     cancelSubtitleDanmakuHover();
-    closeOtherPanels(null);
+    applyVisibilityEvent({ type: 'close-all' });
     flash();
-  }, [cancelSubtitleDanmakuHover, closeOtherPanels]);
+  }, [cancelSubtitleDanmakuHover, applyVisibilityEvent]);
 
   const toggleStats = useCallback(() => {
     prepareForExclusivePanel();
-    closeOtherPanels('stats');
-    setStatsOpen(!statsOpen);
+    applyVisibilityEvent({ type: 'toggle', panel: 'stats' });
     revealControls();
-  }, [prepareForExclusivePanel, closeOtherPanels, statsOpen, setStatsOpen, revealControls]);
+  }, [prepareForExclusivePanel, applyVisibilityEvent, revealControls]);
 
   const toggleKeys = useCallback(() => {
     prepareForExclusivePanel();
-    closeOtherPanels('keys');
-    setKeysOpen(!keysOpen);
+    applyVisibilityEvent({ type: 'toggle', panel: 'keys' });
     revealControls();
-  }, [prepareForExclusivePanel, closeOtherPanels, keysOpen, setKeysOpen, revealControls]);
+  }, [prepareForExclusivePanel, applyVisibilityEvent, revealControls]);
 
   return {
     openPanel,

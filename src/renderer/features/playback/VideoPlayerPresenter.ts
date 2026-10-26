@@ -186,6 +186,8 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
     initialSubtitleOffset,
     volumeRef: volRef,
     bossKeyActiveRef: bossActiveRef,
+    setBossKeyActive,
+    applyPlaybackSettings,
     syncPreferences,
     volume: vol,
     setVolume: setVol,
@@ -372,7 +374,7 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
     retryPluginEngine: engines.retry,
     stageHandoff: (handoff, settings) => {
       playbackHandoff.stage(handoff);
-      if (settings) { volRef.current = settings.volume; setVol(settings.volume); setRate(settings.rate); }
+      if (settings) applyPlaybackSettings(settings);
     },
     activateKernel: (target) => { setFull(false); setKernel(target); },
     rememberPreference: rememberKernelPreference,
@@ -666,12 +668,12 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
       hasPlaybackSurface: () => !!ref.current || kIsChild(),
       isPaused: kPaused,
       volume: () => volRef.current,
-      setActive: (active: boolean) => { bossActiveRef.current = active; },
+      setActive: setBossKeyActive,
       pause: kPause,
       play: kPlay,
       setVolume: kSetVol,
       publishPaused: (paused: boolean) => updatePlaybackStatus({ paused }),
-  }), [kIsChild, kPause, kPaused, kPlay, kSetVol, bossActiveRef, updatePlaybackStatus, volRef]);
+  }), [kIsChild, kPause, kPaused, kPlay, kSetVol, setBossKeyActive, updatePlaybackStatus, volRef]);
   useBossKeyPlaybackEvents(dependencies.bossKeyPlaybackEvents, bossKeyPlaybackPort);
 
   // ★ 2026-09-28（用户要求）：字幕/弹幕图标手势 —— 左键单击=开关，右键或长按=打开调整框（三者互斥）

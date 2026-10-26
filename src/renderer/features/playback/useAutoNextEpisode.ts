@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  EMPTY_AUTO_NEXT_EPISODE_STATE,
+  transitionAutoNextEpisode,
+  type AutoNextEpisodeEffect,
+  type AutoNextEpisodeEvent,
+} from './application/autoNextEpisodeState';
 
 interface UseAutoNextEpisodeOptions {
   canNext: boolean;
@@ -10,15 +16,24 @@ interface UseAutoNextEpisodeOptions {
 }
 
 export function useAutoNextEpisode({ canNext, onPrev, onNext, isPaused, pause, immediate = false }: UseAutoNextEpisodeOptions) {
-  const [nextCount, setNextCount] = useState<number | null>(null);
-  const [endAll, setEndAll] = useState(false);
+  const [state, setState] = useState(EMPTY_AUTO_NEXT_EPISODE_STATE);
+  const stateRef = useRef(state);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canNextRef = useRef(canNext);
+  const onPrevRef = useRef(onPrev);
   const onNextRef = useRef(onNext);
   useLayoutEffect(() => {
     canNextRef.current = canNext;
+    onPrevRef.current = onPrev;
     onNextRef.current = onNext;
-  }, [canNext, onNext]);
+  }, [canNext, onPrev, onNext]);
+
+  const dispatch = useCallback((event: AutoNextEpisodeEvent): AutoNextEpisodeEffect[] => {
+    const transition = transitionAutoNextEpisode(stateRef.current, event);
+    stateRef.current = transition.state;
+    setState(transition.state);
+    return transition.effects;
+  }, []);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {
@@ -27,28 +42,28 @@ export function useAutoNextEpisode({ canNext, onPrev, onNext, isPaused, pause, i
     }
   }, []);
 
+  const runEffects = useCallback((effects: AutoNextEpisodeEffect[]) => {
+    if (effects.includes('clear-timer')) clearTimer();
+    if (effects.includes('schedule-countdown')) {
+      timerRef.current = setInterval(() => {
+        const tickEffects = dispatch({ type: 'countdown-tick' });
+        if (tickEffects.includes('clear-timer')) clearTimer();
+        if (tickEffects.includes('advance')) onNextRef.current?.();
+      }, 1000);
+    }
+    if (effects.includes('advance')) onNextRef.current?.();
+    if (effects.includes('pause')) pause();
+  }, [clearTimer, dispatch, pause]);
+
   useEffect(() => () => clearTimer(), [clearTimer]);
 
   const clear = useCallback(() => {
-    clearTimer();
-    setNextCount(null);
-    setEndAll(false);
-  }, [clearTimer]);
+    runEffects(dispatch({ type: 'clear' }));
+  }, [dispatch, runEffects]);
 
   const startCountdown = useCallback(() => {
-    clear();
-    let remaining = 5;
-    setNextCount(remaining);
-    timerRef.current = setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        clear();
-        onNextRef.current?.();
-      } else {
-        setNextCount(remaining);
-      }
-    }, 1000);
-  }, [clear]);
+    runEffects(dispatch({ type: 'start-countdown' }));
+  }, [dispatch, runEffects]);
 
   const canAdvance = useCallback(() => canNextRef.current && !!onNextRef.current, []);
   const advance = useCallback(() => {
@@ -60,28 +75,26 @@ export function useAutoNextEpisode({ canNext, onPrev, onNext, isPaused, pause, i
   }, [clear]);
 
   const handlePlaybackEnd = useCallback(() => {
-    if (canAdvance()) { if (immediate) advance(); else startCountdown(); }
-    else setEndAll(true);
-  }, [canAdvance, startCountdown, immediate, advance]);
+    runEffects(dispatch({ type: 'playback-ended', canAdvance: canAdvance(), immediate }));
+  }, [canAdvance, dispatch, immediate, runEffects]);
 
   const cancelCountdown = useCallback(() => {
-    clear();
-    if (!isPaused()) pause();
-  }, [clear, isPaused, pause]);
+    runEffects(dispatch({ type: 'cancel-countdown', isPaused: isPaused() }));
+  }, [dispatch, isPaused, runEffects]);
 
   const handlePrev = useCallback(() => {
     clear();
-    onPrev?.();
-  }, [clear, onPrev]);
+    onPrevRef.current?.();
+  }, [clear]);
 
   const handleNext = useCallback(() => {
     clear();
-    onNext?.();
-  }, [clear, onNext]);
+    onNextRef.current?.();
+  }, [clear]);
 
   return {
-    nextCount,
-    endAll,
+    nextCount: state.nextCount,
+    endAll: state.endAll,
     clear,
     startCountdown,
     handlePlaybackEnd,

@@ -46,7 +46,7 @@ describe('usePlayerPreferences', () => {
     const { result } = renderHook(() => usePlayerPreferences(storage.port));
 
     act(() => {
-      result.current.bossKeyActiveRef.current = true;
+      result.current.setBossKeyActive(true);
       result.current.setVolume(0);
     });
     act(() => result.current.syncPreferences(9));
@@ -101,13 +101,24 @@ describe('usePlayerPreferences', () => {
     });
 
     act(() => {
-      result.current.preferences.bossKeyActiveRef.current = true;
+      result.current.preferences.setBossKeyActive(true);
       result.current.preferences.setVolume(0);
       result.current.setSubtitleOffset(9);
     });
 
     expect(storage.read()).toEqual(saved);
     expect(result.current.preferences.preferencesRef.current).toMatchObject({ vol: 0, subOffset: 9 });
+  });
+
+  it('applies kernel handoff output settings through the preferences owner', () => {
+    const storage = createPreferencesPort({ vol: 0.7, rate: 1.25 });
+    const { result } = renderHook(() => usePlayerPreferences(storage.port));
+
+    act(() => result.current.applyPlaybackSettings({ volume: 0.42, rate: 1.5 }));
+
+    expect(result.current.volume).toBe(0.42);
+    expect(result.current.rate).toBe(1.5);
+    expect(result.current.volumeRef.current).toBe(0.42);
   });
 
   it('keeps and persists the live kernel preference through the port', () => {
