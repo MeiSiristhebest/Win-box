@@ -1,5 +1,6 @@
 import type { PlayerProgressBarModel } from './presentation/PlayerControlModels';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { progressHoverOffset, progressTimeAtPointer, projectProgressPercentages } from './application/playerProgressGeometry';
 
 type PlayerProgressBarProps = PlayerProgressBarModel;
 interface ProgressHover {
@@ -25,32 +26,33 @@ export function PlayerProgressBar({
   useEffect(() => {
     latestRef.current = { currentTime, duration, buffered, canSeek, getCurrentTime, seekTo, formatTime, onContextMenu };
   });
+  const progress = projectProgressPercentages(currentTime, buffered, duration);
 
   const timeAtX = (clientX: number): number | null => {
     const element = progressRef.current;
     const state = latestRef.current;
-    if (!element || !state.duration) return null;
+    if (!element) return null;
     const rect = element.getBoundingClientRect();
-    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-    return Math.min(state.duration, Math.max(0, Math.round(ratio * state.duration)));
+    return progressTimeAtPointer(clientX, rect, state.duration);
   };
 
   const seekAtX = (clientX: number) => {
     const time = timeAtX(clientX);
     const state = latestRef.current;
     if (time == null || !state.canSeek()) return;
-    state.seekTo(Math.min(state.duration, Math.max(0, time)));
+    state.seekTo(time);
   };
 
   const hoverAt = (clientX: number) => {
     const element = progressRef.current;
-    const time = timeAtX(clientX);
-    if (!element || time == null) {
+    if (!element) {
       setHover(null);
       return;
     }
     const rect = element.getBoundingClientRect();
-    setHover({ x: Math.min(Math.max(clientX - rect.left, 22), Math.max(rect.width - 22, 22)), time });
+    const time = progressTimeAtPointer(clientX, rect, latestRef.current.duration);
+    const x = progressHoverOffset(clientX, rect);
+    setHover(x == null || time == null ? null : { x, time });
   };
 
   useEffect(() => {
@@ -101,15 +103,15 @@ export function PlayerProgressBar({
         if (latestRef.current.onContextMenu({ clientX: event.clientX, clientY: event.clientY }, timeAtX(event.clientX))) setHover(null);
       }}
     >
-      <div className="vp-buffer" style={{ width: duration ? `${(buffered / duration) * 100}%` : '0%' }} />
-      <div className="vp-played" style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }} />
+      <div className="vp-buffer" style={{ width: `${progress.buffered}%` }} />
+      <div className="vp-played" style={{ width: `${progress.played}%` }} />
       {hover && (
         <>
           <div className="vp-hline" style={{ left: hover.x }} />
           <div className="vp-htip" style={{ left: hover.x }}>{formatTime(hover.time)}</div>
         </>
       )}
-      <div className="vp-thumb" style={{ left: duration ? `${(currentTime / duration) * 100}%` : '0%' }} />
+      <div className="vp-thumb" style={{ left: `${progress.played}%` }} />
     </div>
   );
 }

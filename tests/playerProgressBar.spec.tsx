@@ -46,6 +46,24 @@ describe('PlayerProgressBar', () => {
     expect(container.querySelector('.vp-htip')).toBeNull();
   });
 
+  it('does not seek when the track has no measurable width and bounds progress styles', () => {
+    const props = makeProps();
+    props.currentTime = 90;
+    props.buffered = 120;
+    const { container } = render(<PlayerProgressBar {...props} />);
+    const progress = container.querySelector('.vp-progress') as HTMLDivElement;
+    Object.defineProperty(progress, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ left: 10, top: 0, right: 10, bottom: 8, width: 0, height: 8 } as DOMRect),
+    });
+
+    fireEvent.pointerDown(progress, { button: 0, clientX: 10, pointerId: 1 });
+
+    expect(props.seekTo).not.toHaveBeenCalled();
+    expect(container.querySelector('.vp-played')?.getAttribute('style')).toContain('width: 100%');
+    expect(container.querySelector('.vp-buffer')?.getAttribute('style')).toContain('width: 100%');
+  });
+
   it('uses the non-passive wheel handler for one-second seeks and reports context-menu time', () => {
     const props = makeProps();
     const { container } = render(<PlayerProgressBar {...props} />);
