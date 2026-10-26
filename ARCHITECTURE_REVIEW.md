@@ -1001,3 +1001,12 @@
 - **验证：** `pnpm run typecheck`（main、renderer、test）、`pnpm run lint` 通过；修正页面直接导入宽 display barrel 后，全量 Vitest 为 434 个文件通过、3 个跳过，3709 项通过、5 项跳过；生产构建成功。
 - **未关闭：** 本 slice 只解决偏好设置的一处 UI/存储混层。全仓 UI/IPC 与 Atomic Design/对比度审计、播放器 Presenter 责任边界、剩余蜘蛛生命周期矩阵，以及桌面实际播放/安装/全窗口视觉验收仍未完成；14 项总体结论仍为部分符合。
 - **构建观察：** HLS chunk 仍为 574.41 KB（gzip 178.97 KB），超过 500 KB 提示；renderer 构建约 9.3 秒，Babel transform 回调约 8.5 秒。本轮没有调整其分包或编译策略。
+
+## 本轮继续：播放故障恢复编排隔离（2026-10-26）
+
+- **确认的问题：** `VideoPlayerPresenter` 直接编排自动切解析线路、用户提示与页面级播放故障回调。自动切线路 Promise 被 `void` 丢弃：异步拒绝会产生未处理 rejection；若回调同步抛错，则页面级故障处理不会执行。
+- **已调整：** 新增不依赖 React/播放器内核的 `reportPlaybackFailure` 应用策略，集中执行并报告故障恢复；即使自动切线路同步抛错或异步拒绝，仍会调用页面故障回调，并向用户显示失败原因。Presenter 只把当前输入端口接入该策略。
+- **回归覆盖：** 验证自动切线与页面回调的同步顺序、异步拒绝、同步异常，以及没有自动切线时的委托行为。
+- **验证：** 定向故障策略测试 4 项通过；全量 Vitest 为 436 个文件通过、3 个跳过，3719 项通过、5 项跳过；main、renderer、test 三套 typecheck 与全仓 lint（含架构边界、React/perf、JSX a11y）通过；main 与 renderer 生产构建通过。
+- **构建观察：** HLS chunk 仍为 574.41 KB（gzip 178.97 KB），高于 500 KB 提示阈值；Babel transform 回调约占 renderer 构建耗时的 93%，尚未优化。
+- **剩余：** 此变更只移出播放器故障恢复的一处协调；播放器 Presenter 仍跨多个子域组织会话和控制模型。14 项全仓审计、UI/IPC 与 Atomic Design/对比度验收、运行时生命周期矩阵及真实桌面播放/安装验收仍开放。

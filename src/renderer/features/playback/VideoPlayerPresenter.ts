@@ -73,6 +73,7 @@ import { usePlayerCommandFeedback } from './usePlayerCommandFeedback';
 import { usePlayerKernelFitSync } from './usePlayerKernelFitSync';
 import { runPlayerKernelCommandWithFeedback } from './application/runPlayerKernelCommandWithFeedback';
 import { cyclePlayerFit } from './application/playerFitCycle';
+import { reportPlaybackFailure } from './application/reportPlaybackFailure';
 
 export interface VideoPlayerProps {
   url: string;
@@ -523,13 +524,11 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
   const onAutoChangeParse = props.onAutoChangeParse;
   const onPlaybackFailure = props.onPlaybackFailure;
   const handlePlaybackFailure = useCallback((time: number, reason: string) => {
-    if (onAutoChangeParse) {
-      showSkipToast(`流异常（${reason}），正在自动为您切换解析线路…`);
-      void onAutoChangeParse(time);
-    }
-    if (onPlaybackFailure) {
-      onPlaybackFailure(time, reason);
-    }
+    void reportPlaybackFailure(time, reason, {
+      autoChangeParse: onAutoChangeParse,
+      onPlaybackFailure,
+      notify: showSkipToast,
+    });
   }, [onAutoChangeParse, onPlaybackFailure, showSkipToast]);
 
   const parseName = props.parseName;
