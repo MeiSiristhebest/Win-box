@@ -95,6 +95,14 @@ export class HomeSearchWorkflow {
     this.invalidatePendingSearch();
   };
 
+  browseStarted = (): void => {
+    const { presentation } = this.context;
+    presentation.dispatchSearch({ type: 'browse-started' });
+    presentation.setSearchLoading(false);
+    this.clearSearchMemory();
+    this.cancelPendingSearch();
+  };
+
   private invalidatePendingSearch(): void {
     this.searchGeneration += 1;
   }

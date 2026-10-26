@@ -109,12 +109,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
     setBrowseLoading,
     setBrowseError,
     onMemoryRestoreStart: () => { memRestoreRef.current = true; },
-    onBrowseStart: () => {
-      dispatchHomeSearch({ type: 'browse-started' });
-      setSearchLoading(false);
-      search.clearSearchMemory();
-      search.cancelPendingSearch();
-    },
+    onBrowseStart: () => search.browseStarted(),
   });
   const {
     classes,

@@ -514,6 +514,28 @@ describe('useHomeSearchController', () => {
     expect(result.current.homeMemory).toMatchObject({ profileId: 'profile-a', updatedAt: 102, search: null });
   });
 
+  it('cancels an in-flight aggregate search when browsing starts', async () => {
+    const request = deferred<SearchAllReport>();
+    vi.mocked(client.searchAll).mockReturnValueOnce(request.promise);
+    const { result } = renderHook(() => useSearchHarness({ searchAllSources: true }));
+
+    let search!: Promise<void>;
+    await act(async () => {
+      search = result.current.doSearch();
+      await Promise.resolve();
+    });
+    expect(result.current.loading).toBe(true);
+
+    act(() => result.current.browseStarted());
+    expect(result.current.loading).toBe(false);
+    expect(result.current.agg).toBeNull();
+    expect(result.current.homeMemory.search).toBeNull();
+
+    request.resolve(emptyReport());
+    await act(async () => { await search; });
+    expect(result.current.agg).toBeNull();
+  });
+
   it('restores the browse snapshot when exiting search', async () => {
     const browseItem = { id: 'browse-item', name: 'Browse item' } as unknown as VodItem;
     const snapshot: HomeBrowseSnapshot = {

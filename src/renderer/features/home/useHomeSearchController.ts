@@ -49,6 +49,7 @@ export function useHomeSearchController({ api, runtime, memory, route, search, b
   return {
     clearSearchMemory: workflow.clearSearchMemory,
     cancelPendingSearch: workflow.cancelPendingSearch,
+    browseStarted: workflow.browseStarted,
     applySearchMem: workflow.applySearchMem,
     saveSearchMem: workflow.saveSearchMem,
     setProfileSearchScope: workflow.setProfileSearchScope,
