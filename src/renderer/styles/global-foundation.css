@@ -152,6 +152,11 @@ input, select, textarea {
 }
 input:hover, select:hover, textarea:hover { border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--text-accent, var(--accent)); box-shadow: 0 0 0 3px var(--accent-soft); }
+/* Native option popups do not reliably inherit the themed select colors on Windows.
+   Give the popup its own foreground/surface pair in every shell, not desktop only. */
+:root :where(option, optgroup) { color: var(--text-primary, var(--text)); background-color: var(--surface-elevated, var(--surface-3)); }
+:root option:checked { color: var(--on-accent); background-color: var(--accent); }
+:root option:disabled { color: var(--text-disabled, var(--text-dim)); }
 ::placeholder { color: var(--text-secondary); opacity: 1; }
 
 }

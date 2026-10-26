@@ -191,6 +191,17 @@ describe('shell semantic warning colors', () => {
   });
 });
 
+describe('native option popup readability', () => {
+  it('sets explicit themed foreground, surface, selected, and disabled colors outside desktop mode', async () => {
+    const css = await readFile(new URL('global-foundation.css', stylesDirectory), 'utf8');
+
+    expect(css).toMatch(/:root\s+:where\(option,\s*optgroup\)\s*\{[^}]*color:\s*var\(--text-primary,\s*var\(--text\)\)/s);
+    expect(css).toMatch(/:root\s+:where\(option,\s*optgroup\)\s*\{[^}]*background-color:\s*var\(--surface-elevated,\s*var\(--surface-3\)\)/s);
+    expect(css).toMatch(/:root\s+option:checked\s*\{[^}]*color:\s*var\(--on-accent\)[^}]*background-color:\s*var\(--accent\)/s);
+    expect(css).toMatch(/:root\s+option:disabled\s*\{[^}]*color:\s*var\(--text-disabled,\s*var\(--text-dim\)\)/s);
+  });
+});
+
 describe('disabled control readability', () => {
   it('does not dim disabled controls with element opacity', async () => {
     const files = (await readdir(stylesDirectory)).filter((file) => file.endsWith('.css'));
