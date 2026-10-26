@@ -954,3 +954,9 @@
 - **已补回归：** 三类 Spider 适配器分别注入 JS 沙箱加载、Python 脚本加载和 JVM jar 转换失败；统一断言调用方收到 `SPIDER_ERROR`，准备只运行一次且蜘蛛方法没有执行。未发现需要改动的生产行为。
 - **验证：** 定向 `spiderRuntimeConformance.spec.ts` 7 项通过；三套 TypeScript 检查和 lint 通过；全量 `pnpm test` 通过 424 个文件、3653 项测试，跳过 3 个文件和 5 项测试。
 - **未关闭：** 该用例不覆盖 Worker/JVM/Python 进程池内部的启动、执行、取消和超时竞态；全仓 UI/IPC 与 Atomic Design 审计、桌面实际播放/安装验收仍开放。
+
+## Home 浏览与聚合搜索会话拆分后的复验（2026-10-26）
+
+- **结构调整：** 浏览快照暂存、同源恢复/异源重载与浏览开始时的快照失效，从 `useHomeBrowseController` 移入框架无关的 `HomeBrowseSearchSession`；React 控制器只提供当前状态及请求代际端口。新增独立测试覆盖一次性恢复、聚合搜索不保留结果列表、切源重载和浏览操作失效旧快照。
+- **验证：** 相关 Home 搜索/浏览/档案切换定向测试 32 项通过；三套 TypeScript 检查、lint 通过；全量 Vitest 通过 425 个文件、3656 项测试，跳过 3 个文件和 5 项测试；main 与 renderer 生产构建通过。
+- **剩余边界：** 此次把一个跨浏览/搜索状态生命周期从 React hook 移到应用会话，未拆完 `useHomePagePresenter` 中的搜索与浏览协调；播放器 Presenter、全仓 UI/IPC 与 Atomic Design/对比度审计、进程池内部故障竞态及桌面实机播放/安装验收仍未完成。构建仍报告 HLS chunk 574.41 KB 和 Babel transform 耗时。
