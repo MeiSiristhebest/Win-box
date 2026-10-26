@@ -10,6 +10,7 @@ import type { PythonSpiderScriptPort } from '../src/engine/spider/PythonSpiderSc
 import { SourceProblemError, type SourceProblemCode } from '../src/engine/spider/errors';
 import { spiderCallFailed, spiderCallSucceeded, type SpiderCallResult } from '../src/engine/spider/spiderCallResult';
 import type { Spider } from '../src/engine/spider/Spider';
+import { awaitWithAbort } from '../src/engine/util/abort';
 
 type RuntimeCase = {
   name: string;
@@ -71,15 +72,16 @@ function resultToJsValue(result: SpiderCallResult): string {
   throw new SourceProblemError(result.problemCode, result.reason);
 }
 
-function makeJsHarness(result: SpiderCallResult, runtimeError?: Error, preparationError?: Error): RuntimeHarness {
+function makeJsHarness(result: SpiderCallResult, runtimeError?: Error, preparationError?: Error, preparationBarrier?: Promise<void>): RuntimeHarness {
   let preparationCalls = 0;
   let invocationCalls = 0;
   const runtime: JsSpiderRuntimePort = {
     siteKey: 'js-source',
     spiderStyle: 'unknown',
     setExt: () => undefined,
-    ensureLoaded: async () => {
+    ensureLoaded: async (signal) => {
       preparationCalls += 1;
+      if (preparationBarrier) await awaitWithAbort(preparationBarrier, signal);
       if (preparationError) throw preparationError;
     },
     callMethod: async () => {
@@ -94,7 +96,7 @@ function makeJsHarness(result: SpiderCallResult, runtimeError?: Error, preparati
   return { name: 'JS', spider, preparationCalls: () => preparationCalls, invocationCalls: () => invocationCalls };
 }
 
-function makePythonHarness(result: SpiderCallResult, runtimeError?: Error, preparationError?: Error): RuntimeHarness {
+function makePythonHarness(result: SpiderCallResult, runtimeError?: Error, preparationError?: Error, preparationBarrier?: Promise<void>): RuntimeHarness {
   let preparationCalls = 0;
   let invocationCalls = 0;
   const runtime: PythonSpiderRuntimePort = {
@@ -111,6 +113,7 @@ function makePythonHarness(result: SpiderCallResult, runtimeError?: Error, prepa
     status: () => ({ path: 'C:/cache/source.py', available: true }),
     load: async () => {
       preparationCalls += 1;
+      if (preparationBarrier) await preparationBarrier;
       if (preparationError) throw preparationError;
       return { status: 'ready', path: 'C:/cache/source.py' };
     },
@@ -121,13 +124,14 @@ function makePythonHarness(result: SpiderCallResult, runtimeError?: Error, prepa
   return { name: 'Python', spider, preparationCalls: () => preparationCalls, invocationCalls: () => invocationCalls };
 }
 
-function makeJarHarness(result: SpiderCallResult, runtimeError?: Error, preparationError?: Error): RuntimeHarness {
+function makeJarHarness(result: SpiderCallResult, runtimeError?: Error, preparationError?: Error, preparationBarrier?: Promise<void>): RuntimeHarness {
   let preparationCalls = 0;
   let invocationCalls = 0;
   const runtime: JarSpiderRuntimePort = {
     defaultJar: 'https://source.test/spider.jar',
     ensureConverted: async () => {
       preparationCalls += 1;
+      if (preparationBarrier) await preparationBarrier;
       if (preparationError) throw preparationError;
       return 'C:/cache/spider.jar';
     },
@@ -151,11 +155,16 @@ function makeJarHarness(result: SpiderCallResult, runtimeError?: Error, preparat
   return { name: 'JVM', spider, preparationCalls: () => preparationCalls, invocationCalls: () => invocationCalls };
 }
 
-function makeRuntimes(result: SpiderCallResult, runtimeError?: Error, preparationError?: Error): RuntimeHarness[] {
+function makeRuntimes(
+  result: SpiderCallResult,
+  runtimeError?: Error,
+  preparationError?: Error,
+  preparationBarrier?: Promise<void>,
+): RuntimeHarness[] {
   return [
-    makeJsHarness(result, runtimeError, preparationError),
-    makePythonHarness(result, runtimeError, preparationError),
-    makeJarHarness(result, runtimeError, preparationError),
+    makeJsHarness(result, runtimeError, preparationError, preparationBarrier),
+    makePythonHarness(result, runtimeError, preparationError, preparationBarrier),
+    makeJarHarness(result, runtimeError, preparationError, preparationBarrier),
   ];
 }
 
@@ -184,6 +193,28 @@ describe('Spider runtime replacement contract', () => {
       expect(preparationCalls(), `${name} preparation`).toBe(0);
       expect(invocationCalls(), `${name} invocation`).toBe(0);
     }
+  });
+
+  it('cancels in-flight preparation consistently without invoking a runtime', async () => {
+    const preparation = Promise.withResolvers<void>();
+    for (const { name, spider, preparationCalls, invocationCalls } of makeRuntimes(
+      spiderCallSucceeded('too late'),
+      undefined,
+      undefined,
+      preparation.promise,
+    )) {
+      const controller = new AbortController();
+      const call = spider.searchContent('query', false, 750, controller.signal);
+      controller.abort(new Error('search cancelled during preparation'));
+
+      await expect(call, `${name} preparation cancellation`).rejects.toMatchObject({
+        name: 'AbortError', message: 'search cancelled during preparation',
+      });
+      expect(preparationCalls(), `${name} preparation`).toBe(1);
+      expect(invocationCalls(), `${name} invocation`).toBe(0);
+    }
+    preparation.resolve();
+    await preparation.promise;
   });
 
   it('normalizes preparation failures and never invokes a spider that did not finish preparing', async () => {
