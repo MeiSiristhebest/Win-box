@@ -927,3 +927,10 @@
 - **已调整：** 新增 `HomeWaterfallObserverPort`、浏览器 adapter 与生命周期 hook；HomePage composition root 注入 adapter。浏览控制器保留分页与数据状态，observer hook 管理建立/断开与刷新，回调通过 ref 读取最新分页动作。
 - **回归覆盖：** 新增 observer 生命周期与停用状态测试 2 项；既有浏览控制器行为测试 7 项继续通过。
 - **验证：** 两个定向测试文件共 9 项通过；`pnpm run typecheck` 三套项目通过；`pnpm run lint`（含架构边界和 renderer React/perf/a11y）通过。首页搜索/浏览跨会话协调、其余 renderer DOM/IPC 分类与全局 UI/Atomic Design 审计仍开放。
+
+## 当前工作区全量复验（2026-10-26）
+
+- **测试：** `pnpm test` 通过 424 个测试文件，3 个文件跳过；3650 项通过、5 项跳过。
+- **静态检查：** `pnpm run typecheck` 的 main、renderer、test 三套项目通过；`pnpm run lint` 通过，包含架构边界、React/perf 与 JSX a11y。
+- **构建：** `pnpm run build` 的 main 与 renderer 生产构建通过。Vite 仍提示独立 `hls` chunk 为 574.41 KB（gzip 178.97 KB），超过 500 KB；Babel transform 回调耗时仍是 renderer 构建的主要瓶颈。
+- **未验收：** 这次全量 CLI 复验不替代桌面视觉、实际媒体源播放或安装覆盖/数据保留验收；14 项原则整改仍未完成。
