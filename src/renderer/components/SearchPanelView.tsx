@@ -1,15 +1,20 @@
-import { useEffect, useId, useRef } from 'react';
+import type { CSSProperties, FocusEventHandler } from 'react';
 import { createPortal } from 'react-dom';
 import type { MetaSuggestion } from '../../shared/meta';
 import type { MovieHotList } from '../../shared/types';
-import { isNativeModalOpen } from '../lib/modalScope';
-import { useAnchoredPanel } from './useAnchoredPanel';
 
 const HOT_RANK_MAX = 10;
 
 interface SearchPanelViewProps {
   bar: boolean;
   open: boolean;
+  wrapId: string;
+  triggerId: string;
+  inputId: string;
+  panelId: string;
+  panelPosition: CSSProperties;
+  portalTarget: Element | DocumentFragment;
+  onBlur: FocusEventHandler<HTMLDivElement>;
   query: string;
   hotList: MovieHotList | null;
   hotLoading: boolean;
@@ -27,47 +32,14 @@ interface SearchPanelViewProps {
 
 /** Passive search menu view; only DOM focus, dismissal and event delegation live here. */
 export function SearchPanelView(props: SearchPanelViewProps) {
-  const { open, onClose } = props;
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const panelRef = useRef<HTMLElement | null>(null);
-  const panelId = useId();
-  const panelPosition = useAnchoredPanel(open, triggerRef, panelRef, 520);
-
-  useEffect(() => {
-    if (!open) return;
-    inputRef.current?.focus();
-    const onDocumentMouseDown = (event: MouseEvent): void => {
-      if (!wrapRef.current?.contains(event.target as Node) && !panelRef.current?.contains(event.target as Node)) onClose();
-    };
-    const onDocumentKeyDown = (event: globalThis.KeyboardEvent): void => {
-      if (isNativeModalOpen()) return;
-      if (event.key === 'Escape' && !event.isComposing) {
-        event.preventDefault();
-        onClose();
-        triggerRef.current?.focus();
-      }
-    };
-    document.addEventListener('mousedown', onDocumentMouseDown);
-    document.addEventListener('keydown', onDocumentKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onDocumentMouseDown);
-      document.removeEventListener('keydown', onDocumentKeyDown);
-    };
-  }, [open, onClose]);
-
   return (
-    <div className={`srcpick${props.bar ? ' sp-bar-wrap' : ''}`} ref={wrapRef}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget) && !panelRef.current?.contains(event.relatedTarget)) props.onClose();
-      }}>
+    <div id={props.wrapId} className={`srcpick${props.bar ? ' sp-bar-wrap' : ''}`} onBlur={props.onBlur}>
       <button
-        ref={triggerRef}
+        id={props.triggerId}
         type="button"
         className={`srcpick-name sp-btn ui-action${props.bar ? ' sp-bar' : ''}`}
         aria-expanded={props.open}
-        aria-controls={panelId}
+        aria-controls={props.panelId}
         title="搜索（全源搜索，结果边搜边出）"
         onClick={() => props.open ? props.onClose() : props.onShow()}
       >
@@ -75,10 +47,10 @@ export function SearchPanelView(props: SearchPanelViewProps) {
         {props.bar ? <span className="sp-bar-hint">搜索影片、剧集、演员</span> : '搜索'}
       </button>
       {props.open && createPortal(
-        <section ref={panelRef} id={panelId} className="sp-panel" style={panelPosition} aria-label="搜索建议">
+        <section id={props.panelId} className="sp-panel" style={props.panelPosition} aria-label="搜索建议">
           <div className="sp-row">
             <input
-              ref={inputRef}
+              id={props.inputId}
               className="sp-input"
               aria-label="搜索影片"
               placeholder="输入片名，按回车搜索全部来源"
@@ -150,7 +122,7 @@ export function SearchPanelView(props: SearchPanelViewProps) {
               </div>
             </div>
           )}
-        </section>, document.body,
+        </section>, props.portalTarget,
       )}
     </div>
   );

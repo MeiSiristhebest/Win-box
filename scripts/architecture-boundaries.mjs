@@ -88,11 +88,6 @@ const rendererPassiveSettingsViewForbiddenImports = new Map([
     './usePlaybackCompatibilityPresenter', './application/playbackSettingsPorts', '../../api/client',
   ])],
 ]);
-const rendererPassiveSettingsViews = new Set([
-  'renderer/features/settings/PlaybackCompatibilitySettingsView.tsx',
-  'renderer/features/settings/NetworkSettingsView.tsx',
-  'renderer/features/settings/StorageSettingsView.tsx',
-]);
 const rendererFeatureControllerForbiddenViewImports = new Map([
   ['renderer/features/playback/useSkipSegmentsController.ts', new Set(['./SkipSegmentsControl'])],
 ]);
@@ -1231,9 +1226,9 @@ for (const filePath of await sourceFiles(sourceRoot)) {
       /document\.getElementById|MutationObserver|\.scrollIntoView\(|requestAnimationFrame\(/.test(source)) {
     violations.push(`${normalizedFile}: settings deep-link DOM effects belong in the settings navigation hook`);
   }
-  if (rendererPassiveSettingsViews.has(normalizedFile) &&
-      /\b(?:useEffect|useState|useLayoutEffect|document\.querySelector|window\.)/.test(source)) {
-    violations.push(`${normalizedFile}: settings presentation views must remain passive and not own state or browser effects`);
+  if (/(?:^|\/)\w+View\.(?:tsx|jsx)$/.test(normalizedFile) &&
+      /\b(?:useEffect|useState|useLayoutEffect|useReducer|useRef|document\s*\.|window\s*\.)/.test(source)) {
+    violations.push(`${normalizedFile}: passive renderer views must not own React state/effects or access browser globals directly`);
   }
   const storageAccesses = browserStorageAccesses(sourceFile);
   if (normalizedFile.startsWith('renderer/') && storageAccesses.length > 0 &&

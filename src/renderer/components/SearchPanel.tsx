@@ -1,14 +1,17 @@
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import { createSearchPanelAdapters } from '../features/search/adapters/searchPanelAdapters';
 import { useSearchPanelPresenter } from '../features/search/useSearchPanelPresenter';
 import { useAppDialog } from './AppDialog';
 import { SearchPanelView } from './SearchPanelView';
+import { useSearchPanelInteractions } from './useSearchPanelInteractions';
 
 /** Composition point for search recommendations, local history and search-window navigation. */
 export default function SearchPanel({ bar = false }: { bar?: boolean }) {
   const dialog = useAppDialog();
   const ports = useMemo(() => createSearchPanelAdapters(), []);
   const presenter = useSearchPanelPresenter(ports);
+  const interactionId = useId();
+  const interactions = useSearchPanelInteractions(presenter.open, presenter.close, interactionId);
 
   const search = (term: string): void => {
     void presenter.search(term).catch((cause) => {
@@ -20,6 +23,8 @@ export default function SearchPanel({ bar = false }: { bar?: boolean }) {
     <SearchPanelView
       bar={bar}
       open={presenter.open}
+      {...interactions}
+      portalTarget={document.body}
       query={presenter.query}
       hotList={presenter.hotList}
       hotLoading={presenter.hotLoading}

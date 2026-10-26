@@ -102,6 +102,18 @@ describe('architecture dependency rules', () => {
     expect(result.stderr).toContain('renderer views must receive infrastructure through a presenter or view model');
   });
 
+  it.each([
+    "useEffect(() => {}, []);",
+    "const [open, setOpen] = useState(false);",
+    "document.addEventListener('keydown', onKeyDown);",
+    "window.localStorage.getItem('search');",
+  ])('keeps passive renderer views free of stateful effects and browser globals: %s', (source) => {
+    const result = inspect('renderer/features/example/ExampleView.tsx', source);
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('passive renderer views must not own React state/effects or access browser globals directly');
+  });
+
   it('allows passive renderer views to depend on feature-owned presentation models', () => {
     const result = inspect('renderer/features/example/ExampleView.tsx', "import type { ExampleViewModel } from './application/exampleViewModel';");
     expect(result.error).toBeUndefined();
@@ -1021,7 +1033,7 @@ describe('architecture dependency rules', () => {
     const result = inspect('renderer/features/settings/PlaybackCompatibilitySettingsView.tsx', source);
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('settings presentation views must remain passive');
+    expect(result.stderr).toContain('passive renderer views must not own React state/effects or access browser globals directly');
   });
 
   it.each([
@@ -1031,7 +1043,7 @@ describe('architecture dependency rules', () => {
     const result = inspect(file, source);
     expect(result.error).toBeUndefined();
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('settings presentation views must remain passive');
+    expect(result.stderr).toContain('passive renderer views must not own React state/effects or access browser globals directly');
   });
 
 });

@@ -1,10 +1,16 @@
-import { useLayoutEffect, useState, type CSSProperties, type RefObject } from 'react';
+import { useLayoutEffect, useState, type CSSProperties } from 'react';
+
+type ElementTarget = string | { readonly current: Element | null };
+
+function resolveElement(target: ElementTarget): Element | null {
+  return typeof target === 'string' ? document.getElementById(target) : target.current;
+}
 
 /** Position a body portal next to its trigger and keep it inside the viewport. */
 export function useAnchoredPanel(
   open: boolean,
-  anchorRef: RefObject<HTMLElement | null>,
-  panelRef: RefObject<HTMLElement | null>,
+  anchorTarget: ElementTarget,
+  panelTarget: ElementTarget,
   width: number,
   side: 'top' | 'bottom' = 'bottom',
   align: 'start' | 'end' = 'end',
@@ -13,8 +19,9 @@ export function useAnchoredPanel(
 
   useLayoutEffect(() => {
     if (!open) return;
-    const anchor = anchorRef.current;
+    const anchor = resolveElement(anchorTarget);
     if (!anchor) return;
+    const panel = resolveElement(panelTarget);
     const update = () => {
       const rect = anchor.getBoundingClientRect();
       const margin = 12;
@@ -39,7 +46,7 @@ export function useAnchoredPanel(
       });
     };
     const onScroll = (event: Event) => {
-      if (!panelRef.current?.contains(event.target as Node)) update();
+      if (!panel?.contains(event.target as Node)) update();
     };
     update();
     window.addEventListener('resize', update);
@@ -51,7 +58,7 @@ export function useAnchoredPanel(
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', onScroll, true);
     };
-  }, [open, anchorRef, panelRef, width, side, align]);
+  }, [open, anchorTarget, panelTarget, width, side, align]);
 
   return position;
 }
