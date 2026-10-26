@@ -8,7 +8,7 @@ import { spiderCallFailed, spiderCallSucceeded, type SpiderCallResult } from './
 import { normalizeSpiderRuntimeFailure } from './spiderRuntimeFailure';
 import { SourceProblemError } from './errors';
 import { abortError, awaitWithAbort, throwIfAborted } from '../util/abort';
-import { spiderPoolTimeoutResult } from './spiderPoolFailure';
+import { spiderPoolCapacityResult, spiderPoolOutputLimitResult, spiderPoolTimeoutResult } from './spiderPoolFailure';
 import type { PythonSpiderRuntimePort } from './PythonSpiderRuntimePort';
 
 type SpiderProxyProvider = () => { env: Record<string, string> };
@@ -136,6 +136,10 @@ export class PythonSpiderRuntimeAdapter implements PythonSpiderRuntimePort {
           this.options.logInfo(`python-bridge ${className}.${method} 失败原因: ${timeoutResult.reason}`);
           return timeoutResult;
         }
+        const capacityResult = spiderPoolCapacityResult(result.reason);
+        if (capacityResult) return capacityResult;
+        const outputLimitResult = spiderPoolOutputLimitResult(result.reason);
+        if (outputLimitResult) return outputLimitResult;
         if (result.reason === 'cancelled') {
           if (signal) throw abortError(signal);
           const error = new Error('搜索已取消');

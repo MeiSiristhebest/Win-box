@@ -15,6 +15,10 @@
 //  - 单测默认禁用（VITEST）或 TVBOX_DISABLE_SPIDER_POOL=1 关闭。
 import type { ChildProcess } from 'node:child_process';
 import { freemem } from 'node:os';
+import {
+  MAX_SPIDER_POOL_DIAGNOSTIC_LINE_BYTES,
+  MAX_SPIDER_POOL_RESULT_FRAME_BYTES,
+} from './spiderProcessOutputLimits';
 
 export interface ServeRequest {
   id: string;
@@ -24,13 +28,13 @@ export interface ServeRequest {
 }
 
 /** 池的失败原因（调用方据此决定是否回退一次性：执行超时不回退，见 JarSpiderBridge） */
-export type PoolFailReason = 'timeout' | 'queue-timeout' | 'cancelled' | 'exit' | 'spawn-error' | 'stdin' | 'lru' | 'idle' | 'dispose';
+export type PoolFailReason = 'timeout' | 'queue-timeout' | 'cancelled' | 'capacity-exhausted' | 'output-limit' | 'exit' | 'spawn-error' | 'stdin' | 'lru' | 'idle' | 'dispose';
 
-/** 池的结果：ok=false 仅表示进程/传输层失败（调用方应回退一次性）；ok=true + data='' 是合法空结果 */
+/** 池结果：传输失败可按原因回退；capacity-exhausted 是背压、不得冷启动绕过；空串仍是合法结果。 */
 export interface PoolResult {
   ok: boolean;
   data: string;
-  /** ok=false 时的失败原因（超时/退出/排队超时…） */
+  /** ok=false 时的失败原因；capacity-exhausted 表示 pooled + one-shot 总预算已满。 */
   reason?: PoolFailReason;
   /**
    * ★ 2026-09-28：serve 信封里**蜘蛛自己报的错**（`env.ok=false` 时的 data，形如
@@ -75,6 +79,10 @@ interface Proc {
   queue: QueuedEntry[];
   lastUsed: number;
   dead: boolean;
+  stdoutFrame: BufferedFrame;
+  stderrLine: BufferedFrame;
+  /** The stream that crossed its cap; an oversized stderr tail must never be forwarded as a diagnostic. */
+  outputLimitStream?: 'stdout' | 'stderr';
   /** 子进程自报的实际代理端口，用于把 playerContent 留在详情所属 JVM。 */
   proxyPort?: number;
   /**
@@ -83,6 +91,20 @@ interface Proc {
    *   LRU 和空闲回收均跳过仍被钉住的进程（冗余 JVM 也可能拥有当前分享会话）。
    */
   pinnedUntil?: number;
+}
+
+interface BufferedFrame {
+  text: string;
+  bytes: number;
+}
+
+export interface SpiderProcPoolOptions {
+  /** Complete stderr lines are forwarded immediately; stderr is never accumulated by the pool. */
+  onDiagnostic?: (line: string) => void;
+  onOutputLimit?: (stream: 'stdout' | 'stderr', maxBytes: number) => void;
+  /** Test seams; production uses the conservative exported defaults. */
+  maxResultFrameBytes?: number;
+  maxDiagnosticLineBytes?: number;
 }
 
 interface SpawnSpec {
@@ -150,6 +172,22 @@ export function poolEnabled(): boolean {
   return true;
 }
 
+/** Bounded admission for cold-only mode when persistent serving is explicitly disabled. */
+export class OneShotProcessBudget {
+  private activeCount = 0;
+
+  tryAcquireFallbackProcessSlot(): (() => void) | null {
+    if (this.activeCount >= effectiveGlobalCap()) return null;
+    this.activeCount++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.activeCount = Math.max(0, this.activeCount - 1);
+    };
+  }
+}
+
 /** 简单字符串 hash（分组 key 用，非密码学） */
 function hashStr(s: string): string {
   let h = 0;
@@ -159,12 +197,14 @@ function hashStr(s: string): string {
 
 export class SpiderProcPool {
   private groups = new Map<string, Proc[]>();
+  /** Cold one-shot runtimes reserve the same global process budget as pooled children. */
+  private fallbackProcessCount = 0;
   /** 全局上限快照（30s 刷新一次：既随内存压力自适应，又不会因瞬时抖动来回变） */
   private capCache = { at: 0, val: 0 };
   /** ★ 2026-10-17（B1）：播放期收缩已布防（见 armPlaybackShrink）—— 一次性，收敛后自动解除 */
   private playbackShrinkArmed = false;
 
-  constructor(private readonly spawnFn: SpawnFn) {}
+  constructor(private readonly spawnFn: SpawnFn, private readonly options: SpiderProcPoolOptions = {}) {}
 
   /** 当前全局上限（见 effectiveGlobalCap；30s 缓存） */
   private globalCap(): number {
@@ -179,6 +219,29 @@ export class SpiderProcPool {
     let n = 0;
     for (const procs of this.groups.values()) n += procs.length;
     return n;
+  }
+
+  /**
+   * Reserve one process slot for a bounded one-shot recovery. The returned release
+   * function is idempotent and must be called in `finally` after the child exits.
+   */
+  tryAcquireFallbackProcessSlot(): (() => void) | null {
+    if (this.allocatedProcessCount >= this.globalCap() && !this.reapOneLru([])) return null;
+    this.fallbackProcessCount++;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.fallbackProcessCount = Math.max(0, this.fallbackProcessCount - 1);
+    };
+  }
+
+  private get allocatedProcessCount(): number {
+    return this.aliveCount + this.fallbackProcessCount;
+  }
+
+  private canAllocatePooledProcess(keepGroup: Proc[]): boolean {
+    return this.allocatedProcessCount < this.globalCap() || this.reapOneLru(keepGroup);
   }
 
   /**
@@ -215,7 +278,7 @@ export class SpiderProcPool {
       let target = group.find((p) => !p.dead && p.pending.size < MAX_INFLIGHT_PER_PROC);
       // 2) 全都满了：额度允许就再开一个同 key 进程扩容
       if (!target && group.filter((p) => !p.dead).length < PER_KEY_CAP) {
-        if (this.aliveCount < this.globalCap() || this.reapOneLru(group)) {
+        if (this.canAllocatePooledProcess(group)) {
           target = this.trySpawnProc(key, spec) ?? undefined;
           if (!target) {
             resolve({ ok: false, data: '', reason: 'spawn-error' });
@@ -232,13 +295,14 @@ export class SpiderProcPool {
       const live = group.filter((p) => !p.dead);
       const head = live.sort((a, b) => a.queue.length - b.queue.length)[0];
       if (!head) {
-        // 组内进程全死（竞态兜底）：额度允许才补一个，否则按失败交调用方回退一次性
-        if (this.aliveCount < this.globalCap() || this.reapOneLru(group)) {
+        // 组内进程全死（竞态兜底）：额度允许才补一个。容量耗尽是明确的
+        // backpressure 信号，调用方不能再以冷启动绕过同一全局进程预算。
+        if (this.canAllocatePooledProcess(group)) {
           const replacement = this.trySpawnProc(key, spec);
           if (replacement) this.dispatch(replacement, req, resolve, timeoutMs, signal);
           else resolve({ ok: false, data: '', reason: 'spawn-error' });
         } else {
-          resolve({ ok: false, data: '' });
+          resolve({ ok: false, data: '', reason: 'capacity-exhausted' });
         }
         return;
       }
@@ -274,7 +338,7 @@ export class SpiderProcPool {
     let started = 0;
     while (this.aliveForKey(key) < target) {
       // 额度不足：能 LRU 腾一个就继续，否则停（不挤占正常请求的额度）
-      if (this.aliveCount >= this.globalCap() && !this.reapOneLru(this.groups.get(key) ?? group)) break;
+      if (!this.canAllocatePooledProcess(this.groups.get(key) ?? group)) break;
       const proc = this.trySpawnProc(key, spec);
       if (!proc) break;
       // 探针响应直接丢弃（成功 = 进程可复用；失败 = 进程已被 kill，无副作用）
@@ -445,43 +509,18 @@ export class SpiderProcPool {
       queue: [],
       lastUsed: Date.now(),
       dead: false,
+      stdoutFrame: { text: '', bytes: 0 },
+      stderrLine: { text: '', bytes: 0 },
     };
-    let buf = '';
     child.stdout?.setEncoding('utf-8');
     child.stdout?.on('data', (d: string) => {
-      buf += d;
-      let nl: number;
-      while ((nl = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, nl);
-        buf = buf.slice(nl + 1);
-        const t = line.trim();
-        if (!t) continue;
-        try {
-          const env = JSON.parse(t) as { id?: string; ok?: boolean; data?: string; pp?: number };
-          const p = proc.pending.get(env.id ?? '');
-          if (p) {
-            this.detachPending(p);
-            proc.pending.delete(env.id ?? '');
-            proc.lastUsed = Date.now();
-            // ★ ok:true 且 data 为空串 = 蜘蛛合法空结果（不触发调用方回退）
-            // ★ 2026-09-28：信封 ok=false = 蜘蛛自己抛了（类缺失/内部异常…）—— 传输层成功，
-            //   但 data 是**错误串**而不是蜘蛛输出：单独放进 error，data 归空，
-            //   调用方据此记原因 / 触发类缺失兜底重试（见 PoolResult.error 注释）。
-            const pp = Number.isInteger(env.pp) && (env.pp as number) > 0 ? (env.pp as number) : undefined;
-            if (pp) proc.proxyPort = pp;
-            if (!p.callerCancelled && !p.callerTimedOut) {
-              if (env.ok === false) {
-                p.resolve({ ok: true, data: '', error: String(env.data ?? ''), proxyPort: pp });
-              } else {
-                p.resolve({ ok: true, data: typeof env.data === 'string' ? env.data : '', proxyPort: pp });
-              }
-            }
-            this.drainQueue(proc);
-          }
-        } catch {
-          // 乱行（蜘蛛 stdout 副作用）→ 忽略，等待完整帧；持续乱帧会超时触发重建
-        }
-      }
+      this.appendLines(proc, proc.stdoutFrame, d, 'stdout', this.options.maxResultFrameBytes ?? MAX_SPIDER_POOL_RESULT_FRAME_BYTES,
+        (line) => this.handleResultFrame(proc, line));
+    });
+    child.stderr?.setEncoding('utf-8');
+    child.stderr?.on('data', (d: string) => {
+      this.appendLines(proc, proc.stderrLine, d, 'stderr', this.options.maxDiagnosticLineBytes ?? MAX_SPIDER_POOL_DIAGNOSTIC_LINE_BYTES,
+        (line) => this.forwardDiagnostic(line));
     });
     child.on('error', () => this.kill(proc, 'spawn-error'));
     child.on('exit', () => this.kill(proc, 'exit'));
@@ -489,6 +528,72 @@ export class SpiderProcPool {
     group.push(proc);
     this.groups.set(key, group);
     return proc;
+  }
+
+  /** Bounded newline framing for stdout envelopes and streamed stderr diagnostics. */
+  private appendLines(
+    proc: Proc,
+    buffer: BufferedFrame,
+    chunk: string,
+    stream: 'stdout' | 'stderr',
+    maxBytes: number,
+    onLine: (line: string) => void,
+  ): void {
+    if (proc.dead) return;
+    let offset = 0;
+    while (offset < chunk.length && !proc.dead) {
+      const newline = chunk.indexOf('\n', offset);
+      const end = newline >= 0 ? newline + 1 : chunk.length;
+      const part = chunk.slice(offset, end);
+      const bytes = Buffer.byteLength(part, 'utf8');
+      if (buffer.bytes + bytes > maxBytes) {
+        buffer.text = '';
+        buffer.bytes = 0;
+        proc.outputLimitStream = stream;
+        try { this.options.onOutputLimit?.(stream, maxBytes); } catch { /* diagnostics must not prevent process cleanup */ }
+        this.kill(proc, 'output-limit');
+        return;
+      }
+      buffer.text += part;
+      buffer.bytes += bytes;
+      offset = end;
+      if (newline >= 0) {
+        const line = buffer.text;
+        buffer.text = '';
+        buffer.bytes = 0;
+        onLine(line);
+      }
+    }
+  }
+
+  private handleResultFrame(proc: Proc, line: string): void {
+    const text = line.trim();
+    if (!text) return;
+    try {
+      const env = JSON.parse(text) as { id?: string; ok?: boolean; data?: string; pp?: number };
+      const p = proc.pending.get(env.id ?? '');
+      if (!p) return;
+      this.detachPending(p);
+      proc.pending.delete(env.id ?? '');
+      proc.lastUsed = Date.now();
+      // stdout is exclusively the JSON result-envelope channel; diagnostics stay on stderr.
+      const pp = Number.isInteger(env.pp) && (env.pp as number) > 0 ? (env.pp as number) : undefined;
+      if (pp) proc.proxyPort = pp;
+      if (!p.callerCancelled && !p.callerTimedOut) {
+        if (env.ok === false) {
+          p.resolve({ ok: true, data: '', error: String(env.data ?? ''), proxyPort: pp });
+        } else {
+          p.resolve({ ok: true, data: typeof env.data === 'string' ? env.data : '', proxyPort: pp });
+        }
+      }
+      this.drainQueue(proc);
+    } catch {
+      // Non-protocol stdout lines remain ignored for compatibility, but each line is bounded.
+    }
+  }
+
+  private forwardDiagnostic(line: string): void {
+    try { this.options.onDiagnostic?.(line); } catch { /* logging cannot break the serve protocol */ }
   }
 
   /** Process creation is a replaceable runtime boundary; keep synchronous failures in the pool result contract. */
@@ -511,6 +616,13 @@ export class SpiderProcPool {
   /** 进程失效：拒绝 pending + 清队列 + 移除组；调用方按失败原因决定是否回退一次性路径 */
   private kill(proc: Proc, reason: PoolFailReason): void {
     if (proc.dead) return;
+    if ((reason !== 'output-limit' || proc.outputLimitStream !== 'stderr') && proc.stderrLine.text) {
+      this.forwardDiagnostic(proc.stderrLine.text);
+    }
+    proc.stdoutFrame.text = '';
+    proc.stdoutFrame.bytes = 0;
+    proc.stderrLine.text = '';
+    proc.stderrLine.bytes = 0;
     proc.dead = true;
     for (const p of proc.pending.values()) {
       this.detachPending(p);
@@ -569,7 +681,11 @@ export class SpiderProcPool {
 
   /** 应用退出：杀掉全部（进程清理由 dispose 调用） */
   dispose(): void {
-    for (const procs of this.groups.values()) for (const p of procs) this.kill(p, 'dispose');
+    // kill() removes a child from its group's live array. Iterate stable snapshots
+    // so splicing one child cannot skip the next child in the same group.
+    for (const procs of Array.from(this.groups.values())) {
+      for (const proc of procs.slice()) this.kill(proc, 'dispose');
+    }
     this.groups.clear();
   }
 }

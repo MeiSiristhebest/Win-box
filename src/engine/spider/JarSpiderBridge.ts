@@ -15,7 +15,7 @@ import type { JarSpiderBridgeHost, JarResourceMergeLogger, JarSpiderRuntimePort 
 import { md5Hex } from '../util/md5';
 import { contentHashOf, recordContentKey, tryCloneByContent } from './jarContentIndex';
 import { buildZip, listZipEntries, looksLikeZip, readZipEntries } from '../util/syncZip';
-import { SpiderProcPool, poolEnabled, servePoolKey, WARM_METHOD, type PoolResult } from './SpiderProcPool';
+import { OneShotProcessBudget, SpiderProcPool, poolEnabled, servePoolKey, WARM_METHOD, type PoolResult } from './SpiderProcPool';
 import { fixSelfSuperCallsInJarFile } from './classFix';
 // ★ 2026-10-14：补全蜘蛛 jar 自带的极简 com.github.catvod.spider.Proxy（补 getProxyUrlDo）——
 //   否则该类调用必 NoSuchMethodError（安卓端由 App dex 的同名完整类兜住，桌面端没有）。
@@ -51,7 +51,7 @@ import { ConversionInFlightError, JarConversionRegistry } from './JarConversionR
 import { JarClasspathResolver } from './JarClasspathResolver';
 import { normalizeSpiderRuntimeFailure } from './spiderRuntimeFailure';
 import { abortError, throwIfAborted } from '../util/abort';
-import { spiderPoolTimeoutResult } from './spiderPoolFailure';
+import { spiderPoolCapacityResult, spiderPoolOutputLimitResult, spiderPoolTimeoutResult } from './spiderPoolFailure';
 import { Dex2jarConversion } from './Dex2jarConversion';
 import { JarArchiveDownloader } from './JarArchiveDownloader';
 import { mergeJarResourceEntries } from './jarResourceMerge';
@@ -264,6 +264,8 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
   }
   /** ★ 子进程常驻复用池（--serve/-serve；进程复用加速首页/搜索；单测与显式关闭时禁用） */
   private readonly pool: SpiderProcPool | null;
+  /** Shared cold-start limiter; uses the pool's accounting when pooling is on. */
+  private readonly processAdmission: Pick<SpiderProcPool, 'tryAcquireFallbackProcessSlot'>;
   private readonly poolReclaimTimer?: ReturnType<typeof setInterval>;
   /** Detached JVM conversion lifecycle is isolated behind its process port. */
   private readonly detachedDex2jar: DetachedDex2jarPort;
@@ -342,7 +344,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     mkdirSync(this.cacheDir, { recursive: true });
     // ★ 老版本留下的转换产物可能缺 assets（v1 格式）→ 必须作废重转，否则本轮修复不生效
     this.ensureCacheVersion();
-    // 池默认启用（生产）；VITEST 或 TVBOX_DISABLE_SPIDER_POOL=1 关闭（单测走一次性路径，argv 断言零改动）
+    // 池默认启用（生产）；禁用时走一次性路径，但仍由独立 admission budget 限制同时冷启动数。
     if (poolEnabled()) {
       this.pool = new SpiderProcPool((spec) => {
         const child = spawn(spec.exe, spec.serveArgv, {
@@ -352,14 +354,19 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
           stdio: ['pipe', 'pipe', 'pipe'],
           ...(spec.env ? { env: { ...process.env, ...spec.env } } : {}),
         });
-        child.stderr?.setEncoding('utf-8');
-        child.stderr?.on('data', (d: string) => this.noteBridgeLog(String(d)));
         return child;
+      }, {
+        onDiagnostic: (line) => this.noteBridgeLog(line),
+        onOutputLimit: (stream, maxBytes) => this.host?.logger.w(
+          `jvm-bridge serve ${stream} 超过 ${maxBytes} 字节安全上限，已回收该进程`,
+        ),
       });
+      this.processAdmission = this.pool;
       // 空闲进程每 15s 回收一次（同 key 只保留 1 个热进程，并行期多开的进程 30s 后回收）
       this.poolReclaimTimer = this.pool.startReclaimTimer();
     } else {
       this.pool = null;
+      this.processAdmission = new OneShotProcessBudget();
     }
     this.pythonRuntime = new PythonSpiderRuntimeAdapter({
       runtime: embeddedPythonRuntime,
@@ -370,7 +377,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
       submitToPool: (exe, key, serveArgv, className, method, args, env, timeoutMs, preferredPort, signal) =>
         this.poolSubmit(exe, key, serveArgv, className, method, args, env, timeoutMs, preferredPort, signal),
       runSubprocess: (exe, argv, className, method, timeoutMs, env, signal) =>
-        this.subprocessRunner.run(exe, argv, className, method, timeoutMs, env, signal),
+        this.runSubprocessWithinProcessBudget(exe, argv, className, method, timeoutMs, env, signal),
     });
   }
 
@@ -1144,6 +1151,10 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
           else this.host?.logger.i(`jvm-bridge ${className}.${method} 失败原因: ${timeoutResult.reason}`);
           return timeoutResult;
         }
+        const capacityResult = spiderPoolCapacityResult(r.reason);
+        if (capacityResult) return capacityResult;
+        const outputLimitResult = spiderPoolOutputLimitResult(r.reason);
+        if (outputLimitResult) return outputLimitResult;
         if (r.reason === 'cancelled') throw signal ? abortError(signal) : new Error('搜索已取消');
       } catch {
         if (signal?.aborted) throw abortError(signal);
@@ -1151,7 +1162,31 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
       }
     }
     throwIfAborted(signal);
-    return this.subprocessRunner.run(this.javaExe(), argv, className, method, timeoutMs, undefined, signal);
+    return this.runSubprocessWithinProcessBudget(this.javaExe(), argv, className, method, timeoutMs, undefined, signal);
+  }
+
+  /**
+   * Keep cold recovery inside the same JVM/Python process cap as pooled children.
+   * The slot is released only after the one-shot runner settles, including errors.
+   */
+  private async runSubprocessWithinProcessBudget(
+    exe: string,
+    argv: string[],
+    className: string,
+    method: string,
+    timeoutMs?: number,
+    env?: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<SpiderCallResult> {
+    const release = this.processAdmission.tryAcquireFallbackProcessSlot();
+    if (!release) {
+      return spiderPoolCapacityResult('capacity-exhausted')!;
+    }
+    try {
+      return await this.subprocessRunner.run(exe, argv, className, method, timeoutMs, env, signal);
+    } finally {
+      release?.();
+    }
   }
 
   /**

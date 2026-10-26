@@ -12,3 +12,15 @@ export function spiderPoolTimeoutResult(reason: string | undefined, timeoutMs: n
 
   return null;
 }
+
+/** Capacity is backpressure, not a transport failure eligible for cold retry. */
+export function spiderPoolCapacityResult(reason: string | undefined): SpiderCallResult | null {
+  if (reason !== 'capacity-exhausted') return null;
+  return spiderCallFailed('', '蜘蛛运行数量已达上限，请稍后重试', null, 'SPIDER_CAPACITY');
+}
+
+/** Oversized/malformed pool output is a protocol failure and is never replayed cold. */
+export function spiderPoolOutputLimitResult(reason: string | undefined): SpiderCallResult | null {
+  if (reason !== 'output-limit') return null;
+  return spiderCallFailed('', '蜘蛛运行输出超过安全上限，已终止该调用', null, 'SPIDER_OUTPUT_LIMIT');
+}

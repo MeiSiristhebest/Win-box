@@ -38,6 +38,22 @@ describe('PythonSpiderRuntimeAdapter pooled invocation contract', () => {
     expect(runSubprocess).not.toHaveBeenCalled();
   });
 
+  it('returns typed capacity backpressure without bypassing the process cap with a cold retry', async () => {
+    const { adapter, runSubprocess } = createAdapter({ ok: false, data: '', reason: 'capacity-exhausted' });
+
+    await expect(adapter.callPython('source.py', 'Spider', 'searchContent', ['query']))
+      .resolves.toMatchObject({ ok: false, problemCode: 'SPIDER_CAPACITY' });
+    expect(runSubprocess).not.toHaveBeenCalled();
+  });
+
+  it('surfaces pooled output-limit failures without retrying the oversized call cold', async () => {
+    const { adapter, runSubprocess } = createAdapter({ ok: false, data: '', reason: 'output-limit' });
+
+    await expect(adapter.callPython('source.py', 'Spider', 'searchContent', ['query']))
+      .resolves.toMatchObject({ ok: false, problemCode: 'SPIDER_OUTPUT_LIMIT' });
+    expect(runSubprocess).not.toHaveBeenCalled();
+  });
+
   it('returns a spider execution error without replaying it in a one-shot process', async () => {
     const { adapter, runSubprocess } = createAdapter({ ok: true, data: '', error: 'RuntimeError: spider failed' });
 

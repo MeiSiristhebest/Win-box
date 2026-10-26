@@ -11,6 +11,8 @@ export type SourceProblemCode =
   | 'JS_FORMAT_UNSUPPORTED' // JS 蜘蛛导出格式不受支持
   | 'JS_BYTECODE' // QuickJS //bb 字节码，node:vm 无法执行
   | 'SPIDER_TIMEOUT' // 蜘蛛操作超过本次调用时限
+  | 'SPIDER_CAPACITY' // 蜘蛛进程并发预算已满，等待资源释放后重试
+  | 'SPIDER_OUTPUT_LIMIT' // 蜘蛛进程输出超过安全上限
   | 'NETWORK' // HTTP 网络层失败（超时/非 2xx/连接异常）
   | 'SPIDER_ERROR' // 蜘蛛调用返回了空/非法内容
   | 'EMPTY_RESULT' // 蜘蛛正常返回但确无数据
@@ -28,6 +30,8 @@ export const SOURCE_PROBLEM_TEXT: Record<SourceProblemCode, string> = {
   NETWORK: '网络请求失败',
   SPIDER_ERROR: '蜘蛛调用失败（脚本或源站返回异常）',
   SPIDER_TIMEOUT: '蜘蛛操作超时',
+  SPIDER_CAPACITY: '蜘蛛运行数量已达上限，请稍后重试',
+  SPIDER_OUTPUT_LIMIT: '蜘蛛运行输出超过安全上限，已终止该调用',
   EMPTY_RESULT: '源暂无数据',
   NO_SPIDER: '未找到对应蜘蛛实现',
 };

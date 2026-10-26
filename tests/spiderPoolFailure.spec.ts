@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { spiderPoolTimeoutResult } from '../src/engine/spider/spiderPoolFailure';
+import { spiderPoolOutputLimitResult, spiderPoolTimeoutResult } from '../src/engine/spider/spiderPoolFailure';
 
 describe('spider process-pool timeout policy', () => {
   it('returns a typed timeout without requesting a cold-process retry', () => {
@@ -26,5 +26,16 @@ describe('spider process-pool timeout policy', () => {
     expect(spiderPoolTimeoutResult('exit', 20_000)).toBeNull();
     expect(spiderPoolTimeoutResult('cancelled', 20_000)).toBeNull();
     expect(spiderPoolTimeoutResult(undefined, 20_000)).toBeNull();
+  });
+
+  it('surfaces output-limit as a stable failure instead of permitting a cold replay', () => {
+    expect(spiderPoolOutputLimitResult('output-limit')).toEqual({
+      ok: false,
+      output: '',
+      reason: '蜘蛛运行输出超过安全上限，已终止该调用',
+      failureKind: null,
+      problemCode: 'SPIDER_OUTPUT_LIMIT',
+    });
+    expect(spiderPoolOutputLimitResult('exit')).toBeNull();
   });
 });

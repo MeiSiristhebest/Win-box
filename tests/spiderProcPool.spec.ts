@@ -10,14 +10,16 @@
 //   池按物理换行分帧 —— 假子进程必须带 '\n'，否则帧永不收敛（测试挂起）。
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { SpiderProcPool, PER_KEY_CAP, IDLE_RECLAIM_MS, PLAYBACK_SHRINK_IDLE_MS, MAX_INFLIGHT_PER_PROC, effectiveGlobalCap } from '../src/engine/spider/SpiderProcPool';
+import { SpiderProcPool, PER_KEY_CAP, IDLE_RECLAIM_MS, PLAYBACK_SHRINK_IDLE_MS, MAX_INFLIGHT_PER_PROC, effectiveGlobalCap, type SpiderProcPoolOptions } from '../src/engine/spider/SpiderProcPool';
 
 type FakeChild = ReturnType<typeof fakeChild>;
 
 /** 假子进程：EventEmitter + stdin{write,writable} + stdout{on,setEncoding} + kill */
 function fakeChild(handler: { onLine?: (line: string) => string | null | undefined; onExit?: () => void }) {
   const out = new EventEmitter();
+  const err = new EventEmitter();
   (out as unknown as { setEncoding: (e: string) => void }).setEncoding = () => undefined;
+  (err as unknown as { setEncoding: (e: string) => void }).setEncoding = () => undefined;
   const stdin = {
     writable: true,
     write: vi.fn((line: string) => {
@@ -26,8 +28,9 @@ function fakeChild(handler: { onLine?: (line: string) => string | null | undefin
       return true;
     }),
   };
-  const child = new EventEmitter() as unknown as { stdout: EventEmitter; stdin: typeof stdin; kill: () => void };
+  const child = new EventEmitter() as unknown as { stdout: EventEmitter; stderr: EventEmitter; stdin: typeof stdin; kill: () => void };
   child.stdout = out;
+  child.stderr = err;
   child.stdin = stdin;
   child.kill = vi.fn(() => handler.onExit?.());
   return child;
@@ -39,7 +42,7 @@ function reply(child: FakeChild, id: string, data: string, ok = true): void {
 }
 
 /** 构建环境：spawnFn 计数 + 已登子进程（缺省立即回应 OK:<method>） */
-function makeEnv(respond = true) {
+function makeEnv(respond = true, poolOptions: SpiderProcPoolOptions = {}) {
   const spawned: Array<{ exe: string; argv: string[]; child: FakeChild }> = [];
   const pool = new SpiderProcPool((spec) => {
     const c = fakeChild({
@@ -52,7 +55,7 @@ function makeEnv(respond = true) {
     });
     spawned.push({ exe: spec.exe, argv: spec.serveArgv, child: c });
     return c as never;
-  });
+  }, poolOptions);
   return { pool, spawned };
 }
 
@@ -342,6 +345,126 @@ describe('SpiderProcPool — 复用 / 并行 / 排队 / 失败语义', () => {
     await new Promise((r) => setTimeout(r, 5));
     (children[0] as unknown as EventEmitter).emit('exit', 1);
     expect(await p).toEqual({ ok: false, data: '', reason: 'exit' });
+  });
+
+  it('keeps stderr diagnostics separate from bounded stdout JSON result frames', async () => {
+    const diagnostics: string[] = [];
+    const { pool, spawned } = makeEnv(false, {
+      onDiagnostic: (line) => diagnostics.push(line),
+      maxResultFrameBytes: 256,
+      maxDiagnosticLineBytes: 64,
+    });
+    const request = pool.submit('k1', SPEC, REQ('framed'));
+    const child = spawned[0].child;
+
+    child.stderr.emit('data', 'first diagnostic\nsecond diagnostic\n');
+    reply(child, 'framed', '{"list":[]}');
+
+    await expect(request).resolves.toMatchObject({ ok: true, data: '{"list":[]}' });
+    expect(diagnostics).toEqual(['first diagnostic\n', 'second diagnostic\n']);
+  });
+
+  it('accepts a UTF-8 result envelope exactly at the configured frame byte limit', async () => {
+    const frame = JSON.stringify({ id: 'boundary-frame', ok: true, data: '汉' }) + '\n';
+    const { pool, spawned } = makeEnv(false, { maxResultFrameBytes: Buffer.byteLength(frame, 'utf8') });
+    const request = pool.submit('k1', SPEC, REQ('boundary-frame'));
+
+    spawned[0].child.stdout.emit('data', frame);
+
+    await expect(request).resolves.toMatchObject({ ok: true, data: '汉' });
+  });
+
+  it('fails all pending requests when a stdout JSON result frame exceeds its byte limit', async () => {
+    const onOutputLimit = vi.fn();
+    const diagnostics: string[] = [];
+    const { pool, spawned } = makeEnv(false, {
+      maxResultFrameBytes: 32,
+      onOutputLimit,
+      onDiagnostic: (line) => diagnostics.push(line),
+    });
+    const request = pool.submit('k1', SPEC, REQ('oversized-frame'));
+    const child = spawned[0].child;
+
+    child.stderr.emit('data', 'bounded stderr tail');
+    child.stdout.emit('data', 'x'.repeat(33));
+
+    await expect(request).resolves.toEqual({ ok: false, data: '', reason: 'output-limit' });
+    expect(child.kill).toHaveBeenCalledOnce();
+    expect(onOutputLimit).toHaveBeenCalledWith('stdout', 32);
+    expect(diagnostics).toEqual(['bounded stderr tail']);
+  });
+
+  it('terminates a pooled runtime that writes an oversized stderr diagnostic line', async () => {
+    const onOutputLimit = vi.fn();
+    const { pool, spawned } = makeEnv(false, { maxDiagnosticLineBytes: 8, onOutputLimit });
+    const request = pool.submit('k1', SPEC, REQ('oversized-diagnostic'));
+    const child = spawned[0].child;
+
+    child.stderr.emit('data', '123456789\n');
+
+    await expect(request).resolves.toEqual({ ok: false, data: '', reason: 'output-limit' });
+    expect(child.kill).toHaveBeenCalledOnce();
+    expect(onOutputLimit).toHaveBeenCalledWith('stderr', 8);
+  });
+
+  it('dispose uses a stable snapshot and kills every child in an expanded same-key group', async () => {
+    const { pool, spawned } = makeEnv(false);
+    const calls = Array.from({ length: MAX_INFLIGHT_PER_PROC * 2 + 1 }, (_, i) =>
+      pool.submit('k1', SPEC, REQ(`dispose-${i}`), 60_000),
+    );
+
+    expect(spawned).toHaveLength(3);
+    pool.dispose();
+
+    expect(spawned.map(({ child }) => child.kill)).toHaveLength(3);
+    for (const { child } of spawned) expect(child.kill).toHaveBeenCalledOnce();
+    expect(pool.aliveCount).toBe(0);
+    await expect(Promise.all(calls)).resolves.toHaveLength(calls.length);
+  });
+
+  it('counts cold fallback reservations against pooled expansion and reports typed capacity pressure', async () => {
+    const cap = effectiveGlobalCap();
+    const { pool, spawned } = makeEnv(false);
+    const active = Array.from({ length: cap - 1 }, (_, i) =>
+      pool.submit(`busy-${i}`, { ...SPEC, key: `busy-${i}` }, REQ(`busy-${i}`), 60_000),
+    );
+    const releaseFallback = pool.tryAcquireFallbackProcessSlot();
+
+    expect(releaseFallback).toBeTypeOf('function');
+    await expect(pool.submit('cold', { ...SPEC, key: 'cold' }, REQ('blocked')))
+      .resolves.toEqual({ ok: false, data: '', reason: 'capacity-exhausted' });
+    expect(spawned).toHaveLength(cap - 1);
+    expect(pool.tryAcquireFallbackProcessSlot()).toBeNull();
+
+    releaseFallback?.();
+    const recovered = pool.submit('cold', { ...SPEC, key: 'cold' }, REQ('recovered'));
+    expect(spawned).toHaveLength(cap);
+    await expect(pool.submit('over-cap', { ...SPEC, key: 'over-cap' }, REQ('over-cap')))
+      .resolves.toEqual({ ok: false, data: '', reason: 'capacity-exhausted' });
+    expect(spawned).toHaveLength(cap);
+    reply(spawned[cap - 1].child, 'recovered', 'OK:homeContent');
+    await expect(recovered).resolves.toMatchObject({ ok: true, data: 'OK:homeContent' });
+
+    pool.dispose();
+    await Promise.all(active);
+  });
+
+  it('reclaims an idle pooled process before granting a one-shot fallback slot', async () => {
+    const cap = effectiveGlobalCap();
+    const { pool, spawned } = makeEnv();
+    for (let i = 0; i < cap; i++) {
+      await expect(pool.submit(`idle-${i}`, { ...SPEC, key: `idle-${i}` }, REQ(`idle-${i}`)))
+        .resolves.toMatchObject({ ok: true });
+    }
+
+    const releaseFallback = pool.tryAcquireFallbackProcessSlot();
+
+    expect(releaseFallback).toBeTypeOf('function');
+    expect(pool.aliveCount).toBe(cap - 1);
+    expect(spawned.filter(({ child }) => (child.kill as unknown as { mock: { calls: unknown[] } }).mock.calls.length > 0))
+      .toHaveLength(1);
+    releaseFallback?.();
+    pool.dispose();
   });
 
   it('全局上限：额度用尽时回收最久空闲进程（LRU）后再复用额度', async () => {
