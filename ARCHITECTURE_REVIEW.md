@@ -992,3 +992,12 @@
 - **已补回归：** 为三种注入运行时配置可中止的执行屏障，在蜘蛛方法已开始后取消搜索；断言调用方均及时收到保留原因为 `AbortError`，且该方法确实只启动一次。
 - **验证：** `spiderRuntimeConformance.spec.ts` 10 项通过；main、renderer、test 三套 TypeScript 检查及 `pnpm run lint`（含架构边界、renderer React/perf/a11y）通过。
 - **剩余矩阵：** Worker 与常驻进程池有各自的取消/超时/崩溃路径测试，仍需进一步对照启动失败、运行时退出、迟到回执和排队并发语义；此测试不代表进程池内部生命周期矩阵已经验收完毕。
+
+## 本轮继续：外观偏好与海报控件的被动视图边界（2026-10-26）
+
+- **确认的问题：** `AppearanceSection` 同时订阅五种持久偏好、应用主题/缩放、处理缩放失败并渲染整页设置；`PosterSizeControl` 自己读取并写入全局偏好，被首页、发现、榜单、收藏和历史页面直接复用。视图难以通过输入替换来独立测试，持久偏好的所有者也隐藏在控件内部。
+- **已调整：** 将偏好订阅收进设置/显示适配器，将缩放错误处理移入 `useAppearanceSectionPresenter`，把设置 JSX 拆为仅接收模型与动作的 `AppearanceSectionView`。`PosterSizeControl` 改为受控组件；页面组合入口显式注入全局海报大小和变更动作，避免展示视图暗中读写偏好。
+- **回归覆盖：** 外观行为覆盖动效、发现页、海报大小、导航方式和瀑布模式；架构规则禁止外观视图及海报控件重新导入设置 Presenter/偏好门面。定向外观、首页、历史和架构测试共 261 项通过。
+- **验证：** `pnpm run typecheck`（main、renderer、test）、`pnpm run lint` 通过；修正页面直接导入宽 display barrel 后，全量 Vitest 为 434 个文件通过、3 个跳过，3709 项通过、5 项跳过；生产构建成功。
+- **未关闭：** 本 slice 只解决偏好设置的一处 UI/存储混层。全仓 UI/IPC 与 Atomic Design/对比度审计、播放器 Presenter 责任边界、剩余蜘蛛生命周期矩阵，以及桌面实际播放/安装/全窗口视觉验收仍未完成；14 项总体结论仍为部分符合。
+- **构建观察：** HLS chunk 仍为 574.41 KB（gzip 178.97 KB），超过 500 KB 提示；renderer 构建约 9.3 秒，Babel transform 回调约 8.5 秒。本轮没有调整其分包或编译策略。
