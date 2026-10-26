@@ -1,0 +1,1810 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "recordedAt": "2026-10-26T15:33:09Z",
+    "root": "D:/developWorkPlaces/win-box",
+    "branch": "codex/architecture-cleanup-20261025",
+    "codeTip": "7469c61e87c0a8a4f8042afd00787ef10ad6f741",
+    "workspaceCommit": "779c14e9fdf2a759d08eff7231d58ce1179a500f",
+    "localCommitsBeforeAudit": 107,
+    "remoteState": "completelyUnpushed; no current branch CI verified",
+    "fileCounts": {
+      "total": 1767,
+      "src": 1006,
+      "tests": 494,
+      "resources": 203,
+      "scripts": 38,
+      "build": 11,
+      "other": 15
+    },
+    "sourceAreas": {
+      "engine": 133,
+      "main": 233,
+      "renderer": 593,
+      "shared": 47
+    },
+    "jsTsModules": 1464,
+    "jsTsSrcModules": 973,
+    "sourceRuntimeEdges": 1763,
+    "astParseErrors": 0,
+    "runtimeDependencyCycles": 0,
+    "topLevelLayerViolations": 0,
+    "selectedApplicationImportSignals": 0,
+    "rendererIpcImportSites": 71,
+    "rendererIpcAdapterSites": 69,
+    "rendererIpcCompositionRoots": 2,
+    "mixedUiCandidates": 31,
+    "directedReadFiles": 96,
+    "productionFilesChangedByAudit": 0
+  },
+  "totals": {
+    "defect": {
+      "count": 9,
+      "min": 22,
+      "max": 42
+    },
+    "debt": {
+      "count": 21,
+      "min": 74,
+      "max": 132
+    },
+    "validation": {
+      "count": 6,
+      "min": 26,
+      "max": 44
+    },
+    "optional": {
+      "count": 2,
+      "min": 14,
+      "max": 28
+    }
+  },
+  "requiredTaskCount": 36,
+  "requiredEngineerHours": {
+    "min": 122,
+    "max": 218
+  },
+  "estimateScope": "实现+必要回归+单独集成验收；单人熟悉代码的有效工时，非日历承诺。optional不计入。未知第三方源/native兼容扩展另估。",
+  "tasks": [
+    {
+      "id": "B01",
+      "kind": "defect",
+      "priority": "P1",
+      "title": "JS Worker 崩溃和释放必须结清全部调用",
+      "status": "open",
+      "principles": [
+        3,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/engine/js/worker/JsWorkerPool.ts",
+          "line": 242,
+          "symbol": "onDown"
+        },
+        {
+          "path": "src/engine/js/worker/JsWorkerPool.ts",
+          "line": 298,
+          "symbol": "call/start"
+        },
+        {
+          "path": "src/engine/js/worker/JsWorkerPool.ts",
+          "line": 470,
+          "symbol": "dispose"
+        }
+      ],
+      "gap": "Worker 退出后第三个排队调用仍 pending；dispose 后已执行调用没有立即结束。旧超时与队列承担了错误的终态所有权。",
+      "direction": "用一个幂等终态操作结清 pending/queued 调用，清理定时器及 abort listener，拒绝迟到回执。",
+      "acceptance": "真实 Worker 下测试三个以上排队调用、执行中 dispose、崩溃+取消竞态；所有 Promise 恰好结算一次，不等待旧调用超时。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 5
+      },
+      "dependsOn": [],
+      "probes": [
+        "lifecycle.probe.spec.ts:19",
+        "lifecycle.probe.spec.ts:33"
+      ]
+    },
+    {
+      "id": "B02",
+      "kind": "defect",
+      "priority": "P1",
+      "title": "销毁蜘蛛不能新建 Worker，且池必须有明确宿主所有者",
+      "status": "open",
+      "principles": [
+        1,
+        5,
+        7,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/engine/js/worker/JsWorkerPool.ts",
+          "line": 115,
+          "symbol": "PooledSandbox.destroy"
+        },
+        {
+          "path": "src/engine/js/worker/JsWorkerPool.ts",
+          "line": 347,
+          "symbol": "fire"
+        },
+        {
+          "path": "src/engine/js/worker/JsWorkerPool.ts",
+          "line": 485,
+          "symbol": "createPooledSandboxFactory"
+        },
+        {
+          "path": "src/main/spider/createSpiderRuntimeAssembly.ts",
+          "line": 41,
+          "symbol": "sandbox factory"
+        },
+        {
+          "path": "src/main/spider/SpiderRuntimeLifecycle.ts",
+          "line": 164,
+          "symbol": "dispose"
+        }
+      ],
+      "gap": "销毁尚未打开的 sandbox 会调用 pick 并创建 3 个 Worker。工厂返回函数隐藏了 pool.dispose，应用生命周期没有显式持有 JS 池。",
+      "direction": "销毁只访问已经存在的 slot；工厂返回可创建、可统一释放的窄能力，由组合根持有并接入配置重置/退出。",
+      "acceptance": "未打开或已回收的源 destroy 不产生 Worker；重复清缓存/配置切换/退出后 Worker、队列、回执监听恢复基线。",
+      "estimateEngineerHours": {
+        "min": 2,
+        "max": 4
+      },
+      "dependsOn": [
+        "B01"
+      ],
+      "probes": [
+        "lifecycle.probe.spec.ts:45"
+      ]
+    },
+    {
+      "id": "B03",
+      "kind": "defect",
+      "priority": "P1",
+      "title": "进程池 dispose 漏杀同组中间进程",
+      "status": "open",
+      "principles": [
+        3,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/engine/spider/SpiderProcPool.ts",
+          "line": 529,
+          "symbol": "kill"
+        },
+        {
+          "path": "src/engine/spider/SpiderProcPool.ts",
+          "line": 570,
+          "symbol": "dispose"
+        }
+      ],
+      "gap": "遍历 procs 时 kill 会 splice 同一数组；3 个同组进程观测 kill 次数为 [1,0,1]，随后清空登记表丢失中间进程。",
+      "direction": "对稳定快照回收全部子进程，并结清请求、计时器和组登记。",
+      "acceptance": "同组 3 个以上进程、混合忙闲组及重复 dispose 都无漏杀；退出/异常不留下未结算调用或定时器。",
+      "estimateEngineerHours": {
+        "min": 1,
+        "max": 2
+      },
+      "dependsOn": [],
+      "probes": [
+        "lifecycle.probe.spec.ts:74"
+      ]
+    },
+    {
+      "id": "B04",
+      "kind": "defect",
+      "priority": "P1",
+      "title": "满池失败回退一次性进程绕过全局资源预算",
+      "status": "open",
+      "principles": [
+        2,
+        3,
+        4,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/engine/spider/SpiderProcPool.ts",
+          "line": 234,
+          "symbol": "submit capacity rejection"
+        },
+        {
+          "path": "src/engine/spider/JarSpiderBridge.ts",
+          "line": 1138,
+          "symbol": "pooled fallback"
+        },
+        {
+          "path": "src/engine/spider/PythonSpiderRuntimeAdapter.ts",
+          "line": 124,
+          "symbol": "pooled fallback"
+        }
+      ],
+      "gap": "全局常驻池满且无可回收空闲组时返回未分类空失败；调用方当作池故障再运行一次性 JVM/Python。边界探针确认池满后另一次 runSubprocess 仍被调用。",
+      "direction": "区分容量耗尽、取消、崩溃和源错误；统一 pooled/one-shot 的 admission budget，满载时排队或有界拒绝，真正崩溃的回退也受预算约束。",
+      "acceptance": "混合 JVM/Python、不同源组、冷回退并发都不越过同一实际进程上限；排队超时/取消释放名额；保留合法崩溃恢复。",
+      "estimateEngineerHours": {
+        "min": 4,
+        "max": 7
+      },
+      "dependsOn": [
+        "B03"
+      ],
+      "probes": [
+        "lifecycle.probe.spec.ts:84"
+      ]
+    },
+    {
+      "id": "B05",
+      "kind": "defect",
+      "priority": "P1",
+      "title": "媒体上游中途失败后下游响应悬挂",
+      "status": "open",
+      "principles": [
+        3,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/main/server/PlaybackRelayService.ts",
+          "line": 400,
+          "symbol": "stream error handling"
+        },
+        {
+          "path": "src/main/server/PlaybackRelayService.ts",
+          "line": 347,
+          "symbol": "strip-image upstream error"
+        }
+      ],
+      "gap": "已发送响应头/数据后，上游 error 只记录日志并销毁上游，没有结束下游。回环探针中客户端一直等待响应体完成。",
+      "direction": "用 pipeline 或等价的双向流生命周期收敛；区分头前错误/头后断流，并在客户端断开时终止上游和测速计时器。",
+      "acceptance": "头前失败、首块之后失败、图片伪装剥离分支和用户关闭窗口均结束响应；不挂起、不伪报完整视频、不泄漏连接。",
+      "estimateEngineerHours": {
+        "min": 2,
+        "max": 4
+      },
+      "dependsOn": [],
+      "probes": [
+        "relay.probe.spec.ts:8"
+      ]
+    },
+    {
+      "id": "B06",
+      "kind": "defect",
+      "priority": "P1",
+      "title": "用户设置写盘失败仍确认保存成功",
+      "status": "open",
+      "principles": [
+        1,
+        3,
+        4,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/main/store/JsonStore.ts",
+          "line": 53,
+          "symbol": "best-effort flush"
+        },
+        {
+          "path": "src/main/store/DavStore.ts",
+          "line": 74,
+          "symbol": "set/persist"
+        },
+        {
+          "path": "src/main/store/UcTvStore.ts",
+          "line": 42,
+          "symbol": "set"
+        },
+        {
+          "path": "src/main/plugin/PluginSettingsService.ts",
+          "line": 75,
+          "symbol": "settings write"
+        },
+        {
+          "path": "src/main/plugin/PluginHost.ts",
+          "line": 465,
+          "symbol": "setDisabled"
+        }
+      ],
+      "gap": "DavStore 先改内存，再调用吞异常的 flush；注入写盘失败后依然返回成功且内存含新条目。同样的用户设置写回模式还存在于 UC Token、插件字段及启停状态。缓存容错不能作为用户设置的提交语义。",
+      "direction": "区分可丢弃缓存与用户数据；用户数据使用严格原子写入，写成功才发布内存/广播成功。给消费者定义窄的事务持久化端口，复用 DriveStore 已有严格写模式。",
+      "acceptance": "逐个消费者注入磁盘写入失败，UI 收到可重试错误，内存与重启后数据保持旧值；成功写入正常广播；缓存失败仍可容错。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 6
+      },
+      "dependsOn": [],
+      "probes": [
+        "contracts.probe.spec.ts:10"
+      ]
+    },
+    {
+      "id": "B07",
+      "kind": "defect",
+      "priority": "P1",
+      "title": "配置已持久化却因运行时观察者异常被报告为失败",
+      "status": "open",
+      "principles": [
+        1,
+        3,
+        8,
+        13,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/main/store/UserConfigRepository.ts",
+          "line": 66,
+          "symbol": "commit"
+        },
+        {
+          "path": "src/main/store/UserConfigRepository.ts",
+          "line": 88,
+          "symbol": "post-commit onChange"
+        },
+        {
+          "path": "src/main/spider/SourceRuntimeConfiguration.ts",
+          "line": 33,
+          "symbol": "applyUserConfig"
+        }
+      ],
+      "gap": "commit 已写入新快照并增加 revision 后直接调用可抛异常的 onChange。故障注入得到“调用抛错，但持久化已是新配置”，调用方无法区分保存失败与运行时刷新失败。",
+      "direction": "让持久化结果与运行时同步结果分离；通知失败可重试并有可见诊断，不把它伪装为未保存。避免不可靠的二次隐式回滚覆盖已完成提交。",
+      "acceptance": "观察者同步抛错时，返回明确的已保存/同步失败结果或等价可识别状态；重试同步不重复提交；写盘失败路径仍完整回滚。",
+      "estimateEngineerHours": {
+        "min": 2,
+        "max": 4
+      },
+      "dependsOn": [
+        "B06"
+      ],
+      "probes": [
+        "contracts.probe.spec.ts:23"
+      ]
+    },
+    {
+      "id": "B08",
+      "kind": "defect",
+      "priority": "P1",
+      "title": "插件升级不重载代码，启动失败后也不重试",
+      "status": "open",
+      "principles": [
+        2,
+        3,
+        8,
+        13,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/main/plugin/sandbox/PluginSandboxLifecycle.ts",
+          "line": 42,
+          "symbol": "sync"
+        },
+        {
+          "path": "src/main/plugin/PluginHost.ts",
+          "line": 128,
+          "symbol": "installFromFile"
+        },
+        {
+          "path": "src/main/plugin/PluginHost.ts",
+          "line": 411,
+          "symbol": "refresh"
+        }
+      ],
+      "gap": "sync 只判断相同 id 是否已有 box；入口、版本或权限变更不重建 Worker，失败 box 也一直留在表里。两次同步探针均只创建 1 次且没有释放旧 box。",
+      "direction": "按载荷版本/内容指纹、入口和权限形成实例身份；替换时先终止旧会话，启动失败可显式重试，约束并发 refresh 的代次。",
+      "acceptance": "覆盖同 id 升级、入口不变但内容变、权限变更、失败后重试、停用/卸载时仍在 start 的竞态；旧插件不再收到能力回执。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 6
+      },
+      "dependsOn": [],
+      "probes": [
+        "contracts.probe.spec.ts:44",
+        "contracts.probe.spec.ts:53"
+      ]
+    },
+    {
+      "id": "B09",
+      "kind": "defect",
+      "priority": "P1",
+      "title": "Python 默认空能力与初始化错误被当成成功",
+      "status": "open",
+      "principles": [
+        3,
+        4,
+        10,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "resources/jvm/python-runner/base/spider.py",
+          "line": 27,
+          "symbol": "compatibility default methods"
+        },
+        {
+          "path": "resources/jvm/python-runner/runner.py",
+          "line": 87,
+          "symbol": "_invoke"
+        },
+        {
+          "path": "resources/jvm/python-runner/runner.py",
+          "line": 214,
+          "symbol": "_acquire/init"
+        },
+        {
+          "path": "resources/jvm/python-runner/runner.py",
+          "line": 314,
+          "symbol": "one-shot init"
+        }
+      ],
+      "gap": "继承 base.Spider 而未实现 searchContent 会返回合法空列表；_invoke 只检查方法存在。源 init 内部 TypeError 也被整个吞掉。这与 JS/JVM 已能区分 unsupported/真实执行失败的契约不一致。",
+      "direction": "在兼容适配边界识别继承的默认桩；用签名匹配处理可选 init，传播函数体内部异常。保留真正实现的方法返回空列表这一合法结果。",
+      "acceptance": "Python 标准库探针转绿；补齐单次/常驻两条执行模式、继承合法自定义实现、空结果、缺方法及内部异常；共同消费者无需识别运行时种类。",
+      "estimateEngineerHours": {
+        "min": 2,
+        "max": 4
+      },
+      "dependsOn": [],
+      "probes": [
+        "python-capabilities.probe.py:20",
+        "python-capabilities.probe.py:27"
+      ]
+    },
+    {
+      "id": "A01",
+      "kind": "debt",
+      "priority": "P1",
+      "title": "给 JS sandbox/蜘蛛实例缓存建立每源回收预算",
+      "status": "open",
+      "principles": [
+        1,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/engine/spider/SpiderCache.ts",
+          "line": 6,
+          "symbol": "cache"
+        },
+        {
+          "path": "src/engine/js/worker/entry.ts",
+          "line": 20,
+          "symbol": "sandboxes map"
+        },
+        {
+          "path": "src/engine/js/worker/JsWorkerPool.ts",
+          "line": 456,
+          "symbol": "idle reclaim"
+        }
+      ],
+      "gap": "缓存目前主要靠全量 clear/worker 回收；最后一个保留 Worker 内没有逐源淘汰预算。全仓跨源搜索可逐步积累 VM 上下文，现未量测实际 RSS 增量，不能直接称为已证实内存泄漏。",
+      "direction": "建立活跃租约、源级 LRU/TTL 或字节/数量双预算；淘汰释放 VM/缓存且不能影响正在执行的源；与显式池所有权接线。",
+      "acceptance": "连续多轮全源搜索后源上下文数量受限；活跃调用不被淘汰；冷重建正确；按 V05 量测回收后的平台值。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 6
+      },
+      "dependsOn": [
+        "B01",
+        "B02"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A02",
+      "kind": "debt",
+      "priority": "P1",
+      "title": "搜索取消从展示代次贯穿 IPC 到后台请求",
+      "status": "open",
+      "principles": [
+        3,
+        4,
+        7,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/features/home/application/HomeSearchWorkflow.ts",
+          "line": 88,
+          "symbol": "dispose/invalidatePendingSearch"
+        },
+        {
+          "path": "src/renderer/features/home/application/homePorts.ts",
+          "line": 71,
+          "symbol": "HomeSearchPort"
+        },
+        {
+          "path": "src/main/ipc/vodIpc.ts",
+          "line": 42,
+          "symbol": "VOD_SEARCH_ALL"
+        },
+        {
+          "path": "src/main/spider/AggregateSearchRequestBroker.ts",
+          "line": 12,
+          "symbol": "clear/run"
+        }
+      ],
+      "gap": "当前取消主要使旧结果失效；HomeSearchPort 没有取消能力，broker.clear 只移除登记。快速切关键词、关闭搜索窗口后，旧搜索仍可占用 HTTP/Worker/进程预算到自身截止。",
+      "direction": "加入请求会话/取消端口；共享同词任务按订阅者计数，最后消费者退出才取消底层；不同关键词共享宿主资源预算。",
+      "acceptance": "连续提交 10 个查询/关闭窗口，旧任务在有界时间释放；一个窗口取消不能中断另一窗口仍订阅的同词搜索；无迟到 UI 更新。",
+      "estimateEngineerHours": {
+        "min": 4,
+        "max": 8
+      },
+      "dependsOn": [
+        "B01",
+        "B04"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A03",
+      "kind": "debt",
+      "priority": "P1",
+      "title": "限制子进程协议帧和日志缓冲大小",
+      "status": "open",
+      "principles": [
+        3,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/engine/spider/SpiderSubprocessRunner.ts",
+          "line": 57,
+          "symbol": "stdout/stderr accumulation"
+        },
+        {
+          "path": "src/engine/spider/SpiderProcPool.ts",
+          "line": 449,
+          "symbol": "line buffer"
+        }
+      ],
+      "gap": "一次性 stdout/stderr 和常驻行协议 buf 持续累积，没有单帧/累计字节上限。异常日志或不换行输出能够放大内存；尚未测定生产出现频率。",
+      "direction": "分开结果帧预算与截断日志环；超限返回有类型诊断并回收进程；不能截断合法 JSON 后伪报源无结果。",
+      "acceptance": "用无换行大输出、超大 JSON、持续 stderr、拆包 UTF-8 与合法边界帧验证内存上界和恰好一次结算。",
+      "estimateEngineerHours": {
+        "min": 2,
+        "max": 4
+      },
+      "dependsOn": [
+        "B03"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A04",
+      "kind": "debt",
+      "priority": "P1",
+      "title": "共享内存 HTTP 回执只能完成一次，超大响应必须显式失败",
+      "status": "open",
+      "principles": [
+        3,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/engine/js/worker/JsWorkerPool.ts",
+          "line": 185,
+          "symbol": "httpSync timeout/response"
+        },
+        {
+          "path": "src/engine/js/worker/JsWorkerPool.ts",
+          "line": 225,
+          "symbol": "writeSab"
+        },
+        {
+          "path": "src/engine/js/worker/protocol.ts",
+          "line": 19,
+          "symbol": "SAB_MAX_BYTES"
+        },
+        {
+          "path": "src/engine/js/worker/remoteHost.ts",
+          "line": 20,
+          "symbol": "sabRoundTrip"
+        }
+      ],
+      "gap": "超时回执与迟到 HTTP 结果都可写同一 SAB；超长序列化数据会被截到固定 8 MiB，可能变成不可解析 JSON。这里是代码确认的协议风险，本轮没有并发压力复现。",
+      "direction": "使用 first-winner 状态/CAS 或等价单次发布协议；超限写入小型有类型错误帧；把数据写入与完成标志的内存顺序写清楚。",
+      "acceptance": "可控交错超时与成功回执，消费者永不读取被覆盖的半帧；大于预算返回明确 oversize；取消/迟到不污染下一次调用。",
+      "estimateEngineerHours": {
+        "min": 2,
+        "max": 4
+      },
+      "dependsOn": [
+        "B01"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A05",
+      "kind": "debt",
+      "priority": "P1",
+      "title": "小型 HTTP 文本与 HLS 清单按字节和读取截止设预算",
+      "status": "open",
+      "principles": [
+        3,
+        7,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/main/server/UpstreamHttpClient.ts",
+          "line": 66,
+          "symbol": "fetchWithRedirect"
+        },
+        {
+          "path": "src/main/server/UpstreamHttpClient.ts",
+          "line": 39,
+          "symbol": "stream bodyTimeout"
+        },
+        {
+          "path": "src/main/server/PlaybackRelayService.ts",
+          "line": 256,
+          "symbol": "playlist buffering"
+        }
+      ],
+      "gap": "文本响应和清单使用完整 arrayBuffer；媒体流的无限 bodyTimeout 被清单缓冲路径沿用。误标的 m3u8/无限响应会占用等待与内存，尚未测量生产频率。",
+      "direction": "流媒体与清单/配置采用不同读取策略；小体积响应按字节预算+总截止读取；客户端取消贯穿重定向、清单与流。",
+      "acceptance": "超大/无限清单及时终止；正常长视频不被 API 截止误杀；重定向、HEAD/Range 和错误状态不回归。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 5
+      },
+      "dependsOn": [
+        "B05"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A06",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "媒体组件下载补齐传输预算和可替换安装用例",
+      "status": "open",
+      "principles": [
+        1,
+        4,
+        5,
+        7,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/main/player/MediaRuntimeProvisioner.ts",
+          "line": 76,
+          "symbol": "install"
+        },
+        {
+          "path": "src/main/player/MediaRuntimeProvisioner.ts",
+          "line": 169,
+          "symbol": "getRelease"
+        },
+        {
+          "path": "src/main/player/MediaRuntimeProvisioner.ts",
+          "line": 187,
+          "symbol": "download"
+        }
+      ],
+      "gap": "已实现官方资产选择、SHA-256、PE 检查、临时解压和原子 manifest；但安装类仍直接绑定 fetch/文件/Worker/全局 playerSettings，下载只在完成后检查字节数，缺显式请求总截止。",
+      "direction": "保留现有可信下载链；用下载/解压/落盘/设置端口组织安装用例，流中超额就停止，统一超时、取消、清理结果。",
+      "acceptance": "慢/无限/超额响应、解压失败、manifest 写入失败、用户取消及重复安装均可用端口替身验证；失败仍能使用旧 active 版本。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 5
+      },
+      "dependsOn": [],
+      "probes": []
+    },
+    {
+      "id": "A07",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "JAR 转换与运行会话策略的职责边界仍需收敛",
+      "status": "open",
+      "principles": [
+        1,
+        4,
+        5,
+        6,
+        7,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/engine/spider/JarSpiderBridge.ts",
+          "line": 279,
+          "symbol": "construction"
+        },
+        {
+          "path": "src/engine/spider/JarSpiderBridge.ts",
+          "line": 589,
+          "symbol": "doConvertStage"
+        },
+        {
+          "path": "src/engine/spider/JarSpiderBridge.ts",
+          "line": 968,
+          "symbol": "call/callImpl"
+        },
+        {
+          "path": "src/engine/spider/JarSpiderBridge.ts",
+          "line": 1237,
+          "symbol": "jvmPrefix"
+        }
+      ],
+      "gap": "桥同时拥有转换阶段/缓存版本与修复、JVM 参数/本地资产、调用池回退和多运行时准备。已有转换注册表和运行时端口，但仍有跨责任共享可变状态。1431 行是定位信号，不是独立定罪理由。",
+      "direction": "把 artifact preparation、launch specification 和 execution session 按变更原因形成边界，Node I/O 留在运行时适配器；兼容实现无需搬进纯领域。",
+      "acceptance": "转换/参数选择/回退策略可脱离真实磁盘与 JVM 测试；入口输出、代理端口身份、取消与进度行为保持；不新增只做转发的 Manager。",
+      "estimateEngineerHours": {
+        "min": 5,
+        "max": 9
+      },
+      "dependsOn": [
+        "B04",
+        "B09"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A08",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "播放器 Presenter 的跨控制域编排仍过重",
+      "status": "open",
+      "principles": [
+        1,
+        4,
+        6,
+        8,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/features/playback/VideoPlayerPresenter.ts",
+          "line": 165,
+          "symbol": "useVideoPlayerPresenter"
+        },
+        {
+          "path": "src/renderer/features/playback/VideoPlayerPresenter.ts",
+          "line": 361,
+          "symbol": "kernel transition wiring"
+        },
+        {
+          "path": "src/renderer/features/playback/VideoPlayerPresenter.ts",
+          "line": 690,
+          "symbol": "controls model"
+        }
+      ],
+      "gap": "已把解析、音轨、偏好、跳过片段等职责移出，但一个 Presenter 仍交叉接线内核交接、暂停/音量、字幕/弹幕互斥、自动下一集，并组装全部控件动作。视图已被动化，不等于跨会话状态责任已经清晰。",
+      "direction": "按会话状态/控制区域组织专责展示模型；交接/恢复/互斥等业务决策有独立应用策略，顶层只组合和投影；保留窄消费者端口，不机械拆成多个转发文件。",
+      "acceptance": "用不挂载完整播放器的用例覆盖换内核保持位置/暂停、互斥弹层、自动下一集与老板键；现有控件全部保留；Presenter 不再修改其它子域的内部 ref。",
+      "estimateEngineerHours": {
+        "min": 5,
+        "max": 9
+      },
+      "dependsOn": [
+        "B05",
+        "A09"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A09",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "HTML5/HLS/FLV 资源绑定与恢复策略仍在同一 React effect",
+      "status": "open",
+      "principles": [
+        1,
+        3,
+        4,
+        6,
+        7,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/features/playback/useHtml5PlaybackSession.ts",
+          "line": 53,
+          "symbol": "session hook"
+        },
+        {
+          "path": "src/renderer/features/playback/useHtml5PlaybackSession.ts",
+          "line": 90,
+          "symbol": "media effect"
+        }
+      ],
+      "gap": "DOM 绑定、HLS/MPEG-TS 初始化/销毁、重试计数、内核/外置回退与观看时间线在一个会话 effect 中协调。已有 time-line 纯规则，但错误恢复矩阵仍依赖整个 hook。",
+      "direction": "浏览器媒体适配器拥有元素与库实例；有限的恢复状态/预算决定留在框架无关工作流。按实际协议定义最小控制/事件端口，避免统一成无限大播放器接口。",
+      "acceptance": "假媒体端口即可验证 HTTP 错误、解码失败、重试耗尽、外置失败、切 URL 与晚到错误；DOM/HLS 集成仅验证绑定与清理。",
+      "estimateEngineerHours": {
+        "min": 4,
+        "max": 7
+      },
+      "dependsOn": [
+        "B05"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A10",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "首页浏览分页、筛选恢复与请求生命周期仍依赖 React 状态",
+      "status": "open",
+      "principles": [
+        1,
+        4,
+        6,
+        7,
+        8,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/features/home/useHomeBrowseController.ts",
+          "line": 11,
+          "symbol": "options"
+        },
+        {
+          "path": "src/renderer/features/home/useHomeBrowseController.ts",
+          "line": 46,
+          "symbol": "browse state"
+        },
+        {
+          "path": "src/renderer/features/home/useHomeBrowseController.ts",
+          "line": 126,
+          "symbol": "loadHome"
+        }
+      ],
+      "gap": "HomeSearchWorkflow 已框架无关；浏览侧仍直接用多个 setState/ref 维护分类、分页、准备重试、瀑布追加与快照，接口暴露 React Dispatch/MutableRefObject。",
+      "direction": "把浏览会话状态转换和异步用例集中成 application workflow，hook 只订阅发布状态和装配滚动观察器；继续复用已拆出的搜索/浏览窄接口。",
+      "acceptance": "不依赖 React 测试来源切换、乱序 home/category、筛选/分页恢复、重复分页/瀑布终止；现有视图与搜索回退不变。",
+      "estimateEngineerHours": {
+        "min": 4,
+        "max": 7
+      },
+      "dependsOn": [
+        "A02"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A11",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "设置页剩余页面状态与视图分离",
+      "status": "open",
+      "principles": [
+        1,
+        6,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/pages/ConfigPage.tsx",
+          "line": 111,
+          "symbol": "ConfigPage"
+        },
+        {
+          "path": "src/renderer/pages/ConfigPage.tsx",
+          "line": 150,
+          "symbol": "initial load"
+        },
+        {
+          "path": "src/renderer/pages/ConfigPage.tsx",
+          "line": 175,
+          "symbol": "settings search/tab projection"
+        }
+      ],
+      "gap": "各设置业务 Presenter 已存在，但页面仍管理共享 busy/初载错误、标签路由、设置检索、初始加载和 JSX。不能因文件里没有直接 IPC 就称为 Passive View。",
+      "direction": "以页面展示模型收口共享状态、路由解析与事件动作；ConfigPage 保留组合根装配，独立 View 只声明式渲染；不把已原子化配置聚合再拆成多个存储。",
+      "acceptance": "页面 View 不拥有业务状态/加载副作用；纯展示用例覆盖深链接、检索/清除、切标签和初载失败重试；导入/激活忙碌关系明确。",
+      "estimateEngineerHours": {
+        "min": 2,
+        "max": 4
+      },
+      "dependsOn": [],
+      "probes": []
+    },
+    {
+      "id": "A12",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "详情页仍直接编排收藏存储与窗口展示逻辑",
+      "status": "open",
+      "principles": [
+        1,
+        4,
+        5,
+        6,
+        7,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/pages/DetailPage.tsx",
+          "line": 124,
+          "symbol": "favorite sync"
+        },
+        {
+          "path": "src/renderer/pages/DetailPage.tsx",
+          "line": 136,
+          "symbol": "toggleFavorite"
+        },
+        {
+          "path": "src/renderer/pages/DetailPage.tsx",
+          "line": 37,
+          "symbol": "DetailPage"
+        }
+      ],
+      "gap": "详情数据与播放已有用例/端口；收藏读写、全局事件订阅、名称兜底、详情窗口判断和 JSX 仍混在页面。",
+      "direction": "复用 favorites feature 的领域键和持久化边界，通过详情收藏端口/Presenter 同步；详情展示与动作模型分开，路由/窗口能力由组合点注入。",
+      "acceptance": "详情 View 不读 localStorage/全局收藏存储；同名跨档案身份不串；收藏移除/添加及辅助窗口刷新、播放/绑定入口都保持。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 5
+      },
+      "dependsOn": [],
+      "probes": []
+    },
+    {
+      "id": "A13",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "发现/榜单及影片来源面板补齐展示模型和错误状态",
+      "status": "open",
+      "principles": [
+        1,
+        4,
+        6,
+        7,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/pages/BoardsPage.tsx",
+          "line": 22,
+          "symbol": "load sections/credentials"
+        },
+        {
+          "path": "src/renderer/features/detail/MovieSourcesPanel.tsx",
+          "line": 17,
+          "symbol": "source/folder presentation"
+        },
+        {
+          "path": "src/renderer/pages/DiscoverPage.tsx",
+          "line": 39,
+          "symbol": "discovery composition"
+        }
+      ],
+      "gap": "BoardsPage 把 sections 读取失败吞掉，把凭据读取失败当作无凭据；MovieSourcesPanel 同时持有筛选/文件夹状态、结果投影、异步展开、导航和 JSX。现有来源搜索用例不需重写。",
+      "direction": "为榜单和来源面板分别提供 Presenter/View，加载/空/失败/缺凭据状态显式区分；来源筛选、相关度与封面投影可独立验证。",
+      "acceptance": "断网能看到错误并重试，不误导用户配 Key；来源筛选、片名相关/全部返回、封面兜底和文件夹返回保持；发现点击仍进入对应影片详情。",
+      "estimateEngineerHours": {
+        "min": 4,
+        "max": 7
+      },
+      "dependsOn": [],
+      "probes": []
+    },
+    {
+      "id": "A14",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "插件设置页仍把安装、启停、字段写回与 JSX 混合",
+      "status": "open",
+      "principles": [
+        1,
+        4,
+        6,
+        7,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/features/settings/PluginSettingsSection.tsx",
+          "line": 10,
+          "symbol": "plugin operations"
+        },
+        {
+          "path": "src/renderer/features/settings/PluginSettingsPanels.tsx",
+          "line": 1,
+          "symbol": "field draft state"
+        },
+        {
+          "path": "src/renderer/features/settings/PluginKeymapList.tsx",
+          "line": 1,
+          "symbol": "keymap loading"
+        }
+      ],
+      "gap": "组件持有加载/安装/卸载/启停/字段保存流程与多个结果面板，直接调用依赖并刷新主题/广播，失败和保存后刷新关系分散。",
+      "direction": "安装/启停等应用工作流与页面 Presenter 分层；字段草稿使用窄展示状态；被动 View 只委托命令，统一错误和已保存但刷新失败的反馈。",
+      "acceptance": "不挂载完整设置页即可测试权限确认、用户取消、安装失败、升级、启停/保存失败；View 覆盖选中/禁用/加载语义；不损失插件面板与快捷键功能。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 5
+      },
+      "dependsOn": [
+        "B06",
+        "B08"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A15",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "来源选择器的业务投影与浮层状态继续归位",
+      "status": "open",
+      "principles": [
+        1,
+        6,
+        8,
+        9,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/components/SourcePicker.tsx",
+          "line": 48,
+          "symbol": "SourcePicker"
+        },
+        {
+          "path": "src/renderer/components/SourcePicker.tsx",
+          "line": 116,
+          "symbol": "profile/source/filter projection"
+        },
+        {
+          "path": "src/renderer/features/subscriptions/ProfileSwitcher.tsx",
+          "line": 1,
+          "symbol": "ProfileSwitcher"
+        }
+      ],
+      "gap": "源读取/切换已有 controller，但通用 components/SourcePicker 仍反向依赖订阅 feature，自己计算跨档案来源列表/检索、计时器和焦点，并渲染。",
+      "direction": "将业务选择器归入 subscriptions organism；投影/动作进入 Presenter，浮层定位与焦点留在可复用 UI 适配层；基础原子不依赖订阅业务。",
+      "acceptance": "受控/自加载、跨档案一步切源、回车选择、Escape/焦点恢复和移出延迟关闭都可独立验收；当前源高亮有可识别语义。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 5
+      },
+      "dependsOn": [],
+      "probes": []
+    },
+    {
+      "id": "A16",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "AppShell 的导航规则与跨窗口内存同步独立成会话边界",
+      "status": "open",
+      "principles": [
+        1,
+        4,
+        5,
+        6,
+        7,
+        8,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/App.tsx",
+          "line": 109,
+          "symbol": "AppShell"
+        },
+        {
+          "path": "src/renderer/App.tsx",
+          "line": 157,
+          "symbol": "goBack/keyboard"
+        },
+        {
+          "path": "src/renderer/App.tsx",
+          "line": 192,
+          "symbol": "history/favorite lifetime"
+        }
+      ],
+      "gap": "App 是合法组合根，直接接 IPC 本身不判错；问题是返回路径策略、快捷键、历史/收藏加载保存、窗口导航握手和 UI 同处一个外壳函数，互相借用路由状态。",
+      "direction": "保留组合根；把返回决策做纯策略，外壳生命周期通过事件/持久化/窗口端口连接，展示外壳消费模型。不要为了清除所有 import 而制造 service locator。",
+      "acceptance": "主/详情/搜索/播放窗口的返回、挂载/卸载、焦点同步和迟到导航有端口替身测试；不遗漏历史保存，也不重复注册监听。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 5
+      },
+      "dependsOn": [],
+      "probes": []
+    },
+    {
+      "id": "A17",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "媒体绘制/图集/进度控件的状态和 DOM 适配边界明确化",
+      "status": "open",
+      "principles": [
+        1,
+        5,
+        6,
+        7,
+        8,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/components/DanmakuOverlay.tsx",
+          "line": 48,
+          "symbol": "module-level setTextMeasurer"
+        },
+        {
+          "path": "src/renderer/components/DanmakuOverlay.tsx",
+          "line": 111,
+          "symbol": "canvas lifecycle"
+        },
+        {
+          "path": "src/renderer/components/ImageViewer.tsx",
+          "line": 31,
+          "symbol": "image state/gestures"
+        },
+        {
+          "path": "src/renderer/features/playback/PlayerProgressBar.tsx",
+          "line": 1,
+          "symbol": "progress interaction"
+        }
+      ],
+      "gap": "弹幕布局虽在 engine，模块导入仍修改全局文本测量器；绘制缓存/RAF、图集重试/缩放拖动、进度手势与 JSX 仍共置。不能把这些 DOM 适配模块统称纯领域/被动 View。",
+      "direction": "测量能力作为布局实例/调用依赖显式传入；绘制生命周期由 canvas adapter 持有，图集和进度的交互规则由 Presenter/纯坐标策略负责，View 只委托。",
+      "acceptance": "多实例测量不互相污染；拖动/键盘 seek/缩放/重试地址正确；关闭组件释放 RAF/监听；DPR、全屏与开关弹幕无拖影的实际结果由 V03 验收。",
+      "estimateEngineerHours": {
+        "min": 4,
+        "max": 7
+      },
+      "dependsOn": [],
+      "probes": []
+    },
+    {
+      "id": "A18",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "统一原子组件、交互状态和样式所有权，消除跨外壳补丁级联",
+      "status": "open",
+      "principles": [
+        2,
+        6,
+        9,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/components/ui/Button.tsx",
+          "line": 13,
+          "symbol": "Fluent wrapper"
+        },
+        {
+          "path": "src/renderer/styles/global.css",
+          "line": 1,
+          "symbol": "cascade/import order"
+        },
+        {
+          "path": "src/renderer/styles/global-player.css",
+          "line": 1,
+          "symbol": "legacy player layer"
+        },
+        {
+          "path": "src/renderer/styles/desktop.css",
+          "line": 336,
+          "symbol": "desktop control overrides"
+        },
+        {
+          "path": "src/renderer/styles/player-rate-cascade.css",
+          "line": 1,
+          "symbol": "targeted cascade repair"
+        }
+      ],
+      "gap": "已有 Fluent UI 包装和语义 token，但原生 button/模块 CSS/legacy/四套 shell/desktop 仍共同控制同一控件，专门的 rate/drive cascade 修补说明所有权未统一。31 个 JSX+状态/effect 模块是审查候选，不等于 31 个已确认缺陷。",
+      "direction": "复用现有 Fluent/基础组件，制定状态契约和原子/分子/业务 organism 依赖规则；播放器控件样式由 feature 拥有，外壳仅布局，皮肤只 token；逐步移除重复覆盖而非再加高权重规则。",
+      "acceptance": "各控件默认/hover/focus/selected/disabled/loading/error 有明确前景、表面和语义；选中态不能只靠色差；功能无减少；对比度/缩放最终以 V03 的计算样式和真实窗口验收关闭。",
+      "estimateEngineerHours": {
+        "min": 8,
+        "max": 14
+      },
+      "dependsOn": [
+        "A11",
+        "A12",
+        "A13",
+        "A14",
+        "A15",
+        "A17"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A19",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "本地脚本/目录/直播导入业务离开 IPC 适配器",
+      "status": "open",
+      "principles": [
+        1,
+        4,
+        5,
+        6,
+        7,
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/main/ipc/index.ts",
+          "line": 285,
+          "symbol": "local Python import"
+        },
+        {
+          "path": "src/main/ipc/index.ts",
+          "line": 327,
+          "symbol": "local package import"
+        },
+        {
+          "path": "src/main/ipc/index.ts",
+          "line": 387,
+          "symbol": "local live import"
+        }
+      ],
+      "gap": "IPC 适配器还直接循环复制脚本、推断命名、登记源、失败清理副本、处理纯 Python 目录二阶段确认及直播登记。UI 对话框和文件 I/O 是适配器职责，但批量提交/补偿策略应独立。",
+      "direction": "文件选择/读写作为端口，批量导入和二阶段命名形成应用用例；保留每文件独立成败及清理补偿语义，不拆开 UserConfig 根聚合事务。",
+      "acceptance": "不加载 Electron 测试部分成功、取消命名、源登记失败、清理失败和配置并发更改；IPC 只做输入/对话框/DTO 委托。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 5
+      },
+      "dependsOn": [
+        "B07"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A20",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "架构门禁从大量特定文件规则扩到明确模块角色",
+      "status": "open",
+      "principles": [
+        2,
+        6,
+        7,
+        9,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "scripts/architecture-boundaries.mjs",
+          "line": 14,
+          "symbol": "layer rules"
+        },
+        {
+          "path": "scripts/architecture-boundaries.mjs",
+          "line": 40,
+          "symbol": "per-file exceptions/maps"
+        },
+        {
+          "path": "scripts/architecture-boundaries.mjs",
+          "line": 100,
+          "symbol": "playback control file set"
+        }
+      ],
+      "gap": "跨顶层依赖规则可靠，但多数细粒度防回归按文件名逐条加。改名/新建模块可能不受同样规则约束；0 个跨层错误不能证明应用用例全部无框架依赖。",
+      "direction": "明确 domain/application/adapter/composition/view 的角色目录或小型角色清单；通用 AST 规则覆盖新文件、相对别名/导出/动态字面量导入，保留必要平台例外及原因。",
+      "acceptance": "新增/改名一个违规 application 或业务原子组件会被同一规则拦下；合法组合根/DOM adapter 不误报；规则测试验证真实依赖而非仅匹配字符串。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 5
+      },
+      "dependsOn": [
+        "A07",
+        "A08",
+        "A10",
+        "A18",
+        "A19"
+      ],
+      "probes": []
+    },
+    {
+      "id": "A21",
+      "kind": "debt",
+      "priority": "P2",
+      "title": "按实际运行依赖闭包收敛包体，避免重复携带已打包库",
+      "status": "open",
+      "principles": [
+        1,
+        6,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "scripts/package-app.mjs",
+          "line": 49,
+          "symbol": "node_modules include"
+        },
+        {
+          "path": "scripts/package-app.mjs",
+          "line": 90,
+          "symbol": "all production manifests assertion"
+        },
+        {
+          "path": "scripts/build-main.mjs",
+          "line": 65,
+          "symbol": "explicit external packages"
+        }
+      ],
+      "gap": "packager 保留全部生产 node_modules 并验证每个生产依赖都在包中；main/worker/renderer 已 bundle 多个相同库。Babel、解压器等确有运行时外部依赖，不能直接删 node_modules 或把所有依赖改 dev。当前尚无按包路径的字节账本。",
+      "direction": "生成 dist 与动态 require/worker 共同需要的运行依赖闭包，按实际字节找重复；发布副本裁剪测试/源码/无用平台资源，保留许可证与所有运行时 external。",
+      "acceptance": "输出安装包/ASAR/资源分项大小及前后对照；隔离干净目录能启动 JS/JVM/Python、解压和下载能力；A/B 不减少 React Compiler 的 hooks 覆盖，不预承诺压缩比例。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 6
+      },
+      "dependsOn": [],
+      "probes": []
+    },
+    {
+      "id": "V01",
+      "kind": "validation",
+      "priority": "P1",
+      "title": "JS/JVM/Python/原生桥共同替换契约与生命周期矩阵验收",
+      "status": "open",
+      "principles": [
+        3,
+        4,
+        7,
+        8,
+        10,
+        13,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/engine/spider/SpiderSourceRuntimeAdapter.ts",
+          "line": 17,
+          "symbol": "source capability adapter"
+        },
+        {
+          "path": "resources/jvm/SpiderRunner.java",
+          "line": 685,
+          "symbol": "requireOverride"
+        },
+        {
+          "path": "resources/jvm/python-runner/runner.py",
+          "line": 87,
+          "symbol": "Python invocation"
+        },
+        {
+          "path": "resources/jvm/native-bridge/com/winbox/nativebridge/NativeBridge.java",
+          "line": 536,
+          "symbol": "native return dispatch"
+        }
+      ],
+      "gap": "已有零散契约测试，仍缺同一消费者下的跨运行时完整对照。原生桥支持 ARM32/AArch64 的选定 JNI 能力，不能据此宣布任意 .so 均支持；例如返回 F/D 仍走不支持分支。",
+      "direction": "建立共享 conformance fixtures：成功/合法空/缺能力/初始化失败/超时/取消/崩溃/销毁与晚回执；分别执行单次与常驻；原生范围按能力表列出。",
+      "acceptance": "JS/JVM/Python 同一契约集通过，native 支持/不支持均有可识别诊断；报告真实运行和替身覆盖，缺 JDK/资产时显示 NOT_RUN，不能当 PASS。",
+      "estimateEngineerHours": {
+        "min": 5,
+        "max": 8
+      },
+      "dependsOn": [
+        "B01",
+        "B02",
+        "B03",
+        "B04",
+        "B08",
+        "B09",
+        "A03",
+        "A04",
+        "A07"
+      ],
+      "probes": []
+    },
+    {
+      "id": "V02",
+      "kind": "validation",
+      "priority": "P1",
+      "title": "真实播放与外置播放器、超分能力边界验收",
+      "status": "open",
+      "principles": [
+        3,
+        7,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "scripts/verify-playback.mjs",
+          "line": 81,
+          "symbol": "local acceptance report"
+        },
+        {
+          "path": "scripts/verify-playback.mjs",
+          "line": 134,
+          "symbol": "HTML5/MPV local video"
+        },
+        {
+          "path": "scripts/source-acceptance.mjs",
+          "line": 31,
+          "symbol": "import/home/search probes"
+        },
+        {
+          "path": "src/main/torrent/ExternalPlayback.ts",
+          "line": 47,
+          "symbol": "configured external player"
+        }
+      ],
+      "gap": "已有真实本地 VP8/HTML5/MPV 验收工具，外部源矩阵默认 NOT_RUN 且工具只检查导入/首页/搜索，不覆盖从真实结果解析到播放。PotPlayer 路径、格式兼容、全局账号及超分当前未做本快照实机对照。",
+      "direction": "先可控夹具验证 MP4/HLS/TS、401/403/HTML 假媒体、Range/跳转；再按获准的代表来源测完整播放。单独验证已配置 PotPlayer 直接启动和失败反馈；超分按内核能力如实展示。",
+      "acceptance": "保存至少 HTML5、托管 MPV、PotPlayer 的实际启动/时间推进/暂停续播证据；源失效与播放器回归分开；账号切子仓可复用；明确托管 shader 不自动影响任意外部播放器。",
+      "estimateEngineerHours": {
+        "min": 4,
+        "max": 8
+      },
+      "dependsOn": [
+        "B05",
+        "B09",
+        "A05",
+        "A08",
+        "A09"
+      ],
+      "probes": []
+    },
+    {
+      "id": "V03",
+      "kind": "validation",
+      "priority": "P1",
+      "title": "全窗口可读性、交互状态、DPI 与功能保留验收",
+      "status": "open",
+      "principles": [
+        6,
+        9,
+        11,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/styles/desktop.css",
+          "line": 665,
+          "symbol": "compact pause control"
+        },
+        {
+          "path": "src/renderer/styles/global-foundation.css",
+          "line": 1,
+          "symbol": "foundation controls"
+        },
+        {
+          "path": "src/renderer/pages/ComponentShowcasePage.tsx",
+          "line": 1,
+          "symbol": "component state showcase"
+        },
+        {
+          "path": "src/renderer/features/playback/PlayerVolumeControl.tsx",
+          "line": 1,
+          "symbol": "volume slider"
+        }
+      ],
+      "gap": "token 对比度测试和局部 CSS 已修，但不覆盖每个实际级联结果。暂停背景/图标尺度、原生菜单、音量 thumb 居中、选中态辨识与历史卡片的最终窗口效果尚未逐项签收。",
+      "direction": "按窗口×组件状态×主题/外壳×DPI 建立检查矩阵；复用已有 showcase，计算最终样式并用真实 Electron 窗口复核；业务功能清单作回归对照。",
+      "acceptance": "主/详情/搜索/播放器/全局账号/设置/历史/直播/存储均有记录；100/125/150% DPI 与窄宽布局；沿用仓库普通文本4.5:1/功能边界3:1口径；键盘焦点、selected 语义、弹幕拖影和暂停无模糊逐项关闭。",
+      "estimateEngineerHours": {
+        "min": 6,
+        "max": 10
+      },
+      "dependsOn": [
+        "A08",
+        "A11",
+        "A12",
+        "A13",
+        "A14",
+        "A15",
+        "A17",
+        "A18"
+      ],
+      "probes": []
+    },
+    {
+      "id": "V04",
+      "kind": "validation",
+      "priority": "P1",
+      "title": "运行中升级、先卸载再安装及数据保留验收",
+      "status": "open",
+      "principles": [
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "scripts/installer-script.mjs",
+          "line": 103,
+          "symbol": "CloseRunningWinBox"
+        },
+        {
+          "path": "scripts/installer-script.mjs",
+          "line": 145,
+          "symbol": "InstallModePage"
+        },
+        {
+          "path": "scripts/verify-installation.mjs",
+          "line": 32,
+          "symbol": "stopRunningProcess option"
+        },
+        {
+          "path": "scripts/verify-installation.mjs",
+          "line": 99,
+          "symbol": "CLI invocation"
+        }
+      ],
+      "gap": "实际安装器已有停止/覆盖或先卸载再安装页面，不能再说完全未实现。验收函数的 stopRunningProcess 默认 false，CLI 未传该选项；标准命令无法覆盖用户反复报告的运行中安装场景。注册表/快捷方式也在隔离验收外。",
+      "direction": "将运行中安装场景接入可显式运行的验收入口；在隔离数据目录测试正常退出/强退/无关锁定、覆盖及卸载再装，再核对真实安装集成。",
+      "acceptance": "正在播放/老板键隐藏/后台无主窗口时可一键停止继续；其它安装目录不受影响；配置、订阅、账号、历史、收藏重启后保留；取消不破坏旧版；注册表/快捷方式正确。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 5
+      },
+      "dependsOn": [
+        "B02",
+        "B03",
+        "B06",
+        "A21"
+      ],
+      "probes": []
+    },
+    {
+      "id": "V05",
+      "kind": "validation",
+      "priority": "P1",
+      "title": "建立可重复的性能与内存预算并执行前后对照",
+      "status": "open",
+      "principles": [
+        8,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/main/util/memProbe.ts",
+          "line": 140,
+          "symbol": "childRows"
+        },
+        {
+          "path": "src/main/index.ts",
+          "line": 675,
+          "symbol": "opt-in memory sampling"
+        },
+        {
+          "path": "src/engine/vod/aggregateSearchPolicy.ts",
+          "line": 2,
+          "symbol": "fan-out policy"
+        },
+        {
+          "path": "src/renderer/features/navigation/KeepAliveRoutes.tsx",
+          "line": 1,
+          "symbol": "page residency"
+        }
+      ],
+      "gap": "已有内存探针和常驻页上限，但无本次快照受控前后数据。只采工作集/直接子进程、只看构建 Babel 耗时或 HLS chunk 警告，不能证明应用内存/播放体验已优化。",
+      "direction": "固定机器/数据/窗口/冷热缓存条件，记录完整进程树与私有内存/工作集、CPU、搜索首个结果/总耗时、帧时间和关闭后资源恢复。根据数据再调并发与保留策略。",
+      "acceptance": "空闲、1000级源搜索、1080p/高分辨率播放、弹幕开关/高密度、连续10轮切源/窗口关闭有可重复报告；无单调增长；先基线后定数值预算，不虚报节省百分比。",
+      "estimateEngineerHours": {
+        "min": 5,
+        "max": 8
+      },
+      "dependsOn": [
+        "B01",
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "A01",
+        "A02",
+        "A03",
+        "A05",
+        "A17"
+      ],
+      "probes": []
+    },
+    {
+      "id": "V06",
+      "kind": "validation",
+      "priority": "P1",
+      "title": "当前提交的完整门禁、干净本地包和可追溯交付",
+      "status": "open",
+      "principles": [
+        7,
+        14
+      ],
+      "evidence": [
+        {
+          "path": ".github/workflows/windows-checks.yml",
+          "line": 1,
+          "symbol": "Windows checks"
+        },
+        {
+          "path": "scripts/package-app.mjs",
+          "line": 28,
+          "symbol": "release asset validation"
+        },
+        {
+          "path": "scripts/verify-installation.mjs",
+          "line": 1,
+          "symbol": "installation acceptance"
+        },
+        {
+          "path": "package.json",
+          "line": 1,
+          "symbol": "verification commands"
+        }
+      ],
+      "gap": "以前的绿灯不等于新发现故障已关闭。清理分支已有本地提交但尚未 push，没有当前分支远端 CI 证明；本轮没有生成安装包/执行桌面验收。",
+      "direction": "修复后在同一候选提交运行类型/lint/架构/正式测试/构建和上述验收，隔离目录制作唯一的本地安装包，记录 hash/尺寸/版本/提交。遵守用户不发布小版本、不创建多工作区的要求。",
+      "acceptance": "所有必需任务有实现与验收链接；旧绿灯不代替当前结果；本地 Setup 在干净目录安装运行通过；保留数据及产物来源可查；不发布 Release，审计/修复改动分步提交，临时目录清理。",
+      "estimateEngineerHours": {
+        "min": 3,
+        "max": 5
+      },
+      "dependsOn": [
+        "B01",
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "B06",
+        "B07",
+        "B08",
+        "B09",
+        "A01",
+        "A02",
+        "A03",
+        "A04",
+        "A05",
+        "A06",
+        "A07",
+        "A08",
+        "A09",
+        "A10",
+        "A11",
+        "A12",
+        "A13",
+        "A14",
+        "A15",
+        "A16",
+        "A17",
+        "A18",
+        "A19",
+        "A20",
+        "A21",
+        "V01",
+        "V02",
+        "V03",
+        "V04",
+        "V05"
+      ],
+      "probes": []
+    },
+    {
+      "id": "O01",
+      "kind": "optional",
+      "priority": "P3",
+      "title": "第三方动态蜘蛛运行时插件的注册与卸载扩展",
+      "status": "open",
+      "principles": [
+        2,
+        4,
+        7,
+        13
+      ],
+      "evidence": [
+        {
+          "path": "src/engine/spider/SpiderRuntimeProvider.ts",
+          "line": 9,
+          "symbol": "provider extension"
+        },
+        {
+          "path": "src/main/spider/createSpiderRuntimeAssembly.ts",
+          "line": 66,
+          "symbol": "built-in assembly"
+        }
+      ],
+      "gap": "SpiderFactory 已支持 provider 注入；生产注册目前主要是内置运行时。把任意第三方运行时做成可下载插件属于新增产品范围，不是证明当前 OCP 的必需重写。",
+      "direction": "若以后纳入范围，定义版本/权限/能力清单与进程预算，复用现有 provider 及插件生命周期，先做一个端到端样例。",
+      "acceptance": "可安装/停用/卸载示例 provider 且不改工厂分支；运行中更新安全回收，失败不拖垮其它来源。",
+      "estimateEngineerHours": {
+        "min": 6,
+        "max": 12
+      },
+      "dependsOn": [
+        "B08",
+        "V01"
+      ],
+      "probes": []
+    },
+    {
+      "id": "O02",
+      "kind": "optional",
+      "priority": "P3",
+      "title": "跨外部播放器画面增强的可行性研究",
+      "status": "open",
+      "principles": [
+        2,
+        7,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "src/renderer/features/playback/useSuperResolution.ts",
+          "line": 1,
+          "symbol": "managed super-resolution"
+        },
+        {
+          "path": "src/main/player/PlayerEngineController.ts",
+          "line": 31,
+          "symbol": "managed engine launch"
+        }
+      ],
+      "gap": "当前托管播放器的 shader 链不等于对任意外部播放器通用后处理。有 GPU 并不自动提供外部进程的帧访问/插入点。",
+      "direction": "仅估算研究：比较外部播放器公开插件接口、独立捕获后处理和托管引擎接入的成本，复用合适开源项目；不承诺无内核限制的通用超分。",
+      "acceptance": "形成支持矩阵与一个有可测画质/帧时延/占用的 PoC，再单独评估产品化；本项工时只覆盖研究，不覆盖所有播放器的完整实现。",
+      "estimateEngineerHours": {
+        "min": 8,
+        "max": 16
+      },
+      "dependsOn": [
+        "V02",
+        "V05"
+      ],
+      "probes": []
+    }
+  ],
+  "verificationThisAudit": {
+    "architectureCheck": {
+      "command": "pnpm run architecture:check",
+      "exitCode": 0,
+      "result": "Architecture boundaries passed."
+    },
+    "isolatedVitest": {
+      "files": 3,
+      "tests": 10,
+      "failed": 10,
+      "exitCode": 1
+    },
+    "python": {
+      "tests": 2,
+      "failed": 2,
+      "exitCode": 1
+    },
+    "productionChanges": 0,
+    "normalFullSuite": "NOT_RUN",
+    "typecheck": "NOT_RUN",
+    "lint": "NOT_RUN",
+    "build": "NOT_RUN",
+    "desktopAcceptance": "NOT_RUN",
+    "evidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
+  }
+}

@@ -1,0 +1,275 @@
+{
+  "baselineCodeTip": "7469c61e87c0a8a4f8042afd00787ef10ad6f741",
+  "note": "静态候选不是缺陷数；DOM适配器、展示生命周期与组合根可含React hooks。",
+  "candidates": [
+    {
+      "path": "src/renderer/App.tsx",
+      "stateOrEffectHooks": [
+        "useEffect",
+        "useState"
+      ],
+      "taskId": "A16",
+      "disposition": "外壳业务/生命周期仍需分离；组合根本身合法"
+    },
+    {
+      "path": "src/renderer/components/AppDialog.tsx",
+      "stateOrEffectHooks": [
+        "useLayoutEffect",
+        "useEffect",
+        "useState"
+      ],
+      "taskId": "A18",
+      "disposition": "对话框提供者是 UI 基础设施；区分控制器和被动展示，不宣称整个模块为纯视图"
+    },
+    {
+      "path": "src/renderer/components/DanmakuOverlay.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A17",
+      "disposition": "模块级可变测量器与绘制生命周期"
+    },
+    {
+      "path": "src/renderer/components/DiscoverShelf.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": null,
+      "disposition": "局部横向滚动 UI 适配；未定位独立业务耦合阻断"
+    },
+    {
+      "path": "src/renderer/components/HScrollRow.tsx",
+      "stateOrEffectHooks": [
+        "useEffect"
+      ],
+      "taskId": null,
+      "disposition": "DOM 滚动适配器；有 effect 本身不是架构缺陷"
+    },
+    {
+      "path": "src/renderer/components/HeroBackdrop.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": null,
+      "disposition": "图片加载/渐变 UI 状态适配；未定位独立业务阻断"
+    },
+    {
+      "path": "src/renderer/components/ImageViewer.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A17",
+      "disposition": "图集交互/重试与展示分界"
+    },
+    {
+      "path": "src/renderer/components/SourcePicker.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A15",
+      "disposition": "业务 organism 与浮层投影"
+    },
+    {
+      "path": "src/renderer/features/detail/MovieSourcesPanel.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A13",
+      "disposition": "来源筛选/文件夹工作流与 JSX"
+    },
+    {
+      "path": "src/renderer/features/discovery/components/BoardPreviewCard.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": null,
+      "disposition": "封面可见性/懒加载边界；已有覆盖端口"
+    },
+    {
+      "path": "src/renderer/features/navigation/KeepAliveRoutes.tsx",
+      "stateOrEffectHooks": [
+        "useState"
+      ],
+      "taskId": "V05",
+      "disposition": "路由框架基础设施；验证常驻预算，不能仅凭 useState 判 SRP 违规"
+    },
+    {
+      "path": "src/renderer/features/playback/PlayerInfoOverlay.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A18",
+      "disposition": "短暂提示定时器是展示生命周期；纳入组件状态/视觉规范"
+    },
+    {
+      "path": "src/renderer/features/playback/PlayerKernelControl.tsx",
+      "stateOrEffectHooks": [
+        "useState"
+      ],
+      "taskId": "A08",
+      "disposition": "剩余局部展示控制状态"
+    },
+    {
+      "path": "src/renderer/features/playback/PlayerProgressBar.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A17",
+      "disposition": "进度坐标/手势和 DOM 生命周期"
+    },
+    {
+      "path": "src/renderer/features/plugins/PluginDialogBridge.tsx",
+      "stateOrEffectHooks": [
+        "useEffect",
+        "useState"
+      ],
+      "taskId": null,
+      "disposition": "插件事件与 UI 的显式桥接适配器，不要求删除适配职责"
+    },
+    {
+      "path": "src/renderer/features/settings/DriveAccountsSection.tsx",
+      "stateOrEffectHooks": [
+        "useState"
+      ],
+      "taskId": null,
+      "disposition": "全局账号 modal 的局部组合状态，不是数据访问用例"
+    },
+    {
+      "path": "src/renderer/features/settings/PluginKeymapList.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A14",
+      "disposition": "异步 keymap 读取与展示"
+    },
+    {
+      "path": "src/renderer/features/settings/PluginSettingsPanels.tsx",
+      "stateOrEffectHooks": [
+        "useState"
+      ],
+      "taskId": "A14",
+      "disposition": "设置字段草稿状态与写回"
+    },
+    {
+      "path": "src/renderer/features/settings/PluginSettingsSection.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A14",
+      "disposition": "安装/启停/保存工作流"
+    },
+    {
+      "path": "src/renderer/features/settings/SourceManagementSection.tsx",
+      "stateOrEffectHooks": [
+        "useEffect"
+      ],
+      "taskId": null,
+      "disposition": "已委托业务 Presenter；当前 effect 是展示焦点适配"
+    },
+    {
+      "path": "src/renderer/features/subscriptions/LiveSourcesSection.tsx",
+      "stateOrEffectHooks": [
+        "useEffect"
+      ],
+      "taskId": null,
+      "disposition": "业务已有管理 hook；focus/scroll 为 UI 适配"
+    },
+    {
+      "path": "src/renderer/features/subscriptions/ProfileSwitcher.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A15",
+      "disposition": "来源/档案选择器投影与浮层"
+    },
+    {
+      "path": "src/renderer/features/subscriptions/SavedProfilesSection.tsx",
+      "stateOrEffectHooks": [
+        "useEffect"
+      ],
+      "taskId": null,
+      "disposition": "业务已有管理 hook；ref/focus 不自动要求新应用层"
+    },
+    {
+      "path": "src/renderer/pages/BoardsPage.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A13",
+      "disposition": "初载/凭据错误语义与 JSX"
+    },
+    {
+      "path": "src/renderer/pages/ComponentShowcasePage.tsx",
+      "stateOrEffectHooks": [
+        "useState"
+      ],
+      "taskId": null,
+      "disposition": "设计系统交互展示页，允许本地 demo 状态"
+    },
+    {
+      "path": "src/renderer/pages/ConfigPage.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A11",
+      "disposition": "页面状态与 view 分离"
+    },
+    {
+      "path": "src/renderer/pages/DetailPage.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "A12",
+      "disposition": "收藏持久化/订阅与窗口展示"
+    },
+    {
+      "path": "src/renderer/pages/DiscoverBoardPage.tsx",
+      "stateOrEffectHooks": [
+        "useEffect"
+      ],
+      "taskId": null,
+      "disposition": "已有发现 controller；当前 effect 主要为滚动记忆/封面适配"
+    },
+    {
+      "path": "src/renderer/pages/DiscoverPage.tsx",
+      "stateOrEffectHooks": [
+        "useEffect",
+        "useState"
+      ],
+      "taskId": "A13",
+      "disposition": "发现展示投影和局部交互需统一 Presenter 边界"
+    },
+    {
+      "path": "src/renderer/pages/LivePage.tsx",
+      "stateOrEffectHooks": [
+        "useState",
+        "useEffect"
+      ],
+      "taskId": "V02",
+      "disposition": "已有 live playback hook/端口；保留场景验收，不额外按 hook 数重构"
+    },
+    {
+      "path": "src/renderer/pages/PlayerPage.tsx",
+      "stateOrEffectHooks": [
+        "useState"
+      ],
+      "taskId": null,
+      "disposition": "短组合根已接独立 workflow/View；不因一个局部播放状态重复拆用例"
+    }
+  ]
+}
