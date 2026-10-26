@@ -13,7 +13,6 @@
     --text-primary: var(--text);
     --text-secondary: var(--text-dim);
     --color-accent: var(--accent);
-    --on-accent: #fff;
     --color-danger: var(--danger);
     --on-danger: #111;
     --border-subtle: var(--border-soft);

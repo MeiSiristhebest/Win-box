@@ -124,7 +124,7 @@ button {
 }
 button:hover { border-color: var(--text-accent, var(--accent)); color: var(--text); box-shadow: 0 0 0 3px var(--accent-soft); }
 button:active { transform: translateY(1px); }
-button.primary { background: linear-gradient(135deg, #4f86ff, #6a5cff); border-color: transparent; color: #fff; }
+button.primary { background: var(--color-accent, var(--accent)); border-color: transparent; color: var(--on-accent); }
 button.primary:hover { box-shadow: 0 4px 16px rgba(90, 110, 255, .35); }
 button:disabled {
   color: var(--text-disabled, var(--text-dim));

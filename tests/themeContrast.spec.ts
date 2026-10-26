@@ -180,6 +180,27 @@ describe('global focus ring token', () => {
   });
 });
 
+describe('base primary action contrast', () => {
+  it('uses theme foreground tokens and keeps default dark/light accents readable', async () => {
+    const foundation = await readFile(new URL('global-foundation.css', stylesDirectory), 'utf8');
+    const tokenAliases = await readFile(new URL('global-tokens.css', stylesDirectory), 'utf8');
+    const darkTokens = readRootTokens(foundation, ':root');
+    const lightTokens = readRootTokens(foundation, ":root[data-base='light']");
+    const globalAliases = readRootTokens(tokenAliases, ':root');
+
+    expect(foundation).toMatch(/button\.primary\s*\{[^}]*background:\s*var\(--color-accent,\s*var\(--accent\)\)[^}]*color:\s*var\(--on-accent\)/s);
+    expect(globalAliases['--on-accent']).toBeUndefined();
+
+    for (const [name, tokens] of [['dark', darkTokens], ['light', lightTokens]] as const) {
+      const accent = parseColor(tokens['--accent']);
+      const foreground = parseColor(tokens['--on-accent']);
+      expect(accent, `${name} baseline needs an accent`).not.toBeNull();
+      expect(foreground, `${name} baseline needs an on-accent foreground`).not.toBeNull();
+      expect(contrastRatio(foreground!, accent!), `${name} primary action contrast`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
 describe('shell semantic warning colors', () => {
   it('uses the theme-aware warning text token for the sidebar banner', async () => {
     const css = await readFile(new URL('shell-sidebar.css', stylesDirectory), 'utf8');
