@@ -41,11 +41,19 @@ export class SpiderSubprocessRunner {
     return new Promise<SpiderCallResult>((resolve, reject) => {
       throwIfAborted(signal);
       const requestTimeout = timeoutMs ?? this.defaultTimeoutMs;
-      const child = this.ports.spawn(executable, args, {
-        windowsHide: true,
-        timeout: requestTimeout,
-        env: { ...this.ports.processEnvironment(), ...this.ports.proxyEnvironment(), ...env },
-      });
+      let child: ChildProcess;
+      try {
+        child = this.ports.spawn(executable, args, {
+          windowsHide: true,
+          timeout: requestTimeout,
+          env: { ...this.ports.processEnvironment(), ...this.ports.proxyEnvironment(), ...env },
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.ports.logError(`jvm-bridge spawn 失败: ${message}`);
+        resolve(spiderCallFailed('', `运行器进程启动失败：${message}`, null, 'SPIDER_ERROR'));
+        return;
+      }
       let stdout = '';
       let stderr = '';
       let timedOut = false;

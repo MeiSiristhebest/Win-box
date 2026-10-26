@@ -913,3 +913,10 @@
 - **本轮继续：搜索匹配与结果投影分层（2026-10-26）：** Renderer 原先从 `engine/vod` 导入聚合来源键与一个同时负责片名匹配、跨子仓/来源筛选和来源均衡排序的模块。来源身份键与纯片名归一/拼音匹配现位于 `shared`；按来源/子仓筛选、统计与排序投影位于 Search feature application，首页、详情、发现和搜索控件按边界导入。旧 `engine/vod/searchRelevance.ts` 已移除，没有兼容门面或重复实现。
 - **本轮验证与限制：** 聚合搜索、片名匹配、来源筛选相关定向测试 36 项通过；`pnpm run typecheck`、`pnpm run lint`（含架构边界）和 `pnpm run build` 通过。构建产物保持原有 chunk 切分，HLS 仍独立动态加载。此项改善 #1 SRP、#6 SoC、#7 Ports & Adapters 与 #14 可测试性的一处跨层混放；全仓剩余 UI/IPC 分类、Presenter 状态所有权、Atomic Design/对比度验收、运行时故障矩阵及桌面实机验收仍开放。
 - **当前结论：** 以上是当前代码快照的验证，不是 14 项完成证明。仍开放：播放器跨域状态所有权和细节 UI/Atomic Design 审计、全窗口对比度与真实视觉验收、Worker/JVM/Python 进程内部的准备失败/取消/超时 conformance、renderer 剩余视图/适配器分类及桌面播放/安装验收。
+
+## 本轮继续：单次蜘蛛子进程启动失败契约（2026-10-26）
+
+- **确认的问题：** `SpiderSubprocessRunner` 对 Node 子进程异步 `error` 事件返回 `SPIDER_ERROR` 结果，但注入的 `spawn` 端口若同步抛错，Promise executor 会把原始异常直接拒绝给上层，破坏可替换运行器的一致失败语义。
+- **已修正：** 启动端口及其环境准备同步失败现在统一记录启动诊断并返回 `SPIDER_ERROR` 的 `SpiderCallResult`；取消仍以 `AbortError` 拒绝，不会被错误归一化成普通启动失败。
+- **回归覆盖：** `spiderSubprocessRunner.spec.ts` 覆盖异步启动错误只结算一次、同步端口抛错映射、运行中取消会终止子进程并保留取消原因，共 3 项。
+- **验证：** 定向测试 3 项通过；`pnpm run typecheck` 三套项目通过；`pnpm run lint`（含架构边界与 renderer React/perf/a11y）通过。本项只关闭单次进程同步启动异常这一格，不代表蜘蛛各运行时的准备失败、进程内部取消/超时 conformance matrix 已完成。
