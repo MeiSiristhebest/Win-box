@@ -122,9 +122,12 @@ export class FavoriteCollection {
     }
     const sourceKey = (ref.sourceKey || '').trim();
     const vodId = (ref.vodId || '').trim();
+    const profileId = (ref.profileId || '').trim();
     if (sourceKey && vodId) {
       for (const [key, item] of this.items) {
-        if ((item.sourceKey || '') === sourceKey && (item.vodId || '') === vodId) return { key, item };
+        const itemProfileId = (item.profileId || '').trim();
+        if ((item.sourceKey || '') === sourceKey && (item.vodId || '') === vodId &&
+          (!profileId || !itemProfileId || itemProfileId === profileId)) return { key, item };
       }
     }
     return null;

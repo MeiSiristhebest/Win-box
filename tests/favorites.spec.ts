@@ -58,6 +58,14 @@ describe('收藏键 — 同订阅同源同片一条', () => {
     expect(favoriteKey(A)).not.toBe(favoriteKey({ ...A, vodId: '2002' }));
   });
 
+  it('带档案 id 查询时不跨档案 fallback 到另一条同源同片收藏', () => {
+    addFavorite(A);
+    addFavorite({ ...A, profileId: 'p2', name: '狂飙（另一档案）' });
+
+    expect(findFavorite({ sourceKey: 'srcX', vodId: '1001', name: '狂飙', profileId: 'p1' })?.item.profileId).toBe('p1');
+    expect(findFavorite({ sourceKey: 'srcX', vodId: '1001', name: '狂飙', profileId: 'p3' })).toBeNull();
+  });
+
   it('候选键：带订阅 id 与不带订阅 id 两种写法', () => {
     const cands = favoriteKeyCandidates({ sourceKey: 'srcX', vodId: '1001', name: '狂飙', profileId: 'p1' });
     expect(cands).toHaveLength(2);

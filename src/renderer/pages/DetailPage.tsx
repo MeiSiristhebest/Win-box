@@ -1,11 +1,10 @@
 // src/renderer/pages/DetailPage.tsx — 详情页（返回键 + 播放源/集数/滚动记忆 + 回播放页可继续）
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { detailRouteParams } from '../../shared/detailWin';
 // ★ 2026-10-18 受限 UI 槽位（`contributes.ui.slot`）：宿主页面的槽位落点
 import PluginSlot from '../components/PluginSlot';
 import BackButton from '../components/BackButton';
-import { isDetailWindow } from '../lib/detailWin';
 import type { Episode } from '../../shared/types';
 import { useCovers } from '../features/covers/useCovers';
 import HeroBackdrop from '../components/HeroBackdrop';
@@ -21,19 +20,21 @@ import { detailBackdropAdapter } from '../features/detail/adapters/detailBackdro
 import { useDetailBackdrop } from '../features/detail/useDetailBackdrop';
 import { detailFavoriteMetadataAdapter } from '../features/detail/adapters/detailFavoriteMetadataAdapter';
 import { useDetailFavoriteMetadata } from '../features/detail/useDetailFavoriteMetadata';
+import { detailFavoriteAdapter } from '../features/detail/adapters/detailFavoriteAdapter';
+import { useDetailFavorite } from '../features/detail/useDetailFavorite';
+import { detailPageChromeModel } from '../features/detail/application/detailPagePresentation';
+import { detailPageSurface } from '../features/detail/adapters/detailWindowNavigationAdapter';
 import { useDetailScrollMemory } from '../features/detail/useDetailScrollMemory';
 import { detailScrollMemoryAdapter } from '../features/detail/adapters/detailScrollMemoryAdapter';
 import { DetailEpisodeList } from '../features/detail/DetailEpisodeList';
 import { MovieSourcesPanel } from '../features/detail/MovieSourcesPanel';
 import { SelectionButton } from '../components/ui/SelectionButton';
+import { DetailFavoriteButton } from '../features/detail/DetailFavoriteButton';
 
 /**
  * ★ 2026-09-29：本会话已因「该源无剧集详情」自动跳到全源搜索的 item（键 = `<key>:<id>`）。
  *   模块级（跨挂载保留）——用户从搜索结果返回时不再被重复跳转。
  */
-// ★ 2026-10-17（用户要求）：收藏 —— 本片加入/移出收藏（列表页在 pages/FavoritesPage.tsx）
-import { FAVORITES_EVENT, addFavorite, findFavorite, removeFavorite } from '../features/favorites/favoritesRuntime';
-
 export default function DetailPage({
   onPlay,
   onOpenSearch,
@@ -65,7 +66,6 @@ export default function DetailPage({
     playGenRef,
   } = useDetailDataController({ key, id, requestedProfileId, routeKey }, detailDataAdapter);
   /** ★ 2026-10-08（用户要求「详情页独立窗口」）：本页是否运行在独立详情窗口里（hash 带 dw=1）→ 返回=关窗 */
-  const isDetailWin = isDetailWindow();
   const theme = useTheme();
   const presentation = detailPresentationView(theme);
   // 从列表页经 URL query 携带的封面（fty 等源 detail 接口偶发不返回 vod_pic，用作兜底）
@@ -94,6 +94,7 @@ export default function DetailPage({
   const displayName = (detail?.name || fromListName || '').trim();
   /** 无可播剧集时搜索用片名：去掉「 - 副标题」尾巴 */
   const detailName = displayName.split(' - ')[0]?.trim() || '';
+  const pageChrome = detailPageChromeModel(detailPageSurface(), displayName);
   const { chooseFlag, chooseEp, play } = useDetailPlaybackController({
     playbackPort: detailPlaybackAdapter,
     key,
@@ -116,45 +117,20 @@ export default function DetailPage({
     onNeedDriveCookieBind: setBindProvider,
   });
 
-  /**
-   * ★ 2026-10-17（用户要求）：收藏状态。
-   *   · 收藏键含「订阅档案 id」（同订阅同源同片一条）→ 先取当前档案；
-   *   · 状态订阅 `winbox:favorites-changed`：在收藏页移除后回到本页会即时同步。
-   */
   const favMeta = useDetailFavoriteMetadata(key || '', profileId, detailFavoriteMetadataAdapter);
-  const [favOn, setFavOn] = useState(false);
-  useEffect(() => {
-    const sync = (): void =>
-      setFavOn(findFavorite({ sourceKey: key, vodId: id, name: displayName, profileId: favMeta.profileId }) !== null);
-    sync();
-    window.addEventListener(FAVORITES_EVENT, sync);
-    return () => window.removeEventListener(FAVORITES_EVENT, sync);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, id, displayName, favMeta.profileId]);
-
-  /** 收藏 / 取消收藏（按当前档案；无 key/id 时按钮禁用） */
-  const toggleFavorite = async (): Promise<void> => {
-    if (!key || !id) return;
-    const ref = { sourceKey: key, vodId: id, name: displayName, profileId: favMeta.profileId };
-    const hit = findFavorite(ref);
-    if (hit) {
-      removeFavorite(hit.key);
-      setFavOn(false);
-      return;
-    }
-    addFavorite({
-      name: displayName || detailName,
-      sourceKey: key,
-      vodId: id,
-      profileId: favMeta.profileId || undefined,
-      sourceName: favMeta.sourceName || undefined,
-      pic: detail?.pic || fromListPic || undefined,
-      remarks: detail?.remarks || undefined,
-      year: detail?.year || undefined,
-      type: detail?.type || undefined,
-    });
-    setFavOn(true);
-  };
+  const favorite = useDetailFavorite({
+    sourceKey: key || '',
+    vodId: id || '',
+    name: displayName,
+    profileId: profileId || favMeta.profileId,
+    fallbackName: detailName,
+    sourceName: favMeta.sourceName,
+    pic: detail?.pic || fromListPic,
+    remarks: detail?.remarks,
+    year: detail?.year,
+    type: detail?.type,
+  }, detailFavoriteAdapter);
+  const favOn = favorite.favorited;
 
 
   // 图片补全独立于源详情和播放状态，任何失败都不阻塞选集与播放。
@@ -193,19 +169,11 @@ export default function DetailPage({
    *   （独立详情窗口不渲染 topbar，故不放顶栏；两分支都可见才不会被漏掉）。
    */
   const favoriteBtn = (
-    <button
-      type="button"
-      className={`fav-btn${favOn ? ' active' : ''}`}
-      disabled={!key || !id}
-      aria-pressed={favOn}
-      title={favOn ? '取消收藏' : '加入收藏（在「收藏」页查看）'}
-      onClick={() => { void toggleFavorite(); }}
-    >
-      <svg width="13" height="13" viewBox="0 0 24 24" fill={favOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />
-      </svg>
-      {favOn ? '已收藏' : '收藏'}
-    </button>
+    <DetailFavoriteButton
+      favorited={favOn}
+      disabled={!favorite.canToggle}
+      onToggle={() => { favorite.toggle(); }}
+    />
   );
 
   return (
@@ -222,10 +190,10 @@ export default function DetailPage({
       {/* ★ 2026-10-08（用户要求「独立详情页这个横条取消掉，上方已经有小按钮可以独立关闭了」）：
           独立详情窗口**整条不渲染**（关闭走窗口标题栏的 ✕；键盘 Alt+←/Backspace 亦可，
           见 App.goBack 的 dw 分支；片名正文里已有 h2 标题）。主窗口内保持原样。 */}
-      {!isDetailWin && (
+      {pageChrome.showTopbar && (
         <div className="topbar">
-          <BackButton fallback="/home" label="返回列表" />
-          <span className="muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
+          <BackButton fallback={pageChrome.backFallback} label="返回列表" />
+          <span className="muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pageChrome.title}</span>
         </div>
       )}
       <div className={['content', presentation.contentClass].filter(Boolean).join(' ')} ref={contentRef}>

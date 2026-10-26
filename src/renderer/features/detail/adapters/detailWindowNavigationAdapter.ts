@@ -3,11 +3,18 @@ import { isDetailWinHash } from '../../../../shared/detailWin';
 import { isSearchWinHash } from '../../../../shared/searchWin';
 import { getNavMode } from '../../../lib/uiPrefs';
 import { decideDetailNavigation } from '../application/detailNavigation';
+import type { DetailPageSurface } from '../application/detailPagePresentation';
 
-const currentWindowIsDetail = isDetailWinHash(window.location.hash);
+function currentWindowHash(): string {
+  return typeof window === 'undefined' ? '' : window.location.hash;
+}
+
+export function detailPageSurface(): DetailPageSurface {
+  return isDetailWinHash(currentWindowHash()) ? 'detail-window' : 'main-window';
+}
 
 export function isDetailWindow(): boolean {
-  return currentWindowIsDetail;
+  return detailPageSurface() === 'detail-window';
 }
 
 /** Apply the pure detail destination decision to the current renderer and main-process ports. */
@@ -17,9 +24,10 @@ export async function openDetailRoute(
   id: string,
   query?: string,
 ): Promise<void> {
+  const hash = currentWindowHash();
   const decision = decideDetailNavigation({
-    currentWindowIsDetail,
-    currentWindowIsSearch: isSearchWinHash(window.location.hash),
+    currentWindowIsDetail: isDetailWinHash(hash),
+    currentWindowIsSearch: isSearchWinHash(hash),
     mode: getNavMode(),
     key,
     id,
