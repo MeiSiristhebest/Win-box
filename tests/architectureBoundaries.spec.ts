@@ -916,6 +916,16 @@ describe('architecture dependency rules', () => {
     expect(result.stderr).toContain('HomePage presentation coordination must consume injected state and capabilities');
   });
 
+  it('keeps cover enrichment out of the aggregate HomePage presenter', () => {
+    const result = inspect(
+      'renderer/features/home/useHomePagePresenter.ts',
+      "import { useCovers } from '../covers/useCovers';",
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('HomePage presentation coordination must consume injected state and capabilities');
+  });
+
   it.each([
     'document.getElementById("cfg-section-title");',
     'new MutationObserver(() => {});',

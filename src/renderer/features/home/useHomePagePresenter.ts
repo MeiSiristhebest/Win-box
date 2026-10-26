@@ -1,10 +1,7 @@
-import { useCallback, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
-import type { SourceBean, VodItem, AggVodItem } from '../../../shared/types';
-import { sourceIdentityKey } from '../../../shared/sourceIdentity';
-import { movieSearchTitle } from '../../../shared/searchTitleMatching';
+import { useMemo, useReducer, useRef, useState } from 'react';
+import type { SourceBean } from '../../../shared/types';
 import { projectSearchResults } from '../search/application/searchResultProjection';
 import { usePageActive } from '../../lib/keepAlive';
-import { useCovers } from '../covers/useCovers';
 import type { HomeCascadeLevel } from './application/homeBrowseModel';
 import { useHomeBrowseController } from './useHomeBrowseController';
 import { buildHomeCascadeLevels, buildHomeSearchStatusModel } from './homePageModel';
@@ -20,6 +17,7 @@ import type { HomeWaterfallObserverPort } from './application/homeWaterfallObser
 import type { HomeBrowsePort, HomeCategoryStateMemoryPort, HomeDrivePort, HomeSearchPort, HomeSearchNavigationPort, HomeSourceSelectionPort, HomeSourceSessionEventsPort, HomeWebSourcePort } from './application/homePorts';
 import type { HomeSearchWorkflowPorts } from './application/HomeSearchWorkflow';
 import { useHomeItemNavigationPresenter } from './useHomeItemNavigationPresenter';
+import { useHomePageCovers } from './useHomePageCovers';
 
 export type HomePagePresenterPorts = {
   browse: HomeBrowsePort;
@@ -174,22 +172,16 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
   const resultProfileId = activeProfileId;
   const resultView = useMemo(() => projectSearchResults(agg?.items ?? [], wd, { mode: aggMatchMode, profileId: aggProfileFilter, sourceId: aggSrc, defaultProfileId: resultProfileId }), [agg, wd, aggMatchMode, aggProfileFilter, aggSrc, resultProfileId]);
   const aggView = useMemo(() => visibleHomeSearchItems(homeSearchState, resultView.items), [homeSearchState, resultView.items]);
-  const coverItem = useCallback((it: VodItem, sourceKey = key) => ({
-    id: `${sourceKey}\u0000${it.id}`, name: movieSearchTitle(it.name || ''),
-    year: /((?:19|20)\d{2})/.exec(`${it.name} ${it.remarks || ''}`)?.[1], pic: it.pic,
-  }), [key]);
-  const coverProfileId = activeProfileId;
-  const browseCoverItems = useMemo(() => items.map(it => coverItem(it)), [items, coverItem]);
-  const searchCoverItems = useMemo(() => {
-    return aggView.slice(0, aggCap).map(it => coverItem(it, sourceIdentityKey(it.sourceRef?.profileId ?? coverProfileId, it.sourceKey)));
-  }, [aggView, aggCap, coverProfileId, coverItem]);
-  const covers = useCovers(browseCoverItems, pageActive && !loading && !aggMode);
-  const aggCovers = useCovers(searchCoverItems, pageActive && aggMode, true);
-  const picOf = (it: VodItem) => covers.picOf(coverItem(it));
-  const aggPicOf = (it: AggVodItem) => aggCovers.picOf(coverItem(it, sourceIdentityKey(it.sourceRef?.profileId ?? activeProfileId, it.sourceKey)));
-  const picErr = (it: VodItem) => (failedSource: string) => covers.onError(coverItem(it), failedSource);
-  const aggPicErr = (it: AggVodItem) => (failedSource: string) =>
-    aggCovers.onError(coverItem(it, sourceIdentityKey(it.sourceRef?.profileId ?? activeProfileId, it.sourceKey)), failedSource);
+  const coverSessions = useHomePageCovers({
+    browseItems: items,
+    searchItems: aggView,
+    sourceKey: key,
+    profileId: activeProfileId,
+    visibleSearchLimit: aggCap,
+    active: pageActive,
+    loading,
+    aggregateMode: aggMode,
+  });
   const pageMemory = useHomePageMemorySession({
     contentRef,
     memory: ports.memory,
@@ -254,12 +246,6 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
     onOpenDetail,
   });
   /** Keep memoized browse cards from receiving a new image-error callback on every render. */
-  const picErrRef = useRef(picErr);
-  useLayoutEffect(() => { picErrRef.current = picErr; });
-  const handleImgErr = useCallback((it: VodItem, failedSource: string) => picErrRef.current(it)(failedSource), []);
-  const aggPicErrRef = useRef(aggPicErr);
-  useLayoutEffect(() => { aggPicErrRef.current = aggPicErr; });
-  const handleAggImgErr = useCallback((it: AggVodItem, failedSource: string) => aggPicErrRef.current(it)(failedSource), []);
   /**
    * ★ 2026-09-29（用户要求）本地包「网页源」：该源带 `homePage`（包内 html 首页，靠 window.fm 桥拉数据）
    *   → 点播页顶部给一条横幅 +「打开网页」入口，在独立窗口里打开（见 main/webbridge/WebHomeWindow.ts）。
@@ -315,8 +301,8 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
         profileFilter: aggProfileFilter,
         matchMode: aggMatchMode,
         visibleLimit: aggCap,
-        picOf: aggPicOf,
-        onImageError: handleAggImgErr,
+        picOf: coverSessions.searchPicOf,
+        onImageError: coverSessions.onSearchImageError,
         onOpenItem: itemNavigation.openSearchResult,
         onRetry: () => void doSearch(true),
         onProfileFilter: (id: string) => dispatchHomeSearch({ type: "profile-filter-selected", profileId: id }),
@@ -349,13 +335,13 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
       waterfallStatus: wfStatusText(),
       waterfallSentinelRef: wfSentinelRef,
       jumpPage,
-      picOf,
+      picOf: coverSessions.picOf,
       error: browseError,
       hasSources: sites.length > 0,
       listStyle,
       cardStyle,
       presetCategories: siteCats,
-      onImageError: handleImgErr,
+      onImageError: coverSessions.onImageError,
       onOpen: itemNavigation.openBrowseItem,
       onCascadePick,
       onToggleFilters: filterPanel.toggle,

@@ -342,6 +342,7 @@ const rendererHomePageForbiddenInfrastructureImports = new Map([
   ['renderer/features/home/useHomePagePresenter.ts', new Set([
     '../../api/client', '../../lib/uiMemory', './adapters/homePageAdapters', './adapters/homePageMemoryAdapter',
     '../../lib/uiPrefs', './adapters/homeSearchNavigationAdapter', './adapters/rendererSearchClock', 'react-router-dom',
+    '../covers/useCovers',
   ])],
   ['renderer/features/home/useHomeSourceSession.ts', new Set([
     '../../api/client', '../../lib/uiMemory', './adapters/homePageAdapters', './adapters/homePageMemoryAdapter',
