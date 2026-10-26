@@ -91,6 +91,8 @@ export class JsSandbox implements JsSpiderRuntimePort {
   private loaded = false;
   private loadPromise: Promise<void> | null = null;
   private destroyed = false;
+  private pendingWorkCount = 0;
+  private referencesReleased = false;
   /** 模块缓存（url → module.exports） */
   private moduleCache = new Map<string, unknown>();
   /** 加载中的模块（防循环 import 递归） */
@@ -122,10 +124,10 @@ export class JsSandbox implements JsSpiderRuntimePort {
     if (this.loaded) return;
     if (this.destroyed) throw new UnsupportedSourceError('DESTROYED', '沙箱已销毁');
     if (!this.loadPromise) {
-      this.loadPromise = this.doLoad().catch((e) => {
+      this.loadPromise = this.trackWork(this.doLoad().catch((e) => {
         this.loadPromise = null; // 允许下次重试（JsSpider 层会记住 failure 短路）
         throw e;
-      });
+      }));
     }
     return awaitWithAbort(this.loadPromise, signal);
   }
@@ -223,7 +225,7 @@ export class JsSandbox implements JsSpiderRuntimePort {
         : isJson(this.ext)
           ? JSON.parse(this.ext)
           : this.ext;
-      void Promise.resolve((initFn as (...a: unknown[]) => unknown).call(this.spider, arg)).catch(() => { /* swallow */ });
+      this.trackWork(Promise.resolve((initFn as (...a: unknown[]) => unknown).call(this.spider, arg)).catch(() => undefined));
     } catch { /* swallow，对齐 JsSpider.java:170 catch */ }
   }
 
@@ -238,6 +240,15 @@ export class JsSandbox implements JsSpiderRuntimePort {
 
   /** 按调用区分能力缺失、脚本异常与超时；脚本正常返回的空值仍是成功结果。 */
   async callMethod(names: string[], args: unknown[], timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
+    this.pendingWorkCount += 1;
+    try {
+      return await this.callMethodWhileLeased(names, args, timeoutMs, signal);
+    } finally {
+      this.completeWork();
+    }
+  }
+
+  private async callMethodWhileLeased(names: string[], args: unknown[], timeoutMs: number, signal?: AbortSignal): Promise<unknown> {
     throwIfAborted(signal);
     const requestedOperation = names[0] || 'unknown';
     const invocation = { sourceKey: this.siteKey, operation: requestedOperation };
@@ -268,7 +279,7 @@ export class JsSandbox implements JsSpiderRuntimePort {
       );
     }
     const method = fn;
-    const task = Promise.resolve().then(() => method.apply(this.spider, args));
+    const task = this.trackWork(Promise.resolve().then(() => method.apply(this.spider, args)));
     try {
       const value = await withTimeout(
         task,
@@ -297,11 +308,31 @@ export class JsSandbox implements JsSpiderRuntimePort {
     if (this.destroyed) return;
     this.destroyed = true;
     this.loaded = false;
+    this.releaseWhenIdle();
+  }
+
+  private trackWork<T>(work: Promise<T>): Promise<T> {
+    this.pendingWorkCount += 1;
+    void work.then(() => this.completeWork(), () => this.completeWork());
+    return work;
+  }
+
+  private completeWork(): void {
+    this.pendingWorkCount = Math.max(0, this.pendingWorkCount - 1);
+    this.releaseWhenIdle();
+  }
+
+  private releaseWhenIdle(): void {
+    if (!this.destroyed || this.pendingWorkCount > 0 || this.referencesReleased) return;
+    this.referencesReleased = true;
     this.spider = null;
     this.ctx = null; // node:vm 无显式销毁 API，置空引用交由 GC
     this.globals = null;
+    this.loadPromise = null;
+    this.templateCache = undefined;
     this.moduleCache.clear();
     this.inProgress.clear();
+    this.warned.clear();
   }
 
   // ------------------------------------------------------------------

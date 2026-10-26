@@ -136,6 +136,25 @@ export abstract class Spider {
   }
 }
 
+const spiderMethodOrigins = new WeakMap<Function, Function>();
+
+/** Preserve operation identity when a runtime cache wraps calls with lifecycle leases. */
+export function markSpiderMethodOrigin<T extends Function>(wrapped: T, original: Function): T {
+  spiderMethodOrigins.set(wrapped, original);
+  return wrapped;
+}
+
+function originalSpiderMethod(method: unknown): unknown {
+  if (typeof method !== 'function') return method;
+  let origin = method;
+  let next = spiderMethodOrigins.get(origin);
+  while (next && next !== origin) {
+    origin = next;
+    next = spiderMethodOrigins.get(origin);
+  }
+  return origin;
+}
+
 /** Operations whose default implementations are compatibility stubs, not capabilities. */
 export type SpiderOperation =
   | 'homeContent'
@@ -155,5 +174,5 @@ export type SpiderOperation =
 export function isSpiderOperationImplemented(spider: Spider, operation: SpiderOperation): boolean {
   const implementation = spider[operation];
   const compatibilityStub = Spider.prototype[operation];
-  return typeof implementation === 'function' && implementation !== compatibilityStub;
+  return typeof implementation === 'function' && originalSpiderMethod(implementation) !== compatibilityStub;
 }

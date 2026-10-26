@@ -8,7 +8,7 @@ import { sourceTimeoutMs } from './sourceTimeout';
 export { sourceTimeoutMs } from './sourceTimeout';
 import { SpiderNull } from './SpiderNull';
 import { UnsupportedSpider } from './UnsupportedSpider';
-import { SpiderCache } from './SpiderCache';
+import { SpiderCache, type SpiderCacheOptions } from './SpiderCache';
 import type { JarSpiderRuntimePort } from './JarSpiderPorts';
 import type { SpiderFactoryPort } from './SpiderFactoryPort';
 import { createBuiltinSpiderRuntimeProviders } from './createBuiltinSpiderRuntimeProviders';
@@ -28,6 +28,8 @@ export interface SpiderFactoryOptions {
   runtimeProviders?: readonly SpiderRuntimeProvider<EngineHost>[];
   /** Reports best-effort adapter teardown failures without blocking configuration changes. */
   onDisposeError?: (error: unknown, spider: Spider) => void;
+  /** Per-process source adapter retention budget; production defaults to 64 entries / 10 minutes. */
+  cacheOptions?: SpiderCacheOptions;
 }
 
 export class SpiderFactory implements SpiderFactoryPort<EngineHost> {
@@ -35,7 +37,7 @@ export class SpiderFactory implements SpiderFactoryPort<EngineHost> {
   private readonly runtimeProviders: readonly SpiderRuntimeProvider<EngineHost>[];
 
   constructor(opts: SpiderFactoryOptions = {}) {
-    this.cache = new SpiderCache(opts.onDisposeError);
+    this.cache = new SpiderCache(opts.onDisposeError, opts.cacheOptions);
     this.runtimeProviders = [
       ...(opts.runtimeProviders ?? []),
       ...createBuiltinSpiderRuntimeProviders({

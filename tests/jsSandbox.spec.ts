@@ -363,8 +363,14 @@ describe('JsSandbox — 调用契约', () => {
     controller.abort(new Error('search superseded'));
     await expect(call).rejects.toThrow('search superseded');
     expect(kvMap.has('jsRuntime_cancel_finished')).toBe(false);
+    const sandboxState = sb as unknown as { ctx: unknown };
+    const contextDuringCall = sandboxState.ctx;
+    expect(contextDuringCall).not.toBeNull();
+    sb.destroy();
+    expect(sandboxState.ctx).toBe(contextDuringCall);
     await new Promise((resolveWait) => setTimeout(resolveWait, 100));
     expect(kvMap.get('jsRuntime_cancel_finished')).toBe('yes');
+    expect(sandboxState.ctx).toBeNull();
     sb.destroy();
   });
 
