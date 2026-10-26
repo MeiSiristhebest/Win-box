@@ -30,7 +30,6 @@ import { useMpvTechnicalState } from './useMpvTechnicalState';
 import type { PlayerControlsViewModel } from './presentation/PlayerControlsViewModel';
 import { resolvePlayerControlAvailability } from './presentation/playerControlAvailability';
 import { usePlayerPreferencePersistence, usePlayerPreferences } from './usePlayerPreferences';
-import type { PlayerFit } from './application/playerPreferences';
 import { usePlayerPanelSession } from './usePlayerPanelSession';
 import { usePlayerEpisodePanelPresenter } from './usePlayerEpisodePanelPresenter';
 import { usePlayerKernelTransitions } from './usePlayerKernelTransitions';
@@ -73,6 +72,7 @@ import { useDlnaCastPresenter } from './useDlnaCastPresenter';
 import { usePlayerCommandFeedback } from './usePlayerCommandFeedback';
 import { usePlayerKernelFitSync } from './usePlayerKernelFitSync';
 import { runPlayerKernelCommandWithFeedback } from './application/runPlayerKernelCommandWithFeedback';
+import { cyclePlayerFit } from './application/playerFitCycle';
 
 export interface VideoPlayerProps {
   url: string;
@@ -622,19 +622,9 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
   }, [props]);
 
   const cycleFitMode = useCallback(() => {
-    const FIT_ORDER: PlayerFit[] = ['contain', 'cover', 'r169', 'r43', 'fill', 'none'];
-    const FIT_LABELS: Record<PlayerFit, string> = {
-      contain: '适应窗口（默认等比）',
-      cover: '铺满裁剪（去除黑边）',
-      r169: '强制 16:9 比例',
-      r43: '强制 4:3 比例',
-      fill: '拉伸全屏填充',
-      none: '原始尺寸 1:1',
-    };
-    const nextIdx = (FIT_ORDER.indexOf(fit) + 1) % FIT_ORDER.length;
-    const nextFit = FIT_ORDER[nextIdx];
-    setFit(nextFit);
-    showSkipToast(`画面比例：${FIT_LABELS[nextFit]}`);
+    const next = cyclePlayerFit(fit);
+    setFit(next.fit);
+    showSkipToast(next.notice);
   }, [fit, setFit, showSkipToast]);
 
   const onSurfaceClick = usePlayerSurfaceGesture({
