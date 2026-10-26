@@ -20,6 +20,27 @@ describe('player playback options', () => {
     expect(onRateChange).toHaveBeenCalledWith(1.5);
   });
 
+  it('opens from the keyboard and moves focus through the rate options', () => {
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      callback(0);
+      return 1;
+    });
+    render(<PlayerRateControl rate={1} onRateChange={() => undefined} />);
+    const trigger = screen.getByRole('button', { name: '播放速度：1倍' });
+
+    fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+    const menu = screen.getByRole('menu', { name: '播放速度' });
+    const options = screen.getAllByRole('menuitemradio');
+    expect(document.activeElement).toBe(options[0]);
+
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(options[1]);
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(document.activeElement).toBe(options[options.length - 1]);
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(options[0]);
+  });
+
   it('opens the fit panel, reports a fit choice, and tracks hover visibility', () => {
     const props = {
       fit: PLAYER_FITS[0].value,

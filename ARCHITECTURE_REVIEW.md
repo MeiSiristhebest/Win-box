@@ -1067,3 +1067,11 @@
 - **已调整：** 新增 `PlayerPagePlaybackWorkflowPort`，仅组合播放解析、历史恢复与临时文件清理能力；新增 `PlayerPageWorkflowHistoryPort`，限制历史端口到当前用例会调用的三项写入/启动能力。窗口事件仍由 `usePlayerPageEvents` 消费，进度读取仍由历史进度适配器消费。
 - **验证：** `pnpm run typecheck` 的 main、renderer、test 三套检查通过；播放器工作流、hook 集成和播放意图定向测试共 11 项通过。独立工作流测试的 fake session 不再实现 `onInit`、`onEpisodeSwitch`、`ready`，也不再伪造历史进度读取。
 - **原则影响与限制：** 进一步改善 #4 ISP、#5 DIP、#7 Ports & Adapters 和 #14 可测试性的一处具体依赖缺口。它不改变 14 项总体“部分符合”结论；跨模块生命周期矩阵、全仓视觉与 Atomic Design 审计、其余端口替换性复核以及桌面播放/安装验收仍开放。
+
+## 本轮继续：拆分倍速控件 Presenter 与被动视图（2026-10-26）
+
+- **确认的问题：** 倍速菜单把开关状态、键盘焦点导航和 DOM 焦点读取放在控件组件里，视图同时承担交互策略，焦点规则也无法独立测试。
+- **已调整：** 新增 `usePlayerRateControlPresenter` 承接菜单生命周期与焦点事件，纯函数 `nextPlayerRateMenuFocusIndex` 决定方向键/Home/End 的循环与边界行为；`PlayerRateControlView` 只根据模型渲染并委托事件。鼠标悬停、键盘打开/导航、选择倍速后恢复焦点行为保持不变。
+- **回归覆盖：** 新增纯导航策略用例，补充菜单打开与焦点循环集成用例；倍速菜单与画面比例面板定向测试共 6 项通过。
+- **验证：** `pnpm run typecheck` 的 main、renderer、test 三套检查通过；`pnpm run lint` 的 Oxlint、架构边界、React/perf 和 JSX accessibility 检查通过。未重跑全量 Vitest、生产构建或桌面视觉验收。
+- **原则影响与限制：** 局部改善 #6 关注点分离、#8 纯函数副作用隔离、#9 控件分层、#11 被动视图与 #14 可测试性。其它播放器控件与全仓 Atomic Design/视觉对比审计仍需复核，14 项总体结论仍为部分符合。
