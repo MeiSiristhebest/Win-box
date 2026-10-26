@@ -1,8 +1,6 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react';
-import { makeStaleGuard } from '../../lib/staleGuard';
-import { hydratePlayerInit } from './application/hydratePlayerInit';
+import { useCallback, useEffect, useMemo, useReducer } from 'react';
 import type { PlayerPageHistoryPort, PlayerPageSessionPort, PlayerSourceMemoryPort, PlayerInitData } from './application/playerPageSession';
-import { resolvePlayerPageEpisode } from './application/resolvePlayerPageEpisode';
+import { createPlayerPageSessionWorkflow } from './application/playerPageSessionWorkflow';
 import { usePlayerPageEvents } from './usePlayerPageEvents';
 import { usePlayerHistoryProgress } from './usePlayerHistoryProgress';
 import {
@@ -30,113 +28,26 @@ export function usePlayerPageSession(
 ): PlayerPageSession {
   const [state, dispatch] = useReducer(reducePlayerPageSession, initialPlayerPageSessionState);
   const { init, epIndex, activeUrl, curName, resolving, driveBind, parseMsg, playName, parseName } = presentPlayerPageSession(state);
-  const initRef = useRef<PlayerInitData | null>(null);
-  const pendingInitRef = useRef<PlayerInitData | null>(null);
-  const resolveGeneration = useRef(makeStaleGuard());
-  const parseOffsetRef = useRef(0);
-
-  const updateInit = useCallback((next: PlayerInitData) => {
-    initRef.current = next;
-    dispatch({ type: 'init-updated', init: next });
-  }, []);
+  const workflow = useMemo(() => createPlayerPageSessionWorkflow({
+    session: sessionPort,
+    history: historyPort,
+    sourceMemory,
+    publish: dispatch,
+  }), [historyPort, sessionPort, sourceMemory]);
 
   useEffect(() => {
-    historyPort.beginPlayerHistorySession();
-  }, [historyPort]);
+    workflow.begin();
+    return () => workflow.dispose();
+  }, [workflow]);
 
-  const resolve = useCallback(async (data: PlayerInitData, index: number, preparedUrl = '', options?: { parseOffset?: number }) => {
-    const episodes = data.episodes;
-    if (!episodes || index < 0 || index >= episodes.length) return;
-    const generation = resolveGeneration.current.next();
-    await resolvePlayerPageEpisode(
-      { data, index, preparedUrl, parseOffset: options?.parseOffset },
-      {
-        playback: sessionPort,
-        history: historyPort,
-        sourceMemory,
-        publish: dispatch,
-        isCurrent: () => resolveGeneration.current.isCurrent(generation),
-      },
-    );
-  }, [historyPort, sessionPort, sourceMemory]);
-
-  const applyInit = useCallback(async (incoming: PlayerInitData) => {
-    const generation = resolveGeneration.current.next();
-    pendingInitRef.current = incoming;
-    initRef.current = null;
-    dispatch({ type: 'hydration-started' });
-
-    let data: PlayerInitData;
-    try {
-      const hydrated = await hydratePlayerInit(incoming, sessionPort, () => resolveGeneration.current.isCurrent(generation));
-      if (!hydrated) return;
-      data = hydrated;
-    } catch (error) {
-      if (!resolveGeneration.current.isCurrent(generation)) return;
-      dispatch({ type: 'hydration-failed', message: error instanceof Error ? error.message : String(error) });
-      return;
-    }
-
-    if (!resolveGeneration.current.isCurrent(generation)) return;
-    pendingInitRef.current = null;
-    updateInit(data);
-    const index = Math.max(0, Math.min(data.epIndex || 0, (data.episodes?.length || 1) - 1));
-    dispatch({ type: 'hydration-completed', init: data, epIndex: index });
-    if (data.episodes.length === 0) return;
-    void resolve(data, index, data.lastUrl);
-  }, [resolve, sessionPort, updateInit]);
-
-  const selectEpisode = useCallback((index: number) => {
-    parseOffsetRef.current = 0;
-    const current = initRef.current;
-    if (!current || !Number.isInteger(index) || index < 0 || index >= current.episodes.length) return;
-    const next = { ...current, startTime: 0, lastUrl: '', epIndex: index };
-    updateInit(next);
-    void resolve(next, index);
-  }, [resolve, updateInit]);
-
-  usePlayerPageEvents(sessionPort, { applyInit, selectEpisode });
-
-  useEffect(() => () => {
-    resolveGeneration.current.next();
-    pendingInitRef.current = null;
-    initRef.current = null;
-    void sessionPort.cleanupTemporaryFiles().catch(() => undefined);
-  }, [sessionPort]);
+  usePlayerPageEvents(sessionPort, workflow);
 
   const episodes = init?.episodes || [];
   const canPrev = Boolean(init && epIndex > 0);
   const canNext = Boolean(init && epIndex < episodes.length - 1);
 
-  const retryCurrent = useCallback(() => {
-    if (state.resolution.kind === 'hydrating' || state.resolution.kind === 'resolving') return;
-    const pendingInit = pendingInitRef.current;
-    if (pendingInit) {
-      parseOffsetRef.current = 0;
-      void applyInit(pendingInit);
-      return;
-    }
-    const current = initRef.current;
-    if (current) void resolve(current, epIndex, '', { parseOffset: parseOffsetRef.current });
-  }, [applyInit, epIndex, resolve, state.resolution.kind]);
-
-  const autoChangeParse = useCallback(async (currentPosition?: number): Promise<boolean> => {
-    const current = initRef.current;
-    if (!current) return false;
-    parseOffsetRef.current += 1;
-    const nextInit: PlayerInitData = currentPosition != null && currentPosition > 0
-      ? { ...current, startTime: currentPosition }
-      : current;
-    updateInit(nextInit);
-    await resolve(nextInit, epIndex, '', { parseOffset: parseOffsetRef.current });
-    return true;
-  }, [epIndex, resolve, updateInit]);
-
-  const dismissDriveBinding = useCallback(() => dispatch({ type: 'drive-bind-dismissed' }), []);
-  const onDriveBound = useCallback(() => {
-    dispatch({ type: 'drive-bind-dismissed' });
-    retryCurrent();
-  }, [retryCurrent]);
+  const retryCurrent = useCallback(() => workflow.retryCurrent(state.resolution.kind), [state.resolution.kind, workflow]);
+  const onDriveBound = useCallback(() => workflow.onDriveBound(state.resolution.kind), [state.resolution.kind, workflow]);
 
   usePlayerHistoryProgress(init ? {
     rawUrl: init.episodes?.[epIndex]?.url || '',
@@ -164,10 +75,10 @@ export function usePlayerPageSession(
     episodes,
     canPrev,
     canNext,
-    selectEpisode,
+    selectEpisode: workflow.selectEpisode,
     retryCurrent,
-    autoChangeParse,
-    dismissDriveBinding,
+    autoChangeParse: workflow.autoChangeParse,
+    dismissDriveBinding: workflow.dismissDriveBinding,
     onDriveBound,
   };
 }

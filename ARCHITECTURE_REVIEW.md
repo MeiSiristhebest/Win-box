@@ -1052,3 +1052,11 @@
 - **新增证据：** `SearchPanelView` 测试确认组合态 Enter 不触发搜索、普通 Enter 将当前输入委托给 Presenter；Presenter 测试确认卸载时联想防抖不再发请求。既有成功/失败导航测试覆盖规范化关键词提交。
 - **验证：** 搜索面板两个测试文件共 6 项通过；本轮新增测试的三套 TypeScript 检查通过。全量 Vitest 上一次完整运行在此前播放器切片后通过（438 文件、3729 项），没有因本次仅添加测试而重跑。
 - **原则影响与限制：** 关闭了搜索面板这几项 #6、#11、#14 验证缺口；不等同于全仓 UI/Atomic Design 审计完成，也不改变 14 项总体仍部分符合的结论。
+
+## 本轮继续：播放器页会话工作流离开 React hook（2026-10-26）
+
+- **确认的问题：** `usePlayerPageSession` 仍同时拥有历史启动恢复、过期请求屏蔽、选集、重试、自动换解析和窗口销毁清理。尽管单集解析结果已进入应用用例，这些跨请求生命周期规则仍只能经由 React hook 组合测试，#1、#6、#7、#8、#14 仍有可分离的边界。
+- **已调整：** 新增 `createPlayerPageSessionWorkflow` 应用工作流，将恢复、选集、重试、自动换解析、云盘绑定后的重试和 teardown 放入框架无关层；hook 现在保留 reducer、工作流装配、IPC 事件订阅和观看进度展示连接。播放解析、历史记录、来源记忆、状态动作与会话能力通过端口传入。
+- **回归覆盖：** 保留原 hook 的切集竞态、恢复失败后重试和解析轮换集成用例；新增不依赖 React 的 teardown 测试，确认恢复未完成时销毁窗口会忽略迟到结果、不启动播放或写入历史，并清理临时文件。静态职责测试更新为检查 hook 委托到应用工作流。
+- **验证：** 定向播放器测试 4 个文件共 16 项通过；`pnpm run typecheck` 的 main、renderer、test 三套检查通过；Oxlint 的 `--deny-warnings`、架构边界扫描、renderer React/perf 与 JSX accessibility lint 均通过。当前增量尚未重跑全量 Vitest、生产构建或桌面真实播放。
+- **剩余：** `usePlayerPageSession` 仍直接映射观看进度展示，`VideoPlayerPresenter` 的跨控制域编排仍待基于真实职责复核；JS/Worker/JVM/Python 完整生命周期矩阵、全仓 UI/IPC 与 Atomic Design/对比度验收、其余 14 项全仓替换性和独立测试审计、桌面播放/安装验收仍未完成。该切片不改变整体“部分符合”的结论。

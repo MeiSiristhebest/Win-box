@@ -11,6 +11,7 @@ const playbackUseCaseSource = readFileSync(new URL('../src/renderer/features/det
 const playbackAdapterSource = readFileSync(new URL('../src/renderer/features/detail/adapters/detailPlaybackAdapter.ts', import.meta.url), 'utf8');
 const playerSessionSource = readFileSync(new URL('../src/renderer/features/playback/usePlayerPageSession.ts', import.meta.url), 'utf8');
 const playerResolutionUseCaseSource = readFileSync(new URL('../src/renderer/features/playback/application/resolvePlayerPageEpisode.ts', import.meta.url), 'utf8');
+const playerSessionWorkflowSource = readFileSync(new URL('../src/renderer/features/playback/application/playerPageSessionWorkflow.ts', import.meta.url), 'utf8');
 const playerSessionAdapterSource = readFileSync(new URL('../src/renderer/features/playback/adapters/playerPageSessionAdapter.ts', import.meta.url), 'utf8');
 const episodeListSource = readFileSync(new URL('../src/renderer/features/detail/DetailEpisodeList.tsx', import.meta.url), 'utf8');
 
@@ -67,7 +68,9 @@ describe('detail episode playback intent', () => {
     expect(play).not.toContain('result.url || target.url');
     expect(playerResolutionUseCaseSource).toContain('playbackResultError(result)');
     expect(playerResolutionUseCaseSource).toContain('recordOpenedPlayerEpisode(');
-    expect(playerSessionSource).toContain('resolvePlayerPageEpisode(');
+    expect(playerSessionWorkflowSource).toContain('resolvePlayerPageEpisode(');
+    expect(playerSessionSource).toContain('createPlayerPageSessionWorkflow(');
+    expect(playerSessionSource).not.toContain('resolvePlayerPageEpisode(');
     expect(playerSessionSource).not.toContain('playbackResultError(result)');
     expect(playerSessionSource).not.toContain('setActiveUrl(target.url)');
   });
@@ -126,10 +129,10 @@ describe('detail episode playback intent', () => {
   });
 
   it('player-local previous/next switching updates init.epIndex before resolving', () => {
-    expect(playerSessionSource).toContain('const next = { ...current, startTime: 0, lastUrl: \'\', epIndex: index };');
-    expect(playerSessionSource).toContain('updateInit(next);');
-    expect(playerSessionSource).toContain('void resolve(next, index);');
-    expect(playerSessionSource).toContain('index >= current.episodes.length');
-    expect(playerSessionSource).toContain('!Number.isInteger(index)');
+    expect(playerSessionWorkflowSource).toContain('const next = { ...current, startTime: 0, lastUrl: \'\', epIndex: index };');
+    expect(playerSessionWorkflowSource).toContain('updateInit(next);');
+    expect(playerSessionWorkflowSource).toContain('void resolve(next, index);');
+    expect(playerSessionWorkflowSource).toContain('index >= current.episodes.length');
+    expect(playerSessionWorkflowSource).toContain('!Number.isInteger(index)');
   });
 });
