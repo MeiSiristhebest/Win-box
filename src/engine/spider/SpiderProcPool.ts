@@ -216,7 +216,11 @@ export class SpiderProcPool {
       // 2) 全都满了：额度允许就再开一个同 key 进程扩容
       if (!target && group.filter((p) => !p.dead).length < PER_KEY_CAP) {
         if (this.aliveCount < this.globalCap() || this.reapOneLru(group)) {
-          target = this.spawnProc(key, spec);
+          target = this.trySpawnProc(key, spec) ?? undefined;
+          if (!target) {
+            resolve({ ok: false, data: '', reason: 'spawn-error' });
+            return;
+          }
           group = this.groups.get(key) ?? group;
         }
       }
@@ -230,7 +234,9 @@ export class SpiderProcPool {
       if (!head) {
         // 组内进程全死（竞态兜底）：额度允许才补一个，否则按失败交调用方回退一次性
         if (this.aliveCount < this.globalCap() || this.reapOneLru(group)) {
-          this.dispatch(this.spawnProc(key, spec), req, resolve, timeoutMs, signal);
+          const replacement = this.trySpawnProc(key, spec);
+          if (replacement) this.dispatch(replacement, req, resolve, timeoutMs, signal);
+          else resolve({ ok: false, data: '', reason: 'spawn-error' });
         } else {
           resolve({ ok: false, data: '' });
         }
@@ -269,7 +275,8 @@ export class SpiderProcPool {
     while (this.aliveForKey(key) < target) {
       // 额度不足：能 LRU 腾一个就继续，否则停（不挤占正常请求的额度）
       if (this.aliveCount >= this.globalCap() && !this.reapOneLru(this.groups.get(key) ?? group)) break;
-      const proc = this.spawnProc(key, spec);
+      const proc = this.trySpawnProc(key, spec);
+      if (!proc) break;
       // 探针响应直接丢弃（成功 = 进程可复用；失败 = 进程已被 kill，无副作用）
       const req: ServeRequest = probe
         ? { id: `warm-${Date.now().toString(36)}-${started}`, className: probe.className, method: probe.method, args: probe.args }
@@ -430,8 +437,7 @@ export class SpiderProcPool {
     return true;
   }
 
-  private spawnProc(key: string, spec: SpawnSpec): Proc {
-    const child = this.spawnFn(spec);
+  private attachProc(key: string, child: ChildProcess): Proc {
     const proc: Proc = {
       key,
       child,
@@ -483,6 +489,23 @@ export class SpiderProcPool {
     group.push(proc);
     this.groups.set(key, group);
     return proc;
+  }
+
+  /** Process creation is a replaceable runtime boundary; keep synchronous failures in the pool result contract. */
+  private trySpawnProc(key: string, spec: SpawnSpec): Proc | null {
+    let child: ChildProcess;
+    try {
+      child = this.spawnFn(spec);
+    } catch {
+      return null;
+    }
+    try {
+      return this.attachProc(key, child);
+    } catch {
+      // Initialization can fail after the OS process already exists. Do not leak it.
+      try { child.kill(); } catch { /* ignore cleanup failure */ }
+      return null;
+    }
   }
 
   /** 进程失效：拒绝 pending + 清队列 + 移除组；调用方按失败原因决定是否回退一次性路径 */

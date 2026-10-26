@@ -934,3 +934,10 @@
 - **静态检查：** `pnpm run typecheck` 的 main、renderer、test 三套项目通过；`pnpm run lint` 通过，包含架构边界、React/perf 与 JSX a11y。
 - **构建：** `pnpm run build` 的 main 与 renderer 生产构建通过。Vite 仍提示独立 `hls` chunk 为 574.41 KB（gzip 178.97 KB），超过 500 KB；Babel transform 回调耗时仍是 renderer 构建的主要瓶颈。
 - **未验收：** 这次全量 CLI 复验不替代桌面视觉、实际媒体源播放或安装覆盖/数据保留验收；14 项原则整改仍未完成。
+
+## 本轮继续：常驻蜘蛛进程池同步启动失败（2026-10-26）
+
+- **确认的问题：** `SpiderProcPool.submit` 遇到注入的 `spawnFn` 同步抛错时会 reject 原始异常，而相同的异步启动故障会按 `PoolResult` 返回 `spawn-error`；预热路径也会直接抛错。这会让替换运行时改变调用方的回退与启动行为。
+- **已修正：** 集中处理进程创建失败：提交调用稳定返回 `{ ok: false, reason: 'spawn-error' }` 供单次运行时回退；预热将启动失败作为 best-effort 停止并返回实际启动数。若子进程已启动但流/事件初始化失败，会先尝试终止该进程，再返回失败结果。
+- **回归覆盖：** `spiderProcPool.spec.ts` 新增提交失败映射与预热失败两项行为测试；该文件现有 20 项覆盖继续通过，共 22 项通过。
+- **增量验证：** `pnpm exec vitest run tests/spiderProcPool.spec.ts` 通过；`pnpm run typecheck` 三套项目和 `pnpm run lint`（含架构边界、React/perf/a11y）通过。该增量后尚需复跑全量测试与生产构建。

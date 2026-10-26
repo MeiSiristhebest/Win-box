@@ -74,6 +74,21 @@ describe('SpiderProcPool — 复用 / 并行 / 排队 / 失败语义', () => {
     vi.useRealTimers();
   });
 
+  it('把同步 spawn 端口异常映射为 spawn-error 结果，供调用方按池失败策略回退', async () => {
+    const pool = new SpiderProcPool(() => { throw new Error('runtime unavailable'); });
+
+    await expect(pool.submit('k1', SPEC, REQ('spawn-failure')))
+      .resolves.toEqual({ ok: false, data: '', reason: 'spawn-error' });
+    expect(pool.aliveCount).toBe(0);
+  });
+
+  it('预热时同步 spawn 失败作为 best-effort 停止，不向调用方抛异常', () => {
+    const pool = new SpiderProcPool(() => { throw new Error('runtime unavailable'); });
+
+    expect(pool.warm('k1', SPEC, 2)).toBe(0);
+    expect(pool.aliveCount).toBe(0);
+  });
+
   it('串行复用：上一次请求完成后，下一次请求复用同一进程（不再冷启动）', async () => {
     const { pool, spawned } = makeEnv();
     const r1 = await pool.submit('k1', SPEC, REQ('a'));
