@@ -8,8 +8,10 @@ import { subscriptionGroupManagementAdapter } from '../features/subscriptions/ad
 import { useSubscriptionGroupManagement } from '../features/subscriptions/useSubscriptionGroupManagement';
 import { AppearanceSection } from '../features/settings/AppearanceSection';
 import { AccountServicesSection } from '../features/settings/AccountServicesSection';
-import { browserAccountSettingsEventsAdapter } from '../features/settings/adapters/browserAccountSettingsEventsAdapter';
-import { rendererAccountServicesAdapter } from '../features/settings/adapters/rendererAccountServicesAdapter';
+import { browserDriveAccountsEventsAdapter } from '../features/settings/adapters/browserDriveAccountsEventsAdapter';
+import { browserMetaSettingsEventsAdapter } from '../features/settings/adapters/browserMetaSettingsEventsAdapter';
+import { rendererMetaSettingsAdapter } from '../features/settings/adapters/rendererMetaSettingsAdapter';
+import { rendererSubtitleSettingsAdapter } from '../features/settings/adapters/rendererSubtitleSettingsAdapter';
 import { browserBackupStorageAdapter } from '../features/settings/adapters/browserBackupStorageAdapter';
 import { rendererBackupOperationsAdapter } from '../features/settings/adapters/rendererBackupOperationsAdapter';
 import { NetworkSection } from '../features/settings/NetworkSection';
@@ -288,7 +290,14 @@ export default function ConfigPage() {
       )}
 
       {/* ===== 四、凭据 ===== */}
-      <AccountServicesSection active={tab === 'account'} services={rendererAccountServicesAdapter} events={browserAccountSettingsEventsAdapter} />
+      {tab === 'account' && (
+        <AccountServicesSection
+          subtitle={rendererSubtitleSettingsAdapter}
+          metadata={rendererMetaSettingsAdapter}
+          driveEvents={browserDriveAccountsEventsAdapter}
+          metadataEvents={browserMetaSettingsEventsAdapter}
+        />
+      )}
 
       {tab === 'appearance' && <AppearanceSection />}
 
