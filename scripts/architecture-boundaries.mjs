@@ -9,6 +9,8 @@ const sourceRoot = path.resolve(sourceRootArgument || 'src');
 const rendererRoot = path.join(sourceRoot, 'renderer');
 const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.mts', '.cts', '.mjs', '.cjs']);
 const nodeBuiltins = new Set(builtinModules.map((specifier) => specifier.replace(/^node:/, '')));
+const rendererIpcCompositionRoots = new Set(['renderer/App.tsx', 'renderer/main.tsx']);
+const rendererIpcClientSpecifier = /(?:^|\/)api\/client(?:\.[cm]?[jt]sx?)?(?:\/|$)/;
 const rules = [
   {
     layer: 'shared',
@@ -477,7 +479,7 @@ const rendererDetailNavigationApplicationForbiddenImports = new Map([
 ]);
 const rendererDisplayPreferencesForbiddenImports = new Map([
   ['renderer/features/display/application/displayPreferences.ts', new Set([
-    'react', '../../../api/client', '../../../lib/uiPrefs', '../../../lib/preferenceStore',
+    'react', '../../../api/client', '../../../lib/uiPrefs', '../../../adapters/uiPreferencesAdapter',
     '../adapters/displayPreferencesAdapter',
   ])],
   ['renderer/features/display/presentation/useUiScaleState.ts', new Set(['../adapters/displayPreferencesAdapter'])],
@@ -494,7 +496,7 @@ const rendererBrowserStorageForbiddenGlobals = new Set([
 const rendererBrowserStorageAdapterFiles = new Set([
   'renderer/lib/favorites.ts',
   'renderer/lib/playerPrefs.ts',
-  'renderer/lib/preferenceStore.ts',
+  'renderer/adapters/uiPreferencesAdapter.ts',
   'renderer/lib/searchHistory.ts',
   'renderer/features/playback/adapters/skipSegmentsControllerAdapter.ts',
   'renderer/lib/storageEpoch.ts',
@@ -776,7 +778,7 @@ for (const filePath of await sourceFiles(sourceRoot)) {
   const normalizedSourcePath = relativeFile.split(path.sep).join('/');
   const readsDesktopPreloadApi = /\bwindow\s*\.\s*api\b/.test(source);
   const isRendererPreloadBoundary = normalizedSourcePath === 'renderer/api/client.ts' ||
-    normalizedSourcePath === 'renderer/lib/preferenceStore.ts' ||
+    normalizedSourcePath === 'renderer/adapters/uiPreferencesAdapter.ts' ||
     /^renderer\/features\/.+\/adapters\/[^/]+\.tsx?$/.test(normalizedSourcePath);
   if (layer === 'renderer' && readsDesktopPreloadApi && !isRendererPreloadBoundary) {
     violations.push(`${normalizedSourcePath}: renderer preload access belongs in the typed API client, a feature adapter, or the preference persistence boundary`);
@@ -1178,6 +1180,11 @@ for (const filePath of await sourceFiles(sourceRoot)) {
       const importerIsUseCase = importerIsFeature && rendererPath[2] === 'application';
       const importerIsPassiveView = /(?:^|\/)[^/]+View\.(?:tsx|jsx)$/.test(normalizedFile);
       const normalizedSpecifier = specifier.replace(/\\/g, '/');
+      if (rendererIpcClientSpecifier.test(normalizedSpecifier)
+        && !normalizedFile.split('/').includes('adapters')
+        && !rendererIpcCompositionRoots.has(normalizedFile)) {
+        violations.push(`${relativeFile} → ${specifier}: renderer IPC client imports belong in adapters or the renderer composition roots`);
+      }
       const target = rendererArea(filePath, specifier);
       if (target && importerIsUiPrimitive && (target.feature || target.page)) {
         violations.push(`${relativeFile} → ${specifier}: UI primitives may not depend on feature or page modules`);

@@ -12,7 +12,7 @@ import { playerKernelCommandsAdapter } from '../features/playback/adapters/playe
 import { bossKeyPlaybackEventsAdapter, relaySpeedEventsAdapter } from '../features/playback/adapters/playerRuntimeEventsAdapter';
 import { driveBindingNavigationAdapter, driveBindingPromptAdapter } from '../features/playback/adapters/driveBindingAdapters';
 import { mpvPlaybackSessionAdapter, mpvStatusQueryAdapter } from '../features/playback/adapters/mpvPlaybackAdapters';
-import { playerKernelWindowAdapter } from '../features/playback/playerKernelWindowAdapter';
+import { playerKernelWindowAdapter } from '../features/playback/adapters/playerKernelWindowAdapter';
 import { playerViewportAdapter } from '../features/playback/adapters/playerViewportAdapter';
 import { playerWindowReloadAdapter } from '../features/playback/adapters/playerWindowReloadAdapter';
 import { danmakuControllerAdapter } from '../features/playback/adapters/danmakuControllerAdapter';
@@ -20,7 +20,7 @@ import { dlnaCastingAdapter } from '../features/playback/adapters/dlnaCastingAda
 import { mediaDiagnosticsAdapter } from '../features/playback/adapters/mediaDiagnosticsAdapter';
 import { playerFullscreenAdapter } from '../features/playback/adapters/playerFullscreenAdapter';
 import { pluginPlaybackEnginesAdapter } from '../features/playback/adapters/pluginPlaybackEnginesAdapter';
-import { rendererExternalPlaybackPorts } from '../lib/externalPlaybackAdapter';
+import { rendererExternalPlaybackPorts } from '../features/playback/adapters/externalPlaybackAdapter';
 import { playerClipboardAdapter } from '../features/playback/adapters/playerClipboardAdapter';
 import { playerPlaybackPositionAdapter } from '../features/playback/adapters/playerPlaybackPositionAdapter';
 import { playerPlaybackRuntimeAdapter } from '../features/playback/adapters/playerPlaybackRuntimeAdapter';

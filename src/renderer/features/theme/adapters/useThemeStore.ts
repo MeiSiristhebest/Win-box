@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { subscribePreference } from '../../../lib/preferenceStore';
+import { subscribePreference } from '../../../adapters/uiPreferencesAdapter';
 import { UI_PREFERENCE_KEYS } from '../../../lib/uiPreferenceMapping';
 import { allSkins, DEFAULT_THEME, normalizeTheme, skinLayout } from '../../../lib/themeTokens';
 import type { ThemeLayout } from '../../../../shared/plugin';

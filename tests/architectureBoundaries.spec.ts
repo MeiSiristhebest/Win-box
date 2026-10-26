@@ -122,6 +122,30 @@ describe('architecture dependency rules', () => {
   });
 
   it.each([
+    ['renderer/components/Example.tsx', "import { client } from '../api/client';"],
+    ['renderer/pages/ExamplePage.tsx', "import { client } from '../api/client';"],
+    ['renderer/features/example/useExample.ts', "import { client } from '../../api/client';"],
+    ['renderer/lib/example.ts', "import { client } from '../api/client';"],
+  ])('keeps renderer IPC imports out of UI and utility modules: %s', (file, source) => {
+    const result = inspect(file, source);
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('renderer IPC client imports belong in adapters or the renderer composition roots');
+  });
+
+  it.each([
+    ['renderer/features/example/adapters/exampleAdapter.ts', "import { client } from '../../../api/client';"],
+    ['renderer/adapters/exampleAdapter.ts', "import { client } from '../api/client';"],
+    ['renderer/App.tsx', "import { client } from './api/client';"],
+    ['renderer/main.tsx', "import { client } from './api/client';"],
+  ])('allows renderer IPC imports only at an adapter or composition root: %s', (file, source) => {
+    const result = inspect(file, source);
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Architecture boundaries passed.');
+  });
+
+  it.each([
     ['renderer/features/playback/VideoPlayerPresenter.ts', "import { htmlMediaSourceAdapter } from './htmlMediaSourceAdapter';"],
     ['renderer/features/playback/VideoPlayerPresenter.ts', "import { mpvPlaybackSessionAdapter } from './adapters/mpvPlaybackAdapters';"],
     ['renderer/features/playback/usePlayerKernelSelection.ts', "import { mpvStatusQueryAdapter } from './adapters/mpvPlaybackAdapters';"],
@@ -267,7 +291,7 @@ describe('architecture dependency rules', () => {
   it.each([
     "import { client } from '../../../api/client';",
     "import { useMemo } from 'react';",
-    "import { subscribePreference } from '../../../lib/preferenceStore';",
+    "import { subscribePreference } from '../../../adapters/uiPreferencesAdapter';",
     "import { displayPreferencesSession } from '../adapters/displayPreferencesAdapter';",
     'document.documentElement.style.setProperty("--ui-zoom", "1");',
   ])('keeps display preference policy independent from renderer infrastructure: %s', (source) => {

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readPreference, subscribePreference, syncUiPreferencesFromMain, writePreference } from '../src/renderer/lib/preferenceStore';
+import { readPreference, subscribePreference, syncUiPreferencesFromMain, writePreference } from '../src/renderer/adapters/uiPreferencesAdapter';
 
 afterEach(() => {
   localStorage.clear();
@@ -34,7 +34,7 @@ describe('renderer preference store', () => {
         initializeUiPreferences,
       } },
     });
-    const { syncUiPreferencesFromMain: sync } = await import('../src/renderer/lib/preferenceStore');
+    const { syncUiPreferencesFromMain: sync } = await import('../src/renderer/adapters/uiPreferencesAdapter');
     await sync();
     expect(initializeUiPreferences).toHaveBeenCalledWith(expect.objectContaining({ themeId: expectedTheme }));
   });

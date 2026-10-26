@@ -1,5 +1,5 @@
-import { client } from '../../api/client';
-import type { PlayerKernelWindowPort } from './application/playerKernelTransitions';
+import { client } from '../../../api/client';
+import type { PlayerKernelWindowPort } from '../application/playerKernelTransitions';
 
 /** Browser/Electron window operations used by kernel transitions. */
 export const playerKernelWindowAdapter: PlayerKernelWindowPort = {

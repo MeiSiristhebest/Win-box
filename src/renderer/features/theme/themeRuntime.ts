@@ -1,4 +1,4 @@
-import { readPreference, writePreference } from '../../lib/preferenceStore';
+import { readPreference, writePreference } from '../../adapters/uiPreferencesAdapter';
 import { UI_PREFERENCE_KEYS } from '../../lib/uiPreferenceMapping';
 import { allSkins, registerPluginSkins } from '../../lib/themeTokens';
 import { createThemeApplication } from './application/themeApplication';

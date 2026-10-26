@@ -1,6 +1,6 @@
 import { client } from '../../../api/client';
 import { getPosterSize } from '../../../lib/uiPrefs';
-import { subscribePreference } from '../../../lib/preferenceStore';
+import { subscribePreference } from '../../../adapters/uiPreferencesAdapter';
 import { UI_PREFERENCE_KEYS } from '../../../lib/uiPreferenceMapping';
 import { createDisplayPreferencesSession } from '../application/displayPreferences';
 

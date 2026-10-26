@@ -7,7 +7,7 @@ import {
   preferenceValueFromSnapshot,
   preferenceValuesAsStrings,
   UI_PREFERENCE_KEY_LIST,
-} from './uiPreferenceMapping';
+} from '../lib/uiPreferenceMapping';
 
 type PreferenceListener = () => void;
 

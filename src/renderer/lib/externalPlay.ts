@@ -13,7 +13,7 @@
 //   · 拉起成功后照常 `recordWatch`（**不带 time**：外部播放器无法回传进度，保留上次已知位置而不是归零）；
 //   · `seek`（起播秒数）由调用方给出：历史页 = 该条记录的 time；详情页 = 同集已有进度（`uiMemory.sameEpProgress`）。
 import { playVodExternal as executeVodExternalPlayback, openConfiguredExternalFallback as executeConfiguredExternalFallback } from '../features/playback/externalPlayback';
-import { rendererExternalPlaybackPorts } from './externalPlaybackAdapter';
+import { rendererExternalPlaybackPorts } from '../features/playback/adapters/externalPlaybackAdapter';
 
 export type { VodExternalPlayInput, VodExternalOutcome } from '../features/playback/externalPlayback';
 

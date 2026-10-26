@@ -1,9 +1,9 @@
 // src/renderer/lib/uiPrefs.ts
-// 界面偏好使用共享 preferenceStore，持久值由主进程管理，localStorage 仅作启动缓存和备份兼容。
+// 界面偏好使用共享适配器，持久值由主进程管理，localStorage 仅作启动缓存和备份兼容。
 import { useSyncExternalStore } from 'react';
 import { normalizePosterSize, type PosterSize } from '../../shared/posterSize';
 import type { MotionPreference } from '../../shared/uiPreferences';
-import { readPreference, subscribePreference, writePreference } from './preferenceStore';
+import { readPreference, subscribePreference, writePreference } from '../adapters/uiPreferencesAdapter';
 import { UI_PREFERENCE_KEYS } from './uiPreferenceMapping';
 
 const KEY_DISCOVER = UI_PREFERENCE_KEYS.discover;

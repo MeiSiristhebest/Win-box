@@ -9,7 +9,7 @@ import { loadPluginThemeRegistry } from './features/theme/adapters/pluginThemeRe
 import { dropSessionUiMemoryIfRestarted } from './lib/uiMemory';
 import { initDisplayPrefs } from './features/display';
 import { initMotionPref } from './lib/uiPrefs';
-import { syncUiPreferencesFromMain } from './lib/preferenceStore';
+import { syncUiPreferencesFromMain } from './adapters/uiPreferencesAdapter';
 import { client } from './api/client';
 import './styles/global.css';
 import './styles/desktop.css';
