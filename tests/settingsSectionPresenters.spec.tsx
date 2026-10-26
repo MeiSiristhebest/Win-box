@@ -4,7 +4,10 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import type { DavServer } from '../src/shared/webdav';
 import { NetworkSection } from '../src/renderer/features/settings/NetworkSection';
 import { StorageSettingsSection } from '../src/renderer/features/settings/StorageSettingsSection';
-import type { NetworkSettingsPort, StorageSettingsPort } from '../src/renderer/features/settings/application/settingsSectionPorts';
+import { ShortcutSettingsSection } from '../src/renderer/features/settings/ShortcutSettingsSection';
+import type { NetworkSettingsPort, ShortcutSettingsPort, StorageSettingsPort } from '../src/renderer/features/settings/application/settingsSectionPorts';
+
+vi.mock('../src/renderer/features/settings/PluginKeymapList', () => ({ PluginKeymapList: () => null }));
 
 afterEach(cleanup);
 
@@ -46,5 +49,26 @@ describe('settings section presenters', () => {
     expect(screen.getByText('家庭 NAS')).not.toBeNull();
     expect(port.saveServer).toHaveBeenCalledOnce();
     expect((screen.getByRole('button', { name: '刷新列表' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('loads the boss key only when active and saves the selected accelerator', async () => {
+    const settings = { enabled: false, accel: 'CommandOrControl+Shift+B' };
+    const port: ShortcutSettingsPort = {
+      loadBossKey: vi.fn().mockResolvedValue(settings),
+      saveBossKey: vi.fn(async ({ enabled, accel }) => ({ settings: { enabled, accel }, registered: true })),
+    };
+    const keymaps = { listKeymaps: vi.fn(async () => []) };
+    const { rerender } = render(<ShortcutSettingsSection active={false} port={port} keymaps={keymaps} />);
+
+    expect(port.loadBossKey).not.toHaveBeenCalled();
+    rerender(<ShortcutSettingsSection active port={port} keymaps={keymaps} />);
+    expect(await screen.findByDisplayValue('Ctrl + Shift + B')).not.toBeNull();
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.keyDown(screen.getByLabelText('全局快捷键'), { key: 'k', ctrlKey: true, shiftKey: true });
+    expect((screen.getByLabelText('全局快捷键') as HTMLInputElement).value).toBe('Ctrl + Shift + K');
+    fireEvent.click(screen.getByRole('button', { name: '保存老板键' }));
+
+    expect(await screen.findByText('已启用：Ctrl + Shift + K')).not.toBeNull();
+    expect(port.saveBossKey).toHaveBeenCalledWith({ enabled: true, accel: 'CommandOrControl+Shift+K' });
   });
 });
