@@ -10,6 +10,7 @@ const playbackFile = parse(playbackSource, { sourceType: 'unambiguous', plugins:
 const playbackUseCaseSource = readFileSync(new URL('../src/renderer/features/detail/application/detailPlaybackUseCase.ts', import.meta.url), 'utf8');
 const playbackAdapterSource = readFileSync(new URL('../src/renderer/features/detail/adapters/detailPlaybackAdapter.ts', import.meta.url), 'utf8');
 const playerSessionSource = readFileSync(new URL('../src/renderer/features/playback/usePlayerPageSession.ts', import.meta.url), 'utf8');
+const playerResolutionUseCaseSource = readFileSync(new URL('../src/renderer/features/playback/application/resolvePlayerPageEpisode.ts', import.meta.url), 'utf8');
 const playerSessionAdapterSource = readFileSync(new URL('../src/renderer/features/playback/adapters/playerPageSessionAdapter.ts', import.meta.url), 'utf8');
 const episodeListSource = readFileSync(new URL('../src/renderer/features/detail/DetailEpisodeList.tsx', import.meta.url), 'utf8');
 
@@ -64,7 +65,10 @@ describe('detail episode playback intent', () => {
     expect(play).toContain('resolveDetailEpisodePlayback(');
     expect(play).toContain('onPlay(outcome.url,');
     expect(play).not.toContain('result.url || target.url');
-    expect(playerSessionSource).toContain('playbackResultError(result)');
+    expect(playerResolutionUseCaseSource).toContain('playbackResultError(result)');
+    expect(playerResolutionUseCaseSource).toContain('recordOpenedPlayerEpisode(');
+    expect(playerSessionSource).toContain('resolvePlayerPageEpisode(');
+    expect(playerSessionSource).not.toContain('playbackResultError(result)');
     expect(playerSessionSource).not.toContain('setActiveUrl(target.url)');
   });
 
