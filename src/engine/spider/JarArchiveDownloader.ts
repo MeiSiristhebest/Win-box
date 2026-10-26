@@ -25,6 +25,7 @@ export class JarArchiveDownloader {
       retryWithCookie: true,
       timeoutMs: 60000,
       totalTimeoutMs: 120000,
+      maxResponseBytes: 128 * 1024 * 1024,
       buffer: 2,
       onTry: (attempt) => {
         const feature = [

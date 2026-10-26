@@ -672,8 +672,12 @@ export interface HttpRequest {
   data?: unknown;
   postType?: 'json' | 'form' | 'form-data';
   timeoutMs?: number;
-  /** 整个请求（含重定向和响应体读取）的总期限；未设置时沿用 timeoutMs 的阶段超时语义。 */
+  /** 整个请求（含重定向和响应体读取）的总期限；未设置时取 timeoutMs 或默认 30 秒。 */
   totalTimeoutMs?: number;
+  /** 响应体 wire bytes 上限；未设置时按返回形态采用保守默认值。 */
+  maxResponseBytes?: number;
+  /** 异步响应读取进度；loaded/total 单位均为字节，未知总长时 total 为 undefined。 */
+  onProgress?: (loadedBytes: number, totalBytes?: number) => void;
   /** 允许调用方取消排队任务和正在进行的网络请求。 */
   signal?: AbortSignal;
   redirect?: 0 | 1;

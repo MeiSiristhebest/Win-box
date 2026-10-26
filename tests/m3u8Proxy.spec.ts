@@ -113,6 +113,26 @@ beforeAll(async () => {
       setTimeout(() => res.end(Buffer.concat([prefix.subarray(2), ts])), 10);
       return;
     }
+    if (path === '/bad.m3u8') {
+      const body = Buffer.from('{"error":"upstream returned JSON"}');
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': String(body.length) });
+      res.end(body);
+      return;
+    }
+    if (path === '/oversized.m3u8') {
+      const body = Buffer.concat([Buffer.from('#EXTM3U\n'), Buffer.alloc(8 * 1024 * 1024, 0x61)]);
+      res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl', 'Content-Length': String(body.length) });
+      res.end(body);
+      return;
+    }
+    if (path === '/hinted-video.m3u8') {
+      // A misleading playlist URL must not make a large, explicitly typed media
+      // response enter the buffered HLS manifest path.
+      const body = Buffer.alloc(10 * 1024 * 1024, 0x41);
+      res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': String(body.length) });
+      res.end(body);
+      return;
+    }
     if (path === '/hls/media/key.bin' || path === '/hls/media/key' || path === '/hls/media/init.mp4' || path === '/hls/media/seg-01.ts') {
       const body = Buffer.from(path.endsWith('/key.bin') || path.endsWith('/key') ? 'fixture-key-12345' : 'fixture-segment');
       const range = req.headers.range;
@@ -189,6 +209,31 @@ describe('CatVod do=m3u8', () => {
     expect(segment.status).toBe(200);
     expect(await segment.text()).toBe('fixture-segment');
     expect(seen.map(item => item.url)).toEqual(['/browser/hls/live/master', '/browser/hls/live/segment.ts']);
+  });
+
+  it('does not treat a JSON error body as a successful HLS manifest', async () => {
+    const response = await fetch(proxyUrl('/bad.m3u8'));
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get('x-winbox-error-code')).toBe('HTTP_INVALID_MANIFEST');
+    expect(await response.text()).toContain('不是有效的 HLS 清单');
+  });
+
+  it('fails an oversized manifest visibly instead of returning a truncated playlist', async () => {
+    const response = await fetch(proxyUrl('/oversized.m3u8'));
+
+    expect(response.status).toBe(502);
+    expect(response.headers.get('x-winbox-error-code')).toBe('HTTP_RESPONSE_TOO_LARGE');
+    expect(await response.text()).toContain('超过字节上限');
+  });
+
+  it('streams a large video response even when the source URL looks like a playlist', async () => {
+    const response = await fetch(proxyUrl('/hinted-video.m3u8'));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('video/mp4');
+    expect(response.headers.get('content-length')).toBe(String(10 * 1024 * 1024));
+    expect((await response.arrayBuffer()).byteLength).toBe(10 * 1024 * 1024);
   });
 
   it('WebP TS_D 分片流式剥离前导、正确 MIME/长度，且使用 .ts 路由', async () => {

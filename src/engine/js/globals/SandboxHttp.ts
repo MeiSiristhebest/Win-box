@@ -19,8 +19,10 @@ import { spawnSync } from 'node:child_process';
 import * as iconv from 'iconv-lite';
 import type { JsSandboxHostPort } from '../JsSandboxPort';
 import type { HttpRequest, HttpResponse } from '../../../shared/types';
+import { HttpRequestError } from '../../../shared/HttpRequestError';
 
 export interface HttpRes {
+  status?: number;
   headers: Record<string, unknown>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   content: any; // string | number[] —— 来自沙箱的动态数据，any 承接
@@ -33,8 +35,12 @@ export type HttpOptions = Record<string, any>;
 /** 默认超时：Req.java:47 getTimeout() 默认 10000ms（options.timeout 以秒计 → *1000） */
 const DEFAULT_TIMEOUT_MS = 10000;
 
-function errorRes(): HttpRes {
-  return { headers: {}, content: '' };
+function errorRes(error?: unknown): HttpRes {
+  return {
+    status: 0,
+    headers: error instanceof HttpRequestError ? { 'x-winbox-error-code': error.code } : {},
+    content: '',
+  };
 }
 
 /** 组装请求体与 Content-Type（对齐 Connect.getPostBody + Req 默认 postType=json） */
@@ -80,6 +86,10 @@ export function toRequest(url: string, opts: HttpOptions): HttpRequest {
     headers,
     body,
     timeoutMs: opts.timeout ? Number(opts.timeout) * 1000 : DEFAULT_TIMEOUT_MS,
+    ...(Number.isSafeInteger(opts.totalTimeoutMs) ? { totalTimeoutMs: Number(opts.totalTimeoutMs) } : {}),
+    ...(Number.isSafeInteger(opts.maxResponseBytes) ? { maxResponseBytes: Number(opts.maxResponseBytes) } : {}),
+    ...(typeof opts.onProgress === 'function' ? { onProgress: opts.onProgress } : {}),
+    ...(opts.signal && typeof opts.signal.aborted === 'boolean' ? { signal: opts.signal as AbortSignal } : {}),
     redirect: opts.redirect === 0 ? 0 : 1,
     charset: opts.charset ?? undefined,
     buffer: (opts.buffer ?? 0) as 0 | 1 | 2,
@@ -111,7 +121,7 @@ function decodeBuffer(buf: Buffer, charset: string | undefined, headers: Record<
 
 /** 响应统一转成沙箱契约的 { headers, content }（Connect.success 的 buffer 三分支） */
 function toRes(res: HttpResponse): HttpRes {
-  return { headers: res.headers as Record<string, unknown>, content: res.content };
+  return { status: res.status, headers: res.headers as Record<string, unknown>, content: res.content };
 }
 
 // ---------------------------------------------------------------------------
@@ -131,18 +141,34 @@ process.stdin.on('end', () => {
     process.exit(0);
   }
   const settled = { done: false };
-  const finish = (status, headers, chunks) => {
+  let overallTimer;
+  const finish = (status, headers, chunks, errorCode) => {
     if (settled.done) return;
     settled.done = true;
+    if (overallTimer) clearTimeout(overallTimer);
+    if (errorCode) headers = { ...(headers || {}), 'x-winbox-error-code': errorCode };
     const body = chunks ? Buffer.concat(chunks).toString('base64') : '';
     process.stdout.write(JSON.stringify({ status: status || 0, headers: headers || {}, b64: body }));
     process.exit(0);
   };
   try {
     const maxRedir = req.redirect === 0 ? 0 : 10;
+    const requestedDeadline = Number(req.totalTimeoutMs);
+    const requestedPhaseTimeout = Number(req.timeoutMs);
+    const phaseTimeoutMs = Number.isSafeInteger(requestedPhaseTimeout) && requestedPhaseTimeout > 0 ? requestedPhaseTimeout : 10000;
+    const totalTimeoutMs = Number.isSafeInteger(requestedDeadline) && requestedDeadline > 0
+      ? requestedDeadline
+      : phaseTimeoutMs;
+    const maxResponseBytes = req.maxResponseBytes;
+    if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 0 || maxResponseBytes > 256 * 1024 * 1024) {
+      return finish(0, {}, null, 'HTTP_INVALID_RESPONSE_LIMIT');
+    }
+    const deadline = Date.now() + totalTimeoutMs;
     let redirectCount = 0;
     const fetchOnce = (u) => {
       if (settled.done) return;
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return finish(0, {}, null, 'HTTP_TOTAL_TIMEOUT');
       const mod = u.indexOf('https:') === 0 ? https : http;
       const r = mod.request(u, { method: req.method || 'GET', headers: req.headers || {} }, (res) => {
         const status = res.statusCode || 0;
@@ -153,18 +179,36 @@ process.stdin.on('end', () => {
           fetchOnce(new URL(loc, u).toString());
           return;
         }
+        const declaredLength = Number(res.headers['content-length']);
+        if (Number.isSafeInteger(declaredLength) && declaredLength > maxResponseBytes) {
+          r.destroy();
+          return finish(0, {}, null, 'HTTP_RESPONSE_TOO_LARGE');
+        }
         const chunks = [];
-        res.on('data', (d) => chunks.push(d));
+        let loaded = 0;
+        res.on('data', (d) => {
+          if (settled.done) return;
+          loaded += d.length;
+          if (loaded > maxResponseBytes) {
+            r.destroy();
+            finish(0, {}, null, 'HTTP_RESPONSE_TOO_LARGE');
+            return;
+          }
+          chunks.push(d);
+        });
         res.on('end', () => finish(status, res.headers, chunks));
         res.on('error', () => finish(0, {}, null));
       });
       r.on('error', () => finish(0, {}, null));
-      r.setTimeout(req.timeoutMs || 10000, () => { r.destroy(); finish(0, {}, null); });
+      r.setTimeout(Math.min(phaseTimeoutMs, remaining), () => {
+        r.destroy();
+        finish(0, {}, null, Date.now() >= deadline ? 'HTTP_TOTAL_TIMEOUT' : 'HTTP_PHASE_TIMEOUT');
+      });
       if (req.body) r.write(req.body);
       r.end();
     };
+    overallTimer = setTimeout(() => finish(0, {}, null, 'HTTP_TOTAL_TIMEOUT'), totalTimeoutMs);
     fetchOnce(req.url);
-    setTimeout(() => finish(0, {}, null), (req.timeoutMs || 10000) + 3000);
   } catch (e) { finish(0, {}, null); }
 });
 `;
@@ -172,6 +216,13 @@ process.stdin.on('end', () => {
 /** 生产环境的同步请求：spawnSync(ELECTRON_RUN_AS_NODE)。失败/超时 → 错误空响应，不抛。 */
 function spawnSyncRequest(req: HttpRequest): HttpRes {
   try {
+    const defaultResponseBytes = req.buffer === 1 ? 8 * 1024 * 1024 : req.buffer === 2 ? 32 * 1024 * 1024 : 16 * 1024 * 1024;
+    const configuredResponseBytes = req.maxResponseBytes ?? defaultResponseBytes;
+    const safeBufferBytes = Number.isSafeInteger(configuredResponseBytes) && configuredResponseBytes >= 0 && configuredResponseBytes <= 256 * 1024 * 1024
+      ? configuredResponseBytes
+      : defaultResponseBytes;
+    const phaseTimeoutMs = Number.isSafeInteger(req.timeoutMs) && (req.timeoutMs ?? 0) > 0 ? req.timeoutMs! : DEFAULT_TIMEOUT_MS;
+    const totalTimeoutMs = Number.isSafeInteger(req.totalTimeoutMs) && (req.totalTimeoutMs ?? 0) > 0 ? req.totalTimeoutMs! : phaseTimeoutMs;
     const env = process.versions.electron ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env;
     const r = spawnSync(process.execPath, ['-e', SYNC_HELPER], {
       input: JSON.stringify({
@@ -180,9 +231,12 @@ function spawnSyncRequest(req: HttpRequest): HttpRes {
         headers: req.headers,
         body: req.body,
         redirect: req.redirect,
-        timeoutMs: req.timeoutMs,
+        timeoutMs: phaseTimeoutMs,
+        totalTimeoutMs,
+        maxResponseBytes: configuredResponseBytes,
       }),
-      timeout: (req.timeoutMs ?? DEFAULT_TIMEOUT_MS) + 5000,
+      timeout: totalTimeoutMs + 3000,
+      maxBuffer: Math.ceil(safeBufferBytes * 1.5) + 64 * 1024,
       encoding: 'utf-8',
       windowsHide: true,
       env,
@@ -193,9 +247,9 @@ function spawnSyncRequest(req: HttpRequest): HttpRes {
     if (req.buffer === 1) content = Array.from(buf);
     else if (req.buffer === 2) content = buf.toString('base64');
     else content = decodeBuffer(buf, req.charset, parsed.headers ?? {});
-    return { headers: parsed.headers ?? {}, content };
-  } catch {
-    return errorRes();
+    return { status: parsed.status || 0, headers: parsed.headers ?? {}, content };
+  } catch (error) {
+    return errorRes(error);
   }
 }
 
@@ -213,6 +267,12 @@ function requestSyncIn(host: JsSandboxHostPort, url: string, opts: HttpOptions):
     //   用来区分「某个源在同步请求上拖住了整个软件」还是别的原因。
     const t0 = Date.now();
     const res = spawnSyncRequest(req);
+    const limitError = res.headers['x-winbox-error-code'];
+    if (typeof limitError === 'string') {
+      let host0 = url;
+      try { host0 = new URL(url).host; } catch { /* 原样 */ }
+      host.logger.w(`js-sync HTTP ${limitError}（${req.method} ${host0}）`);
+    }
     const ms = Date.now() - t0;
     if (ms >= 200) {
       let host0 = url;
@@ -220,8 +280,8 @@ function requestSyncIn(host: JsSandboxHostPort, url: string, opts: HttpOptions):
       host.logger.w(`js-sync 同步请求阻塞主进程 ${ms}ms（${req.method} ${host0}）${loopbackHint(url)}`);
     }
     return res;
-  } catch {
-    return errorRes();
+  } catch (error) {
+    return errorRes(error);
   }
 }
 
@@ -257,7 +317,7 @@ export function createHttpGlobals(host: JsSandboxHostPort, siteKey: string): Rec
       return toRes(res);
     } catch (e) {
       logE('请求失败', e);
-      return errorRes();
+      return errorRes(e);
     }
   }
 

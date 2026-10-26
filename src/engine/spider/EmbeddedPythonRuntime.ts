@@ -79,7 +79,7 @@ export class EmbeddedPythonRuntime {
     for (const url of EmbeddedPythonRuntime.PYTHON_EMBED_URLS) {
       try {
         logger?.i?.(`python: 正在准备嵌入式 Python 运行时（${EmbeddedPythonRuntime.PY_VER} embed 约 13MB + 依赖安装；配置就绪后会后台预热）…`);
-        const res = await this.host!.http.request({ url, method: 'get', timeoutMs: 180000, buffer: 2 });
+        const res = await this.host!.http.request({ url, method: 'get', timeoutMs: 180000, totalTimeoutMs: 180000, maxResponseBytes: 64 * 1024 * 1024, buffer: 2 });
         const buf = Buffer.from(Array.isArray(res.content) ? res.content as unknown as number[] : Buffer.from(String(res.content), 'base64'));
         if (buf.length < 1024 * 1024) { lastErr = `下载内容过小(${buf.length}B)`; continue; }
         const digest = createHash('sha256').update(buf).digest('hex');

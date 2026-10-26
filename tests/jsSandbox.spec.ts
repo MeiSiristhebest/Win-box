@@ -173,6 +173,19 @@ describe('JsSpider — 沙箱全局 API', () => {
     expect(await spider.homeContent(true)).toBe('{"list":[1,2,3]}');
   });
 
+  it('同步 req 保留 HTTP 错误状态，蜘蛛可区分 404 与成功响应', async () => {
+    const { spider } = makeSpider(`
+      export default {
+        homeContent() {
+          var res = req('https://mock.test/missing', {});
+          return String(res.status) + ':' + res.content;
+        },
+      };
+    `);
+
+    expect(await spider.homeContent(true)).toBe('404:');
+  });
+
   it('pdfh/pdfa 解析 mock 返回的 HTML', async () => {
     const { spider } = makeSpider(`
       export default {

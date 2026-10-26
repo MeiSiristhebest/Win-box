@@ -4,6 +4,7 @@
 //   · 阶梯行为：用假 HttpClient 验证「逐档升级 → 命中即停」「全失败换协议」「Cookie 档带 Cookie」
 import { describe, it, expect } from 'vitest';
 import type { HttpClient, HttpRequest, HttpResponse } from '../src/shared/types';
+import { HttpRequestError } from '../src/shared/HttpRequestError';
 import {
   sniffBody,
   looksEncrypted,
@@ -128,6 +129,22 @@ describe('disguiseLadder — 档位与顺序', () => {
 });
 
 describe('fetchWithDisguise — 阶梯行为（假 HttpClient）', () => {
+  it('响应超出字节预算时保留稳定错误码并停止重复下载', async () => {
+    const { http, calls } = fakeHttp([
+      new HttpRequestError('HTTP_RESPONSE_TOO_LARGE', '响应超过字节上限（16）'),
+    ]);
+    const result = await fetchWithDisguise(http, 'https://a.b/config.json', {
+      accept: acceptJson,
+      attempts: [{ label: '默认 UA' }, { label: 'okhttp UA', ua: UA_OKHTTP }],
+      maxResponseBytes: 16,
+    });
+
+    expect(result.buf).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(result.tries[0].errorCode).toBe('HTTP_RESPONSE_TOO_LARGE');
+    expect(describeFailures(result.tries)).toContain('HTTP_RESPONSE_TOO_LARGE');
+  });
+
   it('jar Cookie 重试保持同址/同 UA，合并同名更新且不打印 Cookie', async () => {
     const jar = [0x50, 0x4b, 0x03, 0x04];
     const { http, calls } = fakeHttp([

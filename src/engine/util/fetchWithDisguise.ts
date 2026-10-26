@@ -11,6 +11,7 @@
 // 纪律：本模块只做「请求 + 判据」，不解析业务；每次尝试的**响应特征**都回报给调用方
 //      （HTTP 码 / 体积 / 内容类型嗅探 / 前 80 字），用于「为什么导入不了」分档上屏与日志。
 import type { HttpClient } from '../../shared/types';
+import { HttpRequestError, type HttpRequestErrorCode } from '../../shared/HttpRequestError';
 
 /** 实测有效的 TVBox 客户端 UA（不要臆造其它 UA：这是唯一被验证过能过 UA 分流的） */
 export const UA_OKHTTP = 'okhttp/3.12.0';
@@ -168,6 +169,7 @@ export interface TryInfo {
   /** Sanitized final URL when a response redirected to a different host/path. */
   finalUrl?: string;
   ok: boolean;
+  errorCode?: HttpRequestErrorCode;
   status?: number;
   /** 内容嗅探（失败时最有用：HTML 拦截页 / 疑似加密） */
   sniff?: BodySniff;
@@ -272,6 +274,10 @@ export async function fetchWithDisguise(
     timeoutMs?: number;
     /** 整条伪装/换协议阶梯的总期限；到期后不再启动新的尝试。 */
     totalTimeoutMs?: number;
+    /** Per-attempt response body byte budget; defaults are selected by the host HTTP port. */
+    maxResponseBytes?: number;
+    /** Per-attempt response progress in wire bytes. */
+    onProgress?: (loadedBytes: number, totalBytes?: number) => void;
     /**
      * 响应体要哪种形态（透传给 `http.request`）：1 = 字节数组（默认）、2 = base64、0 = 文本。
      * 各调用方保持原有语义（jar 路径历史上用 base64），本模块只负责归一成 Buffer。
@@ -302,13 +308,14 @@ export async function fetchWithDisguise(
   const baseCookie = (): string => cookieFor(url);
   let last: Buffer | undefined;
   let stoppedByDeadline = false;
+  let stoppedByResponseLimit = false;
   let originResponseUrl: string | undefined;
   let altAttempted = false;
   let originAttempted = false;
   let networkFallbackAttempted = false;
 
   const runPriorityFallback = async (): Promise<DisguiseResult | null> => {
-    if (!opts.prioritizeFallbacksOnNetworkError || networkFallbackAttempted || opts.signal?.aborted) return null;
+    if (!opts.prioritizeFallbacksOnNetworkError || networkFallbackAttempted || stoppedByResponseLimit || opts.signal?.aborted) return null;
     const latest = tries[tries.length - 1];
     if (!latest || latest.status !== undefined || /总超时/.test(latest.reason || '')) return null;
     networkFallbackAttempted = true;
@@ -336,7 +343,7 @@ export async function fetchWithDisguise(
     return null;
   };
 
-  const once = async (u: string, a: DisguiseAttempt, cookieRetry = false): Promise<{ buf: Buffer | null; retryCookie?: string; deadlineExceeded?: boolean }> => {
+  const once = async (u: string, a: DisguiseAttempt, cookieRetry = false): Promise<{ buf: Buffer | null; retryCookie?: string; deadlineExceeded?: boolean; terminalFailure?: boolean }> => {
     if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
     const headers: Record<string, string> = {};
     if (a.ua) headers['User-Agent'] = a.ua;
@@ -360,6 +367,8 @@ export async function fetchWithDisguise(
         method: 'get',
         timeoutMs: deadline ? Math.min(timeoutMs, remaining) : timeoutMs,
         ...(deadline ? { totalTimeoutMs: remaining } : {}),
+        ...(opts.maxResponseBytes !== undefined ? { maxResponseBytes: opts.maxResponseBytes } : {}),
+        ...(opts.onProgress ? { onProgress: opts.onProgress } : {}),
         buffer: bufMode,
         // 自动带入的会话 Cookie 仅发回原地址，禁止跟随重定向泄露给另一站。
         redirect: cookieRetry ? 0 : 1,
@@ -404,16 +413,20 @@ export async function fetchWithDisguise(
     } catch (e) {
       if (opts.signal?.aborted) throw opts.signal.reason ?? e;
       const deadlineError = e as Error & { deadlineExceeded?: boolean };
-      const exceeded = !!deadline && (Date.now() >= deadline || deadlineError.deadlineExceeded === true || /请求总超时/.test(deadlineError.message || ''));
+      const requestFailure = e instanceof HttpRequestError ? e : undefined;
+      const exceeded = requestFailure?.code === 'HTTP_TOTAL_TIMEOUT' || (!!deadline && (Date.now() >= deadline || deadlineError.deadlineExceeded === true || /请求总超时/.test(deadlineError.message || '')));
+      const terminalFailure = requestFailure?.code === 'HTTP_RESPONSE_TOO_LARGE' || requestFailure?.code === 'HTTP_INVALID_RESPONSE_LIMIT';
+      if (terminalFailure) stoppedByResponseLimit = true;
       const info: TryInfo = {
         label: a.label,
         url: u,
         ok: false,
+        ...(requestFailure ? { errorCode: requestFailure.code } : {}),
         reason: exceeded ? `请求总超时（${opts.totalTimeoutMs}ms），停止后续尝试` : ((e as Error).message || '请求失败'),
       };
       tries.push(info);
       opts.onTry?.(info);
-      return { buf: null, deadlineExceeded: exceeded };
+      return { buf: null, deadlineExceeded: exceeded, terminalFailure };
     } finally {
       if (timer) clearTimeout(timer);
     }
@@ -433,6 +446,7 @@ export async function fetchWithDisguise(
       stoppedByDeadline = true;
       break;
     }
+    if (r.terminalFailure) break;
     if (r.retryCookie) {
       const retry = { ...a, label: a.label + ' + 会话 Cookie', cookie: r.retryCookie };
       const next = await once(url, retry, true);
@@ -441,14 +455,15 @@ export async function fetchWithDisguise(
         stoppedByDeadline = true;
         break;
       }
+      if (next.terminalFailure) break;
     }
     const fallback = await runPriorityFallback();
     if (fallback) return fallback;
-    if (stoppedByDeadline) break;
+    if (stoppedByDeadline || stoppedByResponseLimit) break;
   }
 
   // 全失败 → 换另一种协议同路径再试一次（仅 okhttp UA，控制时长）
-  if (!stoppedByDeadline && !altAttempted && opts.tryAltProtocol !== false) {
+  if (!stoppedByDeadline && !stoppedByResponseLimit && !altAttempted && opts.tryAltProtocol !== false) {
     if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
     const alt = protocolAltUrl(url);
     if (alt) {
@@ -465,7 +480,7 @@ export async function fetchWithDisguise(
       }
     }
   }
-  if (!stoppedByDeadline && !originAttempted && opts.tryGitHubOrigin) {
+  if (!stoppedByDeadline && !stoppedByResponseLimit && !originAttempted && opts.tryGitHubOrigin) {
     if (opts.signal?.aborted) throw opts.signal.reason ?? new Error('请求已取消');
     const origin = githubOriginUrl(url);
     if (origin) {
@@ -480,7 +495,7 @@ export async function fetchWithDisguise(
         const result = await once(origin, attempt);
         if (last !== previousBody) originResponseUrl = origin;
         if (result.buf) return { buf: result.buf, last, tries, used: attempt, originUrl: origin };
-        if (result.deadlineExceeded) break;
+        if (result.deadlineExceeded || result.terminalFailure) break;
       }
     }
   }
@@ -495,6 +510,7 @@ export function describeFailures(tries: TryInfo[]): string {
   const parts = tries.map((t) => {
     if (t.ok) return `${t.label} 成功`;
     const bits: string[] = [];
+    if (t.errorCode) bits.push(t.errorCode);
     if (t.status) bits.push(`HTTP ${t.status}`);
     if (t.finalUrl) bits.push(`最终跳转到 ${t.finalUrl}`);
     if (t.sniff) {

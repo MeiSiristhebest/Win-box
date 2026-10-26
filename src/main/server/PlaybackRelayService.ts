@@ -8,8 +8,9 @@ import { purifyVodM3u8 } from '../../engine/util/m3u8Purify';
 import { logPlayDiag, redactUrl } from '../util/playDiag';
 import { imagePreludeLen, parseByteRange } from './mediaTransforms';
 import { partialRangeTotal, RangeAggregateStream } from './RangeAggregateStream';
-import { UpstreamHttpClient } from './UpstreamHttpClient';
+import { DEFAULT_HLS_MANIFEST_BYTES, HLS_MANIFEST_TOTAL_TIMEOUT_MS, UpstreamHttpClient } from './UpstreamHttpClient';
 import { decodeProxyHeaders, headerValue, hlsProxyTarget, rewriteM3u8WithHeaders, safeProxyRequestHeaders } from './hlsProxyTransforms';
+import { HttpRequestError } from '../../shared/HttpRequestError';
 
 export interface PlaybackRelayPorts {
   logger: Logger;
@@ -174,7 +175,45 @@ export class PlaybackRelayService {
     const range = req.headers['range'];
     if (range) headers['Range'] = Array.isArray(range) ? range[0] : String(range);
 
-    let resp = await this.openPlayStream(target, headers);
+    const upstreamController = new AbortController();
+    const playRequestStartedAt = Date.now();
+    const cancelUpstream = (): void => {
+      if (!upstreamController.signal.aborted) {
+        upstreamController.abort(new HttpRequestError('HTTP_CANCELLED', '播放器已断开请求'));
+      }
+    };
+    const onResponseClose = (): void => {
+      if (!res.writableFinished) cancelUpstream();
+      cleanupRequestLifetime();
+    };
+    let manifestDeadlineAt: number | undefined;
+    let manifestDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const beginManifestDeadline = (): void => {
+      if (manifestDeadlineAt !== undefined) return;
+      manifestDeadlineAt = playRequestStartedAt + HLS_MANIFEST_TOTAL_TIMEOUT_MS;
+      const remainingMs = Math.max(0, manifestDeadlineAt - Date.now());
+      manifestDeadlineTimer = setTimeout(() => {
+        if (!upstreamController.signal.aborted) {
+          upstreamController.abort(new HttpRequestError('HTTP_TOTAL_TIMEOUT', `HLS 清单总超时（${HLS_MANIFEST_TOTAL_TIMEOUT_MS}ms）`));
+        }
+      }, remainingMs);
+    };
+    const clearManifestDeadline = (): void => {
+      if (manifestDeadlineTimer) clearTimeout(manifestDeadlineTimer);
+      manifestDeadlineTimer = undefined;
+    };
+    const cleanupRequestLifetime = (): void => {
+      clearManifestDeadline();
+      req.removeListener('aborted', cancelUpstream);
+      res.removeListener('close', onResponseClose);
+      res.removeListener('finish', cleanupRequestLifetime);
+    };
+    req.once('aborted', cancelUpstream);
+    res.once('close', onResponseClose);
+    res.once('finish', cleanupRequestLifetime);
+    if (playlistHint || isHlsPlaylistUrl(target)) beginManifestDeadline();
+
+    let resp = await this.openPlayStream(target, headers, upstreamController.signal);
     let bufferedHead: Buffer = Buffer.alloc(0);
     // ★ 2026-09-28：网盘会话过期（UC 非会员尤甚）→ 上游 401/403 往往**同时下发刷新后的会话 Cookie**
     //   （`__puus`）。先把 Set-Cookie 记进会话 jar，再用刷新后的 Cookie 重试一次；仍失败才把失败透传。
@@ -186,7 +225,7 @@ export class PlaybackRelayService {
         cookie = retryCookie;
         headers['Cookie'] = cookie;
         this.logger.w(`proxy /play: 上游 ${resp.status} → 用刷新后的会话 Cookie 重试一次（provider=${ck}）`);
-        resp = await this.openPlayStream(target, headers);
+        resp = await this.openPlayStream(target, headers, upstreamController.signal);
       } else {
         this.logger.w(`proxy /play: 上游 ${resp.status} 且无可刷新的会话 Cookie（provider=${ck}，绑定可能已失效）`);
       }
@@ -209,7 +248,7 @@ export class PlaybackRelayService {
       resp.body.on('error', () => undefined);
       resp.body.destroy();
       this.logger.w('proxy /play: 百度 CDN 31326/104 → 从原 dlink 重新获取跳转一次');
-      resp = await this.openPlayStream(target, headers);
+      resp = await this.openPlayStream(target, headers, upstreamController.signal);
       bufferedHead = Buffer.alloc(0);
     }
     // 上游 Set-Cookie（刷新后的 __puus 等）→ 记入本会话 cookie jar，供后续分片/清单请求使用
@@ -236,7 +275,8 @@ export class PlaybackRelayService {
     try {
       pathIsPlaylist = [target, resp.finalUrl].some(isHlsPlaylistUrl);
     } catch { /* 非法 URL 交给下游 */ }
-    const isPlaylist = resp.status >= 200 && resp.status < 300 && !assetHint && (playlistHint || /mpegurl|m3u8/i.test(ct) || pathIsPlaylist);
+    const explicitlyMedia = /^(?:video|audio)\//i.test(ct) || /^application\/(?:mp4|x-matroska)(?:;|$)/i.test(ct);
+    const isPlaylist = resp.status >= 200 && resp.status < 300 && !assetHint && !explicitlyMedia && (playlistHint || /mpegurl|m3u8/i.test(ct) || pathIsPlaylist);
     if (req.method === 'HEAD') {
       const responseHeaders: Record<string, string> = {
         'Content-Type': isPlaylist ? 'application/vnd.apple.mpegurl' : ct,
@@ -254,7 +294,35 @@ export class PlaybackRelayService {
     }
     if (isPlaylist) {
       // m3u8 清单小，读全文后重写片段地址（每段都走 /play 带回 header/Cookie）
-      const rawText = Buffer.from(await resp.body.arrayBuffer()).toString('utf-8');
+      beginManifestDeadline();
+      let manifest: Buffer;
+      try {
+        manifest = await this.upstream.readBufferedBody(resp.body, {
+          maxResponseBytes: DEFAULT_HLS_MANIFEST_BYTES,
+          totalTimeoutMs: Math.max(1, (manifestDeadlineAt || Date.now()) - Date.now()),
+          signal: upstreamController.signal,
+          contentLength: parseContentLength(resp.headers['content-length']),
+        });
+      } catch (error) {
+        const failure = error instanceof HttpRequestError ? error : undefined;
+        if (res.destroyed || res.writableEnded || failure?.code === 'HTTP_CANCELLED') return;
+        res.writeHead(failure?.code === 'HTTP_TOTAL_TIMEOUT' ? 504 : 502, {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Winbox-Error-Code': failure?.code || 'HTTP_INVALID_MANIFEST',
+        });
+        res.end(failure?.message || '读取 HLS 清单失败');
+        return;
+      }
+      const rawText = manifest.toString('utf-8');
+      if (!/^\uFEFF?\s*#EXTM3U(?:\s|$)/i.test(rawText)) {
+        res.writeHead(502, {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Winbox-Error-Code': 'HTTP_INVALID_MANIFEST',
+        });
+        res.end('上游响应不是有效的 HLS 清单');
+        return;
+      }
+      clearManifestDeadline();
       const base = resp.finalUrl || target; // ★ 302/重定向后的真实地址
       // ★ 2026-09-29 m3u8 去广告（TVBox M3u8.purify 移植；默认关，见 player-settings.json）
       //   口径照抄 TVBox VodController.java:1962-1974：只对**点播**清单（含 ENDLIST）做，
@@ -277,6 +345,9 @@ export class PlaybackRelayService {
       res.end(body);
       return;
     }
+    // A playlist hint can point to an actual media response. Once headers identify
+    // video/audio, release the manifest deadline and keep media fully streaming.
+    clearManifestDeadline();
     // ★ 真实网速：统计本 /play 实际写回播放器的字节（透传 + 聚合两路都涵盖），
     //   经 onSpeed 推送渲染层 —— 比渲染层 Resource Timing 可靠（媒体 timing 常拿不到字节）。
     const out = { bytes: 0, prev: 0, prevT: 0 };
@@ -420,8 +491,8 @@ export class PlaybackRelayService {
   }
 
   /** 百度播放器读取 MP4 尾部索引/seek 时复用已成功的 CDN，避免每个 Range 重新跳转到拒绝访问节点。 */
-  private async openPlayStream(target: string, headers: Record<string, string>) {
-    if (!isBaiduTarget(target)) return this.upstream.openStream(target, headers);
+  private async openPlayStream(target: string, headers: Record<string, string>, signal?: AbortSignal) {
+    if (!isBaiduTarget(target)) return this.upstream.openStream(target, headers, { signal });
     const authHeaders = Object.entries(headers).filter(([name]) => name.toLowerCase() !== 'range')
       .map(([name, value]) => [name.toLowerCase(), value]).sort(([a], [b]) => a.localeCompare(b));
     const key = createHash('sha256').update(JSON.stringify([target, authHeaders])).digest('hex');
@@ -430,7 +501,7 @@ export class PlaybackRelayService {
     const cached = this.baiduPlayNodes.get(key);
     let resp: Awaited<ReturnType<UpstreamHttpClient['openStream']>> | undefined;
     if (cached) {
-      try { resp = await this.upstream.openStream(cached.url, headers); }
+      try { resp = await this.upstream.openStream(cached.url, headers, { signal }); }
       catch { this.baiduPlayNodes.delete(key); }
       if (resp && [401, 403, 404, 410].includes(resp.status)) {
         resp.body.on('error', () => undefined);
@@ -439,7 +510,7 @@ export class PlaybackRelayService {
         resp = undefined;
       }
     }
-    resp ??= await this.upstream.openStream(target, headers);
+    resp ??= await this.upstream.openStream(target, headers, { signal });
     if ((resp.status === 200 || resp.status === 206) && isBaiduCdn(resp.finalUrl)) {
       if (!this.baiduPlayNodes.has(key) && this.baiduPlayNodes.size >= 32) {
         this.baiduPlayNodes.delete(this.baiduPlayNodes.keys().next().value!);
@@ -508,6 +579,13 @@ export function safeResponseHeader(name: string, raw: unknown): string | undefin
   } catch {
     return undefined;
   }
+}
+
+function parseContentLength(raw: unknown): number | undefined {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const length = Number(value);
+  return Number.isSafeInteger(length) && length >= 0 ? length : undefined;
 }
 
 function isBaiduTarget(target: string): boolean {

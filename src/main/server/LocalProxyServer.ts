@@ -11,6 +11,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { request as undiciRequest, Agent } from 'undici';
 import { decodeUrlSafe } from '../../engine/util/base64';
 import type { Logger } from '../../shared/types';
+import { HttpRequestError } from '../../shared/HttpRequestError';
 import { LOCAL_PROXY_BASE, LOCAL_PROXY_PORT } from '../../shared/constants';
 import { userDataDir, cacheDir } from '../util/paths';
 import { logPlayDiag, redactUrl } from '../util/playDiag';
@@ -334,7 +335,7 @@ export class LocalProxyServer {
         return await this.spiderJvmProxy(u, req, res);
       }
       if (u.pathname === '/proxy' && u.searchParams.get('do') === 'live') {
-        return await this.liveProxy(u, res);
+        return await this.liveProxy(u, req, res);
       }
       // TVBox/CatVod 的点播清单中继：`do=m3u8&url=...&headers=...`。
       // 缓存 JAR 的 DC.B：URL 经 URLEncoder，headers 是 Base64(NO_WRAP)
@@ -375,13 +376,21 @@ export class LocalProxyServer {
       this.logger.e('proxy handle error', e);
       if (res.destroyed || res.writableEnded) return;
       if (res.headersSent) { res.destroy(); return; }
+      if (e instanceof HttpRequestError) {
+        res.writeHead(e.code === 'HTTP_TOTAL_TIMEOUT' ? 504 : 502, {
+          'Content-Type': 'text/plain; charset=utf-8',
+          'X-Winbox-Error-Code': e.code,
+        });
+        res.end(e.message);
+        return;
+      }
       res.writeHead(502, { 'Content-Type': 'text/plain' });
       res.end('proxy error');
     }
   }
 
   /** do=live：ext 是 base64urlsafe 的真实订阅 URL，抓取后原样返回 */
-  private async liveProxy(u: URL, res: ServerResponse): Promise<void> {
+  private async liveProxy(u: URL, req: IncomingMessage, res: ServerResponse): Promise<void> {
     const ext = u.searchParams.get('ext') || '';
     if (!ext) {
       res.writeHead(400, { 'Content-Type': 'text/plain' });
@@ -391,9 +400,21 @@ export class LocalProxyServer {
     if (!/^https?:\/\//.test(ext)) {
       try { targetUrl = decodeUrlSafe(ext); } catch { /* 当原串 */ }
     }
-    const buf = await this.upstream.fetchWithRedirect(targetUrl, {});
-    res.writeHead(buf.status, { 'Content-Type': buf.contentType || 'text/plain; charset=utf-8' });
-    res.end(buf.body);
+    const controller = new AbortController();
+    const abortOnClose = (): void => {
+      if (!res.writableEnded) controller.abort(new HttpRequestError('HTTP_CANCELLED', '客户端已关闭连接'));
+    };
+    res.once('close', abortOnClose);
+    req.once('aborted', abortOnClose);
+    try {
+      const buf = await this.upstream.fetchWithRedirect(targetUrl, {}, { signal: controller.signal });
+      if (res.destroyed || res.writableEnded) return;
+      res.writeHead(buf.status, { 'Content-Type': buf.contentType || 'text/plain; charset=utf-8' });
+      res.end(buf.body);
+    } finally {
+      res.removeListener('close', abortOnClose);
+      req.removeListener('aborted', abortOnClose);
+    }
   }
 
   /**
