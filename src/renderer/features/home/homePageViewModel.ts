@@ -24,6 +24,7 @@ export type HomeBrowseResultsModel = {
   error: string;
   hasSources: boolean;
   listStyle: boolean;
+  cardStyle: boolean;
   presetCategories: string[];
   waterfall: boolean;
   tid: string;

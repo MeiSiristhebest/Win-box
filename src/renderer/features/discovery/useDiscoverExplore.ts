@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { usePageActive } from '../../lib/keepAlive';
 import { ALL_TAG, BUILTIN_VOCAB, DISCOVER_MEDIA, type DiscoverMediaId, type ExploreVocabulary } from '../../../shared/discover';
 import type { DiscoverItem } from '../../../shared/types';
-import type { CascadeLevel, CascadeOption } from '../../components/CascadeBar';
+import type { CascadeLevel, CascadeOption } from '../../components/CascadeBarView';
 import { DISCOVER_BATCH_SIZE, DISCOVER_MAX_ITEMS, loadDiscoverExploreBatch } from './application/discoverExploreUseCase';
 import type { DiscoverExplorePort } from './application/discoveryPorts';
 

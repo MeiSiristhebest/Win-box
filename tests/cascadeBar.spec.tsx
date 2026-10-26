@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import CascadeBar from '../src/renderer/components/CascadeBar';
+import CascadeBar from '../src/renderer/components/CascadeBarView';
 
 describe('cascade selection groups', () => {
   it('names each option group from its visible level label and exposes the selected option', () => {
@@ -25,5 +25,18 @@ describe('cascade selection groups', () => {
     expect(group.tagName).toBe('FIELDSET');
     expect(group.contains(selected)).toBe(true);
     expect(selected.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('uses the injected card style without reading a global theme store', () => {
+    const { container } = render(
+      <CascadeBar
+        cardStyle
+        levels={[{ key: 'genre', label: '类型', value: '', options: [{ id: '', label: '全部' }] }]}
+        onPick={() => undefined}
+      />,
+    );
+
+    expect(container.querySelector('.db-filters')).not.toBeNull();
+    expect(container.querySelector('.db-filter-row')).not.toBeNull();
   });
 });

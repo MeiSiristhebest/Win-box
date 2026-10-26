@@ -1,4 +1,4 @@
-import CascadeBar from '../../components/CascadeBar';
+import CascadeBar from '../../components/CascadeBarView';
 import { Button } from '../../components/ui/Button';
 import type { HomeBrowseResultsModel } from './homePageViewModel';
 import { HomeVodCard } from './HomeVodCard';
@@ -14,6 +14,7 @@ export function HomeBrowseResults({
   error,
   hasSources,
   listStyle,
+  cardStyle,
   presetCategories,
   waterfall,
   tid,
@@ -45,7 +46,7 @@ export function HomeBrowseResults({
 
       {classes.length > 0 && !error && (
         <div className="row home-filter-row">
-          <CascadeBar levels={classLevels.slice(0, 1)} onPick={onCascadePick} />
+          <CascadeBar levels={classLevels.slice(0, 1)} onPick={onCascadePick} cardStyle={cardStyle} />
           <button
             type="button"
             className={`home-filter-btn${filtersOpen ? ' active' : ''}`}
@@ -64,7 +65,7 @@ export function HomeBrowseResults({
 
       {classes.length > 0 && !error && filtersOpen && classLevels.length > 1 && (
         <div className="home-filters-more">
-          <CascadeBar levels={classLevels.slice(1)} onPick={onCascadePick} />
+          <CascadeBar levels={classLevels.slice(1)} onPick={onCascadePick} cardStyle={cardStyle} />
         </div>
       )}
 

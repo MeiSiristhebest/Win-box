@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { HomePageView } from '../features/home/HomePageView';
 import { useHomePagePresenter } from '../features/home/useHomePagePresenter';
+import { useSkinLayout } from '../features/theme/adapters/useThemeStore';
 import { createHomeSearchNavigationAdapter } from '../features/home/adapters/homeSearchNavigationAdapter';
 import {
   homeBrowseAdapter,
@@ -36,11 +37,13 @@ export default function HomePage({ onOpenDetail }: HomePageProps) {
   );
   const filterPanel = useHomeFilterPanelPreference();
   const waterfall = useHomeWaterfallPreference();
+  const cardStyle = useSkinLayout().filterStyle === 'card';
   const model = useHomePagePresenter({
     onOpenDetail,
     route: { pathname, searchParams, navigate },
     filterPanel,
     waterfallMode: waterfall,
+    cardStyle,
     ports: {
       browse: homeBrowseAdapter,
       drive: homeDriveAdapter,

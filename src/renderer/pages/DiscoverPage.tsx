@@ -12,14 +12,14 @@ import PluginSlot from '../components/PluginSlot';
 import { useNavigate } from 'react-router-dom';
 import { discoverDetailRoute } from '../../shared/discoverDetail';
 import type { DiscoverItem } from '../../shared/types';
-import { useTheme } from '../features/theme/adapters/useThemeStore';
+import { useSkinLayout, useTheme } from '../features/theme/adapters/useThemeStore';
 import { discoverPresentationView } from '../lib/presentationRegistry';
 import DiscoverShelf from '../components/DiscoverShelf';
 import { Icon } from '../components/ui/Icon';
 import { useCovers } from '../features/covers/useCovers';
 import { useDiscoverController } from '../features/discovery/useDiscoverController';
 import { useDiscoverExplore } from '../features/discovery/useDiscoverExplore';
-import CascadeBar from '../components/CascadeBar';
+import CascadeBar from '../components/CascadeBarView';
 import { Tabs } from '../components/ui/Tabs';
 import { discoverExploreAdapter, discoverLandingAdapter } from '../features/discovery/adapters/discoveryAdapters';
 
@@ -29,6 +29,7 @@ export default function DiscoverPage() {
   const contentRef = useRef<HTMLDivElement>(null);
   const tailRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
+  const cardFilterStyle = useSkinLayout().filterStyle === 'card';
   const view = discoverPresentationView(theme);
   const isPosterWall = view.mode === 'poster-wall';
   const { sections, err, loading, retry } = useDiscoverController(discoverLandingAdapter);
@@ -74,7 +75,7 @@ export default function DiscoverPage() {
           />
         </div>
         <div id="discover-panel" className="discover-results-panel" role="tabpanel" aria-labelledby={`discover-tab-${selectedMediaTab}`}>
-        {media !== null && <div className="discover-filter-panel"><CascadeBar levels={levels.slice(1)} onPick={explorePick} /></div>}
+        {media !== null && <div className="discover-filter-panel"><CascadeBar levels={levels.slice(1)} onPick={explorePick} cardStyle={cardFilterStyle} /></div>}
         <PluginSlot slot="discover" />
         {genreError && gItems.length > 0 && gErrorPhase === 'refresh' && <div className="board-error" role="alert"><span>{genreError}</span><button type="button" onClick={gRetry}>重试刷新</button></div>}
         {err && !!sections?.length && <output className="banner">{err}，正在保留已加载的推荐。</output>}

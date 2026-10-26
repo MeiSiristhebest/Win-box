@@ -1,4 +1,4 @@
-// src/renderer/components/CascadeBar.tsx
+// src/renderer/components/CascadeBarView.tsx
 // 「级联分类条」—— 逐级点击才展开下一级（★ 2026-10-15，用户要求）。
 //
 // 交互契约：
@@ -6,9 +6,8 @@
 //   · `value === null` = 该级尚未选（不显示任何 chip 高亮）；`value === ''` = 已选「全部」；
 //   · 点某个 chip → 回调 `onPick(该级 key, 选项 id)`；**是否允许再点取消由调用方决定**（组件只管派发）。
 //
-// 皮肤：豆风走已有 `.db-filters` 组（与顶栏胶囊导航同观感）；其余皮肤走基类 `.cascade*`（global.css）。
+// 外观由组合层通过 `cardStyle` 注入；本视图不读取全局主题状态。
 import { useId } from 'react';
-import { useSkinLayout } from '../features/theme/adapters/useThemeStore';
 import { SelectionButton } from './ui/SelectionButton';
 
 export interface CascadeOption {
@@ -29,28 +28,28 @@ export interface CascadeLevel {
   pendingLabel?: string;
 }
 
-export default function CascadeBar({
+export default function CascadeBarView({
   levels,
   onPick,
+  cardStyle = false,
   style,
 }: {
   levels: CascadeLevel[];
   onPick: (levelKey: string, id: string) => void;
+  cardStyle?: boolean;
   style?: React.CSSProperties;
 }) {
-  /** 筛选条形态由皮肤的 layout 声明决定（`card` = 卡片容器，缺省 = 朴素行） */
-  const db = useSkinLayout().filterStyle === 'card';
   const groupId = useId();
   return (
-    <div className={db ? 'db-filters cascade' : 'cascade'} style={style}>
+    <div className={cardStyle ? 'db-filters cascade' : 'cascade'} style={style}>
       {levels.map((lv, index) => {
         const opts: CascadeOption[] =
           lv.allLabel !== undefined ? [{ id: '', label: lv.allLabel }, ...lv.options] : lv.options;
         const chosen = lv.value !== null && lv.value !== undefined;
         const labelId = `${groupId}-level-${index}`;
         return (
-          <fieldset key={lv.key} className={db ? 'db-filter-row' : 'cascade-row'}>
-            <legend id={labelId} className={db ? 'db-filter-label' : 'cascade-label'}>{lv.label}</legend>
+          <fieldset key={lv.key} className={cardStyle ? 'db-filter-row' : 'cascade-row'}>
+            <legend id={labelId} className={cardStyle ? 'db-filter-label' : 'cascade-label'}>{lv.label}</legend>
             {opts.length === 0 ? (
               <span className="muted" style={{ fontSize: 12 }}>{lv.pendingLabel || '加载中…'}</span>
             ) : (

@@ -40,9 +40,10 @@ export type HomePagePresenterOptions = {
   route: { pathname: string; searchParams: URLSearchParams; navigate: (path: string) => void };
   filterPanel: { isOpen: boolean; toggle: () => void };
   waterfallMode: boolean;
+  cardStyle: boolean;
   ports: HomePagePresenterPorts;
 };
-export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfallMode, ports }: HomePagePresenterOptions): HomePageViewModel {
+export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfallMode, cardStyle, ports }: HomePagePresenterOptions): HomePageViewModel {
   const pageActive = usePageActive();
   /**
    * ★ 2026-09-24（用户定稿）：点播页**不放源内搜索与换源入口** ——
@@ -352,6 +353,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
       error: browseError,
       hasSources: sites.length > 0,
       listStyle,
+      cardStyle,
       presetCategories: siteCats,
       onImageError: handleImgErr,
       onOpen: itemNavigation.openBrowseItem,
