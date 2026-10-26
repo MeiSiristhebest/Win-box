@@ -1,0 +1,72 @@
+{
+  "recordedAt": "2026-10-26",
+  "baselineBranch": "codex/architecture-cleanup-20261025",
+  "baselineTip": "7469c61e87c0a8a4f8042afd00787ef10ad6f741",
+  "kind": "known-failure audit probes; production is unchanged",
+  "vitest": {
+    "command": "pnpm exec vitest run --config architecture-audit/evidence/vitest.config.mjs",
+    "files": 3,
+    "tests": 10,
+    "failed": 10,
+    "exitCode": 1,
+    "diagnostics": {
+      "AUDIT_CRASH_QUEUE": [
+        "rejected",
+        "rejected",
+        "pending"
+      ],
+      "AUDIT_DISPOSE": "pending",
+      "AUDIT_DESTROY_SPAWNS": 3,
+      "AUDIT_PROCESS_DISPOSE": {
+        "count": 3,
+        "kills": [
+          1,
+          0,
+          1
+        ]
+      },
+      "AUDIT_CAP_FALLBACK": {
+        "cap": 3,
+        "pooledProcesses": 3,
+        "oneShots": 1,
+        "overflow": {
+          "ok": false,
+          "data": ""
+        }
+      },
+      "AUDIT_RELAY_MIDSTREAM": "pending",
+      "AUDIT_SAVE_ACK": {
+        "threw": false,
+        "memoryCount": 1
+      },
+      "AUDIT_POST_COMMIT": {
+        "threw": true,
+        "durable": {
+          "audit": "after"
+        },
+        "revision": 1
+      },
+      "AUDIT_PLUGIN_UPDATE": {
+        "created": 1,
+        "disposed": 0
+      },
+      "AUDIT_PLUGIN_RETRY": {
+        "created": 1,
+        "disposed": 0
+      }
+    }
+  },
+  "python": {
+    "command": "python architecture-audit/evidence/python-capabilities.probe.py",
+    "tests": 2,
+    "failed": 2,
+    "exitCode": 1,
+    "diagnostics": {
+      "inheritedBaseSearch": {
+        "list": [],
+        "page": 1
+      },
+      "initTypeError": "not raised"
+    }
+  }
+}
