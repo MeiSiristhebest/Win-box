@@ -2,6 +2,7 @@
 // ★ 聚合搜索汇总：来源标注 + 状态统计。纯 TS、零 Node 依赖（renderer 可复用/可单测）。
 // 不去重：各源原始命中全部保留并标注来源源名/源 key（用户要求不合并，明确每条的出处）。
 import type { AggVodItem, SearchAllReport, SearchPerSource, SourceBean, VodItem } from '../../shared/types';
+import { sourceIdentityKey } from '../../shared/sourceIdentity';
 
 /**
  * ★ 2026-09-25：**该源是否参与聚合搜索** —— 对齐上游语义：`searchable` **非 0 即参与**。
@@ -29,11 +30,6 @@ export interface AggSearchInput {
   items?: VodItem[]; // status=ok 时的原始命中
   error?: string;
   ms?: number;
-}
-
-/** Stable identity for a source when result keys may repeat between profiles. */
-export function sourceIdentityKey(profileId: string | undefined, key: string): string {
-  return JSON.stringify([profileId ?? '', key]);
 }
 
 /**

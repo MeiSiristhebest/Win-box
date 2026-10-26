@@ -1,4 +1,5 @@
-import type { SearchFilterOption, SearchMatchMode } from '../../../engine/vod/searchRelevance';
+import type { SearchFilterOption } from './application/searchResultProjection';
+import type { SearchMatchMode } from '../../../shared/searchTitleMatching';
 import { SelectField } from '../../components/ui/Field';
 import './search-results.css';
 

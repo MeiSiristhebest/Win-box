@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { movieSearchTitle } from '../../../engine/vod/searchRelevance';
+import { movieSearchTitle } from '../../../shared/searchTitleMatching';
 import type { MovieSourcesSearchPort } from './application/movieSourcesPorts';
 import { searchMovieSources, type MovieSourcesProgress, type MovieSourcesProgressUpdate } from './application/movieSourcesUseCases';
 

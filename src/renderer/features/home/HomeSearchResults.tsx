@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import type { AggVodItem, SearchAllReport } from '../../../shared/types';
-import { sourceIdentityKey } from '../../../engine/vod/aggSearch';
+import { sourceIdentityKey } from '../../../shared/sourceIdentity';
 import { SearchResultFilters } from '../search/SearchResultFilters';
 import { HomeMediaCard } from './HomeMediaCard';
 import { formatSearchCacheTime } from './homePageModel';

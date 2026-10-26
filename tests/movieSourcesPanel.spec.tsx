@@ -5,7 +5,8 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MovieSourcesPanel } from '../src/renderer/features/detail/MovieSourcesPanel';
 import { client } from '../src/renderer/api/client';
-import { mergeSearchResults, sourceIdentityKey } from '../src/engine/vod/aggSearch';
+import { mergeSearchResults } from '../src/engine/vod/aggSearch';
+import { sourceIdentityKey } from '../src/shared/sourceIdentity';
 import { profileConfig } from './fixtures/profileSwitchData';
 import type { VodItem } from '../src/shared/types';
 

@@ -1,8 +1,9 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { AggVodItem } from '../../../shared/types';
-import { sourceIdentityKey } from '../../../engine/vod/aggSearch';
-import { movieSearchTitle, searchResultView, searchTitleScore, type SearchMatchMode } from '../../../engine/vod/searchRelevance';
+import { sourceIdentityKey } from '../../../shared/sourceIdentity';
+import { movieSearchTitle, searchTitleScore, type SearchMatchMode } from '../../../shared/searchTitleMatching';
+import { projectSearchResults } from '../search/application/searchResultProjection';
 import { rankSourcesWithComparison, type SourceComparisonScore } from '../../../engine/vod/sourceComparison';
 import { openDetailRoute } from '../../lib/detailWin';
 import { useCovers } from '../covers/useCovers';
@@ -26,7 +27,7 @@ export function MovieSourcesPanel({ title: name, poster = '' }: { title: string;
   const [folderLoading, setFolderLoading] = useState(false);
   const [showStates, setShowStates] = useState(false);
   const folderRequest = useRef(0);
-  const view = useMemo(() => searchResultView(report?.items ?? [], query, { mode, profileId, sourceId }), [report, query, mode, profileId, sourceId]);
+  const view = useMemo(() => projectSearchResults(report?.items ?? [], query, { mode, profileId, sourceId }), [report, query, mode, profileId, sourceId]);
   const comparisonMap = useMemo(() => {
     const ranked = rankSourcesWithComparison(view.items, report?.perSource ?? []);
     const map = new Map<string, SourceComparisonScore>();

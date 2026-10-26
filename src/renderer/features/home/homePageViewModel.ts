@@ -1,4 +1,5 @@
-import type { SearchFilterOption, SearchMatchMode } from '../../../engine/vod/searchRelevance';
+import type { SearchFilterOption } from '../search/application/searchResultProjection';
+import type { SearchMatchMode } from '../../../shared/searchTitleMatching';
 import type { AggVodItem, SearchAllReport, SourceBean, VodItem } from '../../../shared/types';
 import type { HomeSortClassView } from './application/homePorts';
 import type { HomeCascadeLevel } from './application/homeBrowseModel';

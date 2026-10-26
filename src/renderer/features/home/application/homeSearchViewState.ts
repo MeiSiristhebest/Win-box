@@ -1,5 +1,5 @@
 import type { AggVodItem, SearchAllReport } from '../../../../shared/types';
-import type { SearchMatchMode } from '../../../../engine/vod/searchRelevance';
+import type { SearchMatchMode } from '../../../../shared/searchTitleMatching';
 import type { HomeSearchMem } from './HomeSearchMemory';
 import type { ExitHomeSearchFolderResult, HomeSearchFolder } from './homeSearchFolder';
 

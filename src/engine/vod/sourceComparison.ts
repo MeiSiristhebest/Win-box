@@ -1,7 +1,7 @@
 // src/engine/vod/sourceComparison.ts
 // ★ 2026-10-25 冲刺 3（用户要求）：同名源比价决策 —— 测速、清晰度、集数完整度加权评分与「最佳推荐源」标定。
 import type { AggVodItem, SearchPerSource } from '../../shared/types';
-import { sourceIdentityKey } from './aggSearch';
+import { sourceIdentityKey } from '../../shared/sourceIdentity';
 
 export interface SourceComparisonScore {
   clarityTag?: string;

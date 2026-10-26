@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { movieSearchTitle, searchResultView, searchTitleScore } from '../src/engine/vod/searchRelevance';
-import { sourceIdentityKey } from '../src/engine/vod/aggSearch';
+import { movieSearchTitle, searchTitleScore } from '../src/shared/searchTitleMatching';
+import { sourceIdentityKey } from '../src/shared/sourceIdentity';
+import { projectSearchResults } from '../src/renderer/features/search/application/searchResultProjection';
 import type { AggVodItem } from '../src/shared/types';
 
 const item = (name: string, profileId = 'A', key = 'same', id = name): AggVodItem => ({ id, name, pic: '', remarks: '', year: '', area: '', type: '', sourceKey: key, sourceRef: { profileId, key }, sourceName: key, sourceProfileName: profileId, sameFromOtherSources: 0 });
@@ -49,7 +50,7 @@ describe('movie search relevance', () => {
 
   it('filters by profile and source identity without merging same-key sources', () => {
     const items = [item('嫁金钗', 'A'), item('火影忍者', 'A'), item('嫁金钗', 'B')];
-    const view = searchResultView(items, '嫁金钗', { mode: 'related', profileId: 'B', sourceId: sourceIdentityKey('B', 'same') });
+    const view = projectSearchResults(items, '嫁金钗', { mode: 'related', profileId: 'B', sourceId: sourceIdentityKey('B', 'same') });
     expect(view.items).toEqual([items[2]]);
     expect(view.hiddenCount).toBe(1);
     expect(view.profiles.map(p => [p.id, p.count, p.rawCount])).toEqual([['A', 1, 2], ['B', 1, 1]]);
@@ -59,18 +60,18 @@ describe('movie search relevance', () => {
   it('keeps all returned items available for actor, description and alias searches', () => {
     const items = [item('嫁金钗'), item('火影忍者')];
     const before = JSON.stringify(items);
-    expect(searchResultView(items, '嫁金钗', { mode: 'all' }).items).toHaveLength(2);
-    expect(searchResultView(items, '嫁金钗', { mode: 'related' }).items).toHaveLength(1);
+    expect(projectSearchResults(items, '嫁金钗', { mode: 'all' }).items).toHaveLength(2);
+    expect(projectSearchResults(items, '嫁金钗', { mode: 'related' }).items).toHaveLength(1);
     expect(JSON.stringify(items)).toBe(before);
   });
 
   it('retains provider folders whose labels do not contain the movie title', () => {
     const folder = { ...item('夸克（92个）'), tag: 'folder' as const };
-    expect(searchResultView([folder], '嫁金钗', { mode: 'related' }).items).toEqual([folder]);
+    expect(projectSearchResults([folder], '嫁金钗', { mode: 'related' }).items).toEqual([folder]);
   });
 
   it('shows full-title matches first and spreads equal matches across sources', () => {
     const items = [item('《嫁金钗》第1集', 'A', 'clips', 'clip'), item('嫁金钗', 'A', 'a', 'a1'), item('嫁金钗', 'A', 'a', 'a2'), item('嫁金钗', 'B', 'b', 'b1')];
-    expect(searchResultView(items, '嫁金钗', { mode: 'related' }).items.map(i => i.id)).toEqual(['a1', 'b1', 'a2', 'clip']);
+    expect(projectSearchResults(items, '嫁金钗', { mode: 'related' }).items.map(i => i.id)).toEqual(['a1', 'b1', 'a2', 'clip']);
   });
 });

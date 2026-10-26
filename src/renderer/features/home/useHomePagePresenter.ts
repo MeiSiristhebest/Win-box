@@ -1,7 +1,8 @@
 import { useCallback, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { SourceBean, VodItem, AggVodItem } from '../../../shared/types';
-import { sourceIdentityKey } from '../../../engine/vod/aggSearch';
-import { movieSearchTitle, searchResultView } from '../../../engine/vod/searchRelevance';
+import { sourceIdentityKey } from '../../../shared/sourceIdentity';
+import { movieSearchTitle } from '../../../shared/searchTitleMatching';
+import { projectSearchResults } from '../search/application/searchResultProjection';
 import { usePageActive } from '../../lib/keepAlive';
 import { useCovers } from '../covers/useCovers';
 import type { HomeCascadeLevel } from './application/homeBrowseModel';
@@ -172,7 +173,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
   });
   const { applySearchMem, setProfileSearchScope, doSearch, openFolder, exitFolder, exitSearch } = search;
   const resultProfileId = activeProfileId;
-  const resultView = useMemo(() => searchResultView(agg?.items ?? [], wd, { mode: aggMatchMode, profileId: aggProfileFilter, sourceId: aggSrc, defaultProfileId: resultProfileId }), [agg, wd, aggMatchMode, aggProfileFilter, aggSrc, resultProfileId]);
+  const resultView = useMemo(() => projectSearchResults(agg?.items ?? [], wd, { mode: aggMatchMode, profileId: aggProfileFilter, sourceId: aggSrc, defaultProfileId: resultProfileId }), [agg, wd, aggMatchMode, aggProfileFilter, aggSrc, resultProfileId]);
   const aggView = useMemo(() => visibleHomeSearchItems(homeSearchState, resultView.items), [homeSearchState, resultView.items]);
   const coverItem = useCallback((it: VodItem, sourceKey = key) => ({
     id: `${sourceKey}\u0000${it.id}`, name: movieSearchTitle(it.name || ''),
