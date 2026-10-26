@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { reduceSkipSegmentsDraft, type SkipSegmentsDraft, type SkipSegmentsDraftCommand } from './application/skipSegmentsDraft';
 import { clampSeconds, putSkipRecord, resolveSkip, type SkipSeg } from './application/skipSegments';
 import type { SkipSegmentsControllerPorts, SkipSegmentsTimerHandle } from './application/skipSegmentsControllerPorts';
@@ -40,6 +40,13 @@ export function useSkipSegmentsController({
   const outroFiredRef = useRef(false);
   const toastTimerRef = useRef<SkipSegmentsTimerHandle | null>(null);
   const menuElementRef = useRef<HTMLDivElement>(null);
+  const playbackMarkers = useMemo(() => ({
+    getSkipSegments: () => ({ ...segmentsRef.current }),
+    wasIntroSkipHandled: () => introFiredRef.current,
+    markIntroSkipHandled: () => { introFiredRef.current = true; },
+    wasOutroSkipHandled: () => outroFiredRef.current,
+    markOutroSkipHandled: () => { outroFiredRef.current = true; },
+  }), []);
 
   const dispatchDraftCommand = useCallback((command: SkipSegmentsDraftCommand) => {
     setDraft((current) => reduceSkipSegmentsDraft(current, command));
@@ -140,9 +147,7 @@ export function useSkipSegmentsController({
     toast,
     draft,
     dispatchDraftCommand,
-    segmentsRef,
-    introFiredRef,
-    outroFiredRef,
+    playbackMarkers,
     menuElementRef,
     usable,
     showToast,

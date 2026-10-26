@@ -37,8 +37,6 @@ export interface Html5PlaybackSessionOptions {
   bossActiveRef: MutableRefObject<boolean>;
   sessionState: PlaybackSessionStatePort;
   handoff: PlaybackHandoffPort;
-  introFiredRef: MutableRefObject<boolean>;
-  outroFiredRef: MutableRefObject<boolean>;
   updatePlaybackStatus(update: PlayerPlaybackPresentationUpdate): void;
   clearAuto(): void;
   revealControls(): void;
@@ -77,8 +75,6 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
     bossActiveRef,
     sessionState,
     handoff,
-    introFiredRef,
-    outroFiredRef,
     updatePlaybackStatus,
     clearAuto,
     revealControls,
@@ -147,8 +143,14 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
       },
       getSegments: () => sessionState.getSkipSegments(),
       isLive: () => sessionState.getLivePlaybackKind(),
-      introFired: introFiredRef,
-      outroFired: outroFiredRef,
+      introFired: {
+        wasHandled: sessionState.wasIntroSkipHandled,
+        markHandled: sessionState.markIntroSkipHandled,
+      },
+      outroFired: {
+        wasHandled: sessionState.wasOutroSkipHandled,
+        markHandled: sessionState.markOutroSkipHandled,
+      },
       setCurrentTime: (value) => updatePlaybackStatus({ currentTime: value }),
       savePosition: (time) => positionMemory.save(url, time, playbackSource),
       canAdvance,

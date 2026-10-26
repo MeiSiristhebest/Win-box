@@ -307,9 +307,7 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
     toast: skipToast,
     draft: skipDraft,
     dispatchDraftCommand: dispatchSkipDraftCommand,
-    segmentsRef: skipSegRef,
-    introFiredRef: skipInFiredRef,
-    outroFiredRef: skipOutFiredRef,
+    playbackMarkers: skipPlaybackMarkers,
     menuElementRef: skipMenuRef,
     usable: skipUsable,
     showToast: showSkipToast,
@@ -327,7 +325,10 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
     isLive,
   }, dependencies.skipSegments);
   // oxlint-disable-next-line react/refs -- The application port reads the latest skip configuration only when a session requests it.
-  const playbackSessionState = useMemo(() => createPlaybackSessionStatePort(() => skipSegRef.current), [skipSegRef]);
+  const playbackSessionState = useMemo(
+    () => createPlaybackSessionStatePort(skipPlaybackMarkers.getSkipSegments, skipPlaybackMarkers),
+    [skipPlaybackMarkers],
+  );
   const { pluginKeys } = usePlayerPluginCommands(showSkipToast);
   const contextMenu = usePlayerContextMenu(mini, url, props.skipEpisodeKey, showSkipToast, dependencies.clipboard);
   // ---- 实时网速（加载/缓冲时显示；不加载时不显示）----
@@ -559,8 +560,6 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
       bossActiveRef,
       sessionState: playbackSessionState,
       handoff: playbackHandoff,
-      introFiredRef: skipInFiredRef,
-      outroFiredRef: skipOutFiredRef,
       updatePlaybackStatus,
       clearAuto,
       revealControls: poke,

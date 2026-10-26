@@ -1026,6 +1026,17 @@ describe('architecture dependency rules', () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('ConfigurationSnapshotPort');
   });
+
+  it('keeps per-episode skip marker refs behind the playback session state port', () => {
+    const result = inspect(
+      'renderer/features/playback/useHtml5PlaybackSession.ts',
+      'introFiredRef: MutableRefObject<boolean>; outroFiredRef: MutableRefObject<boolean>;',
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('must use PlaybackSessionStatePort for per-episode skip markers');
+  });
+
   it.each([
     "window.addEventListener('focus', () => {});",
     'navigator.userAgent;',

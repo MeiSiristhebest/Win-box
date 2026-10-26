@@ -27,4 +27,25 @@ describe('playback session state port', () => {
     snapshot.intro = 90;
     expect(port.getSkipSegments()).toEqual({ intro: 18, outro: 42 });
   });
+
+  it('delegates per-episode skip marker state to the owning controller', () => {
+    let introHandled = false;
+    let outroHandled = false;
+    const port = createPlaybackSessionStatePort(
+      () => ({ intro: 12, outro: 8 }),
+      {
+        wasIntroSkipHandled: () => introHandled,
+        markIntroSkipHandled: () => { introHandled = true; },
+        wasOutroSkipHandled: () => outroHandled,
+        markOutroSkipHandled: () => { outroHandled = true; },
+      },
+    );
+
+    expect(port.wasIntroSkipHandled()).toBe(false);
+    expect(port.wasOutroSkipHandled()).toBe(false);
+    port.markIntroSkipHandled();
+    port.markOutroSkipHandled();
+    expect(introHandled).toBe(true);
+    expect(outroHandled).toBe(true);
+  });
 });

@@ -73,8 +73,8 @@ describe('useSkipSegmentsController', () => {
     rerender({ episodeKey: 'episode-2' });
     expect(result.current.segments).toEqual({ intro: 80, outro: 30 });
     expect(result.current.inheritedFrom).toBe('第1集');
-    expect(result.current.introFiredRef.current).toBe(false);
-    expect(result.current.outroFiredRef.current).toBe(false);
+    expect(result.current.playbackMarkers.wasIntroSkipHandled()).toBe(false);
+    expect(result.current.playbackMarkers.wasOutroSkipHandled()).toBe(false);
   });
 
   it('persists edits and clears the fired flag only for a changed segment', () => {
@@ -86,24 +86,24 @@ describe('useSkipSegmentsController', () => {
     }, skipSegmentsControllerAdapter));
 
     act(() => {
-      result.current.introFiredRef.current = true;
-      result.current.outroFiredRef.current = true;
+      result.current.playbackMarkers.markIntroSkipHandled();
+      result.current.playbackMarkers.markOutroSkipHandled();
       result.current.commit(90, 30);
     });
-    expect(result.current.segmentsRef.current).toEqual({ intro: 90, outro: 30 });
-    expect(result.current.introFiredRef.current).toBe(false);
-    expect(result.current.outroFiredRef.current).toBe(false);
+    expect(result.current.playbackMarkers.getSkipSegments()).toEqual({ intro: 90, outro: 30 });
+    expect(result.current.playbackMarkers.wasIntroSkipHandled()).toBe(false);
+    expect(result.current.playbackMarkers.wasOutroSkipHandled()).toBe(false);
     expect(skipSegmentsControllerAdapter.memory.read()['source|episode-1']).toMatchObject({ intro: 90, outro: 30, from: '第1集' });
 
     const staleWindowSnapshot = skipSegmentsControllerAdapter.memory.read();
 
     act(() => {
-      result.current.introFiredRef.current = true;
-      result.current.outroFiredRef.current = true;
+      result.current.playbackMarkers.markIntroSkipHandled();
+      result.current.playbackMarkers.markOutroSkipHandled();
       result.current.commit(90, 45);
     });
-    expect(result.current.introFiredRef.current).toBe(true);
-    expect(result.current.outroFiredRef.current).toBe(false);
+    expect(result.current.playbackMarkers.wasIntroSkipHandled()).toBe(true);
+    expect(result.current.playbackMarkers.wasOutroSkipHandled()).toBe(false);
 
     act(() => result.current.commit(0, 0));
     expect(result.current.segments).toEqual({ intro: 0, outro: 0 });

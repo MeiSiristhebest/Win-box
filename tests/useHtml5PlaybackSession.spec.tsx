@@ -83,8 +83,6 @@ function Harness({
   }, []);
   const skipSegmentsRef = useRef({ intro: 0, outro: 0 });
   const sessionState = useMemo(() => createPlaybackSessionStatePort(() => skipSegmentsRef.current), []);
-  const introFiredRef = useRef(false);
-  const outroFiredRef = useRef(false);
   const [view, setView] = useState({
     error: '',
     mpvError: '',
@@ -131,8 +129,6 @@ function Harness({
     bossActiveRef,
     sessionState,
     handoff,
-    introFiredRef,
-    outroFiredRef,
     updatePlaybackStatus: (update) => setView((current) => ({
       ...current,
       ...(update.error !== undefined ? { error: update.error } : {}),

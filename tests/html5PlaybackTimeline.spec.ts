@@ -6,8 +6,16 @@ import {
 
 function makeOptions(overrides: Partial<Html5PlaybackTimelineOptions> = {}) {
   const media: Html5PlaybackTimelineOptions['media'] = { currentTime: 0, duration: 100 };
-  const introFired = { current: false };
-  const outroFired = { current: false };
+  const introFired = {
+    current: false,
+    wasHandled() { return this.current; },
+    markHandled() { this.current = true; },
+  };
+  const outroFired = {
+    current: false,
+    wasHandled() { return this.current; },
+    markHandled() { this.current = true; },
+  };
   const setCurrentTime = vi.fn();
   const savePosition = vi.fn();
   const onResumePositionApplied = vi.fn();

@@ -1230,6 +1230,9 @@ for (const filePath of await sourceFiles(sourceRoot)) {
   if (normalizedFile === 'renderer/features/home/useHomePagePresenter.ts' && /type\s+SortClassView\b/.test(source)) {
     violations.push(`${normalizedFile}: home presentation coordination must use the feature-owned sort-class contract, not a controller-exported view type`);
   }
+  if (normalizedFile === 'renderer/features/playback/useHtml5PlaybackSession.ts' && /\b(?:intro|outro)FiredRef\b/.test(source)) {
+    violations.push(`${normalizedFile}: HTML5 playback sessions must use PlaybackSessionStatePort for per-episode skip markers, not share controller refs`);
+  }
   if (rendererSettingsPageForbiddenBrowserEffects.has(normalizedFile) &&
       /document\.getElementById|MutationObserver|\.scrollIntoView\(|requestAnimationFrame\(/.test(source)) {
     violations.push(`${normalizedFile}: settings deep-link DOM effects belong in the settings navigation hook`);
