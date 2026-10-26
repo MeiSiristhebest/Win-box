@@ -39,4 +39,15 @@ describe('strict settings persistence', () => {
     expect(() => credentials.remove('quark')).toThrow();
     expect(credentials.list()).toEqual({ quark: 'before' });
   });
+
+  it('restores a deleted JSON object key when strict removal cannot be persisted', () => {
+    const { path, store } = fixture();
+    store.setObjectStrict('settings', { value: 'before' });
+    const disk = readFileSync(path, 'utf8');
+    mkdirSync(path + '.tmp');
+
+    expect(() => store.deleteStrict('settings')).toThrow();
+    expect(store.getObject('settings', null)).toEqual({ value: 'before' });
+    expect(readFileSync(path, 'utf8')).toBe(disk);
+  });
 });

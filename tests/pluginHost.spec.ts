@@ -126,6 +126,25 @@ describe('PluginHost — 安装 / 卸载 / 启停', () => {
     expect(existsSync(join(pluginsDir, 'super-resolution.winbox'))).toBe(false);
   });
 
+  it('插件状态落盘失败时不返回成功、不更新启停状态，也不卸载插件目录', async () => {
+    const h = host();
+    const installed = await h.installFromFile(writeTemp(manifest()));
+    expect(installed.ok).toBe(true);
+    const pluginDirectory = join(pluginsDir, 'super-resolution.winbox');
+    mkdirSync(statePath + '.tmp');
+
+    const disabled = await h.setEnabled('super-resolution', false);
+    expect(disabled.ok).toBe(false);
+    expect(disabled.reason).toContain('保存插件状态失败');
+    expect((await h.list())[0]?.enabled).toBe(true);
+    expect(existsSync(pluginDirectory)).toBe(true);
+
+    const uninstalled = await h.uninstall('super-resolution');
+    expect(uninstalled.ok).toBe(false);
+    expect(uninstalled.reason).toContain('保存插件状态失败');
+    expect(existsSync(pluginDirectory)).toBe(true);
+  });
+
   it('安装坏包 → ok=false 且给出可读原因，不落盘', async () => {
     const bad = join(root, 'bad.winbox');
     writeFileSync(bad, Buffer.from('not an archive'));
@@ -779,6 +798,23 @@ describe('PluginHost — 插件设置面板（contributes.settings.panel）', ()
     expect(existsSync(join(root, 'plugin-settings.json'))).toBe(false);
   });
 
+  it('面板与 L4 设置写盘失败返回/抛出明确错误，面板值仍保持原值', async () => {
+    writeBuiltin(panelManifest());
+    const h = host();
+    await h.init();
+    mkdirSync(join(root, 'plugin-settings.json.tmp'));
+
+    const result = await h.setPluginSetting({ id: 'my-settings-pack', panelId: 'general', key: 'mode', value: 'b' });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('保存插件设置失败');
+    expect((await h.settingsPanels())[0].fields.map((field) => field.value)).toEqual([true, 'a']);
+
+    const access = h.pluginSettingsAccess();
+    expect(() => access.set('my-settings-pack', 'mode', 'b')).toThrow('保存插件设置失败');
+    expect(access.get('my-settings-pack', 'mode')).toBe('a');
+    expect(existsSync(join(root, 'plugin-settings.json'))).toBe(false);
+  });
+
   it('停用 → 不装配；磁盘清单被篡改（toggle 的 default 写成字符串）→ 不装配', async () => {
     writeBuiltin(panelManifest());
     const h = host();
@@ -965,6 +1001,49 @@ describe('PluginHost — L4 沙箱（kind:"code"）', () => {
     expect(made).toHaveLength(1);
     expect(made[0].opts.pluginDir).toBe(join(pluginsDir, 'l4-demo.winbox'));
     expect(made[0].opts.mainFile).toBe('main.js');
+  });
+
+  it('同版本、同入口和权限下原地更新插件代码也会重建沙箱', async () => {
+    writeCode('l4-demo');
+    const h = l4Host();
+    await h.init();
+    const previous = made[0];
+
+    writeFileSync(join(pluginsDir, 'l4-demo.winbox', 'main.js'), 'winbox.log.i("updated")');
+    await h.setEnabled('l4-demo', true); // 请求宿主重新对齐当前插件登记表
+
+    expect(made).toHaveLength(2);
+    expect(previous.disposed).toBe(true);
+    expect((await h.list())[0].sandbox?.running).toBe(true);
+  });
+
+  it('并发 refresh 只提交最新登记表代次', async () => {
+    writeCode('l4-demo');
+    const h = l4Host();
+    await h.init();
+    const internals = h as unknown as {
+      registry: { list: () => Promise<unknown[]> };
+      refresh: () => Promise<void>;
+    };
+    const originalEntries = await internals.registry.list();
+    const newerEntries = originalEntries.map((value) => {
+      const item = value as { manifest: Record<string, unknown> };
+      return { ...item, manifest: { ...item.manifest, version: '2.0.0' } };
+    });
+
+    const pending: Array<(entries: unknown[]) => void> = [];
+    internals.registry.list = () => new Promise((resolve) => pending.push(resolve));
+    const staleRefresh = internals.refresh();
+    const latestRefresh = internals.refresh();
+    pending[1](newerEntries);
+    await latestRefresh;
+    pending[0](originalEntries);
+    await staleRefresh;
+
+    expect(made).toHaveLength(2);
+    expect(made[0].disposed).toBe(true);
+    expect(made[1].disposed).toBe(false);
+    expect((await h.list())[0].version).toBe('2.0.0');
   });
 
   it('停用 → 沙箱释放；重新启用 → 再启动', async () => {

@@ -39,16 +39,14 @@ export class UcTvStore {
   set(deviceId: string, token: string): void {
     const t = String(token || '').trim();
     if (!t) throw new Error('UC TV Token 不能为空');
-    this.store.setObject(UCTV_STORE_KEY, {
+    this.store.setObjectStrict(UCTV_STORE_KEY, {
       deviceId: String(deviceId || '').trim(),
       token: this.codec ? this.codec.encode(t) : t,
     });
-    this.store.flush();
   }
 
   /** 解绑（删除记录） */
   remove(): void {
-    this.store.delete(UCTV_STORE_KEY);
-    this.store.flush();
+    this.store.deleteStrict(UCTV_STORE_KEY);
   }
 }

@@ -12,8 +12,7 @@ import type { PluginSettingsAccess } from './pluginHostApi';
 
 export interface PluginSettingsPersistencePort {
   getObject<T>(key: string, fallback: T): T;
-  setObject<T>(key: string, value: T): void;
-  flush(): void;
+  setObjectStrict<T>(key: string, value: T): void;
 }
 
 export interface PluginSettingsServicePorts {
@@ -72,8 +71,11 @@ export class PluginSettingsService {
 
     const all = this.ports.persistence.getObject<Record<string, Record<string, unknown>>>(entry.id, {});
     const bucket = { ...all[panelId], [key]: input.value as SettingsValue };
-    this.ports.persistence.setObject(entry.id, { ...all, [panelId]: bucket });
-    this.ports.persistence.flush();
+    try {
+      this.ports.persistence.setObjectStrict(entry.id, { ...all, [panelId]: bucket });
+    } catch (error) {
+      return { ok: false, reason: persistenceFailure(error) };
+    }
     return { ok: true, panels: this.panels() };
   }
 
@@ -110,10 +112,18 @@ export class PluginSettingsService {
         if (error) throw new Error(found.field.label + '：' + error);
         const all = this.ports.persistence.getObject<Record<string, Record<string, unknown>>>(pluginId, {});
         const bucket = { ...all[found.panelId], [key]: value as SettingsValue };
-        this.ports.persistence.setObject(pluginId, { ...all, [found.panelId]: bucket });
-        this.ports.persistence.flush();
+        try {
+          this.ports.persistence.setObjectStrict(pluginId, { ...all, [found.panelId]: bucket });
+        } catch (error) {
+          throw new Error(persistenceFailure(error));
+        }
       },
     };
   }
+}
+
+function persistenceFailure(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error);
+  return `保存插件设置失败：${detail}`;
 }
 

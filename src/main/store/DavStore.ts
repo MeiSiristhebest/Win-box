@@ -70,16 +70,18 @@ export class DavStore {
       username: (server.username || '').trim(),
       password: this.codec ? this.codec.encode(server.password || '') : server.password || '',
     };
-    const i = this.data.findIndex((s) => s.id === id);
-    if (i >= 0) this.data[i] = stored;
-    else this.data.push(stored);
-    this.persist();
+    const index = this.data.findIndex((s) => s.id === id);
+    const next = index >= 0
+      ? this.data.map((current, currentIndex) => currentIndex === index ? stored : current)
+      : [...this.data, stored];
+    this.persist(next);
     return { id, name, url, username: stored.username, password: server.password || '' };
   }
 
   remove(id: string): void {
-    this.data = this.data.filter((s) => s.id !== id);
-    this.persist();
+    const next = this.data.filter((s) => s.id !== id);
+    if (next.length === this.data.length) return;
+    this.persist(next);
   }
 
   private decodeValue(v: string | undefined): string | null {
@@ -88,9 +90,9 @@ export class DavStore {
     return this.codec.decode(v);
   }
 
-  private persist(): void {
+  private persist(next: DavStored[]): void {
+    this.store.setObjectStrict(DAV_KEY, next);
+    this.data = next;
     this.decoded = null;
-    this.store.setObject(DAV_KEY, this.data);
-    this.store.flush();
   }
 }

@@ -111,4 +111,17 @@ export class JsonStore implements KVStore {
       throw error;
     }
   }
+
+  /** Delete a persisted object key transactionally, restoring memory on write failure. */
+  deleteStrict(k: string): void {
+    if (!Object.hasOwn(this.data, k)) return;
+    const previous = this.data[k];
+    const hadTimer = this.timer !== null;
+    delete this.data[k];
+    try { this.flushStrict(); } catch (error) {
+      this.data[k] = previous;
+      if (hadTimer) this.schedule();
+      throw error;
+    }
+  }
 }

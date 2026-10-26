@@ -1,6 +1,6 @@
 // tests/ucTvStore.spec.ts — UC TV Token 凭据存储（加解密落盘 + 解绑）。
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JsonStore } from '../src/main/store/JsonStore';
@@ -47,5 +47,21 @@ describe('UcTvStore', () => {
   it('空 token 抛错（拒绝写入不可用凭据）', () => {
     const s = new UcTvStore(new JsonStore(file(root)), logger);
     expect(() => s.set('dev1', '   ')).toThrow();
+  });
+
+  it('写入或解绑失败时继续返回旧的磁盘凭据和内存值', () => {
+    const path = file(root);
+    const s = new UcTvStore(new JsonStore(path), logger);
+    s.set('dev1', 'before');
+    const diskBefore = readFileSync(path, 'utf-8');
+    mkdirSync(path + '.tmp');
+
+    expect(() => s.set('dev2', 'after')).toThrow();
+    expect(s.get()).toEqual({ deviceId: 'dev1', token: 'before' });
+    expect(readFileSync(path, 'utf-8')).toBe(diskBefore);
+
+    expect(() => s.remove()).toThrow();
+    expect(s.get()).toEqual({ deviceId: 'dev1', token: 'before' });
+    expect(readFileSync(path, 'utf-8')).toBe(diskBefore);
   });
 });

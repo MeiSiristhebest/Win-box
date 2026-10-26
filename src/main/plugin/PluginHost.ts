@@ -11,6 +11,7 @@ import { registerPluginSkins } from '../../shared/ui/themeTokens';
 // 事实源：docs/design/插件系统_设计方案.md §6.1 / §8。
 // ★ 依赖注入（不 import electron）：三个路径由调用方传入，便于单测。
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { JsonStore } from '../store/JsonStore';
@@ -79,6 +80,8 @@ export class PluginHost {
   private readonly pluginSettings: PluginSettingsService;
   private entries: PluginEntry[] = [];
   private loaded = false;
+  private refreshGeneration = 0;
+  private refreshTask: Promise<void> | undefined;
   /** ★ R10：L4 沙箱管理器（未接入 → `kind:"code"` 插件不启动，`PluginView.sandbox` 恒 undefined） */
   private sandbox: PluginSandboxLifecycle | null = null;
 
@@ -148,6 +151,11 @@ export class PluginHost {
 
   /** 卸载：删 `<id>.winbox/`（含 .tmp/.bak 残留）与启停记录 */
   async uninstall(id: string): Promise<PluginOpResult> {
+    try {
+      this.setDisabled(this.disabled().filter((x) => x !== id));
+    } catch (error) {
+      return { ok: false, reason: persistenceFailure(error) };
+    }
     const base = join(this.opts.pluginsDir, id);
     for (const suffix of ['.winbox', '.winbox.tmp', '.winbox.bak']) {
       try {
@@ -156,7 +164,6 @@ export class PluginHost {
         /* ignore */
       }
     }
-    this.setDisabled(this.disabled().filter((x) => x !== id));
     await this.refresh();
     return { ok: true, items: await this.list() };
   }
@@ -165,7 +172,11 @@ export class PluginHost {
   async setEnabled(id: string, on: boolean): Promise<PluginOpResult> {
     const cur = this.disabled();
     const next = on ? cur.filter((x) => x !== id) : cur.includes(id) ? cur : [...cur, id];
-    this.setDisabled(next);
+    try {
+      this.setDisabled(next);
+    } catch (error) {
+      return { ok: false, reason: persistenceFailure(error) };
+    }
     await this.ensureLoaded();
     // ★ R10：启停直接影响 L4 沙箱生命周期 → 立刻与登记表对齐（启 → 起沙箱 / 停 → 释放）
     await this.syncSandboxes();
@@ -396,6 +407,8 @@ export class PluginHost {
       payloadReady: e.payloadReady && isDirPath(e.path),
       path: join(this.opts.pluginsDir, `${e.id}.winbox`),
       main: e.manifest.main,
+      version: e.manifest.version,
+      contentFingerprint: pluginMainFingerprint(join(this.opts.pluginsDir, `${e.id}.winbox`), e.manifest.main),
       permissions: e.manifest.permissions ?? [],
     }));
     await this.sandbox.sync(list);
@@ -408,16 +421,39 @@ export class PluginHost {
     await this.builtinMaterializer.materialize();
   }
 
-  private async refresh(): Promise<void> {
-    this.entries = await this.registry.list();
+  private refresh(): Promise<void> {
+    const generation = ++this.refreshGeneration;
+    const task = this.performRefresh(generation);
+    this.refreshTask = task;
+    void task.then(
+      () => {
+        if (this.refreshTask === task) this.refreshTask = undefined;
+      },
+      () => {
+        if (this.refreshTask === task) this.refreshTask = undefined;
+      },
+    );
+    return task;
+  }
+
+  private async performRefresh(generation: number): Promise<void> {
+    const entries = await this.registry.list();
+    if (generation !== this.refreshGeneration) return;
+    this.entries = entries;
     this.loaded = true;
-    await this.themeSkins();
+    const skins = await this.contributions.themeSkins();
+    if (generation !== this.refreshGeneration) return;
+    registerPluginSkins(skins);
     // ★ R10：登记表每次刷新后与 L4 沙箱**幂等对齐**（该跑的在跑、不该跑的释放）
     await this.syncSandboxes();
   }
 
   private async ensureLoaded(): Promise<void> {
-    if (!this.loaded) await this.refresh();
+    while (!this.loaded) {
+      const active = this.refreshTask;
+      if (active) await active;
+      else await this.refresh();
+    }
   }
 
   private view(e: PluginEntry): PluginView {
@@ -463,9 +499,13 @@ export class PluginHost {
   }
 
   private setDisabled(ids: string[]): void {
-    this.state.setObject('plugins', { disabled: ids });
-    this.state.flush();
+    this.state.setObjectStrict('plugins', { disabled: ids });
   }
+}
+
+function persistenceFailure(error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error);
+  return `保存插件状态失败：${detail}`;
 }
 
 
@@ -474,5 +514,14 @@ function isDirPath(p: string): boolean {
     return statSync(p).isDirectory();
   } catch {
     return false;
+  }
+}
+
+function pluginMainFingerprint(pluginDir: string, main: string | undefined): string {
+  if (!main) return 'missing-entry';
+  try {
+    return createHash('sha256').update(readFileSync(join(pluginDir, main))).digest('hex');
+  } catch {
+    return 'unreadable-entry';
   }
 }
