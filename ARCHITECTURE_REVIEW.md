@@ -1030,10 +1030,10 @@
 - **本轮追加覆盖（2026-10-26）：** 新增延迟联想响应乱序、热搜初次失败后重试成功、搜索历史删除和清空的端口替身用例；定向测试 4 项通过，`typecheck:test` 通过。
 - **剩余：** SearchPanel 输入法组合态回车、回车搜索原始词及卸载时防抖计时器清理还需专项覆盖；这不关闭播放器/运行时/全局视觉等其它全仓架构待办。
 
-## 本轮继续：收窄 React Compiler Babel 范围（2026-10-26）
+## 更正：保留 React Compiler 对 TypeScript hooks 的覆盖（2026-10-26）
 
-- **确认的问题：** Babel 插件默认对 renderer 的 JS/TS 源码做转换；React Compiler 实际用于 JSX/TSX 组件。源码扫描未发现纯 `.ts` renderer 模块调用 React hook。
-- **已调整：** `vite.config.ts` 将 Babel `include` 限定为 `.jsx`/`.tsx`，React 与 JSX 转换保持原样，普通 JS/TS helper 和 adapter 不再运行 Babel 编译。
-- **构建观察：** renderer build 从本轮前观测的 16.62 秒变为 10.24 秒（两次均与其他验证任务并行，属于观测值而非隔离基准）；`VideoPlayer` chunk 从 198.65KB/68.97KB gzip 变为 184.59KB/62.35KB gzip，`HomePage` 从 72.65KB/25.56KB gzip 变为 62.00KB/21.12KB gzip。HLS chunk 仍为 574.41KB/178.97KB gzip，超过当前 500KB 提示阈值。
-- **验证：** 全量 Vitest 为 437 个文件通过、3 个跳过，3724 项通过、5 项跳过；main、renderer、test 三套 typecheck 与全仓 lint/架构边界通过；收窄范围后的 renderer 生产构建通过。
-- **剩余：** HLS 首次播放的按需加载/体积告警与 Babel 构建瓶颈仍需继续量测；此变更不替代桌面播放实机验收，也不代表 14 项原则的全仓整改完成。
+- **复核发现：** 上一轮把 Babel 范围收窄到 JSX/TSX 的假设不成立。renderer 中大量 React hook 位于 `.ts` 文件，包括 `VideoPlayerPresenter.ts`、多个 `use*.ts` presenter/controller，以及 `homeFilterPreferenceAdapter.ts` 导出的 hook。
+- **纠正：** 已撤销 JSX/TSX-only include，恢复 React Compiler 原有文件覆盖。此前 bundle 变小是漏掉这些 hook 编译后的结果，不能作为性能优化，也不能接受其可能减少的运行时优化。
+- **A/B 结果：** 以完整编译范围顺序对照 `sourceMap: true/false`，插件变换约 7.7 秒/7.4 秒（均为 534 个模块）；约 0.3 秒差值不足以证明稳定收益，因此也不保留该配置改动。当前 `vite.config.ts` 恢复原设置。
+- **有效验证：** 完整 React Compiler 覆盖下，全量 Vitest 为 437 个文件通过、3 个跳过，3724 项通过、5 项跳过；三套 typecheck、全仓 lint/架构边界通过，renderer 生产构建通过。
+- **仍未解决：** Babel 变换仍占 renderer 构建时间的大头；HLS chunk 仍为 574.41KB/178.97KB gzip，超过 500KB 提示。需要另找能保留 hook 编译覆盖的优化方式，并进行受控量测；全仓架构、运行时与桌面实机验收仍未完成。

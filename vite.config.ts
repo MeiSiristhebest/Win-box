@@ -11,8 +11,7 @@ export default defineConfig({
   root: resolve(root, 'src/renderer'),
   plugins: [
     react(),
-    // React Compiler only needs component files; avoid running Babel on plain TS helpers/adapters.
-    babel({ include: /\.[jt]sx(?:$|\?)/, presets: [reactCompilerPreset()] }),
+    babel({ presets: [reactCompilerPreset()] }),
   ],
   base: './',
   build: {
