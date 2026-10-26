@@ -985,3 +985,10 @@
 - **静态检查：** `pnpm run typecheck` 的 main、renderer、test 三套检查通过；`pnpm run lint` 通过，包含架构边界、renderer React/perf 和 JSX a11y。
 - **生产构建：** main 与 renderer 生产构建成功。现有 HLS chunk 为 574.41 KB（gzip 178.97 KB），仍超过 500 KB 提示；本次 renderer 构建耗时约 17 秒，Babel transform 约 15.9 秒。
 - **验收边界：** 这验证当前代码可编译并通过自动化回归，不证明 14 项原则全仓整改已完成；实际桌面媒体源播放、安装覆盖/数据保留及完整窗口视觉验收仍未执行。
+
+## 本轮继续：蜘蛛运行中取消的跨运行时契约（2026-10-26）
+
+- **确认的矩阵缺口：** 既有测试分别覆盖 Worker 和 JVM 进程池的在途取消，但 JS、Python、JVM 三种 `Spider` 适配器没有使用相同的行为场景验证活动方法调用中的取消错误映射。
+- **已补回归：** 为三种注入运行时配置可中止的执行屏障，在蜘蛛方法已开始后取消搜索；断言调用方均及时收到保留原因为 `AbortError`，且该方法确实只启动一次。
+- **验证：** `spiderRuntimeConformance.spec.ts` 10 项通过；main、renderer、test 三套 TypeScript 检查及 `pnpm run lint`（含架构边界、renderer React/perf/a11y）通过。
+- **剩余矩阵：** Worker 与常驻进程池有各自的取消/超时/崩溃路径测试，仍需进一步对照启动失败、运行时退出、迟到回执和排队并发语义；此测试不代表进程池内部生命周期矩阵已经验收完毕。
