@@ -2,8 +2,8 @@ import PosterSizeControl from '../../components/PosterSizeControl';
 import PluginSlot from '../../components/PluginSlot';
 import { Button } from '../../components/ui/Button';
 import { DriveBindingDialog } from '../driveBinding/DriveBindingDialog';
-import { HomeBrowseResults } from './HomeBrowseResults';
-import { HomeSearchResults } from './HomeSearchResults';
+import { HomeBrowseResultsView } from './HomeBrowseResultsView';
+import { HomeSearchResultsView } from './HomeSearchResultsView';
 import type { HomePageViewModel } from './homePageViewModel';
 
 export function HomePageView({ model }: { model: HomePageViewModel }) {
@@ -86,14 +86,14 @@ export function HomePageView({ model }: { model: HomePageViewModel }) {
 
         {search.active ? (
           search.results !== null && !search.error ? (
-            <HomeSearchResults {...search.results} />
+            <HomeSearchResultsView {...search.results} />
           ) : (
             <div className="empty">
               {search.loading ? <><span className="spinner" aria-hidden="true" />{search.emptyStatus}</> : search.emptyStatus}
             </div>
           )
         ) : (
-          <HomeBrowseResults {...browse} />
+          <HomeBrowseResultsView {...browse} />
         )}
       </div>
       {model.backToTop.visible && (

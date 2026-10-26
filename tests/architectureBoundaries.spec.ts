@@ -891,8 +891,8 @@ describe('architecture dependency rules', () => {
   });
 
   it.each([
-    ['renderer/features/home/homePageViewModel.ts', "import type { HomeBrowseResultsProps } from './HomeBrowseResults';"],
-    ['renderer/features/home/HomeBrowseResults.tsx', "import type { SortClassView } from './useHomeBrowseController';"],
+    ['renderer/features/home/homePageViewModel.ts', "import type { HomeBrowseResultsProps } from './HomeBrowseResultsView';"],
+    ['renderer/features/home/HomeBrowseResultsView.tsx', "import type { SortClassView } from './useHomeBrowseController';"],
   ])('keeps HomePage view contracts independent from concrete views and controllers: %s', (file, source) => {
     const result = inspect(file, source);
     expect(result.error).toBeUndefined();
@@ -901,11 +901,11 @@ describe('architecture dependency rules', () => {
   });
 
   it.each([
-    ['renderer/features/home/homePageModel.ts', "import type { CascadeLevel } from '../../components/CascadeBar';"],
+    ['renderer/features/home/homePageModel.ts', "import type { CascadeLevel } from '../../components/CascadeBarView';"],
     ['renderer/features/home/homePageModel.ts', "import type { SortClassView } from './useHomeBrowseController';"],
     ['renderer/features/home/useHomeSourceSession.ts', "import type { SortClassView } from './useHomeBrowseController';"],
     ['renderer/features/home/useHomeSourceSession.ts', "import { selectHomeSource } from './homePageModel';"],
-    ['renderer/features/home/useHomePagePresenter.ts', "import type { CascadeLevel } from '../../components/CascadeBar';"],
+    ['renderer/features/home/useHomePagePresenter.ts', "import type { CascadeLevel } from '../../components/CascadeBarView';"],
     ['renderer/features/home/useHomePagePresenter.ts', "import { useHomeBrowseController, type SortClassView } from './useHomeBrowseController';"],
   ])('keeps HomePage contracts independent from UI and controller-owned types: %s', (file, source) => {
     const result = inspect(file, source);

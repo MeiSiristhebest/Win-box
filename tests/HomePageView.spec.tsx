@@ -8,9 +8,9 @@ vi.mock('../src/renderer/components/PosterSizeControl', () => ({ default: () => 
 vi.mock('../src/renderer/components/PluginSlot', () => ({ default: () => null }));
 vi.mock('../src/renderer/components/ui/Button', () => ({ Button: () => null }));
 vi.mock('../src/renderer/features/driveBinding/DriveBindingDialog', () => ({ DriveBindingDialog: () => null }));
-vi.mock('../src/renderer/features/home/HomeBrowseResults', () => ({ HomeBrowseResults: () => null }));
-vi.mock('../src/renderer/features/home/HomeSearchResults', () => ({
-  HomeSearchResults: () => <div data-testid="home-search-results" />,
+vi.mock('../src/renderer/features/home/HomeBrowseResultsView', () => ({ HomeBrowseResultsView: () => null }));
+vi.mock('../src/renderer/features/home/HomeSearchResultsView', () => ({
+  HomeSearchResultsView: () => <div data-testid="home-search-results" />,
 }));
 
 afterEach(cleanup);

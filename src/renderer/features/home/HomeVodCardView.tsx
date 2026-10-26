@@ -1,8 +1,8 @@
 import { memo } from 'react';
 import type { VodItem } from '../../../shared/types';
-import { HomeMediaCard } from './HomeMediaCard';
+import { HomeMediaCardView } from './HomeMediaCardView';
 
-export const HomeVodCard = memo(function HomeVodCard({
+export const HomeVodCardView = memo(function HomeVodCardView({
   item,
   pic,
   onOpen,
@@ -14,7 +14,7 @@ export const HomeVodCard = memo(function HomeVodCard({
   onImageError: (item: VodItem, failedSource: string) => void;
 }) {
   return (
-    <HomeMediaCard
+    <HomeMediaCardView
       title={item.name}
       pic={pic}
       remarks={item.remarks}

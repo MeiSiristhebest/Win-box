@@ -1,7 +1,7 @@
 import type { SyntheticEvent } from 'react';
 
 /** Shared visual atom for browse and aggregate-search media cards. */
-export function HomeMediaCard({
+export function HomeMediaCardView({
   title,
   pic,
   remarks,

@@ -2,12 +2,12 @@ import { memo } from 'react';
 import type { AggVodItem, SearchAllReport } from '../../../shared/types';
 import { sourceIdentityKey } from '../../../shared/sourceIdentity';
 import { SearchResultFilters } from '../search/SearchResultFilters';
-import { HomeMediaCard } from './HomeMediaCard';
+import { HomeMediaCardView } from './HomeMediaCardView';
 import { formatSearchCacheTime } from './homePageModel';
 import type { HomeSearchResultsModel, HomeSearchScope } from './homePageViewModel';
 
 /** Search results are a passive projection: search policy and navigation stay in the page/controller. */
-export function HomeSearchResults({
+export function HomeSearchResultsView({
   report,
   view,
   folder,
@@ -169,7 +169,7 @@ const AggregateMediaCard = memo(function AggregateMediaCard({ item, pic, onOpen,
 }) {
   const sourceLabel = [item.sourceProfileName, item.sourceName || item.sourceKey].filter(Boolean).join(' / ');
   return (
-    <HomeMediaCard
+    <HomeMediaCardView
       title={item.name}
       pic={pic}
       remarks={item.remarks}

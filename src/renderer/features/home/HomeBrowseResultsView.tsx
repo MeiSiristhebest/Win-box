@@ -1,10 +1,10 @@
 import CascadeBar from '../../components/CascadeBarView';
 import { Button } from '../../components/ui/Button';
 import type { HomeBrowseResultsModel } from './homePageViewModel';
-import { HomeVodCard } from './HomeVodCard';
+import { HomeVodCardView } from './HomeVodCardView';
 
 /** Passive view for source-native categories, filters, result cards and pagination. */
-export function HomeBrowseResults({
+export function HomeBrowseResultsView({
   classes,
   classLevels,
   filtersOpen,
@@ -116,7 +116,7 @@ export function HomeBrowseResults({
           ) : (
             <div className="grid">
               {items.map((item) => (
-                <HomeVodCard key={item.id} item={item} pic={picOf(item)} onOpen={onOpen} onImageError={onImageError} />
+                <HomeVodCardView key={item.id} item={item} pic={picOf(item)} onOpen={onOpen} onImageError={onImageError} />
               ))}
             </div>
           )}

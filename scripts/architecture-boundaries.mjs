@@ -58,9 +58,9 @@ const rendererControllerForbiddenImports = new Map([
   ])],
 ]);
 const rendererHomeModelForbiddenImports = new Map([
-  ['renderer/features/home/homePageModel.ts', new Set(['../../components/CascadeBar', './useHomeBrowseController'])],
+  ['renderer/features/home/homePageModel.ts', new Set(['../../components/CascadeBarView', './useHomeBrowseController'])],
   ['renderer/features/home/useHomeSourceSession.ts', new Set(['./useHomeBrowseController', './homePageModel'])],
-  ['renderer/features/home/useHomePagePresenter.ts', new Set(['../../components/CascadeBar'])],
+  ['renderer/features/home/useHomePagePresenter.ts', new Set(['../../components/CascadeBarView'])],
 ]);
 const rendererHomePresenterForbiddenBrowserEffects = new Set([
   'renderer/features/home/useHomePagePresenter.ts',
@@ -354,8 +354,8 @@ const rendererHomePageForbiddenInfrastructureImports = new Map([
   ['renderer/features/home/application/homePorts.ts', new Set(['react', '../../../api/client'])],
 ]);
 const rendererHomePresentationForbiddenImports = new Map([
-  ['renderer/features/home/homePageViewModel.ts', new Set(['react', './HomeBrowseResults', './HomeSearchResults'])],
-  ['renderer/features/home/HomeBrowseResults.tsx', new Set(['./useHomeBrowseController'])],
+  ['renderer/features/home/homePageViewModel.ts', new Set(['react', './HomeBrowseResultsView', './HomeSearchResultsView'])],
+  ['renderer/features/home/HomeBrowseResultsView.tsx', new Set(['./useHomeBrowseController'])],
 ]);
 const rendererHomeBrowseControllerForbiddenImports = new Map([
   ['renderer/features/home/useHomeBrowseController.ts', new Set(['../../lib/sessionSort', '../../lib/uiPrefs'])],
