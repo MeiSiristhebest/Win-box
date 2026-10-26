@@ -1029,3 +1029,11 @@
 - **构建观察：** HLS chunk 仍为 574.41 KB（gzip 178.97 KB），高于 500 KB 提示；Babel transform 回调约占 renderer 构建耗时的 95%。
 - **本轮追加覆盖（2026-10-26）：** 新增延迟联想响应乱序、热搜初次失败后重试成功、搜索历史删除和清空的端口替身用例；定向测试 4 项通过，`typecheck:test` 通过。
 - **剩余：** SearchPanel 输入法组合态回车、回车搜索原始词及卸载时防抖计时器清理还需专项覆盖；这不关闭播放器/运行时/全局视觉等其它全仓架构待办。
+
+## 本轮继续：收窄 React Compiler Babel 范围（2026-10-26）
+
+- **确认的问题：** Babel 插件默认对 renderer 的 JS/TS 源码做转换；React Compiler 实际用于 JSX/TSX 组件。源码扫描未发现纯 `.ts` renderer 模块调用 React hook。
+- **已调整：** `vite.config.ts` 将 Babel `include` 限定为 `.jsx`/`.tsx`，React 与 JSX 转换保持原样，普通 JS/TS helper 和 adapter 不再运行 Babel 编译。
+- **构建观察：** renderer build 从本轮前观测的 16.62 秒变为 10.24 秒（两次均与其他验证任务并行，属于观测值而非隔离基准）；`VideoPlayer` chunk 从 198.65KB/68.97KB gzip 变为 184.59KB/62.35KB gzip，`HomePage` 从 72.65KB/25.56KB gzip 变为 62.00KB/21.12KB gzip。HLS chunk 仍为 574.41KB/178.97KB gzip，超过当前 500KB 提示阈值。
+- **验证：** 全量 Vitest 为 437 个文件通过、3 个跳过，3724 项通过、5 项跳过；main、renderer、test 三套 typecheck 与全仓 lint/架构边界通过；收窄范围后的 renderer 生产构建通过。
+- **剩余：** HLS 首次播放的按需加载/体积告警与 Babel 构建瓶颈仍需继续量测；此变更不替代桌面播放实机验收，也不代表 14 项原则的全仓整改完成。
