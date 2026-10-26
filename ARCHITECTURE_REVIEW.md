@@ -27,7 +27,7 @@
 ## 总体进度与本轮状态（2026-10-25）
 
 - **总评：** 14 项原则的首轮评判已记录在下表，当前整体仍为“部分符合”。这是一份持续整改中的架构评审，不是全仓验收结论；各原则都还有未覆盖路径。
-- **依赖盘点：** 当前 src/renderer 有 483 个 TS/TSX/JS/JSX 模块，70 个静态导入 renderer IPC client。其中 66 个在 feature 层（65 个位于 adapters 目录、1 个命名 adapter）、2 个在 lib，2 个在应用入口；页面、普通组件和布局层当前没有直接 client 导入。adapter/组合根依赖基础设施属于预期，导入数量本身不是违规数。
+- **依赖盘点（2026-10-26 复核）：** 对 `src/renderer` 的当前静态搜索发现 71 个 IPC client 导入点：69 个位于 `adapters/`，2 个在 `App.tsx`/`main.tsx` 组合根，0 个落在其它模块。对 `*View.tsx/jsx` 的状态/副作用 hook 搜索为 0 个命中。该检查仅是静态边界证据，不代表组件分类、Atomic Design 与视觉对比度全仓验收完成。
 - **已改造路径：** 主进程组合根与消费者端口、蜘蛛运行时 provider、播放与字幕/弹幕、订阅/档案/网盘登录、聚合搜索与发现数据，以及播放器、更新门禁、搜索面板、发现详情、历史、收藏和 WebDAV 存储页面均已有不同程度的 application/port/adapter/Presenter/View 分层。历史、收藏和存储页的状态/动作已移出 JSX；播放器 Presenter 仍是主要跨域协调点。
 - **本轮继续：** 插件槽位已拆成 composition root、端口、IPC/action adapter、Presenter 与被动 View；窗口标题栏的 IPC 状态与命令已移入 adapter/Presenter；页面错误边界改为接收上层注入的报告回调。播放器 Presenter 内的瞬时命令失败提示和内核画面比例同步也分别移入专责 hook。详情页的背景与收藏源元数据读取改由独立端口和 adapter 提供。设置页的多档案合并导出、订阅组操作、源体检和失败源清理已从 ConfigPage 移入各自端口/Presenter/用例。HomePage 的 browse/search/drive、档案来源和网页源能力由 feature adapters 注入；配置刷新与档案激活也由设置 adapters 注入。封面查找从通用 `lib/useCovers` 移入独立 covers feature，由 `CoverLookupPort` 和 IPC adapter 提供元数据查询，八个调用点改为 feature hook。插件快捷键从 `lib/pluginKeymaps` 移入 plugins feature：匹配规则为无副作用应用逻辑、IPC 拉取为端口 adapter、keydown listener 留在 hook；插件命令从混合 IPC/窗口/主题逻辑拆成 `createPluginCommandRunner` 与 `PluginCommandPort`，App/provider 注入具体 adapter。主题注册表加载现由框架无关协调用例与 renderer adapter 承接，竞态控制和 IPC 边界已纳入静态规则。页面及普通组件当前均无直接 IPC client 导入；HomePage 的搜索、浏览结果 JSX 已移至独立 passive view，并由显式类型化模型驱动；profile/source/focus 配置刷新已拆到带端口的 useHomeSourceSession，但 presenter 仍持有 React 搜索状态、用户动作和跨浏览/搜索协调；ConfigPage 也仍有页面级状态，故 SRP/Passive View 尚未完成。**本轮新增：** display preferences 的 React/IPC/DOM 分层改为 application session + 尺寸与缩放端口 + adapter/presentation hook；搜索窗口策略改为纯 route decision，移除 `lib/searchWin.ts` 的模块求值期 hash 快照和混合路由/IPC职责，详情页从 App 组合点接收搜索动作。
 - **最新增量：** ConfigPage 的档案激活/广播/刷新顺序现位于带 ProfileActivationPort 的 application use case；播放器兼容设置已拆为异步 Presenter 与被动 View，保存成功后的状态刷新失败不再误报保存失败。首页搜索状态文案现由纯展示映射负责，空闲状态不再误显示“搜索中”。页面仍保留跨设置区共享的忙碌与错误展示状态。具体范围见本轮详细记录。
@@ -228,7 +228,7 @@
 | 严重度 | 证据 | 违反的原则 | 重构目标 |
 |---|---|---|---|
 | P2（观察项，不先拆） | [`UserConfigApplicationService`](src/main/store/UserConfigApplicationService.ts) 暴露多种配置命令，但源、档案、直播与订阅组都作为一个序列化 `UserConfig` 根聚合更新；原子落盘/回滚已在 `UserConfigRepository`，消费者入口也已按配置能力拆分。当前不足以单凭方法数判作 SRP 违例。 | SRP、SoC、ISP | 保留聚合一致性。只有代码证据显示某一组命令有独立变更原因、需要不同生命周期，或迫使消费者依赖无关能力时，再拆内部用例；依旧通过同一仓储原子提交并保留事务测试。 |
-| P1（全仓复核中） | 当前 482 个 renderer 模块中，70 个静态导入 `api/client`：66 个 feature 模块（65 个位于 `adapters/`、1 个命名 adapter）、2 个 lib 和两个应用入口。`App.tsx` 与 `main.tsx` 是组合入口；剩余 lib 与命名 adapter 需继续逐一确认它们是否是基础设施边界，而不能按导入数量直接判违规。封面查询、快捷键列表 IPC、受限插件命令已从通用 `lib` 迁入 feature ports/adapters；页面、普通组件和布局当前无直接 client 导入。历史、收藏、存储、详情页面、插件槽位、窗口标题栏、错误边界、HomePage 与 ConfigPage 均已把视图/控制流程中的 IPC 映射迁至 feature adapters。 | SoC、DIP、Passive View、可测试性、SRP | 分类审查剩余 lib/命名 adapter/入口，保留真正的 adapter 与组合根，迁出依赖基础设施的通用状态逻辑；为并发请求、取消、listener 清理和跨窗口同步补行为证据。 |
+| P1（边界盘点已收敛，行为验收持续） | 当前 renderer IPC client 的 71 个导入点全部位于 69 个 `adapters/` 模块与 `App.tsx`/`main.tsx` 两个组合根；静态搜索未发现 view、普通组件、页面或 `lib` 直接导入 client。`*View.tsx/jsx` 当前也未发现 state/effect hook。历史、收藏、存储、详情、插件槽位、窗口标题栏、错误边界、HomePage 与 ConfigPage 已把视图/控制流程中的 IPC 映射迁至 feature adapters。 | SoC、DIP、Passive View、可测试性、SRP | 保持静态规则防回流；后续针对请求竞态、取消、listener 清理与跨窗口同步验证行为；Atomic Design 与全局视觉对比度仍需独立审计。 |
 | 已迁移（类型与静态边界检查通过，行为测试未运行） | HomePage 原先把 browse/search/drive port 实现写在页面模块，还直接读取配置/档案来源并打开网页源。现在 IPC wrappers 集中在 `homePageAdapters`，并补充 `HomeSourceSelectionPort` 与 `HomeWebSourcePort`；页面不再导入 renderer IPC client，静态边界规则禁止 client 回流。聚合结果与浏览结果 JSX 已移到 HomePageView，呈现数据通过 HomePageViewModel 传入；初次来源恢复及 profile/source/sources/focus 事件刷新现由 useHomeSourceSession 使用窄端口协调；搜索/浏览状态和用户动作仍留在 useHomePagePresenter；UI memory 经窄端口和适配器提供，因此整页 SRP/SoC 尚未完成。 | DIP、SoC、Ports & Adapters、可测试性 | 为配置/档案来源切换、过期请求丢弃、网页源启动失败与聚合搜索进度事件补行为覆盖；继续将搜索用例、结果投影和页面 DOM 协调分层。 |
 | 已迁移（类型与静态边界检查通过，行为测试未运行） | HomePage、ConfigPage 原有的 renderer client 直接调用现已分别移入 `homePageAdapters`、配置快照和档案激活 adapters；对应 application ports 不依赖 React/client。静态盘点确认这两个页面均不再直接导入 `api/client`。 | DIP、SoC、Ports & Adapters、可测试性 | HomePage JSX 与类型化展示模型现已分离；配置/来源刷新、搜索/浏览状态协调仍留在 useHomePagePresenter。继续将这些流程按状态所有权拆分，保持 adapter 仅由组合点注入，不把 adapter 导入共享 UI 组件。 |
 | P2（边界已迁移，行为测试待运行） | `SourcePicker.tsx` 已不再导入 renderer IPC 或配置事件；Shell 注入 `SourcePickerPort` adapter，`useSourcePickerController` 管理加载代次、错误和源/档案切换，视图保留浮层焦点、定位、过滤与计时器。当前需要确认新增跨档案/快速切换回归用例在可运行的 Vitest 环境中通过。 | SoC、DIP、端口与适配器、可测试性 | 保持 DOM 生命周期和配置事务分层；在修复依赖绑定后运行源选择 hook/component 测试，验证失败重试、同档案切源与跨档案原子切换。 |
@@ -1010,3 +1010,12 @@
 - **验证：** 定向故障策略测试 4 项通过；全量 Vitest 为 436 个文件通过、3 个跳过，3719 项通过、5 项跳过；main、renderer、test 三套 typecheck 与全仓 lint（含架构边界、React/perf、JSX a11y）通过；main 与 renderer 生产构建通过。
 - **构建观察：** HLS chunk 仍为 574.41 KB（gzip 178.97 KB），高于 500 KB 提示阈值；Babel transform 回调约占 renderer 构建耗时的 93%，尚未优化。
 - **剩余：** 此变更只移出播放器故障恢复的一处协调；播放器 Presenter 仍跨多个子域组织会话和控制模型。14 项全仓审计、UI/IPC 与 Atomic Design/对比度验收、运行时生命周期矩阵及真实桌面播放/安装验收仍开放。
+
+## 本轮继续：Python 运行时准备阶段遵守取消（2026-10-26）
+
+- **确认的问题：** `PythonSpiderRuntimeAdapter.callPython` 在准备/下载共享嵌入式 Python 运行时期间直接等待 `ensureRuntime()`；搜索被取消时，调用方仍需等待共享准备结束才会返回。JS 脚本准备和 JVM JAR 准备已能让被取消的 waiter 提前退出。
+- **已调整：** 通过共享 `awaitWithAbort` 等待 Python 准备任务。单次搜索取消只解除自己的等待，不取消可被预热或其它搜索复用的运行时准备。
+- **回归覆盖：** 在 runtime ensure 挂起时取消搜索，断言立即收到 `AbortError`、不启动 Python 子进程；随后让共享准备完成，确认被取消的调用不会继续执行。
+- **验证：** Python runtime 定向测试 13 项通过；全量 Vitest 为 436 个文件通过、3 个跳过，3720 项通过、5 项跳过；main、renderer、test 三套 typecheck、全仓 lint 和 main/renderer 生产构建均通过。
+- **构建观察：** HLS chunk 仍为 574.41 KB（gzip 178.97 KB），高于 500 KB 提示阈值；Babel transform 回调约占 renderer 构建耗时的 93%。
+- **剩余：** 该修复补齐一个准备阶段取消场景；JS Worker/JVM/Python 所有生命周期时序矩阵、播放器状态编排、全仓 Atomic Design/对比度验收和实机验收仍未完成。

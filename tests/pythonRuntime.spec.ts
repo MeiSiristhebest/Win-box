@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { EventEmitter } from 'node:events';
 import { createHash } from 'node:crypto';
 import { JarSpiderBridge, PYTHON_RUNTIME_VERSION } from '../src/engine/spider/JarSpiderBridge';
+import { PythonSpiderRuntimeAdapter } from '../src/engine/spider/PythonSpiderRuntimeAdapter';
 import { buildZip } from '../src/engine/util/syncZip';
 
 type SpawnCall = { exe: string; argv: string[]; opts: { env?: Record<string, string> } };
@@ -254,5 +255,40 @@ describe('JarSpiderBridge.callPython — spawn python.exe runner.py', () => {
     const bridge = new JarSpiderBridge({ jvmDir, cacheDir: join(jvmDir, 'converted') }, makeHost(fakeEmbedZip()));
     await expect(bridge.callPython('x.py', 'Spider', 'homeContent', [])).rejects.toThrow(/未配置下载目录/);
     expect(spawnMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PythonSpiderRuntimeAdapter — runtime preparation cancellation', () => {
+  it('stops waiting when a search is cancelled during shared embedded-runtime setup', async () => {
+    let finishPreparation!: (directory: string) => void;
+    const preparation = new Promise<string>((resolve) => { finishPreparation = resolve; });
+    const ensure = vi.fn(() => preparation);
+    const runSubprocess = vi.fn(async () => ({
+      ok: true as const,
+      output: '',
+      reason: '' as const,
+      failureKind: null,
+      problemCode: null,
+    }));
+    const adapter = new PythonSpiderRuntimeAdapter({
+      runtime: { ensure, ready: () => false, placeRunnerFiles: vi.fn() } as never,
+      pool: null,
+      logInfo: vi.fn(),
+      submitToPool: vi.fn(),
+      runSubprocess,
+    });
+    const controller = new AbortController();
+
+    const call = adapter.callPython('spider.py', 'Spider', 'searchContent', ['title'], 1000, 'source', controller.signal);
+    expect(ensure).toHaveBeenCalledOnce();
+    controller.abort('search cancelled');
+
+    await expect(call).rejects.toMatchObject({ name: 'AbortError', message: 'search cancelled' });
+    expect(runSubprocess).not.toHaveBeenCalled();
+
+    // Preparation is shared with prewarm/other callers and may finish after this waiter leaves.
+    finishPreparation('python-runtime');
+    await Promise.resolve();
+    expect(runSubprocess).not.toHaveBeenCalled();
   });
 });

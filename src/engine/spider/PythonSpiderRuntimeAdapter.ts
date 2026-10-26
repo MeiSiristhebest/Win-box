@@ -7,7 +7,7 @@ import { LOCAL_PROXY_BASE } from '../../shared/constants';
 import { spiderCallFailed, spiderCallSucceeded, type SpiderCallResult } from './spiderCallResult';
 import { normalizeSpiderRuntimeFailure } from './spiderRuntimeFailure';
 import { SourceProblemError } from './errors';
-import { abortError, throwIfAborted } from '../util/abort';
+import { abortError, awaitWithAbort, throwIfAborted } from '../util/abort';
 import { spiderPoolTimeoutResult } from './spiderPoolFailure';
 import type { PythonSpiderRuntimePort } from './PythonSpiderRuntimePort';
 
@@ -90,7 +90,7 @@ export class PythonSpiderRuntimeAdapter implements PythonSpiderRuntimePort {
     throwIfAborted(signal);
     let runtimeDir: string;
     try {
-      runtimeDir = await this.ensureRuntime();
+      runtimeDir = await awaitWithAbort(this.ensureRuntime(), signal);
     } catch (error) {
       if (signal?.aborted) throw abortError(signal);
       throw new SourceProblemError(
