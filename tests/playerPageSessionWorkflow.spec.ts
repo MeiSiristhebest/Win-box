@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { PlayerInitData, PlayerPageHistoryPort, PlayerPageSessionPort, PlayerSourceMemoryPort } from '../src/renderer/features/playback/application/playerPageSession';
+import type { PlayerInitData, PlayerPagePlaybackWorkflowPort, PlayerPageWorkflowHistoryPort, PlayerSourceMemoryPort } from '../src/renderer/features/playback/application/playerPageSession';
 import { createPlayerPageSessionWorkflow } from '../src/renderer/features/playback/application/playerPageSessionWorkflow';
 import type { PlayerPageSessionAction } from '../src/renderer/features/playback/application/playerPageSessionState';
 
@@ -12,18 +12,14 @@ function deferred<T>() {
 describe('player page session workflow', () => {
   it('ignores hydration completion after disposal and cleans temporary playback files', async () => {
     const sourceLookup = deferred<{ profileId: string; name: string }>();
-    const session: PlayerPageSessionPort = {
+    const session: PlayerPagePlaybackWorkflowPort = {
       play: vi.fn(async () => ({ parse: 0, url: 'https://media.invalid/video.mp4', playUrl: '', flag: 'line-a' })),
       resolveHistorySource: vi.fn(() => sourceLookup.promise),
       loadDetail: vi.fn(async () => null),
-      onInit: vi.fn(() => () => undefined),
-      onEpisodeSwitch: vi.fn(() => () => undefined),
-      ready: vi.fn(async () => undefined),
       cleanupTemporaryFiles: vi.fn(async () => undefined),
     };
-    const history: PlayerPageHistoryPort = {
+    const history: PlayerPageWorkflowHistoryPort = {
       beginPlayerHistorySession: vi.fn(),
-      getPlaybackPosition: vi.fn(() => 0),
       recordHistory: vi.fn(),
       persist: vi.fn(),
     };

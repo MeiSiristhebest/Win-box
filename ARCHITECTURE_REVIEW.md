@@ -1060,3 +1060,10 @@
 - **回归覆盖：** 保留原 hook 的切集竞态、恢复失败后重试和解析轮换集成用例；新增不依赖 React 的 teardown 测试，确认恢复未完成时销毁窗口会忽略迟到结果、不启动播放或写入历史，并清理临时文件。静态职责测试更新为检查 hook 委托到应用工作流。
 - **验证：** 定向播放器测试 4 个文件共 16 项通过；`pnpm run typecheck` 的 main、renderer、test 三套检查通过；Oxlint 的 `--deny-warnings`、架构边界扫描、renderer React/perf 与 JSX accessibility lint 均通过。当前增量尚未重跑全量 Vitest、生产构建或桌面真实播放。
 - **剩余：** `usePlayerPageSession` 仍直接映射观看进度展示，`VideoPlayerPresenter` 的跨控制域编排仍待基于真实职责复核；JS/Worker/JVM/Python 完整生命周期矩阵、全仓 UI/IPC 与 Atomic Design/对比度验收、其余 14 项全仓替换性和独立测试审计、桌面播放/安装验收仍未完成。该切片不改变整体“部分符合”的结论。
+
+## 本轮继续：收窄播放器会话工作流端口（2026-10-26）
+
+- **确认的问题：** 上一切片的应用工作流仍收到完整 `PlayerPageSessionPort`，导致 IPC 初始化/切集事件订阅与 ready 通知能力对生命周期用例可见；它也接收了历史进度读取能力，尽管只需启动、写入和持久化历史。
+- **已调整：** 新增 `PlayerPagePlaybackWorkflowPort`，仅组合播放解析、历史恢复与临时文件清理能力；新增 `PlayerPageWorkflowHistoryPort`，限制历史端口到当前用例会调用的三项写入/启动能力。窗口事件仍由 `usePlayerPageEvents` 消费，进度读取仍由历史进度适配器消费。
+- **验证：** `pnpm run typecheck` 的 main、renderer、test 三套检查通过；播放器工作流、hook 集成和播放意图定向测试共 11 项通过。独立工作流测试的 fake session 不再实现 `onInit`、`onEpisodeSwitch`、`ready`，也不再伪造历史进度读取。
+- **原则影响与限制：** 进一步改善 #4 ISP、#5 DIP、#7 Ports & Adapters 和 #14 可测试性的一处具体依赖缺口。它不改变 14 项总体“部分符合”结论；跨模块生命周期矩阵、全仓视觉与 Atomic Design 审计、其余端口替换性复核以及桌面播放/安装验收仍开放。

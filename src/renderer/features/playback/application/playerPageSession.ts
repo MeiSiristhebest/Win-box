@@ -37,16 +37,21 @@ export interface PlayerTemporaryFileCleanupPort {
   cleanupTemporaryFiles(): Promise<void>;
 }
 
-/** Full capability bundle retained only by the player-session composition controller. */
-export interface PlayerPageSessionPort extends
+/** Runtime capabilities needed by the player-page application workflow, without window event subscriptions. */
+export interface PlayerPagePlaybackWorkflowPort extends
   PlayerPlaybackResolutionPort,
   PlayerInitHydrationPort,
-  PlayerPageEventsPort,
   PlayerTemporaryFileCleanupPort {}
+
+/** Full capability bundle retained only by the player-session composition controller. */
+export interface PlayerPageSessionPort extends PlayerPagePlaybackWorkflowPort, PlayerPageEventsPort {}
 
 export interface PlayerPageHistoryPort extends PlayerHistoryProgressPort {
   beginPlayerHistorySession(): void;
 }
+
+/** History mutations needed by the player session, excluding progress reads owned by the playback adapter. */
+export type PlayerPageWorkflowHistoryPort = Pick<PlayerPageHistoryPort, 'beginPlayerHistorySession' | 'recordHistory' | 'persist'>;
 
 export interface PlayerSourceMemoryPort {
   rememberSource(source: { fromKey: string; id: string; name: string }): void;

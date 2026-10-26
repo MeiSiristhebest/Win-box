@@ -2,16 +2,16 @@ import { makeStaleGuard } from '../../../lib/staleGuard';
 import { hydratePlayerInit } from './hydratePlayerInit';
 import type {
   PlayerInitData,
-  PlayerPageHistoryPort,
-  PlayerPageSessionPort,
+  PlayerPagePlaybackWorkflowPort,
+  PlayerPageWorkflowHistoryPort,
   PlayerSourceMemoryPort,
 } from './playerPageSession';
 import { resolvePlayerPageEpisode } from './resolvePlayerPageEpisode';
 import type { PlayerPageResolutionState, PlayerPageSessionAction } from './playerPageSessionState';
 
 export interface PlayerPageSessionWorkflowPorts {
-  session: PlayerPageSessionPort;
-  history: PlayerPageHistoryPort;
+  session: PlayerPagePlaybackWorkflowPort;
+  history: PlayerPageWorkflowHistoryPort;
   sourceMemory: PlayerSourceMemoryPort;
   publish(action: PlayerPageSessionAction): void;
 }
