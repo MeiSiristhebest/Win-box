@@ -12,7 +12,15 @@ import type { MediaDiagnosticsPort } from '../src/renderer/features/playback/app
 import type { PlaybackPositionMemoryPort, PlaybackRuntimePort } from '../src/renderer/features/playback/application/playbackSessionPorts';
 import type { AdaptiveAudioTrackController } from '../src/renderer/features/playback/application/playerAudioTracks';
 
-const hlsTestState = vi.hoisted(() => ({ destroyed: 0 }));
+const hlsTestState = vi.hoisted(() => ({
+  destroyed: 0,
+  instances: [] as Array<{
+    errorHandler?: (...args: unknown[]) => void;
+    startLoads: number;
+    mediaRecoveries: number;
+    destroyed: boolean;
+  }>,
+}));
 vi.mock('hls.js', () => {
   const Events = {
     MANIFEST_PARSED: 'manifest-parsed', AUDIO_TRACKS_UPDATED: 'audio-tracks-updated',
@@ -28,12 +36,21 @@ vi.mock('hls.js', () => {
       { name: '国语', lang: 'chi', attrs: { CHANNELS: '2' } },
       { name: '日本語', lang: 'jpn', attrs: { CHANNELS: '6' } },
     ];
+    instanceState = { startLoads: 0, mediaRecoveries: 0, destroyed: false } as {
+      errorHandler?: (...args: unknown[]) => void;
+      startLoads: number;
+      mediaRecoveries: number;
+      destroyed: boolean;
+    };
+    constructor() { hlsTestState.instances.push(this.instanceState); }
     loadSource() {}
     attachMedia() {}
-    on() {}
-    startLoad() {}
-    recoverMediaError() {}
-    destroy() { hlsTestState.destroyed++; }
+    on(event: string, handler: (...args: unknown[]) => void) {
+      if (event === Events.ERROR) this.instanceState.errorHandler = handler;
+    }
+    startLoad() { this.instanceState.startLoads++; }
+    recoverMediaError() { this.instanceState.mediaRecoveries++; }
+    destroy() { this.instanceState.destroyed = true; hlsTestState.destroyed++; }
   }
   return { default: MockHls };
 });
@@ -48,6 +65,17 @@ const positionMemory: PlaybackPositionMemoryPort = {
   save: (url, seconds, scope) => { storedPositions.set(positionKey(url, scope), seconds); },
 };
 const playbackRuntime: PlaybackRuntimePort = { isDesktopRuntime: () => false };
+const desktopRuntime: PlaybackRuntimePort = { isDesktopRuntime: () => true };
+
+function emitFatalHlsError(instanceIndex: number, type: 'networkError' | 'mediaError', responseStatus?: number) {
+  const errorHandler = hlsTestState.instances[instanceIndex]?.errorHandler;
+  errorHandler?.('error', {
+    fatal: true,
+    type,
+    details: type === 'networkError' ? 'fragLoadError' : 'bufferAppendError',
+    response: responseStatus === undefined ? undefined : { code: responseStatus },
+  });
+}
 
 function Harness({
   pausedHandoff = false,
@@ -166,6 +194,7 @@ afterEach(() => {
   storedPositions.clear();
   localStorage.clear();
   hlsTestState.destroyed = 0;
+  hlsTestState.instances = [];
   vi.restoreAllMocks();
 });
 
@@ -284,7 +313,8 @@ describe('useHtml5PlaybackSession', () => {
 
   it('hands unsupported media to the configured external player once', async () => {
     const tryExternalFallback = vi.fn(async () => ({ opened: true, player: 'PotPlayer' }));
-    render(<Harness tryExternalFallback={tryExternalFallback} />);
+    const recoverHtmlPlayback = vi.fn(() => false);
+    render(<Harness recoverHtmlPlayback={recoverHtmlPlayback} tryExternalFallback={tryExternalFallback} />);
     const video = screen.getByTestId('video') as HTMLVideoElement;
     await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
     Object.defineProperty(video, 'error', {
@@ -292,10 +322,92 @@ describe('useHtml5PlaybackSession', () => {
       value: { code: 4, message: 'PipelineStatus::DEMUXER_ERROR_COULD_NOT_PARSE' },
     });
 
-    act(() => video.dispatchEvent(new Event('error')));
+    act(() => {
+      video.dispatchEvent(new Event('error'));
+      video.dispatchEvent(new Event('error'));
+    });
 
     await waitFor(() => expect(tryExternalFallback).toHaveBeenCalledOnce());
+    expect(recoverHtmlPlayback).toHaveBeenCalledOnce();
     expect(tryExternalFallback).toHaveBeenCalledWith(playbackUrl, 45);
     await waitFor(() => expect(screen.getByTestId('view').textContent).toContain('已交给PotPlayer播放'));
+  });
+
+  it('shows the external-player startup failure instead of leaving an unsupported media error ambiguous', async () => {
+    const tryExternalFallback = vi.fn(async () => ({ opened: false, error: '播放器未安装' }));
+    render(<Harness tryExternalFallback={tryExternalFallback} />);
+    const video = screen.getByTestId('video') as HTMLVideoElement;
+    await waitFor(() => expect(video.play).toHaveBeenCalledOnce());
+    Object.defineProperty(video, 'error', { configurable: true, value: { code: 4, message: 'Unsupported codec' } });
+
+    act(() => video.dispatchEvent(new Event('error')));
+
+    await waitFor(() => expect(screen.getByTestId('view').textContent).toContain('外部播放器启动失败：播放器未安装'));
+    expect(tryExternalFallback).toHaveBeenCalledOnce();
+  });
+
+  it('does not retry an HLS upstream rejection and does not ask the kernel to take over', async () => {
+    const recoverHtmlPlayback = vi.fn(() => true);
+    render(<Harness url="https://media.example/live.m3u8" runtime={desktopRuntime} recoverHtmlPlayback={recoverHtmlPlayback} />);
+    await waitFor(() => expect(hlsTestState.instances[0]?.errorHandler).toBeTypeOf('function'));
+
+    act(() => emitFatalHlsError(0, 'networkError', 404));
+
+    expect(hlsTestState.instances[0]?.startLoads).toBe(0);
+    expect(recoverHtmlPlayback).not.toHaveBeenCalled();
+    expect(screen.getByTestId('view').textContent).toContain('HLS 播放失败');
+  });
+
+  it('exhausts bounded HLS network retries before requesting kernel recovery', async () => {
+    const recoverHtmlPlayback = vi.fn(() => false);
+    render(<Harness url="https://media.example/live.m3u8" runtime={desktopRuntime} recoverHtmlPlayback={recoverHtmlPlayback} />);
+    await waitFor(() => expect(hlsTestState.instances[0]?.errorHandler).toBeTypeOf('function'));
+
+    act(() => {
+      emitFatalHlsError(0, 'networkError', 503);
+      emitFatalHlsError(0, 'networkError', 503);
+    });
+    expect(hlsTestState.instances[0]?.startLoads).toBe(2);
+    act(() => emitFatalHlsError(0, 'networkError', 503));
+
+    expect(recoverHtmlPlayback).toHaveBeenCalledOnce();
+    expect(screen.getByTestId('view').textContent).toContain('已自动重试 2 次');
+  });
+
+  it('recovers HLS decode failures twice before requesting a compatible kernel', async () => {
+    const recoverHtmlPlayback = vi.fn(() => true);
+    render(<Harness url="https://media.example/live.m3u8" runtime={desktopRuntime} recoverHtmlPlayback={recoverHtmlPlayback} />);
+    await waitFor(() => expect(hlsTestState.instances[0]?.errorHandler).toBeTypeOf('function'));
+
+    act(() => {
+      emitFatalHlsError(0, 'mediaError');
+      emitFatalHlsError(0, 'mediaError');
+    });
+    expect(hlsTestState.instances[0]?.mediaRecoveries).toBe(2);
+    act(() => emitFatalHlsError(0, 'mediaError'));
+
+    expect(recoverHtmlPlayback).toHaveBeenCalledOnce();
+    expect(screen.getByTestId('view').textContent).not.toContain('HLS 播放失败');
+  });
+
+  it('isolates late HLS errors from the previous URL session', async () => {
+    const { rerender } = render(<Harness url="https://media.example/first.m3u8" runtime={desktopRuntime} />);
+    await waitFor(() => expect(hlsTestState.instances[0]?.errorHandler).toBeTypeOf('function'));
+    const staleHandler = hlsTestState.instances[0]?.errorHandler;
+
+    rerender(<Harness url="https://media.example/second.m3u8" runtime={desktopRuntime} />);
+    await waitFor(() => expect(hlsTestState.instances).toHaveLength(2));
+    expect(hlsTestState.instances[0]?.destroyed).toBe(true);
+
+    act(() => staleHandler?.('error', {
+      fatal: true,
+      type: 'networkError',
+      details: 'fragLoadError',
+      response: { code: 503 },
+    }));
+    expect(hlsTestState.instances[0]?.startLoads).toBe(0);
+
+    act(() => emitFatalHlsError(1, 'networkError', 503));
+    expect(hlsTestState.instances[1]?.startLoads).toBe(1);
   });
 });

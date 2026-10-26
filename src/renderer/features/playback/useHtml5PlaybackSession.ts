@@ -11,6 +11,7 @@ import type { PlaybackSessionStatePort } from './application/playbackSessionStat
 import { resolveResumePosition } from './resumePosition';
 import { createHtml5PlaybackTimeline } from './html5PlaybackTimeline';
 import { hlsErrorText } from './hlsErrorText';
+import { createHtml5PlaybackRecovery, type Html5HlsFailureType } from './application/html5PlaybackRecovery';
 import { reportHtmlMediaEvent, type MediaDiagnosticsPort } from './application/mediaDiagnostics';
 import type { PlaybackHandoffPort } from './application/playbackHandoff';
 import type { PlayerPlaybackPresentationUpdate } from './application/PlayerPlaybackPresentation';
@@ -56,8 +57,6 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
   const adaptiveAudioTracksRef = options.adaptiveAudioTracksRef ?? localAdaptiveAudioTracksRef;
   const audioTracksRef = useRef(options.onAudioTracks);
   useLayoutEffect(() => { audioTracksRef.current = options.onAudioTracks; }, [options.onAudioTracks]);
-  const hlsNetRetryRef = useRef(0);
-  const hlsMediaRetryRef = useRef(0);
   const {
     videoRef,
     url,
@@ -103,8 +102,6 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
     hlsInstanceRef.current?.destroy();
     hlsInstanceRef.current = null;
     adaptiveAudioTracksRef.current = null;
-    hlsNetRetryRef.current = 0;
-    hlsMediaRetryRef.current = 0;
     const oldFlv = (video as unknown as { __flv?: MpegtsModule.Player }).__flv;
     if (oldFlv) {
       try {
@@ -118,7 +115,7 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
     const target = resolvePlayTarget(htmlUrl).toLowerCase().split('?')[0];
     let speedTimer: ReturnType<typeof setInterval> | null = null;
     let cancelled = false;
-    let externalFallbackStarted = false;
+    const recovery = createHtml5PlaybackRecovery();
     let previousBytes = -1;
     let previousTime = 0;
     const reportKiloBytesPerSecond = (speed: number) => {
@@ -184,9 +181,14 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
     const onWaiting = () => updatePlaybackStatus({ buffering: true });
     const onPlaying = () => updatePlaybackStatus({ buffering: false });
     const onError = () => {
-      if (externalFallbackStarted) return;
-      if (recoverHtmlPlayback()) return;
       const mediaError = video.error;
+      if (recovery.shouldIgnoreMediaError(mediaError?.code ?? 0)) return;
+      const decision = recovery.onMediaError({
+        code: mediaError?.code ?? 0,
+        kernelRecoveryStarted: recoverHtmlPlayback(),
+        externalFallbackAvailable: !!tryExternalFallback,
+      });
+      if (decision.kind === 'ignore') return;
       const reason = mediaError?.code === 2
         ? '网络读取失败，源站可能拒绝连接或链接已失效'
         : mediaError?.code === 3
@@ -205,18 +207,19 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
       // to that player using the same local proxy URL and current seek position.
       // A single attempt per media session avoids duplicate launches from repeated
       // Chromium error events.
-      if (mediaError?.code === 4 && tryExternalFallback && !externalFallbackStarted) {
-        externalFallbackStarted = true;
+      if (decision.kind === 'try-external-player' && tryExternalFallback) {
         void tryExternalFallback(htmlUrl || url, Math.max(0, video.currentTime || 0)).then((result) => {
-          if (cancelled) return;
-          if (result?.opened) {
-            updatePlaybackStatus({ error: `内置播放器无法解析此媒体，已交给${result.player || '外部播放器'}播放。` });
+          const completion = recovery.completeExternalFallback(result);
+          if (completion.kind === 'ignore') return;
+          if (completion.kind === 'external-player-opened') {
+            updatePlaybackStatus({ error: `内置播放器无法解析此媒体，已交给${completion.player || '外部播放器'}播放。` });
             return;
           }
-          updatePlaybackStatus({ error: result?.error ? `${errorMessage}（外部播放器启动失败：${result.error}）` : errorMessage });
+          updatePlaybackStatus({ error: completion.error ? `${errorMessage}（外部播放器启动失败：${completion.error}）` : errorMessage });
         }).catch((error) => {
-          if (cancelled) return;
           const detail = error instanceof Error ? error.message : String(error);
+          const completion = recovery.completeExternalFallback({ opened: false, error: detail });
+          if (completion.kind === 'ignore') return;
           updatePlaybackStatus({ error: `${errorMessage}（外部播放器启动失败：${detail}）` });
         });
         return;
@@ -294,7 +297,15 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
             }
           });
           hls.on(Hls.Events.ERROR, (_event, data) => {
-            if (!data.fatal) return;
+            if (!data.fatal || !recovery.isActive()) return;
+            const responseStatus = data.response?.code;
+            const errorType: Html5HlsFailureType = data.type === Hls.ErrorTypes.NETWORK_ERROR
+              ? 'network'
+              : data.type === Hls.ErrorTypes.MEDIA_ERROR
+                ? 'media'
+                : 'other';
+            const decision = recovery.onHlsFatal({ type: errorType, responseStatus });
+            if (decision.kind === 'ignore') return;
             reportHtmlMediaEvent(mediaDiagnostics, {
               event: 'hls-fatal:' + data.type + ':' + data.details,
               url: htmlUrl,
@@ -303,22 +314,18 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
               currentTime: video.currentTime,
               paused: video.paused,
             });
-            const responseStatus = data.response?.code;
-            const upstreamRejected = typeof responseStatus === 'number' && responseStatus >= 400 && responseStatus < 500;
-            if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !upstreamRejected && hlsNetRetryRef.current < 2) {
-              hlsNetRetryRef.current++;
+            if (decision.kind === 'retry-network') {
               updatePlaybackStatus({ error: '' });
               try { hls.startLoad(); } catch { /* Ignore a failed retry request. */ }
               return;
             }
-            if (data.type === Hls.ErrorTypes.MEDIA_ERROR && hlsMediaRetryRef.current < 2) {
-              hlsMediaRetryRef.current++;
+            if (decision.kind === 'recover-media') {
               updatePlaybackStatus({ error: '' });
               try { hls.recoverMediaError(); } catch { /* Ignore a failed recovery request. */ }
               return;
             }
-            const retries = hlsNetRetryRef.current + hlsMediaRetryRef.current;
-            if (!upstreamRejected && recoverHtmlPlayback()) return;
+            if (decision.kind === 'switch-kernel' && recoverHtmlPlayback()) return;
+            const retries = decision.retryCount ?? 0;
             updatePlaybackStatus({ error: `HLS 播放失败：${hlsErrorText(data.type, data.details, responseStatus)}` + (retries ? `（已自动重试 ${retries} 次）` : '') });
           });
         }).catch(() => {
@@ -392,6 +399,7 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
 
     return () => {
       cancelled = true;
+      recovery.cancel();
       if (speedTimer) clearInterval(speedTimer);
       video.removeEventListener('timeupdate', onTime);
       video.removeEventListener('canplay', onCanPlay);
