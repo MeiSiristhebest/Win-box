@@ -962,3 +962,11 @@
 - **剩余边界：** 此次把一个跨浏览/搜索状态生命周期从 React hook 移到应用会话，未拆完 `useHomePagePresenter` 中的搜索与浏览协调；播放器 Presenter、全仓 UI/IPC 与 Atomic Design/对比度审计、进程池内部故障竞态及桌面实机播放/安装验收仍未完成。构建仍报告 HLS chunk 574.41 KB 和 Babel transform 耗时。
 - **本轮继续（2026-10-26）：** 新增通用被动视图依赖规则，renderer 中 `*View.tsx/jsx` 不得直接导入 IPC client 或 adapters；首页“开始浏览”导致的搜索结果清空、搜索取消、loading 释放及记忆失效由 `HomeSearchWorkflow.browseStarted` 统一处理，Presenter 只转发动作。共享 `CascadeBarView` 不再读取全局主题 store，Home/发现组合层把 `cardStyle` 显式注入。该变更改善 #5、#6、#7、#11、#14 的具体边界；首页剩余协调、播放器跨域状态所有权、全仓 UI/IPC 与 Atomic Design/对比度、运行时完整故障矩阵及桌面播放/安装验收仍开放，14 项总体结论不变。
 - **本轮验证：** 被动视图约束、级联筛选与首页会话相关定向测试 245 项通过；`pnpm run typecheck` 与 `pnpm run lint` 通过。此前 workflow 定向测试 17 项也通过。该记录只覆盖上述边界，不代表全仓完成。
+
+## 本轮继续：JVM 缓存重建遵守搜索取消（2026-10-26）
+
+- **确认的问题：** `JarSpider` 初次准备通过 `awaitWithAbort` 响应搜索取消；但已就绪 JAR 的缓存路径消失后，自动重建分支直接等待共享准备 Promise，用户取消后仍会被转换过程阻塞。
+- **已修正：** 缓存路径恢复也通过 `awaitWithAbort` 等待。取消立即返回给调用者，后台共享转换可自行完成，且蜘蛛调用不会在取消后开始。
+- **回归覆盖：** `spiderRuntimeConformance.spec.ts` 新增 JVM 缓存路径丢失并在重建中取消的场景，验证及时返回 `AbortError` 且 `call` 未执行。该测试补齐了准备阶段取消矩阵中的缓存恢复路径。
+- **验证：** 定向运行时 conformance 测试 9 项通过；main、renderer、test 三套 TypeScript 检查通过；`pnpm run lint`（含架构边界与 renderer React/perf/a11y）通过。
+- **剩余：** JS/Worker/JVM/Python 所有准备、执行、取消和超时竞态仍需逐项复核；14 项原则全仓整改、全窗口视觉/真实播放和安装验收仍未完成。

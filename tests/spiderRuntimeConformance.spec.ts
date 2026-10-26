@@ -155,6 +155,42 @@ function makeJarHarness(result: SpiderCallResult, runtimeError?: Error, preparat
   return { name: 'JVM', spider, preparationCalls: () => preparationCalls, invocationCalls: () => invocationCalls };
 }
 
+function makeJarCacheMissHarness(rebuildBarrier: Promise<void>, onRebuildStart: () => void): RuntimeHarness {
+  let preparationCalls = 0;
+  let invocationCalls = 0;
+  let pathResolutions = 0;
+  const runtime: JarSpiderRuntimePort = {
+    defaultJar: 'https://source.test/spider.jar',
+    ensureConverted: async () => {
+      preparationCalls += 1;
+      if (preparationCalls === 2) {
+        onRebuildStart();
+        await rebuildBarrier;
+      }
+      return 'C:/cache/spider.jar';
+    },
+    conversionProgress: () => null,
+    resolvePaths: () => {
+      pathResolutions += 1;
+      return pathResolutions === 1 ? [] : ['C:/cache/spider.jar'];
+    },
+    peekConverted: () => 'C:/cache/spider.jar',
+    prewarmJar: () => 0,
+    pendingConvert: () => null,
+    conversionFailure: () => '',
+    warmup: async () => undefined,
+    call: async () => {
+      invocationCalls += 1;
+      return spiderCallSucceeded('too late');
+    },
+    proxyPortForTag: () => null,
+  };
+  const spider = new JarSpider({
+    key: 'jar-source', api: 'csp_Test', ext: '', jar: '', host: makeHost(),
+  }, runtime);
+  return { name: 'JVM', spider, preparationCalls: () => preparationCalls, invocationCalls: () => invocationCalls };
+}
+
 function makeRuntimes(
   result: SpiderCallResult,
   runtimeError?: Error,
@@ -215,6 +251,32 @@ describe('Spider runtime replacement contract', () => {
     }
     preparation.resolve();
     await preparation.promise;
+  });
+
+  it('cancels promptly while rebuilding a missing JVM cache path', async () => {
+    const rebuild = Promise.withResolvers<void>();
+    const rebuildStarted = Promise.withResolvers<void>();
+    const { spider, preparationCalls, invocationCalls } = makeJarCacheMissHarness(
+      rebuild.promise,
+      () => rebuildStarted.resolve(),
+    );
+    const controller = new AbortController();
+    const call = spider.searchContent('query', false, 750, controller.signal);
+    await rebuildStarted.promise;
+    controller.abort(new Error('search cancelled during cache rebuild'));
+
+    try {
+      const outcome = await Promise.race([
+        Promise.resolve(call).then(() => 'resolved', (error: unknown) => error instanceof Error && error.name === 'AbortError' ? 'aborted' : 'failed'),
+        new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 0)),
+      ]);
+      expect(outcome).toBe('aborted');
+      expect(preparationCalls()).toBe(2);
+      expect(invocationCalls()).toBe(0);
+    } finally {
+      rebuild.resolve();
+      await rebuild.promise;
+    }
   });
 
   it('normalizes preparation failures and never invokes a spider that did not finish preparing', async () => {

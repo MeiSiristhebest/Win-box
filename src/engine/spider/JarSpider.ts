@@ -171,7 +171,7 @@ export class JarSpider extends Spider {
     //   用户"重试"也没用，只能重启应用或重新导入配置（0.84.0 实机日志里出现过这一串）。
     if (paths.length === 0) {
       this.ready = false;
-      if (await this.ensureReady()) paths = this.runtime.resolvePaths(this.jarUrls());
+      if (await awaitWithAbort(this.ensureReady(), signal)) paths = this.runtime.resolvePaths(this.jarUrls());
     }
     // 重建后仍拿不到路径 → 绝不继续调用（否则 SpiderRunner 收到空 jar 参数，
     // 所有蜘蛛类都报 ClassNotFoundException，看起来像"桌面版缺接口"，把排查方向带偏）。
