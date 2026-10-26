@@ -14,10 +14,12 @@ import { hlsErrorText } from './hlsErrorText';
 import { reportHtmlMediaEvent, type MediaDiagnosticsPort } from './application/mediaDiagnostics';
 import type { PlaybackHandoffPort } from './application/playbackHandoff';
 import type { PlayerPlaybackPresentationUpdate } from './application/PlayerPlaybackPresentation';
+import type { AdaptiveAudioTrackController } from './application/playerAudioTracks';
+import { createHlsAudioTrackControllerAdapter } from './adapters/hlsAudioTrackControllerAdapter';
 
 export interface Html5PlaybackSessionOptions {
   videoRef: MutableRefObject<HTMLVideoElement | null>;
-  hlsRef?: MutableRefObject<HlsInstance | null>;
+  adaptiveAudioTracksRef?: MutableRefObject<AdaptiveAudioTrackController | null>;
   resourceName?: string;
   onAudioTracks?: () => void;
   url: string;
@@ -51,8 +53,9 @@ export interface Html5PlaybackSessionOptions {
 
 /** Owns the HTML media element, HLS/FLV engines, event listeners and their cleanup. */
 export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, mediaDiagnostics: MediaDiagnosticsPort): void {
-  const localHlsRef = useRef<HlsInstance | null>(null);
-  const hlsRef = options.hlsRef ?? localHlsRef;
+  const hlsInstanceRef = useRef<HlsInstance | null>(null);
+  const localAdaptiveAudioTracksRef = useRef<AdaptiveAudioTrackController | null>(null);
+  const adaptiveAudioTracksRef = options.adaptiveAudioTracksRef ?? localAdaptiveAudioTracksRef;
   const audioTracksRef = useRef(options.onAudioTracks);
   useLayoutEffect(() => { audioTracksRef.current = options.onAudioTracks; }, [options.onAudioTracks]);
   const hlsNetRetryRef = useRef(0);
@@ -101,8 +104,9 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
       video.playbackRate = prefsRef.current.rate;
     }
     video.removeAttribute('src');
-    hlsRef.current?.destroy();
-    hlsRef.current = null;
+    hlsInstanceRef.current?.destroy();
+    hlsInstanceRef.current = null;
+    adaptiveAudioTracksRef.current = null;
     hlsNetRetryRef.current = 0;
     hlsMediaRetryRef.current = 0;
     const oldFlv = (video as unknown as { __flv?: MpegtsModule.Player }).__flv;
@@ -267,7 +271,9 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
             fragLoadingMaxRetry: 4,
             fragLoadingRetryDelay: 800,
           });
-          hlsRef.current = hls;
+          hlsInstanceRef.current = hls;
+          const audioTrackController = createHlsAudioTrackControllerAdapter(hls);
+          adaptiveAudioTracksRef.current = audioTrackController;
           hls.loadSource(htmlUrl);
           hls.attachMedia(video);
           hls.on(Hls.Events.MANIFEST_PARSED, () => { start(); audioTracksRef.current?.(); });
@@ -397,8 +403,12 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
       clearAuto();
       if (!video.paused) positionMemory.save(url, video.currentTime, playbackSource);
       video.pause();
-      hlsRef.current?.destroy();
-      hlsRef.current = null;
+      const hlsInstance = hlsInstanceRef.current;
+      hlsInstanceRef.current = null;
+      if (hlsInstance) {
+        if (adaptiveAudioTracksRef.current) adaptiveAudioTracksRef.current = null;
+        hlsInstance.destroy();
+      }
       const flv = (video as unknown as { __flv?: MpegtsModule.Player }).__flv;
       if (flv) {
         try { flv.destroy(); } catch { /* Ignore an engine teardown failure. */ }

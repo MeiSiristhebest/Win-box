@@ -7,17 +7,17 @@ import type { SessionAudioPreferencePort } from '../src/renderer/features/playba
 import { usePlayerAudioTracks } from '../src/renderer/features/playback/usePlayerAudioTracks';
 
 function createPort() {
-  let hlsSnapshot: { tracks: MpvAudioTrack[]; selectedTrackId: number | null } | null = null;
+  let adaptiveSnapshot: { tracks: MpvAudioTrack[]; selectedTrackId: number | null } | null = null;
   const port: PlayerAudioTracksPort = {
     selectEngineTrack: vi.fn(),
     selectMpvTrack: vi.fn(),
-    selectHlsTrack: vi.fn(),
-    readHlsTracks: () => hlsSnapshot,
+    selectAdaptiveTrack: vi.fn(),
+    readAdaptiveTracks: () => adaptiveSnapshot,
   };
   return {
     port,
-    setHlsTracks(snapshot: { tracks: MpvAudioTrack[]; selectedTrackId: number | null } | null) {
-      hlsSnapshot = snapshot;
+    setAdaptiveTracks(snapshot: { tracks: MpvAudioTrack[]; selectedTrackId: number | null } | null) {
+      adaptiveSnapshot = snapshot;
     },
   };
 }
@@ -47,8 +47,8 @@ describe('usePlayerAudioTracks', () => {
     expect(preference.readPreferredTrackKey()).toBe('en');
   });
 
-  it('routes MPV selection and synchronizes HLS tracks through the same port', () => {
-    const { port, setHlsTracks } = createPort();
+  it('routes MPV selection and synchronizes adaptive tracks through the same port', () => {
+    const { port, setAdaptiveTracks } = createPort();
     const preference = createPreferencePort();
     const { result } = renderHook(() => usePlayerAudioTracks('https://media.test/video', 'mpv', port, preference));
 
@@ -56,8 +56,8 @@ describe('usePlayerAudioTracks', () => {
     expect(port.selectMpvTrack).toHaveBeenCalledWith(3);
 
     const tracks: MpvAudioTrack[] = [{ id: 0, title: 'Japanese' }];
-    setHlsTracks({ tracks, selectedTrackId: 0 });
-    act(() => result.current.syncHls());
+    setAdaptiveTracks({ tracks, selectedTrackId: 0 });
+    act(() => result.current.syncAdaptive());
     expect(result.current.tracks).toEqual(tracks);
     expect(result.current.aid).toBe(0);
   });
@@ -69,7 +69,7 @@ describe('usePlayerAudioTracks', () => {
 
     act(() => result.current.sync([{ id: 1, lang: 'English' }, { id: 2, lang: 'Japanese' }], 2));
 
-    expect(port.selectHlsTrack).toHaveBeenCalledWith(1);
+    expect(port.selectAdaptiveTrack).toHaveBeenCalledWith(1);
     expect(result.current.aid).toBe(2);
   });
 });

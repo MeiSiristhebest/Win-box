@@ -34,7 +34,7 @@ export function usePlayerAudioTracks(
   const apply = useCallback((track: MpvAudioTrack) => {
     if (isEngineKernel(context.current.kernel)) port.selectEngineTrack(track.id);
     else if (context.current.kernel === 'mpv') port.selectMpvTrack(track.id);
-    else port.selectHlsTrack(track.id);
+    else port.selectAdaptiveTrack(track.id);
     preference.rememberPreferredTrackKey(audioTrackKey(track));
   }, [port, preference]);
   const sync = useCallback((list: MpvAudioTrack[], selected: number | null) => {
@@ -51,9 +51,9 @@ export function usePlayerAudioTracks(
     retries.current = { key, id: hit.id, count: count + 1 };
     apply(hit);
   }, [apply, preference]);
-  const syncHls = useCallback(() => {
-    const snapshot = port.readHlsTracks();
+  const syncAdaptive = useCallback(() => {
+    const snapshot = port.readAdaptiveTracks();
     if (snapshot) sync(snapshot.tracks, snapshot.selectedTrackId);
   }, [port, sync]);
-  return { tracks, aid, open, setOpen, apply, sync, syncHls };
+  return { tracks, aid, open, setOpen, apply, sync, syncAdaptive };
 }

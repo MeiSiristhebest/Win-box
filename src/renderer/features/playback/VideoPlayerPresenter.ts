@@ -1,5 +1,4 @@
 // Coordinates playback feature hooks and maps their state to grouped presentation state and actions.
-import type HlsInstance from 'hls.js';
 import { formatPlaybackTime, formatNetworkSpeed } from './formatting';
 import { usePlayerAudioTracks } from './usePlayerAudioTracks';
 import { useSuperResolution } from './useSuperResolution';
@@ -52,6 +51,7 @@ import type { SubtitlePlaybackPort } from './application/subtitlePlaybackPort';
 import type { SuperResolutionPort } from './application/superResolutionPort';
 import type { PlayerPreferencesPort } from './application/playerPreferences';
 import type { PlayerAudioTracksPort } from './application/playerAudioTracks';
+import type { AdaptiveAudioTrackController } from './application/playerAudioTracks';
 import type { SessionAudioPreferencePort } from './application/sessionAudioPreference';
 import type { HtmlMediaSourcePort } from './application/htmlMediaSource';
 import type { PlayerKernelCommandPort } from './application/playerKernelCommandPort';
@@ -137,7 +137,7 @@ export interface VideoPlayerPresenterDependencies {
   externalPlayback: ExternalPlaybackFallbackPort;
   playerPreferences: PlayerPreferencesPort;
   sessionAudioPreference: SessionAudioPreferencePort;
-  createAudioTracksPort: (hlsRef: RefObject<HlsInstance | null>) => PlayerAudioTracksPort;
+  createAudioTracksPort: (adaptiveTracksRef: RefObject<AdaptiveAudioTrackController | null>) => PlayerAudioTracksPort;
   htmlMediaSource: HtmlMediaSourcePort;
   playerKernelCommands: PlayerKernelCommandPort;
   relaySpeedEvents: RelaySpeedEventsPort;
@@ -176,7 +176,7 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
   const progressKey = playbackProgressKey(url, props.playbackSource);
   const ref = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const hlsRef = useRef<HlsInstance | null>(null);
+  const adaptiveAudioTracksRef = useRef<AdaptiveAudioTrackController | null>(null);
   // ---- ★ 2026-09-24：播放器设置记忆（音量 / 倍速 / 字幕时间偏移）----
   //   挂载时一次性读取（localStorage，主窗口与独立播放器窗口同源共享），
   //   变更时由下方 persist effect 落盘 → 下次打开播放器保持上次的设置。
@@ -220,8 +220,8 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
   const { mpvInfo, kernel, setKernel, kernelRef, engines, htmlPlaybackReady: htmlKernelReady, resolvePreference, setCompatibilitySource } = kernelSelection;
   const technical = useMpvTechnicalState(url, kernel);
   const createAudioTracksPort = dependencies.createAudioTracksPort;
-  // oxlint-disable-next-line react/refs -- The injected adapter retains this stable ref and reads its current HLS instance only when track commands run.
-  const audioPort = useMemo(() => createAudioTracksPort(hlsRef), [hlsRef, createAudioTracksPort]);
+  // oxlint-disable-next-line react/refs -- The adapter reads the current session's narrow audio-track capability only when a user action runs.
+  const audioPort = useMemo(() => createAudioTracksPort(adaptiveAudioTracksRef), [adaptiveAudioTracksRef, createAudioTracksPort]);
   const audio = usePlayerAudioTracks(url, kernel, audioPort, dependencies.sessionAudioPreference);
   const superResolution = useSuperResolution(allowMpv && kernel === 'mpv', dependencies.superResolution);
   const controlsRevealRef = useRef<() => void>(() => undefined);
@@ -541,9 +541,9 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
   usePlayerPlaybackSessions({
     html5: {
       videoRef: ref,
-      hlsRef,
+      adaptiveAudioTracksRef,
       resourceName,
-      onAudioTracks: audio.syncHls,
+      onAudioTracks: audio.syncAdaptive,
       url,
       htmlUrl,
       progressKey,

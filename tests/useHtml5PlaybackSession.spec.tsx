@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PlaybackSourceRef } from '../src/renderer/lib/playbackProgress';
@@ -10,6 +10,33 @@ import { createPlaybackHandoffPort, type PlaybackHandoff } from '../src/renderer
 import { createPlaybackSessionStatePort } from '../src/renderer/features/playback/application/playbackSessionState';
 import type { MediaDiagnosticsPort } from '../src/renderer/features/playback/application/mediaDiagnostics';
 import type { PlaybackPositionMemoryPort, PlaybackRuntimePort } from '../src/renderer/features/playback/application/playbackSessionPorts';
+import type { AdaptiveAudioTrackController } from '../src/renderer/features/playback/application/playerAudioTracks';
+
+const hlsTestState = vi.hoisted(() => ({ destroyed: 0 }));
+vi.mock('hls.js', () => {
+  const Events = {
+    MANIFEST_PARSED: 'manifest-parsed', AUDIO_TRACKS_UPDATED: 'audio-tracks-updated',
+    AUDIO_TRACK_SWITCHED: 'audio-track-switched', LEVEL_LOADED: 'level-loaded',
+    FRAG_LOADED: 'fragment-loaded', ERROR: 'error',
+  };
+  class MockHls {
+    static Events = Events;
+    static ErrorTypes = { NETWORK_ERROR: 'networkError', MEDIA_ERROR: 'mediaError' };
+    static isSupported = () => true;
+    audioTrack = 1;
+    audioTracks = [
+      { name: '国语', lang: 'chi', attrs: { CHANNELS: '2' } },
+      { name: '日本語', lang: 'jpn', attrs: { CHANNELS: '6' } },
+    ];
+    loadSource() {}
+    attachMedia() {}
+    on() {}
+    startLoad() {}
+    recoverMediaError() {}
+    destroy() { hlsTestState.destroyed++; }
+  }
+  return { default: MockHls };
+});
 
 const playbackUrl = 'https://media.example/video.mp4';
 const playbackSource: PlaybackSourceRef = { profileId: 'profile-a', key: 'source-a' };
@@ -30,6 +57,9 @@ function Harness({
   kernel = 'html5',
   initialHandoff,
   recoverHtmlPlayback = () => false,
+  runtime = playbackRuntime,
+  adaptiveAudioTracksRef,
+  url = playbackUrl,
 }: {
   pausedHandoff?: boolean;
   onEnded?: () => void;
@@ -38,6 +68,9 @@ function Harness({
   kernel?: Kernel;
   initialHandoff?: PlaybackHandoff;
   recoverHtmlPlayback?: () => boolean;
+  runtime?: PlaybackRuntimePort;
+  adaptiveAudioTracksRef?: MutableRefObject<AdaptiveAudioTrackController | null>;
+  url?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const prefsRef = useRef<PlayerPrefs>({ vol: 0.6, rate: 1.5, subOffset: 0, fit: 'contain', kernel: 'auto', spdif: '' });
@@ -82,8 +115,8 @@ function Harness({
 
   useHtml5PlaybackSession({
     videoRef,
-    url: playbackUrl,
-    htmlUrl: playbackUrl,
+    url,
+    htmlUrl: url,
     progressKey: 'profile-a-source-a',
     kernel,
     isImage: false,
@@ -91,7 +124,8 @@ function Harness({
     liveHint: false,
     playbackSource,
     positionMemory,
-    runtime: playbackRuntime,
+    runtime,
+    adaptiveAudioTracksRef,
     startTime: 45,
     prefsRef,
     bossActiveRef,
@@ -135,10 +169,31 @@ afterEach(() => {
   cleanup();
   storedPositions.clear();
   localStorage.clear();
+  hlsTestState.destroyed = 0;
   vi.restoreAllMocks();
 });
 
 describe('useHtml5PlaybackSession', () => {
+  it('publishes only the adaptive audio-track capability and clears it on session teardown', async () => {
+    const adaptiveAudioTracksRef: MutableRefObject<AdaptiveAudioTrackController | null> = { current: null };
+    const desktopRuntime: PlaybackRuntimePort = { isDesktopRuntime: () => true };
+    const { unmount } = render(<Harness runtime={desktopRuntime} adaptiveAudioTracksRef={adaptiveAudioTracksRef} url="https://media.example/live.m3u8" />);
+
+    await waitFor(() => expect(adaptiveAudioTracksRef.current).not.toBeNull());
+    expect(adaptiveAudioTracksRef.current?.read()).toEqual({
+      tracks: [
+        { id: 0, title: '国语', lang: 'chi', channels: '2', selected: undefined },
+        { id: 1, title: '日本語', lang: 'jpn', channels: '6', selected: true },
+      ],
+      selectedTrackId: 1,
+    });
+    expect(screen.getByTestId('video').getAttribute('src')).toBeNull();
+
+    unmount();
+    expect(adaptiveAudioTracksRef.current).toBeNull();
+    expect(hlsTestState.destroyed).toBe(1);
+  });
+
   it('does not launch an external player when a selected kernel is already taking over', async () => {
     const tryExternalFallback = vi.fn(async () => ({ opened: true }));
     render(<Harness recoverHtmlPlayback={() => true} tryExternalFallback={tryExternalFallback} />);
