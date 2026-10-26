@@ -27,3 +27,43 @@ export interface HomeSearchBrowsePort {
   preserveBrowseForSearch(aggregateMode: boolean): void;
   returnDestination(): HomeBrowseReturnDestination;
 }
+
+export type HomeBrowseSearchSessionPorts = Omit<HomeSearchBrowsePort, 'preserveBrowseForSearch' | 'returnDestination'> & {
+  currentSnapshot(): HomeBrowseSnapshot | null;
+};
+
+export interface HomeBrowseSearchSession {
+  port: HomeSearchBrowsePort;
+  browseStarted(): void;
+}
+
+/** Owns the temporary browse snapshot handoff used while aggregate search replaces the browse list. */
+export function createHomeBrowseSearchSession(ports: HomeBrowseSearchSessionPorts): HomeBrowseSearchSession {
+  let snapshot: HomeBrowseSnapshot | null = null;
+
+  return {
+    port: {
+      activeProfileId: ports.activeProfileId,
+      setActiveProfileId: ports.setActiveProfileId,
+      activeSourceKey: ports.activeSourceKey,
+      invalidateBrowseRequests: ports.invalidateBrowseRequests,
+      preserveBrowseForSearch(aggregateMode) {
+        if (aggregateMode) return;
+        const current = ports.currentSnapshot();
+        if (current && current.items.length > 0) snapshot = current;
+      },
+      returnDestination() {
+        const sourceKey = ports.activeSourceKey();
+        if (snapshot && sourceKey && snapshot.key === sourceKey) {
+          const restored = snapshot;
+          snapshot = null;
+          return { kind: 'restore', snapshot: restored };
+        }
+        return sourceKey ? { kind: 'reload', sourceKey } : { kind: 'none' };
+      },
+    },
+    browseStarted() {
+      snapshot = null;
+    },
+  };
+}

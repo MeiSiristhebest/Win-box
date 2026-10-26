@@ -4,7 +4,7 @@ import type { VodItem } from '../../../shared/types';
 import { makeStaleGuard } from '../../lib/staleGuard';
 import { appendUniqueItems, pageSignature } from '../../lib/listAppend';
 import type { HomeBrowsePort, HomeBrowseSessionPort, HomeCategoryStateMemoryPort, HomeSortClassView } from './application/homePorts';
-import type { HomeBrowseReturnDestination, HomeBrowseSnapshot, HomeSearchBrowsePort } from './application/homeBrowseSearchSession';
+import { createHomeBrowseSearchSession, type HomeBrowseSnapshot } from './application/homeBrowseSearchSession';
 import type { HomeWaterfallObserverPort } from './application/homeWaterfallObserverPort';
 import { useHomeWaterfallObserver } from './useHomeWaterfallObserver';
 
@@ -56,16 +56,36 @@ export function useHomeBrowseController({
   const wfSigRef = useRef('');
   const listGen = useRef(makeStaleGuard());
   const homeMetadataGen = useRef(makeStaleGuard());
-  const browseSnapshotRef = useRef<HomeBrowseSnapshot | null>(null);
   const prepRetryCount = useRef(0);
   const prepRetryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onBrowseStartRef = useRef(onBrowseStart);
   onBrowseStartRef.current = onBrowseStart;
   const onMemoryRestoreStartRef = useRef(onMemoryRestoreStart);
   onMemoryRestoreStartRef.current = onMemoryRestoreStart;
+  const browseSnapshotStateRef = useRef<HomeBrowseSnapshot | null>(null);
+  browseSnapshotStateRef.current = {
+    key: keyRef.current,
+    items,
+    classes,
+    pageInfo,
+    pg,
+    tid,
+    filters: filtersActive,
+    fallback,
+  };
+  const [browseSearchSession] = useState(() => createHomeBrowseSearchSession({
+    activeProfileId: () => profileIdRef.current,
+    setActiveProfileId: (profileId) => { profileIdRef.current = profileId; },
+    activeSourceKey: () => keyRef.current,
+    invalidateBrowseRequests: () => {
+      listGen.current.next();
+      homeMetadataGen.current.next();
+    },
+    currentSnapshot: () => browseSnapshotStateRef.current,
+  }));
 
   function notifyBrowseStarted(): void {
-    browseSnapshotRef.current = null;
+    browseSearchSession.browseStarted();
     onBrowseStartRef.current();
   }
 
@@ -311,38 +331,6 @@ export function useHomeBrowseController({
     void loadCategory(tid, page, filtersActive);
   }
 
-  const searchBrowsePort: HomeSearchBrowsePort = {
-    activeProfileId: () => profileIdRef.current,
-    setActiveProfileId: (profileId) => { profileIdRef.current = profileId; },
-    activeSourceKey: () => keyRef.current,
-    invalidateBrowseRequests: () => {
-      listGen.current.next();
-      homeMetadataGen.current.next();
-    },
-    preserveBrowseForSearch: (aggregateMode) => {
-      if (aggregateMode || !items.length) return;
-      browseSnapshotRef.current = {
-        key: keyRef.current,
-        items,
-        classes,
-        pageInfo,
-        pg,
-        tid,
-        filters: filtersActive,
-        fallback,
-      };
-    },
-    returnDestination: (): HomeBrowseReturnDestination => {
-      const sourceKey = keyRef.current;
-      const snapshot = browseSnapshotRef.current;
-      if (snapshot && sourceKey && snapshot.key === sourceKey) {
-        browseSnapshotRef.current = null;
-        return { kind: 'restore', snapshot };
-      }
-      return sourceKey ? { kind: 'reload', sourceKey } : { kind: 'none' };
-    },
-  };
-
   const sessionPort: HomeBrowseSessionPort = {
     activeSourceKey: () => keyRef.current,
     selectSource: (sourceKey) => {
@@ -371,7 +359,7 @@ export function useHomeBrowseController({
     waterfall,
     wfSentinelRef: waterfallSentinelRef,
     wfNoMore,
-    searchBrowsePort,
+    searchBrowsePort: browseSearchSession.port,
     sessionPort,
     loadHome,
     clearBrowse,
