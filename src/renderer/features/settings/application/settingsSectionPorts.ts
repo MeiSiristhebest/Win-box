@@ -1,6 +1,5 @@
 import type { BossKeySettings, DataDirInfo, SourceDebugReport, SourceMoveDirection, SourceUpdatePatch } from '../../../../shared/types';
-import type { KeymapView, PlayerEngineView, PluginInspectResult, PluginView, SettingsPanelView, UiCommandView } from '../../../../shared/plugin';
-import type { PlayerSettings } from '../../../../shared/player';
+import type { KeymapView, PluginInspectResult, PluginView, SettingsPanelView, UiCommandView } from '../../../../shared/plugin';
 import type { DavEntry, DavServer } from '../../../../shared/webdav';
 
 export interface CacheMaintenancePort {
@@ -40,13 +39,6 @@ export interface SourceManagementPort {
   setGlobalSourceBlock(sourceKeys: string[], blocked: boolean): Promise<void>;
   moveSource(sourceKey: string, direction: SourceMoveDirection): Promise<void>;
   updateSource(sourceKey: string, patch: SourceUpdatePatch): Promise<void>;
-}
-
-export interface PlayerEngineSettingsPort {
-  listEngines(): Promise<PlayerEngineView[]>;
-  loadPlayerSettings(): Promise<PlayerSettings>;
-  setEngineEnabled(input: { id: string; enabled: boolean }): Promise<{ ok: boolean; reason?: string }>;
-  savePlayerSettings(patch: Partial<PlayerSettings>): Promise<PlayerSettings>;
 }
 
 export interface PlayerEngineSettingsEventsPort {

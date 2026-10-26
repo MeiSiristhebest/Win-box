@@ -1,7 +1,8 @@
 import { PlayerEngineSettings } from './PlayerEngineSettings';
 import { isEngineKernel } from '../../lib/kernel';
 import type { PlayerPreferencesPort } from '../playback/application/playerPreferences';
-import type { PlayerEngineSettingsEventsPort, PlayerEngineSettingsPort } from './application/settingsSectionPorts';
+import type { PlayerEngineSettingsEventsPort } from './application/settingsSectionPorts';
+import type { PlayerEngineActivationPort, PlayerEngineCatalogPort, PlayerEnginePathSettingsPort } from './application/playerEngineSettingsPorts';
 import type { ExternalPlayerDiscoveryPort, MediaRuntimeManagementPort, MpvSettingsPort, PlayerSettingsPort } from './application/playbackSettingsPorts';
 import { PlaybackCompatibilitySettingsSection } from './PlaybackCompatibilitySettingsSection';
 import { useExternalPlayerSettings } from './useExternalPlayerSettings';
@@ -11,7 +12,9 @@ interface PlaybackSettingsSectionProps {
   active: boolean;
   requestedSection?: string;
   preferences: PlayerPreferencesPort;
-  engineSettings: PlayerEngineSettingsPort;
+  engineCatalog: PlayerEngineCatalogPort;
+  engineActivation: PlayerEngineActivationPort;
+  enginePathSettings: PlayerEnginePathSettingsPort;
   engineEvents: PlayerEngineSettingsEventsPort;
   playerSettings: PlayerSettingsPort;
   externalPlayers: ExternalPlayerDiscoveryPort;
@@ -19,7 +22,7 @@ interface PlaybackSettingsSectionProps {
   mediaRuntimes: MediaRuntimeManagementPort;
 }
 
-export function PlaybackSettingsSection({ active, requestedSection = '', preferences, engineSettings, engineEvents, playerSettings, externalPlayers, mpvSettings, mediaRuntimes }: PlaybackSettingsSectionProps) {
+export function PlaybackSettingsSection({ active, requestedSection = '', preferences, engineCatalog, engineActivation, enginePathSettings, engineEvents, playerSettings, externalPlayers, mpvSettings, mediaRuntimes }: PlaybackSettingsSectionProps) {
   const { model, actions } = usePlaybackSettingsPresenter({ active, requestedSection, preferences, playerSettings });
   const { settings: playPrefs, message: playMsg, internalMode, advancedOpen, settingsLoaded: prefsLoaded, mpvAvailable } = model;
   const externalSettings = useExternalPlayerSettings({
@@ -132,7 +135,7 @@ export function PlaybackSettingsSection({ active, requestedSection = '', prefere
           </div>}
           {externalSettings.torrent.message && <output className={externalSettings.torrent.message.kind === 'err' ? 'err' : 'status'} style={{ display: 'block', marginTop: 8 }}>{externalSettings.torrent.message.text}</output>}
         </section>
-        {advancedOpen && <PlayerEngineSettings active={active} port={engineSettings} events={engineEvents} />}
+        {advancedOpen && <PlayerEngineSettings active={active} catalog={engineCatalog} activation={engineActivation} pathSettings={enginePathSettings} events={engineEvents} />}
       </details>
     </>
   );

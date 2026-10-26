@@ -1,47 +1,36 @@
-import { useCallback, useEffect, useState } from 'react';
-import type { PlayerEngineView } from '../../../shared/plugin';
-import { DEFAULT_PLAYER_SETTINGS, type PlayerSettings } from '../../../shared/player';
 import { useAppDialog } from '../../components/AppDialog';
-import type { PlayerEngineSettingsEventsPort, PlayerEngineSettingsPort } from './application/settingsSectionPorts';
+import type { PlayerEngineView } from '../../../shared/plugin';
+import type { PlayerEngineSettingsEventsPort } from './application/settingsSectionPorts';
+import type { PlayerEngineActivationPort, PlayerEngineCatalogPort, PlayerEnginePathSettingsPort } from './application/playerEngineSettingsPorts';
+import { PlayerEngineSettingsView } from './PlayerEngineSettingsView';
+import { usePlayerEngineSettingsPresenter } from './usePlayerEngineSettingsPresenter';
 
-export function PlayerEngineSettings({ active, port, events }: { active: boolean; port: PlayerEngineSettingsPort; events: PlayerEngineSettingsEventsPort }) {
+export function PlayerEngineSettings({ active, catalog, activation, pathSettings, events }: {
+  active: boolean;
+  catalog: PlayerEngineCatalogPort;
+  activation: PlayerEngineActivationPort;
+  pathSettings: PlayerEnginePathSettingsPort;
+  events: PlayerEngineSettingsEventsPort;
+}) {
   const dialog = useAppDialog();
-  const [items, setItems] = useState<PlayerEngineView[]>([]);
-  const [settings, setSettings] = useState<PlayerSettings>(DEFAULT_PLAYER_SETTINGS);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const load = useCallback(async () => {
-    const [engines, values] = await Promise.all([port.listEngines(), port.loadPlayerSettings()]);
-    setItems(engines.filter(item => item.pluginId !== 'builtin'));
-    setSettings(values);
-  }, [port]);
-  useEffect(() => {
-    if (!active) return;
-    let alive = true;
-    void Promise.all([port.listEngines(), port.loadPlayerSettings()]).then(([engines, values]) => {
-      if (!alive) return;
-      setItems(engines.filter(item => item.pluginId !== 'builtin')); setSettings(values);
-    }).catch(cause => { if (alive) setError(cause instanceof Error ? cause.message : String(cause)); }).finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
-  }, [active, port]);
-  async function toggle(item: PlayerEngineView, enabled: boolean) {
-    if (enabled && !settings.engineEnabled[item.id] && !(await dialog.confirm('启用插件播放内核「' + item.label + '」后，应用会运行该内核提供的本机程序' + (item.path ? '（' + item.path + '）' : '') + '。继续吗？', { title: '启用插件播放内核', confirmLabel: '启用' }))) return;
-    setBusy(true); setError('');
-    try {
-      const result = await port.setEngineEnabled({ id: item.id, enabled });
-      if (!result.ok) throw new Error(result.reason || '保存失败');
-      await load(); events.notifyChanged();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); }
-  }
-  async function savePath(item: PlayerEngineView) {
-    setBusy(true); setError('');
-    try {
-      await port.savePlayerSettings({ enginePaths: { ...settings.enginePaths, [item.id]: (drafts[item.id] ?? settings.enginePaths[item.id] ?? '').trim() } });
-      await load(); events.notifyChanged();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); }
-  }
+  const presenter = usePlayerEngineSettingsPresenter({
+    active,
+    catalog,
+    activation,
+    pathSettings,
+    events,
+    confirmEnable: (item: PlayerEngineView) => dialog.confirm(
+      '启用插件播放内核「' + item.label + '」后，应用会运行该内核提供的本机程序' + (item.path ? '（' + item.path + '）' : '') + '。继续吗？',
+      { title: '启用插件播放内核', confirmLabel: '启用' },
+    ),
+  });
   if (!active) return null;
-  return <section className="card" id="cfg-plugin-engines"><h3>插件播放内核</h3><p className="muted">启用后可在播放器的内核列表中选用。</p>{loading ? <p className="muted">正在检查可用的插件播放内核…</p> : !items.length ? <p className="muted">没有可用的插件播放内核。安装提供播放内核的插件后，它们会显示在这里。</p> : items.map(item => <div key={item.id}><label className="row"><input type="checkbox" checked={settings.engineEnabled[item.id] === true} disabled={busy} onChange={event => { void toggle(item, event.target.checked); }} /><span>{item.label}</span></label><p className="muted">{item.pluginName} · {item.ready ? '就绪' : item.note || '未就绪'}</p>{item.source === 'local-path' && <div className="row"><input aria-label={item.label + '程序路径'} placeholder="本机程序路径" value={drafts[item.id] ?? settings.enginePaths[item.id] ?? ''} onChange={event => setDrafts(value => ({ ...value, [item.id]: event.target.value }))} /><button type="button" disabled={busy} onClick={() => { void savePath(item); }}>保存路径</button></div>}</div>)}{error && <p className="err" role="alert">{error}</p>}</section>;
+  return (
+    <PlayerEngineSettingsView
+      model={presenter.model}
+      onToggle={(item, enabled) => { void presenter.toggle(item, enabled); }}
+      onPathChange={presenter.changePath}
+      onSavePath={(item) => { void presenter.savePath(item); }}
+    />
+  );
 }

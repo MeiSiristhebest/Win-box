@@ -302,7 +302,7 @@ export default function ConfigPage() {
       {tab === 'appearance' && <AppearanceSection />}
 
       {/* ===== 六、播放（去广告） ===== */}
-      {tab === 'play' && <PlaybackSettingsSection active requestedSection={requestedTab === 'play' ? requestedSection : ''} preferences={playerPreferencesStorageAdapter} engineSettings={playerEngineSettingsAdapter} engineEvents={browserPlayerEngineSettingsEventsAdapter} playerSettings={playerSettingsAdapter} externalPlayers={externalPlayerDiscoveryAdapter} mpvSettings={mpvSettingsAdapter} mediaRuntimes={mediaRuntimeManagementAdapter} key={requestedTab === 'play' ? requestedSection : 'play'} />}
+      {tab === 'play' && <PlaybackSettingsSection active requestedSection={requestedTab === 'play' ? requestedSection : ''} preferences={playerPreferencesStorageAdapter} engineCatalog={playerEngineSettingsAdapter} engineActivation={playerEngineSettingsAdapter} enginePathSettings={playerEngineSettingsAdapter} engineEvents={browserPlayerEngineSettingsEventsAdapter} playerSettings={playerSettingsAdapter} externalPlayers={externalPlayerDiscoveryAdapter} mpvSettings={mpvSettingsAdapter} mediaRuntimes={mediaRuntimeManagementAdapter} key={requestedTab === 'play' ? requestedSection : 'play'} />}
 
       {/* ===== 七、快捷键（老板键） ===== */}
       <PluginSettingsSection active={tab === 'plugins'} dependencies={pluginSettingsDependencies} />

@@ -39,7 +39,7 @@ const mediaRuntimes = {
 };
 
 function renderPlaybackSettings(props: { active: boolean; requestedSection?: string }) {
-  return render(<PlaybackSettingsSection {...props} preferences={playerPreferences} engineSettings={engineSettings} engineEvents={engineEvents} playerSettings={playerSettings} externalPlayers={externalPlayers} mpvSettings={mpvSettings} mediaRuntimes={mediaRuntimes} />);
+  return render(<PlaybackSettingsSection {...props} preferences={playerPreferences} engineCatalog={engineSettings} engineActivation={engineSettings} enginePathSettings={engineSettings} engineEvents={engineEvents} playerSettings={playerSettings} externalPlayers={externalPlayers} mpvSettings={mpvSettings} mediaRuntimes={mediaRuntimes} />);
 }
 
 beforeEach(() => {

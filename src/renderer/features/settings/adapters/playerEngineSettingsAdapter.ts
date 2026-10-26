@@ -1,7 +1,7 @@
 import { client } from '../../../api/client';
-import type { PlayerEngineSettingsPort } from '../application/settingsSectionPorts';
+import type { PlayerEngineActivationPort, PlayerEngineCatalogPort, PlayerEnginePathSettingsPort } from '../application/playerEngineSettingsPorts';
 
-export const playerEngineSettingsAdapter: PlayerEngineSettingsPort = {
+export const playerEngineSettingsAdapter: PlayerEngineCatalogPort & PlayerEngineActivationPort & PlayerEnginePathSettingsPort = {
   listEngines: () => client.engineList(),
   loadPlayerSettings: () => client.playerPrefsGet(),
   setEngineEnabled: (input) => client.engineSetEnabled(input),
