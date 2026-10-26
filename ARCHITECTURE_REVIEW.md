@@ -970,3 +970,11 @@
 - **回归覆盖：** `spiderRuntimeConformance.spec.ts` 新增 JVM 缓存路径丢失并在重建中取消的场景，验证及时返回 `AbortError` 且 `call` 未执行。该测试补齐了准备阶段取消矩阵中的缓存恢复路径。
 - **验证：** 定向运行时 conformance 测试 9 项通过；main、renderer、test 三套 TypeScript 检查通过；`pnpm run lint`（含架构边界与 renderer React/perf/a11y）通过。
 - **剩余：** JS/Worker/JVM/Python 所有准备、执行、取消和超时竞态仍需逐项复核；14 项原则全仓整改、全窗口视觉/真实播放和安装验收仍未完成。
+
+## 本轮继续：收藏集合与浏览器基础设施分层（2026-10-26）
+
+- **确认的问题：** 旧 `lib/favorites.ts` 同时持有收藏状态与合并规则、直接读写 localStorage、发浏览器同步事件；DetailPage、App 和收藏页面 adapter 共用这个无显式依赖的模块。
+- **已调整：** 新增依赖 `FavoritePersistencePort` 与 `FavoriteChangeNotificationPort` 的 `FavoriteCollection` 应用服务；浏览器存储和跨窗口事件移入 `favoritesBrowserAdapter`，由 `favoritesRuntime` 作为 feature composition root 创建共享实例。DetailPage、App、收藏 adapter 和备份恢复测试均迁到该 feature API，删除旧 `lib/favorites.ts`。
+- **回归覆盖：** 新增两个不依赖浏览器环境的应用服务测试；原有 15 项收藏键、合并、墓碑、增删改查和异常兼容测试继续覆盖浏览器 adapter 路径。
+- **验证：** 收藏、备份恢复和架构边界 4 个测试文件共 271 项通过；main、renderer、test 三套 TypeScript 检查通过；`pnpm run lint` 与架构边界扫描通过。
+- **原则与限制：** 这关闭收藏功能中 #1 SRP、#5 DIP、#6 SoC、#8 副作用隔离和 #14 可测试性的一处具体混层；14 项全仓评审、全局对比度/Atomic Design、播放器真实状态和运行时故障矩阵仍未完成。

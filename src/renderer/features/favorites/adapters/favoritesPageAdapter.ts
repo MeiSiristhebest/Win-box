@@ -10,7 +10,7 @@ import {
   removeFavorite,
   restoreFavorite,
   updateFavorite,
-} from '../../../lib/favorites';
+} from '../favoritesRuntime';
 import type { FavoritesPagePorts } from '../application/favoritesPage';
 
 export function createFavoritesPageAdapter(navigate: NavigateFunction): Omit<FavoritesPagePorts, 'confirmations'> {

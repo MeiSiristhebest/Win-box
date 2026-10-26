@@ -263,18 +263,19 @@ const rendererHistoryPageForbiddenImports = new Map([
 ]);
 const rendererFavoritesPageForbiddenImports = new Map([
   ['renderer/pages/FavoritesPage.tsx', new Set([
-    '../api/client', '../lib/favorites', '../lib/detailWin', '../lib/historySource',
+    '../api/client', '../lib/favorites', '../features/favorites/favoritesRuntime', '../lib/detailWin', '../lib/historySource',
   ])],
   ['renderer/pages/FavoritesPageView.tsx', new Set([
-    '../api/client', '../lib/favorites', '../lib/detailWin', '../lib/historySource',
+    '../api/client', '../lib/favorites', '../features/favorites/favoritesRuntime', '../lib/detailWin', '../lib/historySource',
     '../features/favorites/adapters/favoritesPageAdapter', '../features/favorites/useFavoritesPagePresenter',
   ])],
   ['renderer/features/favorites/useFavoritesPagePresenter.ts', new Set([
-    '../../api/client', '../../lib/favorites', '../../lib/detailWin', '../../lib/historySource',
-    './adapters/favoritesPageAdapter',
+    '../../api/client', '../../lib/favorites', './favoritesRuntime', './adapters/favoritesBrowserAdapter',
+    '../../lib/detailWin', '../../lib/historySource', './adapters/favoritesPageAdapter',
   ])],
   ['renderer/features/favorites/application/favoritesPage.ts', new Set([
-    'react', '../../../api/client', '../../../lib/favorites', '../adapters/favoritesPageAdapter',
+    'react', '../../../api/client', '../../../lib/favorites', '../favoritesRuntime',
+    '../adapters/favoritesBrowserAdapter', '../adapters/favoritesPageAdapter',
   ])],
 ]);
 const rendererStoragePageForbiddenImports = new Map([
@@ -495,7 +496,6 @@ const rendererBrowserStorageForbiddenGlobals = new Set([
   'renderer/features/live/useLivePlayback.ts',
 ]);
 const rendererBrowserStorageAdapterFiles = new Set([
-  'renderer/lib/favorites.ts',
   'renderer/lib/playerPrefs.ts',
   'renderer/adapters/uiPreferencesAdapter.ts',
   'renderer/lib/searchHistory.ts',

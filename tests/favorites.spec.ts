@@ -20,7 +20,7 @@ import {
   favoritesCount,
   loadFavorites,
   type FavoriteItem,
-} from '../src/renderer/lib/favorites';
+} from '../src/renderer/features/favorites/favoritesRuntime';
 import { unionTombstones } from '../src/renderer/lib/uiMemory';
 
 /** 测试环境是 node（无 jsdom）→ 提供最小 localStorage 实现（读写都在调用期发生，故注入即可） */

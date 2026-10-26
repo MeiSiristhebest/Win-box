@@ -24,7 +24,7 @@ import UpdateGate from './components/UpdateGate';
 import { loadUiMemory, sameEpProgress, saveUiMemory, markHistoryOnlyWriter } from './lib/uiMemory';
 import { MODIFIED_BUILD_DISCLAIMER } from './lib/disclaimerText';
 // ★ 2026-10-17（用户要求）：收藏（独立 localStorage 键，不并入 uiMemory）
-import { FAVORITES_EVENT, loadFavorites } from './lib/favorites';
+import { FAVORITES_EVENT, loadFavorites } from './features/favorites/favoritesRuntime';
 // ★ 2026-09-30（用户要求）：显式绑定第三方播放器时点播直接由它播放（详见 lib/externalPlay.ts）
 import { playVodExternal } from './lib/externalPlay';
 import { useShowDiscover } from './lib/uiPrefs';

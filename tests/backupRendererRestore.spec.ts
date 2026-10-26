@@ -25,7 +25,7 @@ describe('renderer backup replacement', () => {
   });
 
   it('removes keys absent from the backup and blocks old favorites writers', async () => {
-    const favorites = await import('../src/renderer/lib/favorites');
+  const favorites = await import('../src/renderer/features/favorites/favoritesRuntime');
     favorites.addFavorite({ sourceKey: 'a', vodId: 'old', name: 'old' });
     const { prepareRendererBackupRestore, STORAGE_EPOCH_KEY } = await import('../src/renderer/lib/storageEpoch');
     prepareRendererBackupRestore({ 'winbox-theme': 'apple' });

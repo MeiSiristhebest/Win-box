@@ -32,7 +32,7 @@ import { SelectionButton } from '../components/ui/SelectionButton';
  *   模块级（跨挂载保留）——用户从搜索结果返回时不再被重复跳转。
  */
 // ★ 2026-10-17（用户要求）：收藏 —— 本片加入/移出收藏（列表页在 pages/FavoritesPage.tsx）
-import { FAVORITES_EVENT, addFavorite, findFavorite, removeFavorite } from '../lib/favorites';
+import { FAVORITES_EVENT, addFavorite, findFavorite, removeFavorite } from '../features/favorites/favoritesRuntime';
 
 export default function DetailPage({
   onPlay,
