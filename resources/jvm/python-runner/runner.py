@@ -84,17 +84,35 @@ class _UnsupportedSpiderOperation(Exception):
     pass
 
 
-def _invoke(sp, name, *args):
+def _uses_base_stub(sp, name):
+    """Treat an inherited compatibility placeholder as an unsupported capability.
+
+    Source scripts are still free to override an operation and return a legal empty
+    result. The check is identity-based so a real implementation is never confused
+    with an empty response.
+    """
+    module = sys.modules.get('base.spider')
+    base_type = getattr(module, 'Spider', None) if module else None
+    if base_type is None or not isinstance(sp, base_type):
+        return False
+    default = getattr(base_type, name, None)
+    implementation = getattr(type(sp), name, None)
+    return default is not None and implementation is default
+
+
+def _operation(sp, name):
     fn = getattr(sp, name, None)
-    if fn is None:
+    if fn is None or _uses_base_stub(sp, name):
         raise _UnsupportedSpiderOperation('WINBOX_OPERATION_UNSUPPORTED:' + name)
-    return fn(*args)
+    return fn
+
+
+def _invoke(sp, name, *args):
+    return _operation(sp, name)(*args)
 
 
 def _invoke_variants(sp, name, variants):
-    fn = getattr(sp, name, None)
-    if fn is None:
-        raise _UnsupportedSpiderOperation('WINBOX_OPERATION_UNSUPPORTED:' + name)
+    fn = _operation(sp, name)
     signature = inspect.signature(fn)
     for args in variants:
         try:
@@ -104,6 +122,26 @@ def _invoke_variants(sp, name, variants):
         # Do not retry a TypeError raised inside the source itself.
         return fn(*args)
     raise TypeError('unsupported signature for %s: %s' % (name, signature))
+
+
+def _initialize(sp, ext):
+    """Call optional init with a compatible signature, without hiding body errors."""
+    fn = getattr(sp, 'init', None)
+    if fn is None:
+        return
+    try:
+        signature = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return fn(ext)
+    try:
+        signature.bind(ext)
+    except TypeError:
+        try:
+            signature.bind()
+        except TypeError:
+            raise TypeError('unsupported init signature: %s' % signature)
+        return fn()
+    return fn(ext)
 
 
 def _load_script(py_path):
@@ -216,10 +254,7 @@ def _acquire(ns, class_name, ext):
     sp = _INSTANCES.pop(key, None)
     if sp is None:
         sp = _new_instance(ns, class_name)
-        try:
-            sp.init(ext)
-        except (AttributeError, TypeError):
-            pass
+        _initialize(sp, ext)
     return key, sp
 
 
@@ -311,11 +346,9 @@ def main():
     ns = _load_script(py_path)
     sp = _new_instance(ns, class_name)
 
-    # init(ext) no-op 容错（部分脚本不实现 init）
-    try:
-        sp.init(ext)
-    except (AttributeError, TypeError):
-        pass
+    # init is optional and may accept zero or one argument; exceptions from its
+    # body must remain visible to the caller.
+    _initialize(sp, ext)
 
     # 方法分派：argv[5..] 即实参（与一次性协议对齐：ext 之后全是方法实参）
     rest = sys.argv[5:]
