@@ -18,7 +18,12 @@ import { abortError, throwIfAborted } from '../../util/abort';
 interface QueuedWorkerTask {
   start(): void;
   cancel(): void;
+  fail(error: Error): void;
 }
+
+export type PooledSandboxFactory = ((init: { siteKey: string; api: string; ext: string }) => JsSpiderRuntimePort) & {
+  dispose(): void;
+};
 
 /**
  * 池容量：★ 2026-10-17（B2）由 4 下调到 3（用户报「后台跑着五六个子进程、太臃肿」）。
@@ -163,7 +168,7 @@ export class JsWorkerPool {
     w.on('message', (msg: WorkerReply | HostCall) => this.onMessage(pw, msg));
     w.on('error', (error: unknown) => this.onDown(pw, error instanceof Error ? error.message : String(error)));
     w.on('exit', (code) => {
-      if (!this.disposed && code !== 0) this.onDown(pw, `worker 退出（code=${code}）`);
+      if (!this.disposed) this.onDown(pw, `worker 退出（code=${code}）`);
     });
     this.host.logger.i(`js-worker 池：已启动 worker #${this.workers.length + 1}（源 ${this.host.jsLibDir ? '带 js-lib' : '无 js-lib'}）`);
     return pw;
@@ -242,11 +247,13 @@ export class JsWorkerPool {
   private onDown(pw: PoolWorker, reason: string): void {
     if (pw.down) return;
     pw.down = true;
+    const failure = new Error(`JS 沙箱进程不可用：${reason}`);
     for (const [, t] of pw.pending) {
       clearTimeout(t.timer);
-      t.reject(new Error(`JS 沙箱进程不可用：${reason}`));
+      t.reject(failure);
     }
     pw.pending.clear();
+    for (const task of pw.queue.splice(0)) task.fail(failure);
     const i = this.workers.indexOf(pw);
     if (i >= 0) this.workers.splice(i, 1);
     for (const [k, w] of this.route.entries()) if (w === pw) this.route.delete(k);
@@ -261,6 +268,7 @@ export class JsWorkerPool {
   }
 
   private pick(key: string): PoolWorker {
+    if (this.disposed) throw new Error('JS worker 池已销毁');
     const routed = this.route.get(key);
     if (routed && !routed.down && this.workers.includes(routed)) return routed;
     while (this.workers.length < POOL_SIZE) this.workers.push(this.spawn());
@@ -287,6 +295,16 @@ export class JsWorkerPool {
         }
         removeAbortListener();
         reject(signal ? abortError(signal) : new Error('操作已取消'));
+      };
+      const fail = (error: Error): void => {
+        if (callerSettled) return;
+        callerSettled = true;
+        if (!started) {
+          const index = pw.queue.indexOf(entry);
+          if (index >= 0) pw.queue.splice(index, 1);
+        }
+        removeAbortListener();
+        reject(error);
       };
       const start = (): void => {
         if (started || callerSettled) return;
@@ -327,7 +345,7 @@ export class JsWorkerPool {
             pw.queue.shift()?.start();
           });
       };
-      entry = { start, cancel };
+      entry = { start, cancel, fail };
       if (signal?.aborted) {
         cancel();
         return;
@@ -345,7 +363,10 @@ export class JsWorkerPool {
 
   /** 无回执任务（setExt / destroy） */
   fire(key: string, msg: WorkerTask): void {
-    const pw = this.pick(key);
+    // Best-effort updates/destruction must never allocate a pool just to send a
+    // message. Opening a sandbox is the only operation that creates a worker.
+    const pw = this.route.get(key);
+    if (!pw || pw.down || this.disposed) return;
     this.run(pw, async () => {
       try {
         pw.w.postMessage(msg);
@@ -468,12 +489,17 @@ export class JsWorkerPool {
   }
 
   dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
     if (this.reclaimTimer) {
       clearInterval(this.reclaimTimer);
       this.reclaimTimer = null;
     }
-    for (const w of this.workers) void w.w.terminate();
+    const workers = this.workers.slice();
+    for (const w of workers) {
+      this.onDown(w, 'worker pool disposed');
+      void w.w.terminate();
+    }
     this.workers = [];
     this.route.clear();
     this.openedOn.clear();
@@ -485,7 +511,9 @@ export class JsWorkerPool {
 export function createPooledSandboxFactory(
   host: JsSandboxHostPort,
   workerFile: string,
-): (init: { siteKey: string; api: string; ext: string }) => JsSpiderRuntimePort {
+): PooledSandboxFactory {
   const pool = new JsWorkerPool(host, workerFile);
-  return (init) => pool.createSandbox(init);
+  const factory = ((init) => pool.createSandbox(init)) as PooledSandboxFactory;
+  factory.dispose = () => pool.dispose();
+  return factory;
 }

@@ -10,11 +10,11 @@ export interface SpiderRuntimeHostPort {
 
 /** Additional capabilities needed only while constructing and running a JS spider. */
 export interface JsSpiderHostPort extends SpiderRuntimeHostPort, JsSandboxHostPort {
-  jsSandboxFactory?: (init: {
+  jsSandboxFactory?: ((init: {
     siteKey: string;
     api: string;
     ext: string;
     host: JsSandboxHostPort;
     jsLibDir: string;
-  }) => JsSpiderRuntimePort;
+  }) => JsSpiderRuntimePort) & { dispose?: () => void };
 }

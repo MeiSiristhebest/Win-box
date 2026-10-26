@@ -167,7 +167,14 @@ export class SpiderRuntimeLifecycle {
     for (const timer of this.deferredTimers) this.cancel(timer);
     this.deferredTimers.clear();
     this.configPrewarmTimer = null;
-    this.ports.bridge.dispose();
+    this.ports.spiders.clear();
+    try {
+      this.ports.bridge.dispose();
+    } finally {
+      // The host factory owns its JS worker pool. Keep that ownership explicit
+      // and close it at the same application lifecycle boundary as JVM workers.
+      this.ports.host.jsSandboxFactory?.dispose?.();
+    }
   }
 
   private prewarmSources(): void {
