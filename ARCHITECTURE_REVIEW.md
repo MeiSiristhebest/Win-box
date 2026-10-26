@@ -1,11 +1,11 @@
 # Win-Box 架构评审：14 项原则
 
-评审日期：2026-10-25
+评审日期：2026-10-26（持续复核）
 评审对象：当前工作区，包含未提交文件；结论不代表某个发布版本。
 
 ## 结论
 
-**整体为部分符合，全面整改尚未完成。** 按下方口径，11 项是“部分符合”，3 项为“以符合/大体符合为主”，目前没有一项可称为全仓验收通过。已有多个真实应用用例、消费者端口、纯状态转换和 IPC 适配器；`SpiderHost` 转发门面和相应的私有状态测试路径已移除。主要剩余问题集中在播放器 Presenter 的跨控制器编排、尚未逐一分类的 UI 到 IPC 依赖、动态蜘蛛运行时契约、全局样式跨层覆盖，以及部分组合根/测试夹具接口仍较具体。配置持久化是一个序列化 `UserConfig` 根聚合的一次原子提交；现有 `UserConfigApplicationService` 的多项命令都维护该聚合不变量，不能仅凭方法数量或文件长度断言 SRP 违反，也不能把配置切片误判为独立事务聚合。播放器控制视图现在消费独立展示契约；偏好持久化与音轨控制分别有应用端口和存储/IPC/HLS 适配器；弹幕候选展示格式与搜索查询清洗已拆层。播放设置的通用状态协调已移出设置 JSX，订阅设置的直播源操作也已通过端口隔离；PlayerPage 的展示视图和播放器标题栏现在是被动组件，window IPC 集中到布局组合容器/播放器适配器，但 session hook 的状态编排与更大范围的页面审计仍未完成。文件变短、增加 hook 或静态边界检查通过，都不能单独证明原则已经满足。
+**整体为部分符合，全面整改尚未完成。** 按下方口径，11 项是“部分符合”，3 项为“以符合/大体符合为主”，目前没有一项可称为全仓验收通过。已有多个真实应用用例、消费者端口、纯状态转换和 IPC 适配器；`SpiderHost` 转发门面和相应的私有状态测试路径已移除。当前剩余重点是播放器 Presenter 的跨控制器编排、动态蜘蛛运行时契约、全局样式跨层覆盖，以及部分组合根/测试夹具接口仍较具体。配置持久化是一个序列化 `UserConfig` 根聚合的一次原子提交；现有 `UserConfigApplicationService` 的多项命令都维护该聚合不变量，不能仅凭方法数量或文件长度断言 SRP 违反，也不能把配置切片误判为独立事务聚合。renderer IPC 导入现已全部分类到 adapters 或组合根，`*View.tsx/jsx` 静态扫描未发现状态/副作用 hook；这不代表 Atomic Design 和全局视觉验收已完成。播放器控制视图现在消费独立展示契约；偏好持久化与音轨控制分别有应用端口和存储/IPC/HLS 适配器；弹幕候选展示格式与搜索查询清洗已拆层。PlayerPage 的展示视图和播放器标题栏现在是被动组件，但 session hook 的状态编排与更大范围的页面审计仍开放。文件变短、增加 hook 或静态边界检查通过，都不能单独证明原则已经满足。
 
 ## 最新 CLI 复核（2026-10-25）
 
@@ -231,9 +231,9 @@
 | P1（边界盘点已收敛，行为验收持续） | 当前 renderer IPC client 的 71 个导入点全部位于 69 个 `adapters/` 模块与 `App.tsx`/`main.tsx` 两个组合根；静态搜索未发现 view、普通组件、页面或 `lib` 直接导入 client。`*View.tsx/jsx` 当前也未发现 state/effect hook。历史、收藏、存储、详情、插件槽位、窗口标题栏、错误边界、HomePage 与 ConfigPage 已把视图/控制流程中的 IPC 映射迁至 feature adapters。 | SoC、DIP、Passive View、可测试性、SRP | 保持静态规则防回流；后续针对请求竞态、取消、listener 清理与跨窗口同步验证行为；Atomic Design 与全局视觉对比度仍需独立审计。 |
 | 已迁移（类型与静态边界检查通过，行为测试未运行） | HomePage 原先把 browse/search/drive port 实现写在页面模块，还直接读取配置/档案来源并打开网页源。现在 IPC wrappers 集中在 `homePageAdapters`，并补充 `HomeSourceSelectionPort` 与 `HomeWebSourcePort`；页面不再导入 renderer IPC client，静态边界规则禁止 client 回流。聚合结果与浏览结果 JSX 已移到 HomePageView，呈现数据通过 HomePageViewModel 传入；初次来源恢复及 profile/source/sources/focus 事件刷新现由 useHomeSourceSession 使用窄端口协调；搜索/浏览状态和用户动作仍留在 useHomePagePresenter；UI memory 经窄端口和适配器提供，因此整页 SRP/SoC 尚未完成。 | DIP、SoC、Ports & Adapters、可测试性 | 为配置/档案来源切换、过期请求丢弃、网页源启动失败与聚合搜索进度事件补行为覆盖；继续将搜索用例、结果投影和页面 DOM 协调分层。 |
 | 已迁移（类型与静态边界检查通过，行为测试未运行） | HomePage、ConfigPage 原有的 renderer client 直接调用现已分别移入 `homePageAdapters`、配置快照和档案激活 adapters；对应 application ports 不依赖 React/client。静态盘点确认这两个页面均不再直接导入 `api/client`。 | DIP、SoC、Ports & Adapters、可测试性 | HomePage JSX 与类型化展示模型现已分离；配置/来源刷新、搜索/浏览状态协调仍留在 useHomePagePresenter。继续将这些流程按状态所有权拆分，保持 adapter 仅由组合点注入，不把 adapter 导入共享 UI 组件。 |
-| P2（边界已迁移，行为测试待运行） | `SourcePicker.tsx` 已不再导入 renderer IPC 或配置事件；Shell 注入 `SourcePickerPort` adapter，`useSourcePickerController` 管理加载代次、错误和源/档案切换，视图保留浮层焦点、定位、过滤与计时器。当前需要确认新增跨档案/快速切换回归用例在可运行的 Vitest 环境中通过。 | SoC、DIP、端口与适配器、可测试性 | 保持 DOM 生命周期和配置事务分层；在修复依赖绑定后运行源选择 hook/component 测试，验证失败重试、同档案切源与跨档案原子切换。 |
+| 已迁移（核心切换行为有回归） | `SourcePicker.tsx` 已不再导入 renderer IPC 或配置事件；Shell 注入 `SourcePickerPort` adapter，`useSourcePickerController` 管理加载代次、错误和源/档案切换，视图保留浮层焦点、定位、过滤与计时器。`sourcePickerProfileSwitch.spec.tsx` 覆盖直播源子仓切换、浮层 portal 指针行为、原子切换档案/来源和事件发布；全量套件已通过。 | SoC、DIP、端口与适配器、可测试性 | 保持 DOM 生命周期和配置事务分层；继续补加载失败重试、快速连续切换与卸载期间请求清理用例。 |
 | 已迁移（行为测试待运行） | `DriveBindModal`、`DriveLogin`、`UcTvBind` 已移除直接 IPC；`DriveBindingDialog` 组合注入凭据/网页登录/UC TV 三个端口，credential 保存/解绑、网页登录和 QR 轮询分别由控制 hook 持有异步状态。 | SoC、DIP、端口与适配器、被动视图、可测试性 | 用端口替身运行新增保存/解绑/网页登录/Token 轮询测试，并检查卸载时取消轮询与错误反馈；该路径的生产 IPC 目前只在 `driveBindingAdapter`。 |
-| 已迁移（行为测试待运行） | `UpdateGate` 不再直接导入 `api/client`；`UpdateGatePort`、`updateGateAdapter`、`useUpdateGatePresenter`、纯 `presentUpdateGate` 和 `UpdateGateView` 分别承接基础设施、流程、纯展示映射与被动视图。保留检查失败放行、下载取消/重试和安装进度行为；本轮只通过类型与静态边界检查，未运行行为回归。 | SRP、SoC、DIP、纯函数隔离、Passive View、可测试性 | 为更新检查失败放行、进度阶段、下载取消、安装错误和重复触发添加端口替身行为覆盖；确保安装窗口启动失败后 busy 状态能正确恢复。 |
+| 已迁移（行为测试已覆盖主要路径） | `UpdateGate` 不再直接导入 `api/client`；`UpdateGatePort`、`updateGateAdapter`、`useUpdateGatePresenter`、纯 `presentUpdateGate` 和 `UpdateGateView` 分别承接基础设施、流程、纯展示映射与被动视图。`updateGate.spec.ts` 运行真实 TSX 组件，覆盖检查失败放行、下载/安装成功与失败、取消校验、重试、重复点击和独立窗口绕过；最近全量 Vitest 通过。 | SRP、SoC、DIP、纯函数隔离、Passive View、可测试性 | 继续验证安装窗口启动失败后的 busy 状态复位与 progress listener 清理；不再把已覆盖的主流程记为“未运行”。 |
 | 已迁移（行为测试待运行） | `HistoryPage` 由 composition root 注入 `HistoryPagePorts`；应用用例协调续播和详情，`historyPageAdapters` 负责 IPC、来源解析、localStorage、播放器窗口、对话框确认，Presenter 管理更新检查与删除/撤销/清空状态，`HistoryPageView` 只接收状态和动作。更新检测仍限批 12、并发 3，失败不误报；封面加载在组合根消费共享封面能力。行为测试尚未运行。 | SRP、SoC、DIP、纯函数隔离、Passive View、可测试性 | 用端口替身验证外部播放成功/失败及内置 fallback、最新进度、详情档案参数、清空确认、撤销快照、更新检测批次和卸载取消。 |
 | 已迁移（行为测试待运行） | `FavoritesPage` 由 storage/catalog/detail/confirmation ports 组合：收藏领域记录与纯筛选/排序位于 application，localStorage 与档案/详情 IPC 留在 `favoritesPageAdapter`，Presenter 管理外部快照、编辑、删除/撤销和清空确认，View 仅消费展示状态与动作；收藏快照结构与操作含义保持不变。 | SRP、SoC、DIP、ISP、Passive View、组合、可测试性 | 用内存 port 覆盖跨窗口刷新、筛选/排序/分类、编辑保存/取消、删除撤销、清空确认、详情恢复档案失败；当前只通过类型与边界检查。 |
 | 已迁移（当前类型与边界检查通过） | `StoragePage` 已拆为 WebDAV browsing port、IPC adapter、Presenter 和 passive view；路径导航、请求代次保护、加载/选择状态留在 Presenter，格式化与行渲染留在 View，页面入口组合注入。当前行为回归未运行。 | SRP、SoC、DIP、Ports & Adapters、Passive View、可测试性 | 以 fake port 覆盖目录读取、快速切路径时丢弃旧响应、文件/目录动作和读取失败；确认仍保留原有下载/播放入口语义。 |
@@ -242,7 +242,7 @@
 | 已迁移（类型与静态边界检查通过，行为测试未运行） | 配置页的合并导出原先在页面里同时管理选择状态、调用 `mergeExport`/`mergeSave`、统计去重结果并拼反馈文案。现由 `mergeAndSaveProfiles` 用例、`MergeProfileExportPort`、IPC/保存适配器、`useMergeProfileExportPresenter` 和被动 `MergeProfilesExportSection` 分担；合并结果显示在对应区块，源体检消息不再复用合并提示状态。 | SRP、SoC、DIP、ISP、Ports & Adapters、Passive View、纯函数/副作用隔离、可测试性 | 为空选择、导出失败、用户取消保存、摘要归并和成功保存路径补行为覆盖；继续将档案激活、配置快照读取和页面状态协调从 ConfigPage 的视图/组合逻辑中拆开。 |
 | 已迁移（类型与静态边界检查通过，行为测试未运行） | `ConfigPage` 原先自己处理订阅组移除/上游覆盖确认、调用 IPC、刷新配置和转换错误。现为 `SubscriptionGroupManagementPort` + IPC adapter + `useSubscriptionGroupManagement`，`SubscriptionGroupsSection` 继续通过回调表达用户意图。 | SRP、ISP、DIP、SoC、Ports & Adapters、Passive View、可测试性 | 覆盖用户取消确认、删除失败/刷新失败以及两种 refresh resolution；继续把档案激活、体检与配置页面的数据装配从页面控制流程拆开。 |
 | 已迁移（类型与静态边界检查通过，行为测试未运行） | 源体检/失败源清理以前由 `ConfigPage` 管理 audit 状态、批量 IPC、静默吞掉逐项删除失败、估算剩余源并改名档案。现由 `SourceHealthAuditPort`、`removeFailedSources` 用例、Presenter 和被动体检区承接；剩余数根据实际成功删除的源计算，失败项会显示，档案保存/改名失败也不会被伪报成成功。 | SRP、SoC、DIP、Ports & Adapters、Passive View、纯函数/副作用隔离、可测试性 | 覆盖全部删除成功、部分删除失败、全部删除失败、零剩余源、档案改名失败、体检失败与刷新失败；ConfigPage/HomePage 已无直接 client 依赖，后续重点改进它们的状态所有权与展示模型。 |
-| 已迁移（行为测试待运行） | `SearchPanel` 组件不再导入 IPC client、localStorage 搜索历史或搜索窗口实现；推荐、历史、导航能力分别由端口声明，Presenter 管理异步请求与状态，View 管理 DOM 生命周期。保留 250ms 联想防抖、过期响应丢弃和原有键盘/浮层行为。 | SRP、SoC、ISP、DIP、Passive View、纯函数隔离、可测试性 | 用 fake recommendation/history/navigation ports 覆盖热搜失败重试、输入过期结果丢弃、回车搜索原始词、搜索记录持久化和卸载计时器清理；当前只做类型和边界检查。 |
+| 已迁移（工作流行为覆盖部分完成） | `SearchPanel` 组件不再导入 IPC client、localStorage 搜索历史或搜索窗口实现；推荐、历史、导航能力分别由端口声明，Presenter 管理异步请求与状态，View 管理 DOM 生命周期。最近发现并修复搜索窗口打开失败时清空输入的问题：失败后面板重新打开并保留规范化查询，成功仍按原行为关闭；新增 Presenter 测试覆盖成功/失败两条导航路径。 | SRP、SoC、ISP、DIP、Passive View、纯函数隔离、可测试性 | 仍需用 fake recommendation/history/navigation ports 覆盖热搜失败重试、旧联想响应丢弃、历史删除/清空、回车搜索原始词和卸载计时器清理。 |
 | 已迁移（行为测试待运行） | `DiscoverDetailPage` 页面请求通过 `DiscoverDetailMetadataPort`；两个独立元数据来源用 `Promise.allSettled` 并行读取，展示层作为 `DiscoverDetailPageView` 单独声明。stale response 由 hook 请求代次处理；没有新增重试或改变缺省文本。 | SRP、SoC、DIP、端口与适配器、Passive View、纯函数隔离、可测试性 | 覆盖两来源同时成功/单侧失败、快速更换 query 时旧结果不回填、空片名跳过请求，以及 poster/简介 fallback。 |
 | P1（本轮部分迁移） | `PlayerPage.tsx` 现是 session/window adapters 的组合点；`PlayerPageView.tsx` 只声明式渲染页面状态与动作。播放 init/switch 订阅在 `usePlayerPageEvents`，窗口 pin/mini/close 在 `usePlayerPageWindow`，历史来源补全与播放请求在应用用例，观看进度回写由独立 port/hook/adapter 处理。`usePlayerPageSession` 仍负责组合多个状态和过期请求决策；这些新流程尚无行为测试覆盖。 | SRP、SoC、DIP、Passive View、纯函数/副作用隔离、可测试性 | 继续核验 session hook 的状态所有权和并发取消语义，避免它变成新的万能 controller；为过期解析、详情失效回退、卸载清理和历史进度刷新加端口替身行为测试。 |
 | P1 | [VideoPlayerPresenter.ts](src/renderer/features/playback/VideoPlayerPresenter.ts) 仍协调内核切换、音轨、超分、字幕/弹幕、播放会话和多个面板；播放生命周期、全局事件、瞬时命令反馈 timer 与内核画面比例同步已有专用 hook/端口。当前 27 项依赖字段体现功能跨度，但数量本身不是违例证明；真实问题是同一 Presenter 仍组合多种状态所有者、播放策略和整套控制展示模型。 | SRP、SoC、被动视图、ISP、可测试性 | 按状态所有权继续审查播放会话/内核命令、字幕与弹幕工作流及控制展示模型的边界；只在存在独立变化原因时拆 sub-presenter，每层保留窄能力，不把字段包进更大的万能对象。 |
@@ -1019,3 +1019,12 @@
 - **验证：** Python runtime 定向测试 13 项通过；全量 Vitest 为 436 个文件通过、3 个跳过，3720 项通过、5 项跳过；main、renderer、test 三套 typecheck、全仓 lint 和 main/renderer 生产构建均通过。
 - **构建观察：** HLS chunk 仍为 574.41 KB（gzip 178.97 KB），高于 500 KB 提示阈值；Babel transform 回调约占 renderer 构建耗时的 93%。
 - **剩余：** 该修复补齐一个准备阶段取消场景；JS Worker/JVM/Python 所有生命周期时序矩阵、播放器状态编排、全仓 Atomic Design/对比度验收和实机验收仍未完成。
+
+## 本轮继续：SearchPanel 导航失败保留查询（2026-10-26）
+
+- **确认的问题：** SearchPanel 在打开搜索窗口前立即关闭面板并清空输入；若导航端口失败，用户收到错误提示，但已输入的查询丢失，无法直接重试。
+- **已调整：** 保留原有成功路径；导航失败时恢复面板与规范化查询，并重新触发联想/热搜加载，用户可直接重试或修改关键词。
+- **回归覆盖：** `useSearchPanelPresenter.spec.tsx` 覆盖导航失败后保留查询与成功后关闭清空两条路径。
+- **验证：** 定向测试 2 项通过；全量 Vitest 为 437 个文件通过、3 个跳过，3722 项通过、5 项跳过；main、renderer、test 三套 typecheck、全仓 lint/架构边界及 main/renderer 生产构建均通过。
+- **构建观察：** HLS chunk 仍为 574.41 KB（gzip 178.97 KB），高于 500 KB 提示；Babel transform 回调约占 renderer 构建耗时的 95%。
+- **剩余：** SearchPanel 热搜重试、过期联想响应、历史记录动作和卸载计时器仍需专项行为覆盖；这不关闭播放器/运行时等其它全仓架构待办。

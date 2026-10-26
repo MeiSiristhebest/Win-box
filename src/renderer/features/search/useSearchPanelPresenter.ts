@@ -59,7 +59,16 @@ export function useSearchPanelPresenter(ports: SearchPanelPorts) {
     setQuery('');
     setSuggestions([]);
     setSuggestionsLoading(false);
-    await ports.navigation.openSearch(term);
+    try {
+      await ports.navigation.openSearch(term);
+    } catch (error) {
+      setQuery(term);
+      setSuggestions([]);
+      setSuggestionsLoading(true);
+      setHotLoading(true);
+      setOpen(true);
+      throw error;
+    }
   }, [ports]);
 
   const changeQuery = useCallback((value: string) => {
