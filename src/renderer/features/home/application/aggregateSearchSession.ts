@@ -10,6 +10,7 @@ export interface AggregateSearchSessionCommand {
   term: string;
   refresh: boolean;
   scope: AggregateSearchScope;
+  signal?: AbortSignal;
   isCurrent(): boolean;
 }
 
@@ -80,7 +81,9 @@ export async function executeAggregateSearchSession(
     const options = command.scope.kind === 'profiles'
       ? { refresh: command.refresh, profileIds: [...searchedProfileIds] }
       : { refresh: command.refresh, profileId: command.scope.profileId };
-    const report = await ports.api.searchAll(command.term, options);
+    const report = command.signal
+      ? await ports.api.searchAll(command.term, options, command.signal)
+      : await ports.api.searchAll(command.term, options);
     if (!command.isCurrent()) return { kind: 'stale' };
     flush();
     return { kind: 'completed', report };

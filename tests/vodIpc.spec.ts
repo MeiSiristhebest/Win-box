@@ -1,20 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { IpcMainInvokeEvent } from 'electron';
+import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 import type { Logger, PlayResult, SearchAllProgressEvent } from '../src/shared/types';
 import { IPC } from '../src/shared/ipc-channels';
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown;
+type EventHandler = (event: IpcMainEvent, ...args: unknown[]) => void;
 const handlers = vi.hoisted(() => new Map<string, Handler>());
+const listeners = vi.hoisted(() => new Map<string, EventHandler>());
 
 vi.mock('electron', () => ({
-  ipcMain: { handle: (channel: string, handler: Handler) => handlers.set(channel, handler) },
+  ipcMain: {
+    handle: (channel: string, handler: Handler) => handlers.set(channel, handler),
+    on: (channel: string, listener: EventHandler) => listeners.set(channel, listener),
+  },
 }));
 
 import { registerVodIpc, type VodIpcPort } from '../src/main/ipc/vodIpc';
 
 const logger = { i: vi.fn(), w: vi.fn(), e: vi.fn(), d: vi.fn() } as unknown as Logger;
-const ipcEvent = { sender: {} } as IpcMainInvokeEvent;
+const sender = { id: 1, once: vi.fn(), removeListener: vi.fn() };
+const ipcEvent = { sender } as unknown as IpcMainInvokeEvent;
 const invoke = async (channel: string, ...args: unknown[]) => handlers.get(channel)!(ipcEvent, ...args);
+const send = (channel: string, requestId: string, event = ipcEvent) =>
+  listeners.get(channel)!(event as unknown as IpcMainEvent, requestId);
 
 function register() {
   const host: VodIpcPort = {
@@ -22,7 +30,7 @@ function register() {
     category: vi.fn(async (_key: string, _tid: string, _pg: string, _extend: Record<string, string>, _profileId?: string) => ({ list: [] })),
     detail: vi.fn(async (_key: string, _ids: string[], _profileId?: string) => ({ list: [] })),
     search: vi.fn(async (_key: string, _wd: string, _profileId?: string) => ({ list: [] })),
-    searchAll: vi.fn(async (_query: string, _options?: { refresh?: boolean; profileId?: string; profileIds?: string[] }, progress?: (event: SearchAllProgressEvent) => void) => {
+    searchAll: vi.fn(async (_query: string, _options?: { refresh?: boolean; profileId?: string; profileIds?: string[] }, progress?: (event: SearchAllProgressEvent) => void, _signal?: AbortSignal) => {
       progress?.({ wd: 'film', done: 1, total: 1 });
       return { results: [], checkedSources: 1 };
     }),
@@ -38,6 +46,7 @@ function register() {
 describe('VOD IPC adapter', () => {
   beforeEach(() => {
     handlers.clear();
+    listeners.clear();
     vi.clearAllMocks();
   });
 
@@ -68,5 +77,55 @@ describe('VOD IPC adapter', () => {
 
     await expect(invoke(IPC.VOD_PLAY, { key: 'source-a', flag: 'line-a', id: 'episode-a' }))
       .resolves.toMatchObject({ ok: true, data: { externalLink: 'magnet:?xt=urn:btih:test' } });
+  });
+
+  it('forwards caller cancellation through IPC and scopes it to the initiating renderer', async () => {
+    const { host } = register();
+    vi.mocked(host.searchAll).mockImplementationOnce((_query, _options, _progress, signal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const request = invoke(IPC.VOD_SEARCH_ALL, { wd: 'film', requestId: 'request-a' });
+    await vi.waitFor(() => expect(host.searchAll).toHaveBeenCalledTimes(1));
+    const signal = vi.mocked(host.searchAll).mock.calls[0][3];
+    expect(signal?.aborted).toBe(false);
+
+    const otherEvent = { sender: { ...sender, id: 2 } } as unknown as IpcMainEvent;
+    send(IPC.VOD_SEARCH_ALL_CANCEL, 'request-a', otherEvent);
+    expect(signal?.aborted).toBe(false);
+    send(IPC.VOD_SEARCH_ALL_CANCEL, 'request-a');
+    expect(signal?.aborted).toBe(true);
+    await expect(request).resolves.toMatchObject({ ok: false, error: { message: '搜索已由调用窗口取消' } });
+    expect(sender.removeListener).toHaveBeenCalledWith('destroyed', expect.any(Function));
+  });
+
+  it('passes cancellation to the current-source request', async () => {
+    const { host } = register();
+    vi.mocked(host.search).mockImplementationOnce((_key, _wd, _profileId, signal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const request = invoke(IPC.VOD_SEARCH, { key: 'source-a', wd: 'film', requestId: 'single-a' });
+    await vi.waitFor(() => expect(host.search).toHaveBeenCalledTimes(1));
+    const signal = vi.mocked(host.search).mock.calls[0][3];
+    send(IPC.VOD_SEARCH_CANCEL, 'single-a');
+
+    expect(signal?.aborted).toBe(true);
+    await expect(request).resolves.toMatchObject({ ok: false, error: { message: '搜索已由调用窗口取消' } });
+  });
+
+  it('aborts active searches when their renderer window is destroyed', async () => {
+    const { host } = register();
+    vi.mocked(host.searchAll).mockImplementationOnce((_query, _options, _progress, signal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const request = invoke(IPC.VOD_SEARCH_ALL, { wd: 'film', requestId: 'closing-window' });
+    await vi.waitFor(() => expect(host.searchAll).toHaveBeenCalledTimes(1));
+    const signal = vi.mocked(host.searchAll).mock.calls[0][3];
+    const onDestroyed = sender.once.mock.calls.at(-1)?.[1] as (() => void) | undefined;
+    expect(onDestroyed).toBeTypeOf('function');
+
+    onDestroyed?.();
+
+    expect(signal?.aborted).toBe(true);
+    await expect(request).resolves.toMatchObject({ ok: false, error: { message: '搜索窗口已关闭' } });
   });
 });

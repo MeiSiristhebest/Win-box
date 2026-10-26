@@ -14,8 +14,8 @@ export const homeBrowseAdapter: HomeBrowsePort = {
 
 export const homeSearchAdapter: HomeSearchPort = {
   onSearchAllProgress: (listener) => client.onSearchAllProgress(listener),
-  searchAll: (term, options) => client.searchAll(term, options),
-  search: (request) => client.search(request),
+  searchAll: (term, options, signal) => client.searchAll(term, options, signal),
+  search: (request, signal) => client.search(request, signal),
   category: (request) => client.category(request),
 };
 

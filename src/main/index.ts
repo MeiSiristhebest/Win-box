@@ -233,6 +233,20 @@ const resetSpidersAfterDriveChange = (): void => {
 };
 const ipcServices: MainIpcApplicationPorts = {
   sourceConfiguration: hostServices.sourceConfiguration,
+  configRuntimeSync: {
+    status: () => {
+      const service = configurationServices.userConfig;
+      const revision = service.revision;
+      const pendingRevision = service.pendingRuntimeSyncRevision;
+      if (pendingRevision === null) return { status: 'synchronized', revision, pendingRevision: null };
+      const outcome = service.lastCommitOutcome;
+      if (outcome?.status === 'committed-runtime-sync-failed' && outcome.revision === pendingRevision) {
+        return { status: 'failed', revision, pendingRevision, error: outcome.error };
+      }
+      return { status: 'pending', revision, pendingRevision };
+    },
+    retry: () => configurationServices.userConfig.retryRuntimeSync(),
+  },
   sourceReads: {
     importConfig: (source) => hostServices.subscriptionImports.importConfig(source),
     get sites() { return hostServices.sourceRuntimeConfiguration.current?.sites ?? []; },
@@ -252,8 +266,8 @@ const ipcServices: MainIpcApplicationPorts = {
     home: (key, profileId) => hostServices.sourceCatalog.home(key, profileId),
     category: (key, tid, page, extend, profileId) => hostServices.sourceCatalog.category(key, tid, page, extend, profileId),
     detail: (key, ids, profileId) => hostServices.sourceCatalog.detail(key, ids, profileId),
-    search: (key, keyword, profileId) => hostServices.sourceCatalog.search(key, keyword, profileId),
-    searchAll: (keyword, options, onProgress) => hostServices.aggregateSearchRunner.run(keyword, options, onProgress),
+    search: (key, keyword, profileId, signal) => hostServices.sourceCatalog.search(key, keyword, profileId, signal),
+    searchAll: (keyword, options, onProgress, signal) => hostServices.aggregateSearchRunner.run(keyword, options, onProgress, signal),
     play: (key, flag, id, profileId) => hostServices.playbackRequest.execute(key, flag, id, profileId),
   },
 };

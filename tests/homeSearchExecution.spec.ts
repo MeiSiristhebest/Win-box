@@ -38,6 +38,31 @@ describe('executeHomeSearch', () => {
     expect(result).toMatchObject({ kind: 'completed', scope: 'current' });
   });
 
+  it('passes cancellation signals through current-source and aggregate search paths', async () => {
+    const controller = new AbortController();
+    const current = createPorts({ search: vi.fn(async () => []) });
+    await executeHomeSearch({
+      term: 'show', refresh: false,
+      scope: { kind: 'current', profileId: 'profile-a', source: { key: 'source-a', name: 'Source A' } },
+      signal: controller.signal,
+      isCurrent: () => true,
+    }, current.ports);
+    expect(current.api.search).toHaveBeenCalledWith(
+      { key: 'source-a', wd: 'show', profileId: 'profile-a' }, controller.signal,
+    );
+
+    const aggregate = createPorts({ searchAll: vi.fn(async () => report()) });
+    await executeHomeSearch({
+      term: 'show', refresh: false,
+      scope: { kind: 'all', profileId: 'profile-a' },
+      signal: controller.signal,
+      isCurrent: () => true,
+    }, aggregate.ports);
+    expect(aggregate.api.searchAll).toHaveBeenCalledWith(
+      'show', { refresh: false, profileId: 'profile-a' }, controller.signal,
+    );
+  });
+
   it('uses the selected profile for aggregate search across its sources', async () => {
     const api = createPorts({ searchAll: vi.fn(async () => report()) });
     const result = await executeHomeSearch({

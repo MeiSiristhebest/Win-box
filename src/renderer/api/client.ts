@@ -10,6 +10,8 @@ import type {
   BossKeySettings,
   SubscriptionImportProgressEvent,
   SubscriptionRefreshResolution,
+  ConfigRuntimeSyncStatus,
+  ConfigRuntimeSyncRetryResult,
 } from '../../shared/types';
 import type {
   SubtitleCandidate,
@@ -28,6 +30,7 @@ import type { DlnaCastTarget, DlnaDevice } from '../../shared/dlna';
 import type { UpdateProgress } from '../../shared/update';
 import type { UiPreferencesPatch, UiPreferencesSnapshot } from '../../shared/uiPreferences';
 import type { UiScalePref, UiScaleState } from '../../shared/uiScale';
+import { abortError, awaitWithAbort } from '../../engine/util/abort';
 
 export type { HomeResult, ImportReturn } from './windowApi';
 
@@ -37,6 +40,52 @@ async function unwrap<T>(p: Promise<IpcResult<T>>): Promise<T> {
   return r.data as T;
 }
 
+export const CONFIG_RUNTIME_SYNC_STATUS_EVENT = 'winbox:config-runtime-sync-status';
+
+function publishConfigRuntimeSyncStatus(status: ConfigRuntimeSyncStatus): void {
+  if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') return;
+  window.dispatchEvent(new CustomEvent<ConfigRuntimeSyncStatus>(CONFIG_RUNTIME_SYNC_STATUS_EVENT, { detail: status }));
+}
+
+async function queryConfigRuntimeSyncStatus(): Promise<ConfigRuntimeSyncStatus> {
+  const status = await unwrap(window.api.config.runtimeSyncStatus());
+  publishConfigRuntimeSyncStatus(status);
+  return status;
+}
+
+async function afterConfigMutation<T>(request: Promise<IpcResult<T>>): Promise<T> {
+  const result = await unwrap(request);
+  // Status lookup is observational: an unavailable status endpoint must never turn
+  // a successful, already-committed mutation into an apparent failure.
+  void queryConfigRuntimeSyncStatus().catch(() => undefined);
+  return result;
+}
+
+let searchRequestSequence = 0;
+
+function nextSearchRequestId(): string {
+  searchRequestSequence = (searchRequestSequence + 1) % Number.MAX_SAFE_INTEGER;
+  return `${Date.now().toString(36)}-${searchRequestSequence.toString(36)}`;
+}
+
+function invokeSearchWithCancellation<T>(
+  signal: AbortSignal | undefined,
+  start: (requestId: string) => Promise<IpcResult<T>>,
+  cancel: (requestId: string) => void,
+): Promise<T> {
+  if (signal?.aborted) return Promise.reject(abortError(signal));
+  const requestId = nextSearchRequestId();
+  const request = unwrap(start(requestId));
+  if (!signal) return request;
+
+  const cancelRequest = (): void => cancel(requestId);
+  signal.addEventListener('abort', cancelRequest, { once: true });
+  if (signal.aborted) cancelRequest();
+  return awaitWithAbort(request, signal).finally(() => {
+    signal.removeEventListener('abort', cancelRequest);
+  });
+}
+
 export const client = {
   ping: () => unwrap(window.api.system.ping()),
   appIcon: () => unwrap(window.api.system.icon()),
@@ -44,62 +93,68 @@ export const client = {
   initializeUiPreferences: (legacy: UiPreferencesPatch) => unwrap(window.api.system.initializeUiPreferences(legacy)),
   updateUiPreferences: (patch: UiPreferencesPatch) => unwrap(window.api.system.updateUiPreferences(patch)),
   onUiPreferencesChanged: (cb: (snapshot: UiPreferencesSnapshot) => void) => window.api.system.onUiPreferencesChanged(cb),
-  importConfig: (a: { url?: string; json?: string }) => unwrap(window.api.config.import(a)),
+  importConfig: (a: { url?: string; json?: string }) => afterConfigMutation(window.api.config.import(a)),
   listSites: () => unwrap(window.api.config.listSites()),
   diagnose: () => unwrap(window.api.config.diagnose()),
   cfgGet: () => unwrap(window.api.config.cfgGet()),
-  cfgAddSource: (bean: SourceBean) => unwrap(window.api.config.addSource(bean)),
-  cfgUpdateSource: (key: string, patch: SourceUpdatePatch) => unwrap(window.api.config.updateSource(key, patch)),
-  cfgDeleteSource: (key: string) => unwrap(window.api.config.deleteSource(key)),
-  cfgDeleteSources: (keys: string[]) => unwrap(window.api.config.deleteSources(keys)),
-  cfgSetGlobalSourceBlock: (keys: string[], blocked: boolean) => unwrap(window.api.config.setGlobalSourceBlock(keys, blocked)),
-  cfgMoveSource: (key: string, direction: SourceMoveDirection) => unwrap(window.api.config.moveSource(key, direction)),
-  cfgSetActiveSource: (key: string) => unwrap(window.api.config.setActiveSource(key)),
-  cfgSetActiveLive: (index: number) => unwrap(window.api.config.setActiveLive(index)),
-  cfgImportUrl: (url: string, name?: string) => unwrap(window.api.config.importUrl(url, name)),
+  cfgRuntimeSyncStatus: queryConfigRuntimeSyncStatus,
+  cfgRetryRuntimeSync: async (): Promise<ConfigRuntimeSyncRetryResult> => {
+    const result = await unwrap(window.api.config.retryRuntimeSync());
+    await queryConfigRuntimeSyncStatus().catch(() => undefined);
+    return result;
+  },
+  cfgAddSource: (bean: SourceBean) => afterConfigMutation(window.api.config.addSource(bean)),
+  cfgUpdateSource: (key: string, patch: SourceUpdatePatch) => afterConfigMutation(window.api.config.updateSource(key, patch)),
+  cfgDeleteSource: (key: string) => afterConfigMutation(window.api.config.deleteSource(key)),
+  cfgDeleteSources: (keys: string[]) => afterConfigMutation(window.api.config.deleteSources(keys)),
+  cfgSetGlobalSourceBlock: (keys: string[], blocked: boolean) => afterConfigMutation(window.api.config.setGlobalSourceBlock(keys, blocked)),
+  cfgMoveSource: (key: string, direction: SourceMoveDirection) => afterConfigMutation(window.api.config.moveSource(key, direction)),
+  cfgSetActiveSource: (key: string) => afterConfigMutation(window.api.config.setActiveSource(key)),
+  cfgSetActiveLive: (index: number) => afterConfigMutation(window.api.config.setActiveLive(index)),
+  cfgImportUrl: (url: string, name?: string) => afterConfigMutation(window.api.config.importUrl(url, name)),
   cfgStartSubscriptionImport: (url: string, name?: string) =>
-    unwrap(window.api.config.startSubscriptionImport(url, name)),
-  cfgCancelSubscriptionImport: (jobId: string) => unwrap(window.api.config.cancelSubscriptionImport(jobId)),
-  cfgRetryFailedSubscriptionImport: (jobId: string) => unwrap(window.api.config.retryFailedSubscriptionImport(jobId)),
-  cfgContinueSubscriptionImport: (jobId: string) => unwrap(window.api.config.continueSubscriptionImport(jobId)),
+    afterConfigMutation(window.api.config.startSubscriptionImport(url, name)),
+  cfgCancelSubscriptionImport: (jobId: string) => afterConfigMutation(window.api.config.cancelSubscriptionImport(jobId)),
+  cfgRetryFailedSubscriptionImport: (jobId: string) => afterConfigMutation(window.api.config.retryFailedSubscriptionImport(jobId)),
+  cfgContinueSubscriptionImport: (jobId: string) => afterConfigMutation(window.api.config.continueSubscriptionImport(jobId)),
   cfgGetSubscriptionImport: (jobId: string) => unwrap(window.api.config.getSubscriptionImport(jobId)),
   cfgListSubscriptionImports: () => unwrap(window.api.config.listSubscriptionImports()),
-  cfgResumeSubscriptionImport: (jobId: string) => unwrap(window.api.config.resumeSubscriptionImport(jobId)),
+  cfgResumeSubscriptionImport: (jobId: string) => afterConfigMutation(window.api.config.resumeSubscriptionImport(jobId)),
   onSubscriptionImportProgress: (cb: (event: SubscriptionImportProgressEvent) => void) =>
     window.api.config.onSubscriptionImportProgress(cb),
   cfgRemoveSubscriptionGroupMember: (groupId: string, memberId: string) =>
-    unwrap(window.api.config.removeSubscriptionGroupMember(groupId, memberId)),
+    afterConfigMutation(window.api.config.removeSubscriptionGroupMember(groupId, memberId)),
   cfgResolveSubscriptionGroupRefresh: (groupId: string, memberId: string, resolution: SubscriptionRefreshResolution) =>
-    unwrap(window.api.config.resolveSubscriptionGroupRefresh(groupId, memberId, resolution)),
-  cfgImportJsonLocal: (name?: string) => unwrap(window.api.config.importJsonLocal(name)),
-  cfgImportPyLocal: () => unwrap(window.api.config.importPyLocal()),
+    afterConfigMutation(window.api.config.resolveSubscriptionGroupRefresh(groupId, memberId, resolution)),
+  cfgImportJsonLocal: (name?: string) => afterConfigMutation(window.api.config.importJsonLocal(name)),
+  cfgImportPyLocal: () => afterConfigMutation(window.api.config.importPyLocal()),
   /** ★ 2026-09-29：导入本地包（目录包）—— 返回包根/命中订阅/源数，用于结果提示 */
-  cfgImportPackage: (name?: string, root?: string) => unwrap(window.api.config.importPackage({ name, root })),
+  cfgImportPackage: (name?: string, root?: string) => afterConfigMutation(window.api.config.importPackage({ name, root })),
   /** ★ 2026-09-29 本地包「网页源」：独立窗口打开 homePage html（fm 桥） */
   webHomeOpen: (init: { url: string; title?: string; site?: Record<string, string | undefined> }) =>
     unwrap(window.api.config.webHomeOpen(init)),
-  cfgSaveAsProfile: (name: string) => unwrap(window.api.config.saveAsProfile(name)),
-  cfgActivateProfile: (id: string) => unwrap(window.api.config.activateProfile(id)),
-  cfgDeleteProfile: (id: string) => unwrap(window.api.config.deleteProfile(id)),
-  cfgUpdateProfileName: (a: { id: string; name: string }) => unwrap(window.api.config.updateProfileName(a)),
+  cfgSaveAsProfile: (name: string) => afterConfigMutation(window.api.config.saveAsProfile(name)),
+  cfgActivateProfile: (id: string) => afterConfigMutation(window.api.config.activateProfile(id)),
+  cfgDeleteProfile: (id: string) => afterConfigMutation(window.api.config.deleteProfile(id)),
+  cfgUpdateProfileName: (a: { id: string; name: string }) => afterConfigMutation(window.api.config.updateProfileName(a)),
   cfgProfiles: () => unwrap(window.api.config.cfgProfiles()),
   /** ★ 2026-09-30（用户要求）：换源弹层「左订阅 / 右源」视图（每份档案的源 key/name 清单） */
   cfgProfileSites: () => unwrap(window.api.config.profileSites()),
   cfgProfileSources: (profileId: string) => unwrap(window.api.config.profileSources(profileId)),
   /** ★ 2026-09-30（用户要求）：一步完成「切换档案 + 选中该档案下的源」 */
   cfgSwitchProfileSource: (profileId: string, key: string) =>
-    unwrap(window.api.config.switchProfileSource({ profileId, key })),
+    afterConfigMutation(window.api.config.switchProfileSource({ profileId, key })),
   /**
    * ★ 2026-09-30（用户要求）：导入本地 TXT / M3U 直播源（配置页按钮）。
    * ★ 2026-10-14：两步导入 —— 首次返回 `needsName` 由渲染层弹框命名，二次带 `{ path, name }` 登记。
    */
-  cfgImportLiveLocal: (args?: { name?: string; path?: string }) => unwrap(window.api.config.importLiveLocal(args)),
+  cfgImportLiveLocal: (args?: { name?: string; path?: string }) => afterConfigMutation(window.api.config.importLiveLocal(args)),
   /** ★ 2026-10-14（用户要求）：删除某条直播线路（下标） */
-  cfgDeleteLive: (index: number) => unwrap(window.api.config.deleteLive(index)),
+  cfgDeleteLive: (index: number) => afterConfigMutation(window.api.config.deleteLive(index)),
   /** ★ 2026-10-16（用户要求）：批量删除直播线路（配置页多选删除） */
-  cfgDeleteLives: (indices: number[]) => unwrap(window.api.config.deleteLives(indices)),
+  cfgDeleteLives: (indices: number[]) => afterConfigMutation(window.api.config.deleteLives(indices)),
   /** ★ 2026-10-14（用户要求）：重命名某条直播线路 */
-  cfgUpdateLive: (a: { index: number; name: string }) => unwrap(window.api.config.updateLive(a)),
+  cfgUpdateLive: (a: { index: number; name: string }) => afterConfigMutation(window.api.config.updateLive(a)),
   /** ★ 2026-09-30：数据目录信息（安装目录/data；迁移结果与回退原因） */
   dataDir: () => unwrap(window.api.system.dataDir()),
   vodDebug: (key: string) => unwrap(window.api.config.vodDebug(key)),
@@ -172,8 +227,12 @@ export const client = {
   home: (key: string, profileId?: string) => unwrap(window.api.vod.home(key, profileId)),
   category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }) => unwrap(window.api.vod.category(a)),
   detail: (a: { key: string; ids: string[]; profileId?: string }) => unwrap(window.api.vod.detail(a)),
-  search: (a: { key: string; wd: string; profileId?: string }) => unwrap(window.api.vod.search(a)),
-  searchAll: (wd: string, opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] }) => unwrap(window.api.vod.searchAll(wd, opts)),
+  search: (a: { key: string; wd: string; profileId?: string }, signal?: AbortSignal) =>
+    invokeSearchWithCancellation(signal, (requestId) => window.api.vod.search({ ...a, requestId }),
+      (requestId) => window.api.vod.cancelSearch(requestId)),
+  searchAll: (wd: string, opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] }, signal?: AbortSignal) =>
+    invokeSearchWithCancellation(signal, (requestId) => window.api.vod.searchAll(wd, opts, requestId),
+      (requestId) => window.api.vod.cancelSearchAll(requestId)),
   onSearchAllProgress: (cb: (ev: SearchAllProgressEvent) => void) => window.api.vod.onSearchAllProgress(cb as (ev: unknown) => void),
   play: (a: { key: string; flag: string; id: string; profileId?: string; parseOffset?: number }) => unwrap(window.api.vod.play(a)),
   loadLive: (index: number) => unwrap(window.api.live.load(index)),
@@ -187,7 +246,7 @@ export const client = {
   /** ★ 2026-09-29 设置备份 */
   backupExport: (renderer: Record<string, string>) => unwrap(window.api.backup.export(renderer)),
   backupImport: () => unwrap(window.api.backup.import()),
-  backupCommit: (restoreId: string) => unwrap<void>(window.api.backup.commit(restoreId)),
+  backupCommit: (restoreId: string) => afterConfigMutation<void>(window.api.backup.commit(restoreId)),
   backupCancel: (restoreId: string) => unwrap<void>(window.api.backup.cancel(restoreId)),
   /** ★ 2026-09-29 WebDAV 存储（只读） */
   davList: () => unwrap(window.api.dav.list()),

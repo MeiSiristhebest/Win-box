@@ -44,6 +44,8 @@ import { usePluginKeymaps } from './features/plugins/usePluginKeymaps';
 import { PluginCommandProvider, usePluginCommandRunner } from './features/plugins/PluginCommandContext';
 import type { Episode } from '../shared/types';
 import { PluginDialogBridge } from './features/plugins/PluginDialogBridge';
+import { ConfigRuntimeSyncNotice } from './features/configuration/ConfigRuntimeSyncNotice';
+import { configRuntimeSyncNoticeAdapter } from './features/configuration/adapters/configRuntimeSyncNoticeAdapter';
 import { pluginDialogAdapter } from './features/plugins/adapters/pluginDialogAdapter';
 import { coverLookupAdapter } from './features/covers/adapters/coverLookupAdapter';
 import { coverBrowserImageAdapter } from './features/covers/adapters/coverBrowserImageAdapter';
@@ -98,6 +100,7 @@ export default function App() {
         <PluginCommandProvider port={pluginCommandAdapter}>
           <PluginKeymapsProvider port={pluginKeymapAdapter}>
             <PluginDialogBridge port={pluginDialogAdapter} />
+            <ConfigRuntimeSyncNotice port={configRuntimeSyncNoticeAdapter} />
             <AppShell />
           </PluginKeymapsProvider>
         </PluginCommandProvider>

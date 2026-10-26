@@ -125,8 +125,8 @@ function useSearchHarness({
   const controller = useHomeSearchController({
     api: {
       onSearchAllProgress: (listener) => client.onSearchAllProgress(listener),
-      searchAll: (term, options) => client.searchAll(term, options),
-      search: (request) => client.search(request),
+      searchAll: (term, options, signal) => client.searchAll(term, options, signal),
+      search: (request, signal) => client.search(request, signal),
       category: (request) => client.category(request),
     },
     runtime: {
@@ -216,6 +216,60 @@ beforeEach(() => {
 });
 
 describe('useHomeSearchController', () => {
+  it('aborts the previous search signal when a newer query takes ownership', async () => {
+    const first = deferred<SearchAllReport>();
+    const second = deferred<SearchAllReport>();
+    const signals: AbortSignal[] = [];
+    vi.mocked(client.searchAll).mockImplementation((term, _options, signal) => {
+      if (signal) signals.push(signal);
+      return term === 'first' ? first.promise : second.promise;
+    });
+    const { result, unmount } = renderHook(() => useSearchHarness({ wd: 'first', searchAllSources: true }));
+    let firstSearch!: Promise<void>;
+    let secondSearch!: Promise<void>;
+    try {
+      act(() => { firstSearch = result.current.doSearch(true, 'first', true); });
+      await waitFor(() => expect(client.searchAll).toHaveBeenCalledTimes(1));
+      act(() => { secondSearch = result.current.doSearch(true, 'second', true); });
+      await waitFor(() => expect(client.searchAll).toHaveBeenCalledTimes(2));
+
+      expect(signals).toHaveLength(2);
+      expect(signals[0]?.aborted).toBe(true);
+      expect(signals[1]?.aborted).toBe(false);
+
+      first.resolve(emptyReport());
+      second.resolve(emptyReport());
+      await act(async () => { await Promise.all([firstSearch, secondSearch]); });
+    } finally {
+      unmount();
+    }
+  });
+
+  it('aborts an in-flight request and releases loading when the query is cleared', async () => {
+    const request = deferred<SearchAllReport>();
+    let signal!: AbortSignal;
+    vi.mocked(client.searchAll).mockImplementationOnce((_term, _options, requestSignal) => {
+      signal = requestSignal!;
+      return request.promise;
+    });
+    const { result, unmount } = renderHook(() => useSearchHarness({ wd: 'first', searchAllSources: true }));
+    let search!: Promise<void>;
+    try {
+      act(() => { search = result.current.doSearch(true, 'first', true); });
+      await waitFor(() => expect(client.searchAll).toHaveBeenCalledOnce());
+      expect(result.current.loading).toBe(true);
+
+      act(() => { void result.current.doSearch(true, '', true); });
+
+      expect(signal.aborted).toBe(true);
+      expect(result.current.loading).toBe(false);
+      request.resolve(emptyReport());
+      await act(async () => { await search; });
+    } finally {
+      unmount();
+    }
+  });
+
   it('batches progress bursts and reuses cards from unchanged sources', async () => {
     vi.useFakeTimers();
     const request = deferred<SearchAllReport>();
@@ -268,7 +322,7 @@ describe('useHomeSearchController', () => {
       expect(client.searchAll).toHaveBeenCalledWith('route title', {
         refresh: false,
         profileIds: ['profile-a', 'profile-b'],
-      });
+      }, expect.any(AbortSignal));
     });
     expect(result.current.wd).toBe('route title');
     expect(result.current.allSources).toBe(true);
@@ -313,7 +367,7 @@ describe('useHomeSearchController', () => {
     await waitFor(() => expect(client.searchAll).toHaveBeenCalledWith('route title', {
       refresh: false,
       profileIds: ['profile-a', 'profile-b'],
-    }));
+    }, expect.any(AbortSignal)));
     expect(result.current.loading).toBe(true);
 
     rerender({ aggParam: '' });
@@ -385,8 +439,8 @@ describe('useHomeSearchController', () => {
     });
 
     expect(result.current.loading).toBe(true);
-    expect(client.search).toHaveBeenNthCalledWith(1, { key: 'source-a', wd: 'first', profileId: 'profile-a' });
-    expect(client.search).toHaveBeenNthCalledWith(2, { key: 'source-a', wd: 'second', profileId: 'profile-a' });
+    expect(client.search).toHaveBeenNthCalledWith(1, { key: 'source-a', wd: 'first', profileId: 'profile-a' }, expect.any(AbortSignal));
+    expect(client.search).toHaveBeenNthCalledWith(2, { key: 'source-a', wd: 'second', profileId: 'profile-a' }, expect.any(AbortSignal));
 
     await act(async () => {
       oldRequest.resolve([]);
@@ -416,7 +470,7 @@ describe('useHomeSearchController', () => {
     expect(client.searchAll).toHaveBeenCalledWith('show', {
       refresh: true,
       profileIds: ['profile-a', 'profile-b'],
-    });
+    }, expect.any(AbortSignal));
     expect(result.current.aggScope).toBe('all-profiles');
     expect(result.current.profileIdRef.current).toBe('profile-a');
   });

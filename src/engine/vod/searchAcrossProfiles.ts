@@ -27,6 +27,7 @@ export interface MultiProfileSearchOptions<TContext> {
   profileWorkerLimit: number;
   sourceWorkerLimit: number;
   createWorkerBudget: ProfileWorkerBudgetFactory;
+  signal?: AbortSignal;
   onProgress?: (event: SearchAllProgressEvent) => void;
   searchProfile: (
     profile: SearchProfileEntry<TContext>,
@@ -37,7 +38,7 @@ export interface MultiProfileSearchOptions<TContext> {
 }
 
 export async function searchAcrossProfiles<TContext>(options: MultiProfileSearchOptions<TContext>): Promise<SearchAllReport> {
-  const { term, profiles, profileWorkerLimit, sourceWorkerLimit, createWorkerBudget, onProgress, searchProfile } = options;
+  const { term, profiles, profileWorkerLimit, sourceWorkerLimit, createWorkerBudget, onProgress, searchProfile, signal } = options;
   const total = profiles.reduce((count, profile) => count + profile.total, 0);
   const doneByProfile = new Map(profiles.map((profile) => [profile.profileId, 0]));
   const reports: Array<{ profileId: string; profileName: string; report: SearchAllReport } | null> =
@@ -84,6 +85,9 @@ export async function searchAcrossProfiles<TContext>(options: MultiProfileSearch
     profiles.map((profile) => profile.profileId),
     profiles.slice(0, workerCount).map((profile) => profile.profileId),
   );
+  const cancelFromCaller = (): void => cancellation.abort(signal?.reason ?? new Error('搜索已取消'));
+  signal?.addEventListener('abort', cancelFromCaller, { once: true });
+  if (signal?.aborted) cancelFromCaller();
   let nextProfile = 0;
   const runWorker = async (): Promise<void> => {
     for (;;) {
@@ -111,6 +115,7 @@ export async function searchAcrossProfiles<TContext>(options: MultiProfileSearch
     }
   };
   const outcomes = await Promise.allSettled(Array.from({ length: workerCount }, () => runWorker()));
+  signal?.removeEventListener('abort', cancelFromCaller);
   const failed = outcomes.find((outcome): outcome is PromiseRejectedResult => outcome.status === 'rejected');
   if (failed) throw failed.reason;
   return mergeSearchReports(reports.filter((entry): entry is NonNullable<typeof entry> => entry !== null));

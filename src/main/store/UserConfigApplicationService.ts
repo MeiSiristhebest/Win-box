@@ -12,7 +12,7 @@ import { parseSiteConfig } from '../../engine/config/ApiConfigParser';
 import { filterDeletedProfileSources, sourceDeletionKeys, withSourceDeletionKeys } from './sourceDeletionScopes';
 import { normalizeUserConfigForCommit } from './userConfigCommitNormalization';
 import { UserConfigRepository } from './UserConfigRepository';
-import type { ConfigChangeKind, UserConfigPersistencePort } from './UserConfigRepository';
+import type { ConfigChangeKind, ConfigCommitResult, RuntimeSyncRetryResult, UserConfigPersistencePort } from './UserConfigRepository';
 import {
   addLiveToConfig,
   addSourceToConfig,
@@ -55,7 +55,7 @@ export { PROFILE_SNAPSHOT_VERSION, realParses, serializeImport } from './userPro
 export const USER_CONFIG_VERSION = 4;
 
 export { USER_CONFIG_KEY } from './UserConfigRepository';
-export type { ConfigChangeKind, UserConfigPersistencePort } from './UserConfigRepository';
+export type { ConfigChangeKind, ConfigCommitResult, ConfigRuntimeSyncFailure, RuntimeSyncRetryResult, UserConfigPersistencePort } from './UserConfigRepository';
 
 export interface UserConfigClock {
   now(): Date;
@@ -82,6 +82,7 @@ export function emptyUserConfig(): UserConfig {
 
 export class UserConfigApplicationService {
   private readonly repository: UserConfigRepository;
+  private lastCommitOutcomeValue: ConfigCommitResult | null = null;
 
   constructor(
     persistence: UserConfigPersistencePort,
@@ -96,12 +97,36 @@ export class UserConfigApplicationService {
   }
 
   /** 注册变更回调（SpiderHost 用它同步 sourceMap / 全局 jar / lives / active 键） */
-  setOnChange(cb: (snap: UserConfig, kind: ConfigChangeKind) => void): void {
+  setOnChange(cb: ((snap: UserConfig, kind: ConfigChangeKind) => void) | null): void {
     this.repository.setOnChange(cb);
+  }
+
+  /** Result of the most recent successful durable mutation, including runtime sync state. */
+  get lastCommitOutcome(): ConfigCommitResult | null {
+    return this.lastCommitOutcomeValue;
+  }
+
+  get pendingRuntimeSyncRevision(): number | null {
+    return this.repository.pendingRuntimeSyncRevision;
+  }
+
+  /** Rebuild the runtime projection for the saved snapshot without persisting it again. */
+  retryRuntimeSync(): RuntimeSyncRetryResult {
+    const result = this.repository.retryRuntimeSync();
+    if (result.status === 'synchronized') {
+      this.lastCommitOutcomeValue = { status: 'committed', revision: result.revision, runtimeSync: 'synchronized' };
+    } else if (result.status === 'runtime-sync-failed') {
+      this.lastCommitOutcomeValue = {
+        status: 'committed-runtime-sync-failed', revision: result.revision, error: result.error,
+      };
+      this.logger.w(`配置已保存（revision=${result.revision}），运行时同步重试失败：${result.error.message}`);
+    }
+    return result;
   }
 
   /** 启动时读取；返回是否曾有持久化内容 */
   load(): boolean {
+    this.lastCommitOutcomeValue = null;
     return this.repository.load((raw) => this.normalizeLoaded(raw));
   }
 
@@ -441,10 +466,15 @@ export class UserConfigApplicationService {
   }
 
   // ---------------------------------------------------------------
-  private apply(next: UserConfig, kind: ConfigChangeKind = 'content'): void {
+  private apply(next: UserConfig, kind: ConfigChangeKind = 'content'): ConfigCommitResult {
     next = normalizeUserConfigForCommit(next);
     // ★ 2026-09-30：内容型变更必须把「当前生效档案」的存档 json 一起对齐（见 withActiveProfileSynced）
-    this.repository.commit(kind === 'content' ? this.withActiveProfileSynced(next) : next, kind);
+    const result = this.repository.commit(kind === 'content' ? this.withActiveProfileSynced(next) : next, kind);
+    this.lastCommitOutcomeValue = result;
+    if (result.status === 'committed-runtime-sync-failed') {
+      this.logger.w(`配置已保存（revision=${result.revision}），但运行时同步失败：${result.error.message}`);
+    }
+    return result;
   }
 
   /**

@@ -494,6 +494,19 @@ export interface UserConfig {
   globallyBlockedSourceKeys?: string[];
 }
 
+/** Runtime projection health for an already-persisted user configuration. */
+export type ConfigRuntimeSyncStatus =
+  | { status: 'synchronized'; revision: number; pendingRevision: null }
+  | { status: 'pending'; revision: number; pendingRevision: number }
+  | { status: 'failed'; revision: number; pendingRevision: number; error: { name: string; message: string } };
+
+/** Retrying runtime projection never changes the durable config or its revision. */
+export type ConfigRuntimeSyncRetryResult =
+  | { status: 'synchronized'; revision: number }
+  | { status: 'runtime-sync-failed'; revision: number; error: { name: string; message: string } }
+  | { status: 'not-pending'; revision: number }
+  | { status: 'not-configured'; revision: number };
+
 /** 多配置档案：保存"一份订阅"的原始 JSON（解析后可重建 sources/lives/global），用于多 JSON 源切换 */
 export interface UserProfile {
   id: string; // 唯一（URL 尾段或手动命名 slug 化）

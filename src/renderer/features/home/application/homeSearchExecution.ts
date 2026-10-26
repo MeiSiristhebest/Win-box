@@ -13,6 +13,7 @@ export interface HomeSearchExecutionCommand {
   term: string;
   refresh: boolean;
   scope: HomeSearchExecutionScope;
+  signal?: AbortSignal;
   isCurrent(): boolean;
 }
 
@@ -43,6 +44,7 @@ export async function executeHomeSearch(
       name: command.scope.source.name,
       term: command.term,
       profileId: command.scope.profileId,
+      signal: command.signal,
       isCurrent: command.isCurrent,
     }, { api: { search: ports.api.search }, clock: ports.wallClock });
     return result.kind === 'stale'
@@ -61,6 +63,7 @@ export async function executeHomeSearch(
       ? { kind: 'profiles', profileIds: command.scope.profileIds }
       : { kind: 'profile', profileId: command.scope.profileId },
     isCurrent: command.isCurrent,
+    signal: command.signal,
   }, {
     api: { onSearchAllProgress: ports.api.onSearchAllProgress, searchAll: ports.api.searchAll },
     clock: ports.aggregateClock,

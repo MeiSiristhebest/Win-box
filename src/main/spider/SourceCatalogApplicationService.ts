@@ -32,9 +32,11 @@ export class SourceCatalogApplicationService {
     return result;
   }
 
-  async search(key: string, keyword: string, profileId?: string): Promise<VodItem[]> {
+  async search(key: string, keyword: string, profileId?: string, signal?: AbortSignal): Promise<VodItem[]> {
     const { context, source } = this.resolve(key, profileId);
-    const items = await this.ports.gateway.search(source, keyword);
+    const items = signal
+      ? await this.ports.gateway.search(source, keyword, signal)
+      : await this.ports.gateway.search(source, keyword);
     return items.map((item) => withSourceRef(item, context.profileId));
   }
 

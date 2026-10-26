@@ -23,6 +23,7 @@ const invoke = async (channel: string, ...args: unknown[]) => fixtures.handlers.
 
 function registerHost() {
   const sourceConfig = {
+    addSource: vi.fn((source: unknown) => source),
     setGlobalSourceBlock: vi.fn(),
   };
   const reads = {
@@ -38,14 +39,19 @@ function registerHost() {
     switchProfileSource: vi.fn(),
   };
   const groups = { removeMember: vi.fn(), resolveRefresh: vi.fn() };
+  const runtimeSync = {
+    status: vi.fn(() => ({ status: 'failed' as const, revision: 4, pendingRevision: 4, error: { name: 'Error', message: 'projection failed' } })),
+    retry: vi.fn(() => ({ status: 'runtime-sync-failed' as const, revision: 4, error: { name: 'Error', message: 'projection failed' } })),
+  };
   registerSourceConfigurationIpc(
     sourceConfig as unknown as Parameters<typeof registerSourceConfigurationIpc>[0],
     reads as unknown as Parameters<typeof registerSourceConfigurationIpc>[1],
     logger,
+    runtimeSync,
   );
   registerSubscriptionImportIpc(imports as unknown as Parameters<typeof registerSubscriptionImportIpc>[0], groups, logger);
   registerProfileIpc(profiles as unknown as Parameters<typeof registerProfileIpc>[0], logger);
-  return { sourceConfig, reads, imports, profiles, groups };
+  return { sourceConfig, reads, imports, profiles, groups, runtimeSync };
 }
 
 describe('configuration IPC adapter', () => {
@@ -70,6 +76,25 @@ describe('configuration IPC adapter', () => {
     await expect(invoke(IPC.CFG_IMPORT_JOB_START, { url: 'https://example.test/repo.json', name: 'fixture' }))
       .resolves.toEqual({ ok: true, data: { jobId: 'import-job' } });
     expect(imports.start).toHaveBeenCalledWith('https://example.test/repo.json', 'fixture');
+  });
+
+  it('exposes runtime sync status and retry without changing mutation results', async () => {
+    const { sourceConfig, runtimeSync } = registerHost();
+    const source = { key: 'fixture', name: 'Fixture' };
+
+    await expect(invoke(IPC.CFG_RUNTIME_SYNC_STATUS)).resolves.toEqual({
+      ok: true,
+      data: { status: 'failed', revision: 4, pendingRevision: 4, error: { name: 'Error', message: 'projection failed' } },
+    });
+    await expect(invoke(IPC.CFG_RUNTIME_SYNC_RETRY)).resolves.toEqual({
+      ok: true,
+      data: { status: 'runtime-sync-failed', revision: 4, error: { name: 'Error', message: 'projection failed' } },
+    });
+    await expect(invoke(IPC.CFG_ADD_SOURCE, source)).resolves.toEqual({ ok: true, data: source });
+
+    expect(runtimeSync.status).toHaveBeenCalledOnce();
+    expect(runtimeSync.retry).toHaveBeenCalledOnce();
+    expect(sourceConfig.addSource).toHaveBeenCalledWith(source);
   });
 
   it('validates global source blocks at the IPC boundary', async () => {

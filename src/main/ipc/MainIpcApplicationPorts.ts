@@ -5,6 +5,7 @@ import type {
   ProfileIpcPort,
   SourceConfigurationIpcPort,
   SourceConfigurationReadPort,
+  ConfigRuntimeSyncIpcPort,
   SubscriptionGroupIpcPort,
   SubscriptionImportIpcPort,
 } from './configurationIpc';
@@ -47,6 +48,7 @@ export interface DriveFileCleanupIpcPort {
 export interface MainIpcApplicationPorts {
   sourceConfiguration: SourceConfigurationIpcPort;
   sourceReads: SourceConfigurationReadPort;
+  configRuntimeSync: ConfigRuntimeSyncIpcPort;
   subscriptionImports: SubscriptionImportIpcPort & SubscriptionImportConfigurationPort;
   subscriptionGroups: SubscriptionGroupIpcPort;
   profileConfiguration: ProfileIpcPort & MergedProfileExportPort;

@@ -68,6 +68,7 @@ export class HomeSearchWorkflow {
   private context: HomeSearchWorkflowContext;
   private api: HomeSearchPort;
   private searchGeneration = 0;
+  private activeSearchController: AbortController | null = null;
   private readonly aggregateRetry: AggregateSearchRetrySchedule;
   private folderBack: HomeSearchFolderBack | null = null;
 
@@ -104,12 +105,26 @@ export class HomeSearchWorkflow {
   };
 
   private invalidatePendingSearch(): void {
+    this.abortActiveSearch();
     this.searchGeneration += 1;
   }
 
   private beginSearchGeneration(): number {
+    this.abortActiveSearch();
     this.searchGeneration += 1;
     return this.searchGeneration;
+  }
+
+  private beginSearchRequest(): { generation: number; signal: AbortSignal } {
+    const generation = this.beginSearchGeneration();
+    const controller = new AbortController();
+    this.activeSearchController = controller;
+    return { generation, signal: controller.signal };
+  }
+
+  private abortActiveSearch(): void {
+    this.activeSearchController?.abort(new Error('搜索已被新的操作取消'));
+    this.activeSearchController = null;
   }
 
   private isCurrentSearchGeneration(generation: number): boolean {
@@ -170,10 +185,16 @@ export class HomeSearchWorkflow {
       aggregateMode,
     } = search;
     const term = (termOverride ?? currentTerm).trim();
-    if (!term) return;
+    if (!term) {
+      this.cancelPendingSearch();
+      presentation.dispatchSearch({ type: 'search-preparation-cleared' });
+      presentation.setSearchLoading(false);
+      return;
+    }
     if (!retrying) this.aggregateRetry.reset();
 
     if (pathname !== '/search' && !navigation.isSearchWindow()) {
+      this.cancelPendingSearch();
       try {
         await navigation.openSearchWindow(
           term,
@@ -190,7 +211,7 @@ export class HomeSearchWorkflow {
     const allScope = allProfileScope || (forceAllScope ?? searchAllSources);
     const sourceKey = browse.activeSourceKey();
     const searchProfileId = browse.activeProfileId();
-    const generation = this.beginSearchGeneration();
+    const { generation, signal } = this.beginSearchRequest();
     browse.invalidateBrowseRequests();
     presentation.clearBrowseLoading();
     browse.preserveBrowseForSearch(aggregateMode);
@@ -225,6 +246,7 @@ export class HomeSearchWorkflow {
         term,
         refresh: force,
         scope,
+        signal,
         isCurrent: () => this.isCurrentSearchGeneration(generation),
       }, {
         api: this.api,
@@ -271,6 +293,7 @@ export class HomeSearchWorkflow {
       }
     } finally {
       if (this.isCurrentSearchGeneration(generation)) {
+        this.activeSearchController = null;
         presentation.dispatchSearch({ type: 'search-finished', aggregate: isAggregate });
         presentation.setSearchLoading(false);
       }

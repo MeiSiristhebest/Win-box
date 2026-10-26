@@ -3,6 +3,22 @@ import type { UserConfig } from '../../shared/types';
 /** Runtime-impact category emitted after a durable configuration commit. */
 export type ConfigChangeKind = 'content' | 'ui';
 
+export interface ConfigRuntimeSyncFailure {
+  name: string;
+  message: string;
+}
+
+/** A durable commit is successful even when its derived runtime projection needs retrying. */
+export type ConfigCommitResult =
+  | { status: 'committed'; revision: number; runtimeSync: 'synchronized' | 'not-configured' | 'pending' }
+  | { status: 'committed-runtime-sync-failed'; revision: number; error: ConfigRuntimeSyncFailure };
+
+export type RuntimeSyncRetryResult =
+  | { status: 'synchronized'; revision: number }
+  | { status: 'runtime-sync-failed'; revision: number; error: ConfigRuntimeSyncFailure }
+  | { status: 'not-pending'; revision: number }
+  | { status: 'not-configured'; revision: number };
+
 /** Persistence boundary for the authoritative user-configuration snapshot. */
 export interface UserConfigPersistencePort {
   getObject<T>(key: string, fallback: T): T;
@@ -18,6 +34,7 @@ export class UserConfigRepository {
   private loaded = false;
   private revisionValue = 0;
   private onChange: ((snapshot: UserConfig, kind: ConfigChangeKind) => void) | null = null;
+  private pendingRuntimeSync: { revision: number; snapshot: UserConfig; kind: ConfigChangeKind; error: ConfigRuntimeSyncFailure } | null = null;
 
   constructor(
     private readonly persistence: UserConfigPersistencePort,
@@ -39,6 +56,10 @@ export class UserConfigRepository {
     return this.revisionValue;
   }
 
+  get pendingRuntimeSyncRevision(): number | null {
+    return this.pendingRuntimeSync?.revision ?? null;
+  }
+
   setOnChange(callback: ((snapshot: UserConfig, kind: ConfigChangeKind) => void) | null): void {
     this.onChange = callback;
   }
@@ -48,6 +69,7 @@ export class UserConfigRepository {
   }
 
   load(normalize: (raw: UserConfig) => UserConfig): boolean {
+    this.pendingRuntimeSync = null;
     const raw = this.persistence.getObject<UserConfig | null>(USER_CONFIG_KEY, null);
     if (!raw) {
       this.state = structuredClone(this.initialState);
@@ -62,8 +84,8 @@ export class UserConfigRepository {
     return true;
   }
 
-  /** Commit a prepared aggregate; failed writes restore memory and attempt to restore the durable snapshot. */
-  commit(next: UserConfig, kind: ConfigChangeKind): void {
+  /** Commit a prepared aggregate; only durable write failures roll back the commit. */
+  commit(next: UserConfig, kind: ConfigChangeKind): ConfigCommitResult {
     const previous = this.state;
     const previousLoaded = this.loaded;
     const previousRevision = this.revisionValue;
@@ -86,11 +108,57 @@ export class UserConfigRepository {
     }
 
     this.revisionValue++;
-    this.onChange?.(this.snapshot(), kind);
+    const revision = this.revisionValue;
+    const snapshot = this.snapshot();
+    const pending = this.pendingRuntimeSync;
+    const retryKind = pending?.kind === 'content' || kind === 'content' ? 'content' : 'ui';
+
+    if (!this.onChange) {
+      if (pending) this.pendingRuntimeSync = { ...pending, revision, snapshot, kind: retryKind };
+      return { status: 'committed', revision, runtimeSync: pending ? 'pending' : 'not-configured' };
+    }
+
+    try {
+      this.onChange(snapshot, kind);
+      if (kind === 'content' || !pending || pending.kind === 'ui') {
+        this.pendingRuntimeSync = null;
+      } else {
+        // An UI-only notification cannot repair a failed content projection. Keep
+        // the newest full snapshot so retry does not restore stale UI selection.
+        this.pendingRuntimeSync = { ...pending, revision, snapshot };
+      }
+      return { status: 'committed', revision, runtimeSync: this.pendingRuntimeSync ? 'pending' : 'synchronized' };
+    } catch (error) {
+      const failure = describeRuntimeSyncFailure(error);
+      this.pendingRuntimeSync = { revision, snapshot, kind: retryKind, error: failure };
+      return { status: 'committed-runtime-sync-failed', revision, error: failure };
+    }
+  }
+
+  /** Retry only the derived runtime projection; never writes user-config or advances revision. */
+  retryRuntimeSync(): RuntimeSyncRetryResult {
+    const pending = this.pendingRuntimeSync;
+    if (!pending) return { status: 'not-pending', revision: this.revisionValue };
+    if (!this.onChange) return { status: 'not-configured', revision: pending.revision };
+
+    try {
+      this.onChange(structuredClone(pending.snapshot), pending.kind);
+      if (this.pendingRuntimeSync === pending) this.pendingRuntimeSync = null;
+      return { status: 'synchronized', revision: pending.revision };
+    } catch (error) {
+      const failure = describeRuntimeSyncFailure(error);
+      this.pendingRuntimeSync = { ...pending, error: failure };
+      return { status: 'runtime-sync-failed', revision: pending.revision, error: failure };
+    }
   }
 
   private persist(): void {
     this.persistence.setObject(USER_CONFIG_KEY, this.state);
     this.persistence.flushStrict();
   }
+}
+
+function describeRuntimeSyncFailure(error: unknown): ConfigRuntimeSyncFailure {
+  if (error instanceof Error) return { name: error.name || 'Error', message: error.message };
+  return { name: 'Error', message: String(error) };
 }

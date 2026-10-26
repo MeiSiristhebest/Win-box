@@ -65,6 +65,8 @@ export const IPC = {
   CONFIG_DIAGNOSE: 'config:diagnose',
   // 用户配置持久化 + 源管理（任务 B）
   CFG_GET: 'cfg:get',
+  CFG_RUNTIME_SYNC_STATUS: 'cfg:runtimeSyncStatus',
+  CFG_RUNTIME_SYNC_RETRY: 'cfg:runtimeSyncRetry',
   CFG_ADD_SOURCE: 'cfg:addSource',
   CFG_UPDATE_SOURCE: 'cfg:updateSource',
   CFG_DELETE_SOURCE: 'cfg:deleteSource',
@@ -130,7 +132,9 @@ export const IPC = {
   VOD_CATEGORY: 'vod:category',
   VOD_DETAIL: 'vod:detail',
   VOD_SEARCH: 'vod:search',
+  VOD_SEARCH_CANCEL: 'vod:searchCancel',
   VOD_SEARCH_ALL: 'vod:searchAll',
+  VOD_SEARCH_ALL_CANCEL: 'vod:searchAllCancel',
   /** 主进程 → 渲染层：聚合搜索逐源进度（边搜边出，见 SearchAllProgressEvent） */
   VOD_SEARCH_ALL_PROGRESS: 'vod:searchAllProgress',
   VOD_AUDIT: 'vod:audit',

@@ -100,6 +100,24 @@
 .app-dialog-input:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
 .app-dialog-error { margin-bottom: 12px; }
 
+  .config-runtime-sync-notice {
+    position: fixed; z-index: 20000; inset-block-start: 14px; inset-inline-end: 14px;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 14px;
+    width: min(500px, calc(100vw - 28px)); box-sizing: border-box; padding: 14px 16px;
+    border: 1px solid var(--text-danger, #c62828); border-radius: var(--radius-card, 12px);
+    background: var(--surface-elevated, #20242c); color: var(--text-primary, #f7f8fa);
+    box-shadow: 0 8px 28px rgb(0 0 0 / 36%);
+  }
+  .config-runtime-sync-notice__copy { display: grid; gap: 5px; min-width: 0; }
+  .config-runtime-sync-notice__copy strong { color: var(--text-primary, #f7f8fa); line-height: 1.35; }
+  .config-runtime-sync-notice__detail { color: var(--text-secondary, #c4c8d0); font-size: 12px; overflow-wrap: anywhere; }
+  .config-runtime-sync-notice > button {
+    min-height: 36px; padding: 7px 12px; border: 0; border-radius: var(--radius-control, 8px);
+    background: var(--color-accent, #4778ee); color: var(--on-accent, #fff); font: inherit; font-weight: 600;
+    white-space: nowrap; cursor: pointer;
+  }
+  .config-runtime-sync-notice > button:disabled { cursor: wait; opacity: .7; }
+
   button.card-media-button, button.card-media-button:hover, button.card-media-button:active {
     appearance: none; display: block; width: 100%; padding: 0; border: 0; border-radius: 0;
     background: transparent; color: inherit; font: inherit; text-align: left; box-shadow: none; transform: none; overflow: visible;

@@ -11,6 +11,8 @@ import type {
   SubscriptionRefreshResolution,
   UserConfig,
   UserProfile,
+  ConfigRuntimeSyncStatus,
+  ConfigRuntimeSyncRetryResult,
 } from '../../shared/types';
 import { registerHandler } from '../util/ipcGuard';
 
@@ -60,6 +62,12 @@ export interface SourceConfigurationReadPort {
   driveBindLearned(): string[];
 }
 
+/** Runtime projection recovery is independent from durable configuration mutations. */
+export interface ConfigRuntimeSyncIpcPort {
+  status(): ConfigRuntimeSyncStatus;
+  retry(): ConfigRuntimeSyncRetryResult;
+}
+
 /** Consumer-owned contract for subscription-import IPC. */
 export interface SubscriptionImportIpcPort {
   start(url: string, name?: string): SubscriptionImportProgressEvent;
@@ -76,6 +84,7 @@ export function registerSourceConfigurationIpc(
   config: SourceConfigurationIpcPort,
   reads: SourceConfigurationReadPort,
   logger: Logger,
+  runtimeSync: ConfigRuntimeSyncIpcPort,
 ): void {
   registerHandler(IPC.CONFIG_IMPORT, async (_event: unknown, args: { url?: string; json?: string; name?: string }) => {
     const result = await reads.importConfig(args || {});
@@ -85,6 +94,8 @@ export function registerSourceConfigurationIpc(
   registerHandler(IPC.CONFIG_DIAGNOSE, () => reads.importReport, logger);
 
   registerHandler(IPC.CFG_GET, () => config.getSnapshot(), logger);
+  registerHandler(IPC.CFG_RUNTIME_SYNC_STATUS, () => runtimeSync.status(), logger);
+  registerHandler(IPC.CFG_RUNTIME_SYNC_RETRY, () => runtimeSync.retry(), logger);
   registerHandler(IPC.DRIVE_BIND_KEYS, () => reads.driveBindLearned(), logger);
   registerHandler(IPC.CFG_ADD_SOURCE, (_event: unknown, bean: SourceBean) => config.addSource(bean), logger);
   registerHandler(IPC.CFG_UPDATE_SOURCE, (_event: unknown, args: { key: string; patch: SourceUpdatePatch }) =>

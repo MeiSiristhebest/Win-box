@@ -26,6 +26,8 @@ import type {
   BossKeySettings,
   SubscriptionImportProgressEvent,
   SubscriptionRefreshResolution,
+  ConfigRuntimeSyncStatus,
+  ConfigRuntimeSyncRetryResult,
 } from '../../shared/types';
 import type {
   SubtitleCandidate,
@@ -86,6 +88,8 @@ declare global {
         listSites: () => Promise<IpcResult<SourceBean[]>>;
         diagnose: () => Promise<IpcResult<ImportReport | null>>;
         cfgGet: () => Promise<IpcResult<UserConfig>>;
+        runtimeSyncStatus: () => Promise<IpcResult<ConfigRuntimeSyncStatus>>;
+        retryRuntimeSync: () => Promise<IpcResult<ConfigRuntimeSyncRetryResult>>;
         addSource: (bean: SourceBean) => Promise<IpcResult<SourceBean>>;
         updateSource: (key: string, patch: SourceUpdatePatch) => Promise<IpcResult<SourceBean>>;
         deleteSource: (key: string) => Promise<IpcResult<void>>;
@@ -149,9 +153,11 @@ declare global {
   home: (key: string, profileId?: string) => Promise<IpcResult<HomeResult>>;
   category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }) => Promise<IpcResult<HomeResult>>;
   detail: (a: { key: string; ids: string[]; profileId?: string }) => Promise<IpcResult<VodDetail | null>>;
-  search: (a: { key: string; wd: string; profileId?: string }) => Promise<IpcResult<VodItem[]>>;
+  search: (a: { key: string; wd: string; profileId?: string; requestId?: string }) => Promise<IpcResult<VodItem[]>>;
+  cancelSearch: (requestId: string) => void;
         /** ★ 全源搜索：refresh=true 忽略本地缓存强制重搜（「重新搜索」按钮）；默认命中缓存即秒回 */
-  searchAll: (wd: string, opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] }) => Promise<IpcResult<SearchAllReport>>;
+  searchAll: (wd: string, opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] }, requestId?: string) => Promise<IpcResult<SearchAllReport>>;
+  cancelSearchAll: (requestId: string) => void;
         /** ★ 聚合搜索逐源进度（边搜边出）：返回退订函数 */
         onSearchAllProgress: (cb: (ev: SearchAllProgressEvent) => void) => () => void;
   play: (a: { key: string; flag: string; id: string; profileId?: string }) => Promise<IpcResult<PlayResult>>;

@@ -42,7 +42,17 @@ export class SourceGateway implements SourceQueryGatewayPort {
     return this.adapterFor(this.adapters.catalog, bean, 'detail').detail(bean, ids, sourceRequestTimeoutMs(bean, timeoutMs));
   }
 
-  async search(bean: SourceBean, wd: string, quick = false, timeoutMs?: number, signal?: AbortSignal): Promise<VodItem[]> {
+  async search(bean: SourceBean, wd: string, signal?: AbortSignal): Promise<VodItem[]>;
+  async search(bean: SourceBean, wd: string, quick: boolean, timeoutMs?: number, signal?: AbortSignal): Promise<VodItem[]>;
+  async search(
+    bean: SourceBean,
+    wd: string,
+    quickOrSignal: boolean | AbortSignal = false,
+    timeoutMs?: number,
+    legacySignal?: AbortSignal,
+  ): Promise<VodItem[]> {
+    const quick = typeof quickOrSignal === 'boolean' ? quickOrSignal : false;
+    const signal = typeof quickOrSignal === 'boolean' ? legacySignal : quickOrSignal;
     throwIfAborted(signal);
     const budgetMs = sourceSearchBudgetMs(bean, timeoutMs);
     const search = this.adapterFor(this.adapters.catalog, bean, 'search').search(bean, wd, quick, budgetMs, signal);

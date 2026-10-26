@@ -70,8 +70,8 @@ export interface HomeCategoryStateMemoryPort {
 /** IPC boundary required by search orchestration and search-folder expansion. */
 export interface HomeSearchPort {
   onSearchAllProgress(listener: (event: SearchAllProgressEvent) => void): () => void;
-  searchAll(term: string, options?: { refresh?: boolean; profileId?: string; profileIds?: string[] }): Promise<SearchAllReport>;
-  search(request: { key: string; wd: string; profileId?: string }): Promise<VodItem[]>;
+  searchAll(term: string, options?: { refresh?: boolean; profileId?: string; profileIds?: string[] }, signal?: AbortSignal): Promise<SearchAllReport>;
+  search(request: { key: string; wd: string; profileId?: string }, signal?: AbortSignal): Promise<VodItem[]>;
   category(request: HomeCategoryRequest): Promise<HomeCategoryResult>;
 }
 

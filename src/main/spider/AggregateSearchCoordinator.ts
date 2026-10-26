@@ -17,6 +17,7 @@ import {
   UNSUPPORTED_SEARCH_CODES,
 } from '../../engine/vod/aggregateSearchPolicy';
 import { SearchCache } from '../../engine/vod/searchCache';
+import { awaitWithAbort } from '../../engine/util/abort';
 import { AggregateSearchRequestBroker } from './AggregateSearchRequestBroker';
 
 export interface ProfileExecutionContext {
@@ -55,6 +56,7 @@ export interface AggregateSearchRunnerPort {
     keyword: string,
     options?: AggregateSearchOptions,
     onProgress?: (event: SearchAllProgressEvent) => void,
+    signal?: AbortSignal,
   ): Promise<SearchAllReport>;
 }
 
@@ -97,9 +99,11 @@ export class AggregateSearchCoordinator implements AggregateSearchRunnerPort {
     wd: string,
     opts?: AggregateSearchOptions,
     onProgress?: (event: SearchAllProgressEvent) => void,
+    signal?: AbortSignal,
   ): Promise<SearchAllReport> {
     const term = (wd || '').trim();
     if (!term) throw new Error('请输入搜索关键词');
+    throwIfSearchAborted(signal);
     const version = this.currentStateVersion();
     const key = JSON.stringify([
       this.dependencies.profiles.revision(),
@@ -111,8 +115,9 @@ export class AggregateSearchCoordinator implements AggregateSearchRunnerPort {
     ]);
     return this.requestBroker.run(
       key,
-      (publish) => this.execute(term, opts, publish, version),
+      (publish, requestSignal) => this.execute(term, opts, publish, requestSignal, version),
       onProgress,
+      signal,
     );
   }
 
@@ -135,10 +140,11 @@ export class AggregateSearchCoordinator implements AggregateSearchRunnerPort {
     term: string,
     opts: { refresh?: boolean; profileId?: string; profileIds?: string[] } | undefined,
     onProgress?: (event: SearchAllProgressEvent) => void,
+    signal?: AbortSignal,
     version: SearchStateVersion = this.currentStateVersion(),
   ): Promise<SearchAllReport> {
     const progress = onProgress;
-    if (!opts?.profileIds) return this.searchSingleProfile(term, opts, progress, undefined, undefined, SEARCH_ALL_WORKERS_MAX, undefined, undefined, version);
+    if (!opts?.profileIds) return this.searchSingleProfile(term, opts, progress, undefined, undefined, SEARCH_ALL_WORKERS_MAX, undefined, signal, version);
 
     const profileIds = [...new Set(opts.profileIds.map((id) => String(id || '').trim()).filter(Boolean))];
     if (profileIds.length === 0) throw new Error('请选择至少一个订阅档案');
@@ -161,18 +167,20 @@ export class AggregateSearchCoordinator implements AggregateSearchRunnerPort {
       profileWorkerLimit: SEARCH_ALL_PROFILE_WORKERS,
       sourceWorkerLimit: SEARCH_ALL_WORKERS_MAX,
       createWorkerBudget: this.dependencies.createWorkerBudget,
+      signal,
       onProgress: progress,
-      searchProfile: (entry, profileProgress, workerBudget, signal) => this.searchSingleProfile(
-        term,
-        { refresh: opts.refresh, profileId: entry.profileId },
-        profileProgress,
-        entry.context,
-        entry.profileName,
-        SEARCH_ALL_WORKERS_MAX,
-        workerBudget,
-        signal,
-        version,
-      ),
+      searchProfile: (entry, profileProgress, workerBudget, profileSignal) =>
+        this.searchSingleProfile(
+          term,
+          { refresh: opts.refresh, profileId: entry.profileId },
+          profileProgress,
+          entry.context,
+          entry.profileName,
+          SEARCH_ALL_WORKERS_MAX,
+          workerBudget,
+          profileSignal,
+          version,
+        ),
     });
   }
 
@@ -316,7 +324,8 @@ export class AggregateSearchCoordinator implements AggregateSearchRunnerPort {
             (items) => { release?.(); return items; },
             (error) => { release?.(); throw error; },
           );
-          const items = await this.dependencies.timing.withTimeout(heldSearchRequest, toMs + 500, `单源搜索超时（>${Math.round(toMs / 1000)}s）`);
+          const timedSearchRequest = this.dependencies.timing.withTimeout(heldSearchRequest, toMs + 500, `单源搜索超时（>${Math.round(toMs / 1000)}s）`);
+          const items = await awaitWithAbort(timedSearchRequest, signal);
           const ms = this.dependencies.timing.now() - t0;
           this.dependencies.health.succeeded(sourceScope, ms, items.length === 0); // 空结果也记（连续空 → 下轮压预算）
           finish(i, {

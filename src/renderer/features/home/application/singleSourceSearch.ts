@@ -7,6 +7,7 @@ export interface SingleSourceSearchCommand {
   name: string;
   term: string;
   profileId: string;
+  signal?: AbortSignal;
   isCurrent(): boolean;
 }
 
@@ -30,7 +31,10 @@ export async function executeSingleSourceSearch(
 ): Promise<SingleSourceSearchResult> {
   const startedAt = ports.clock.now();
   try {
-    const items = await ports.api.search({ key: command.key, wd: command.term, profileId: command.profileId });
+    const request = { key: command.key, wd: command.term, profileId: command.profileId };
+    const items = command.signal
+      ? await ports.api.search(request, command.signal)
+      : await ports.api.search(request);
     if (!command.isCurrent()) return { kind: 'stale' };
     return {
       kind: 'completed',

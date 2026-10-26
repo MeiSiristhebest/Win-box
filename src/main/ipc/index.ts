@@ -196,7 +196,7 @@ export function registerIpc(
     migration: dataDirReport.migration,
   }), log);
 
-  registerSourceConfigurationIpc(services.sourceConfiguration, services.sourceReads, log);
+  registerSourceConfigurationIpc(services.sourceConfiguration, services.sourceReads, log, services.configRuntimeSync);
   registerSubscriptionImportIpc(services.subscriptionImports, services.subscriptionGroups, log);
   registerProfileIpc(services.profileConfiguration, log);
   registerLiveChannelConfigurationIpc(services.liveChannelConfiguration, log);

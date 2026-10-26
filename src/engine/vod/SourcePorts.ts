@@ -41,7 +41,7 @@ export interface SourceQueryGatewayPort {
   home(bean: SourceBean): Promise<HomeResult>;
   category(bean: SourceBean, tid: string, pg: string, extend: Record<string, string>): Promise<CategoryResult>;
   detail(bean: SourceBean, ids: string[]): Promise<VodDetail | null>;
-  search(bean: SourceBean, wd: string): Promise<VodItem[]>;
+  search(bean: SourceBean, wd: string, signal?: AbortSignal): Promise<VodItem[]>;
 }
 
 export interface SourcePlaybackPort extends SourceAdapterIdentity {

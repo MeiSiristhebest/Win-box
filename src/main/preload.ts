@@ -3,7 +3,7 @@ import type { UiScaleState } from '../shared/uiScale';
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcResult } from '../shared/ipc-result';
 import { IPC } from '../shared/ipc-channels';
-import type { SiteConfig, ImportReport, SourceBean, SourceMoveDirection, SourceUpdatePatch, UserConfig, UserProfile, SubscriptionImportProgressEvent, SubscriptionRefreshResolution, MetaHit, MetaExtra, DiscoverSection, DiscoverGenre, DiscoverGenrePage, MetaImages } from '../shared/types';
+import type { SiteConfig, ImportReport, SourceBean, SourceMoveDirection, SourceUpdatePatch, UserConfig, UserProfile, SubscriptionImportProgressEvent, SubscriptionRefreshResolution, MetaHit, MetaExtra, DiscoverSection, DiscoverGenre, DiscoverGenrePage, MetaImages, ConfigRuntimeSyncStatus, ConfigRuntimeSyncRetryResult } from '../shared/types';
 import type { SubtitleFetchResult } from '../shared/subtitle';
 import type { MetaSettings, MetaSettingsView, MetaSuggestion } from '../shared/meta';
 import type { UiPreferencesPatch, UiPreferencesSnapshot } from '../shared/uiPreferences';
@@ -35,6 +35,8 @@ const api = {
     listSites: () => invoke(IPC.CONFIG_LIST_SITES),
     diagnose: () => invoke(IPC.CONFIG_DIAGNOSE),
     cfgGet: () => invoke<UserConfig>(IPC.CFG_GET),
+    runtimeSyncStatus: () => invoke<ConfigRuntimeSyncStatus>(IPC.CFG_RUNTIME_SYNC_STATUS),
+    retryRuntimeSync: () => invoke<ConfigRuntimeSyncRetryResult>(IPC.CFG_RUNTIME_SYNC_RETRY),
     addSource: (bean: SourceBean) => invoke<SourceBean>(IPC.CFG_ADD_SOURCE, bean),
     updateSource: (key: string, patch: SourceUpdatePatch) => invoke<SourceBean>(IPC.CFG_UPDATE_SOURCE, { key, patch }),
     deleteSource: (key: string) => invoke<void>(IPC.CFG_DELETE_SOURCE, key),
@@ -138,14 +140,17 @@ const api = {
     home: (key: string, profileId?: string) => invoke(IPC.VOD_HOME, { key, profileId }),
     category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }) => invoke(IPC.VOD_CATEGORY, a),
     detail: (a: { key: string; ids: string[]; profileId?: string }) => invoke(IPC.VOD_DETAIL, a),
-    search: (a: { key: string; wd: string; profileId?: string }) => invoke(IPC.VOD_SEARCH, a),
+    search: (a: { key: string; wd: string; profileId?: string; requestId?: string }) => invoke(IPC.VOD_SEARCH, a),
+    cancelSearch: (requestId: string) => ipcRenderer.send(IPC.VOD_SEARCH_CANCEL, requestId),
     /** ★ opts.refresh=true 忽略本地缓存强制重搜（UI「重新搜索」）；缺省命中 5 分钟缓存即秒回 */
-    searchAll: (wd: string, opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] }) => invoke(IPC.VOD_SEARCH_ALL, {
+    searchAll: (wd: string, opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] }, requestId?: string) => invoke(IPC.VOD_SEARCH_ALL, {
       wd,
       refresh: !!opts?.refresh,
       profileId: opts?.profileId,
       profileIds: opts?.profileIds,
+      requestId,
     }),
+    cancelSearchAll: (requestId: string) => ipcRenderer.send(IPC.VOD_SEARCH_ALL_CANCEL, requestId),
     /**
      * ★ 聚合搜索逐源进度（边搜边出）：订阅后返回退订函数。
      * ★★ 2026-09-24 修复：本方法此前被错放在 `api.config` 下，而渲染层调用的是

@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CmsSourceAdapter } from '../src/engine/vod/CmsSourceAdapter';
 import { SourceGateway } from '../src/engine/vod/SourceGateway';
+import { SpiderSourceAdapter } from '../src/engine/vod/SpiderSourceAdapter';
 import { throwIfSearchAborted } from '../src/engine/vod/searchRuntime';
 import type { CmsCatalogPort, SourceCatalogPort } from '../src/engine/vod/SourcePorts';
+import type { SpiderSourceProviderPort } from '../src/engine/vod/SpiderSourcePorts';
 import type { SourceBean, VodItem } from '../src/shared/types';
 
 const source = { key: 'source', type: 0, api: 'https://example.test/api' } as SourceBean;
@@ -24,7 +26,7 @@ describe('source search cancellation contract', () => {
     const reason = new Error('query superseded');
     const signal = AbortSignal.abort(reason);
 
-    await expect(gateway.search(source, 'movie', false, 1000, signal)).rejects.toMatchObject({
+    await expect(gateway.search(source, 'movie', signal)).rejects.toMatchObject({
       name: 'AbortError', message: reason.message, cause: reason,
     });
     expect(search).not.toHaveBeenCalled();
@@ -64,6 +66,25 @@ describe('source search cancellation contract', () => {
 
     await expect(pending).rejects.toMatchObject({ name: 'AbortError', message: reason.message, cause: reason });
     finishSearch([]);
+  });
+
+  it('passes cancellation to the Spider search capability and stops waiting promptly', async () => {
+    const controller = new AbortController();
+    const reason = new Error('query superseded');
+    let finishSearch!: (value: string) => void;
+    const searchContent = vi.fn((_keyword: string, _quick: boolean, _timeout: number, signal?: AbortSignal) => {
+      expect(signal).toBe(controller.signal);
+      return new Promise<string>(resolve => { finishSearch = resolve; });
+    });
+    const spiders: SpiderSourceProviderPort = { forSource: () => ({ searchContent }) };
+    const adapter = new SpiderSourceAdapter(spiders, { i: vi.fn(), w: vi.fn() });
+
+    const pending = adapter.search({ ...source, type: 3 }, 'movie', false, 1000, controller.signal);
+    controller.abort(reason);
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError', message: reason.message, cause: reason });
+    expect(searchContent).toHaveBeenCalledWith('movie', false, 1000, controller.signal);
+    finishSearch('{"list":[]}');
   });
 
   it('normalizes cross-profile search cancellation', () => {
