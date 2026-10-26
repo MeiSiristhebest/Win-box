@@ -315,7 +315,7 @@ export default function ConfigPage() {
         port={storageSettingsAdapter}
         confirmRemoval={(message, options) => dialog.confirm(message, options)}
       />
-      <BackupSettingsSection active={tab === 'backup'} backup={rendererBackupOperationsAdapter} storage={browserBackupStorageAdapter} />
+      {tab === 'backup' && <BackupSettingsSection backup={rendererBackupOperationsAdapter} storage={browserBackupStorageAdapter} />}
       </div>
       </div>
       </div>
