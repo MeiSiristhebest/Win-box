@@ -89,6 +89,10 @@ const rendererPassiveSettingsViewForbiddenImports = new Map([
   ['renderer/features/settings/PlaybackCompatibilitySettingsView.tsx', new Set([
     './usePlaybackCompatibilityPresenter', './application/playbackSettingsPorts', '../../api/client',
   ])],
+  ['renderer/features/settings/AppearanceSectionView.tsx', new Set([
+    './useAppearanceSectionPresenter', './adapters/appearancePreferencesAdapter', '../../../lib/uiPrefs',
+  ])],
+  ['renderer/components/PosterSizeControl.tsx', new Set(['../lib/uiPrefs'])],
 ]);
 const rendererFeatureControllerForbiddenViewImports = new Map([
   ['renderer/features/playback/useSkipSegmentsController.ts', new Set(['./SkipSegmentsControl'])],

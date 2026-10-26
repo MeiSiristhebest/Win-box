@@ -1,4 +1,5 @@
 import PosterSizeControl from '../components/PosterSizeControl';
+import { usePosterSizePreference } from '../features/display';
 import { useEffect, useRef } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { BOARD_CATEGORIES, boardSourceName, discoverBoardById } from '../../shared/discoverBoards';
@@ -26,6 +27,7 @@ export default function DiscoverBoardPage() {
   const board = data?.board || discoverBoardById(boardId);
   const navigate = useNavigate();
   const theme = useTheme();
+  const posterSize = usePosterSizePreference();
   const view = discoverPresentationView(theme);
   const covers = useCovers((data?.items || []).map(discoverCoverItem), active, true);
   const source = board ? boardSourceName(board) : '来源';
@@ -49,7 +51,7 @@ export default function DiscoverBoardPage() {
   return <div className="content board-content" ref={contentRef}>
     <nav className="board-breadcrumbs" aria-label="当前位置"><Link to="/boards"><Icon name="left" size={12} />榜单</Link></nav>
     <header className="page-heading board-heading"><div><h1>{board?.title || (error ? '榜单不可用' : '内容列表')}</h1></div>
-      <div className="board-actions"><PosterSizeControl /><button className="gallery-icon-button" type="button" aria-label="刷新榜单" title="刷新榜单" disabled={loading} onClick={() => { covers.refresh(); refresh(); }}><Icon name="refresh" size={16} /></button>
+      <div className="board-actions"><PosterSizeControl size={posterSize.size} onChange={posterSize.changeSize} /><button className="gallery-icon-button" type="button" aria-label="刷新榜单" title="刷新榜单" disabled={loading} onClick={() => { covers.refresh(); refresh(); }}><Icon name="refresh" size={16} /></button>
         {board?.externalUrl && <a className="board-text-link" href={board.externalUrl} target="_blank" rel="noreferrer">原站<Icon name="globe" size={15} /></a>}
       </div>
     </header>

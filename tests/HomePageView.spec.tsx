@@ -60,14 +60,14 @@ function model(overrides: {
 
 describe('HomePageView error ownership', () => {
   it('keeps search results visible when only source-session loading failed', () => {
-    render(<HomePageView model={model({ sourceError: '档案配置读取失败' })} />);
+    render(<HomePageView model={model({ sourceError: '档案配置读取失败' })} posterSize="medium" onPosterSizeChange={() => undefined} />);
 
     expect(screen.getByText('档案配置读取失败')).toBeTruthy();
     expect(screen.getByTestId('home-search-results')).toBeTruthy();
   });
 
   it('hides stale search results when the search workflow itself failed', () => {
-    render(<HomePageView model={model({ searchError: '聚合搜索失败' })} />);
+    render(<HomePageView model={model({ searchError: '聚合搜索失败' })} posterSize="medium" onPosterSizeChange={() => undefined} />);
 
     expect(screen.getByText('搜索失败')).toBeTruthy();
     expect(screen.queryByTestId('home-search-results')).toBeNull();
@@ -79,7 +79,7 @@ describe('HomePageView error ownership', () => {
       sourceError: '档案配置读取失败',
       webSourceError: '网页窗口启动失败',
       homePageUrl: 'https://source.invalid/home',
-    })} />);
+    })} posterSize="medium" onPosterSizeChange={() => undefined} />);
 
     expect(screen.getByText('档案配置读取失败')).toBeTruthy();
     expect(screen.getByText('网页窗口启动失败')).toBeTruthy();

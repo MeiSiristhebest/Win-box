@@ -3,8 +3,11 @@ import PluginSlot from '../components/PluginSlot';
 import { SelectionButton } from '../components/ui/SelectionButton';
 import { favoriteTitle, type FavoriteRow, type FavoriteSortMode } from '../features/favorites/application/favoriteModel';
 import type { HistoryCategory } from '../lib/historyCategories';
+import type { PosterSize } from '../../shared/posterSize';
 
 interface FavoritesPageViewProps {
+  posterSize: PosterSize;
+  onPosterSizeChange(size: PosterSize): void;
   titleInputId: string;
   rows: FavoriteRow[];
   filtered: FavoriteRow[];
@@ -46,7 +49,7 @@ export function FavoritesPageView(props: FavoritesPageViewProps) {
         <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
           {props.rows.length ? `${props.rows.length} 条${props.keyword ? ` · 匹配 ${props.filtered.length} 条` : ''}` : '尚未收藏任何影片'}
         </span>
-        <PosterSizeControl />
+        <PosterSizeControl size={props.posterSize} onChange={props.onPosterSizeChange} />
         {props.rows.length > 0 && (
           <button className="linkbtn danger" style={{ marginLeft: 'auto' }} onClick={props.onClearAll}>清空全部收藏</button>
         )}

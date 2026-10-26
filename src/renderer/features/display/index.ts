@@ -1,4 +1,5 @@
 import { displayPreferencesSession } from './adapters/displayPreferencesAdapter';
+import { usePosterSizePreference as usePosterSizePreferenceAdapter } from './adapters/posterSizePreferenceAdapter';
 import { useUiScaleState as useSessionUiScaleState } from './presentation/useUiScaleState';
 import type { UiScalePref } from '../../../shared/uiScale';
 
@@ -12,4 +13,8 @@ export function setUiScale(value: UiScalePref): Promise<void> {
 
 export function useUiScaleState() {
   return useSessionUiScaleState(displayPreferencesSession);
+}
+
+export function usePosterSizePreference() {
+  return usePosterSizePreferenceAdapter();
 }

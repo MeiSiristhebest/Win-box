@@ -7,6 +7,7 @@ import { useFavoritesPagePresenter } from '../features/favorites/useFavoritesPag
 import { useFavoritesPageInteractions } from '../features/favorites/useFavoritesPageInteractions';
 import { useCovers } from '../features/covers/useCovers';
 import { FavoritesPageView } from './FavoritesPageView';
+import { usePosterSizePreference } from '../features/display';
 
 /** Composition root for the favorites workflow, renderer adapters and passive view. */
 export default function FavoritesPage() {
@@ -27,9 +28,12 @@ export default function FavoritesPage() {
   const interactions = useFavoritesPageInteractions(presenter.editing?.key ?? null);
   const coverItems = useMemo(() => presenter.filtered.map(favoriteCoverItem), [presenter.filtered]);
   const covers = useCovers(coverItems);
+  const posterSize = usePosterSizePreference();
 
   return (
     <FavoritesPageView
+      posterSize={posterSize.size}
+      onPosterSizeChange={posterSize.changeSize}
       titleInputId={interactions.titleInputId}
       rows={presenter.rows}
       filtered={presenter.filtered}

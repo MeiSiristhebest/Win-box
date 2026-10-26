@@ -5,8 +5,9 @@ import { DriveBindingDialog } from '../driveBinding/DriveBindingDialog';
 import { HomeBrowseResultsView } from './HomeBrowseResultsView';
 import { HomeSearchResultsView } from './HomeSearchResultsView';
 import type { HomePageViewModel } from './homePageViewModel';
+import type { PosterSize } from '../../../shared/posterSize';
 
-export function HomePageView({ model }: { model: HomePageViewModel }) {
+export function HomePageView({ model, posterSize, onPosterSizeChange }: { model: HomePageViewModel; posterSize: PosterSize; onPosterSizeChange(size: PosterSize): void }) {
   const { heading, search, source, browse } = model;
 
   return (
@@ -27,13 +28,13 @@ export function HomePageView({ model }: { model: HomePageViewModel }) {
         {!heading.aggregate && (
           <header className="page-heading">
             <div><h1>点播</h1><p>{heading.browseSubtitle}</p></div>
-            <PosterSizeControl />
+            <PosterSizeControl size={posterSize} onChange={onPosterSizeChange} />
           </header>
         )}
         {heading.aggregate && (
           <header className="page-heading aggregate-page-heading">
             <div><h1>{heading.title}</h1><p>{heading.subtitle}</p></div>
-            <PosterSizeControl />
+            <PosterSizeControl size={posterSize} onChange={onPosterSizeChange} />
           </header>
         )}
         <PluginSlot slot="home" />

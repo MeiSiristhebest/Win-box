@@ -28,6 +28,8 @@ function renderHistory(historyItem: WatchHistory = item) {
   const onRemove = vi.fn();
   const group = { key: 'profile-a:source-a', label: '主档案 - 南风线路', items: [historyItem] };
   const viewProps: Parameters<typeof HistoryPageView>[0] = {
+    posterSize: 'medium',
+    onPosterSizeChange: () => undefined,
     items: [historyItem],
     groups: [group],
     visibleGroups: [group],

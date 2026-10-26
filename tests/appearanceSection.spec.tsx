@@ -59,4 +59,18 @@ describe('AppearanceSection', () => {
       expect(localStorage.getItem('winbox-show-discover')).toBe('0');
     });
   });
+
+  it('keeps poster, navigation, and browse settings wired through the appearance presenter', async () => {
+    render(<AppearanceSection />);
+
+    fireEvent.change(screen.getByRole('combobox', { name: '海报大小' }), { target: { value: 'large' } });
+    fireEvent.click(screen.getByRole('radio', { name: '独立窗口' }));
+    fireEvent.click(screen.getByRole('radio', { name: '瀑布模式' }));
+
+    await waitFor(() => {
+      expect(localStorage.getItem('winbox-poster-size')).toBe('large');
+      expect(localStorage.getItem('winbox-nav-mode')).toBe('window');
+      expect(localStorage.getItem('winbox-waterfall')).toBe('1');
+    });
+  });
 });

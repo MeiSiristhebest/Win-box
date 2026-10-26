@@ -5,8 +5,11 @@ import { Button } from '../components/ui/Button';
 import { historyItemKey, historyUpdateKey } from '../features/history/application/historyPage';
 import type { HistoryCategory } from '../lib/historyCategories';
 import type { WatchHistory } from '../lib/uiMemoryTypes';
+import type { PosterSize } from '../../shared/posterSize';
 
 interface HistoryPageViewProps {
+  posterSize: PosterSize;
+  onPosterSizeChange(size: PosterSize): void;
   items: WatchHistory[];
   groups: HistoryCategory<WatchHistory>[];
   visibleGroups: HistoryCategory<WatchHistory>[];
@@ -38,7 +41,7 @@ export function HistoryPageView(props: HistoryPageViewProps) {
         <span className="muted" style={{ marginLeft: 8, fontSize: 12 }}>
           {items.length ? `${items.length} 条${resumeCount ? ` · ${resumeCount} 条可续播` : ''} · 自动保存` : '尚未有播放记录'}
         </span>
-        <PosterSizeControl />
+        <PosterSizeControl size={props.posterSize} onChange={props.onPosterSizeChange} />
         {items.length > 0 && (
           <button className="linkbtn danger" style={{ marginLeft: 'auto' }} onClick={props.onClearAll}>
             清空全部

@@ -122,6 +122,17 @@ describe('architecture dependency rules', () => {
   });
 
   it.each([
+    ['renderer/features/settings/AppearanceSectionView.tsx', "import { useAppearanceSectionPresenter } from './useAppearanceSectionPresenter';"],
+    ['renderer/features/settings/AppearanceSectionView.tsx', "import { useMotionPref } from '../../../lib/uiPrefs';"],
+    ['renderer/components/PosterSizeControl.tsx', "import { usePosterSize } from '../lib/uiPrefs';"],
+  ])('keeps appearance settings views controlled by the presenter: %s', (file, source) => {
+    const result = inspect(file, source);
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('settings presentation views must consume a view model and semantic actions');
+  });
+
+  it.each([
     ['renderer/components/Example.tsx', "import { client } from '../api/client';"],
     ['renderer/pages/ExamplePage.tsx', "import { client } from '../api/client';"],
     ['renderer/features/example/useExample.ts', "import { client } from '../../api/client';"],

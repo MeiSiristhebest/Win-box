@@ -7,6 +7,7 @@ import { useHistoryPagePresenter } from '../features/history/useHistoryPagePrese
 import type { WatchHistory } from '../lib/uiMemoryTypes';
 import { useCovers } from '../features/covers/useCovers';
 import { HistoryPageView } from './HistoryPageView';
+import { usePosterSizePreference } from '../features/display';
 
 /** Composition root: connects history use cases to renderer adapters and the passive page view. */
 export default function HistoryPage() {
@@ -36,9 +37,12 @@ export default function HistoryPage() {
   const presenter = useHistoryPagePresenter(ports);
   const coverItems = useMemo(() => presenter.items.map(historyCoverItem), [presenter.items]);
   const covers = useCovers(coverItems);
+  const posterSize = usePosterSizePreference();
 
   return (
     <HistoryPageView
+      posterSize={posterSize.size}
+      onPosterSizeChange={posterSize.changeSize}
       items={presenter.items}
       groups={presenter.groups}
       visibleGroups={presenter.visibleGroups}

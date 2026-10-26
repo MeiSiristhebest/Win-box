@@ -1,4 +1,5 @@
 import PosterSizeControl from '../components/PosterSizeControl';
+import { usePosterSizePreference } from '../features/display';
 // src/renderer/pages/DiscoverPage.tsx — 发现页（★ 2026-09-24 起为**默认首页**，侧边栏第一个）
 // 内容：
 //   ① 推荐（豆瓣电影/剧集五分区；主进程持久缓存，过期后台更新）
@@ -26,6 +27,7 @@ import { discoverExploreAdapter, discoverLandingAdapter } from '../features/disc
 export default function DiscoverPage() {
   const navigate = useNavigate();
   const active = usePageActive();
+  const posterSize = usePosterSizePreference();
   const contentRef = useRef<HTMLDivElement>(null);
   const tailRef = useRef<HTMLDivElement>(null);
   const theme = useTheme();
@@ -56,7 +58,7 @@ export default function DiscoverPage() {
       <div className="content discover-content" ref={contentRef}>
         <header className="page-heading discover-page-heading">
           <div className="discover-heading-title"><h1>发现</h1>{!err && sections?.some(section => section.stale) && <span className="discover-cache-state" title="部分推荐来自缓存，可刷新更新">缓存内容</span>}</div>
-          <div className="discovery-heading-actions"><PosterSizeControl /><button className="gallery-icon-button" type="button" aria-label={media === null ? '刷新推荐' : '刷新分类'} title={media === null ? '刷新推荐' : '刷新分类'} disabled={media === null ? loading : gLoading} onClick={() => { covers.refresh(); if (media === null) retry(); else gRefresh(); }}><Icon name="refresh" size={16} /></button></div>
+          <div className="discovery-heading-actions"><PosterSizeControl size={posterSize.size} onChange={posterSize.changeSize} /><button className="gallery-icon-button" type="button" aria-label={media === null ? '刷新推荐' : '刷新分类'} title={media === null ? '刷新推荐' : '刷新分类'} disabled={media === null ? loading : gLoading} onClick={() => { covers.refresh(); if (media === null) retry(); else gRefresh(); }}><Icon name="refresh" size={16} /></button></div>
         </header>
         <div className="discover-category-row">
           <span className="discover-category-label">内容类型</span>

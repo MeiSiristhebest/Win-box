@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { HomePageView } from '../features/home/HomePageView';
+import { usePosterSizePreference } from '../features/display';
 import { useHomePagePresenter } from '../features/home/useHomePagePresenter';
 import { useSkinLayout } from '../features/theme/adapters/useThemeStore';
 import { createHomeSearchNavigationAdapter } from '../features/home/adapters/homeSearchNavigationAdapter';
@@ -37,6 +38,7 @@ export default function HomePage({ onOpenDetail }: HomePageProps) {
   );
   const filterPanel = useHomeFilterPanelPreference();
   const waterfall = useHomeWaterfallPreference();
+  const posterSize = usePosterSizePreference();
   const cardStyle = useSkinLayout().filterStyle === 'card';
   const model = useHomePagePresenter({
     onOpenDetail,
@@ -62,5 +64,5 @@ export default function HomePage({ onOpenDetail }: HomePageProps) {
       waterfallObserver: homeWaterfallObserverAdapter,
     },
   });
-  return <HomePageView model={model} />;
+  return <HomePageView model={model} posterSize={posterSize.size} onPosterSizeChange={posterSize.changeSize} />;
 }
