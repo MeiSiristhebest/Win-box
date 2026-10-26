@@ -4,6 +4,7 @@ import { useAppDialog } from '../components/AppDialog';
 import { createFavoritesPageAdapter } from '../features/favorites/adapters/favoritesPageAdapter';
 import { favoriteCoverItem, type FavoritesPagePorts } from '../features/favorites/application/favoritesPage';
 import { useFavoritesPagePresenter } from '../features/favorites/useFavoritesPagePresenter';
+import { useFavoritesPageInteractions } from '../features/favorites/useFavoritesPageInteractions';
 import { useCovers } from '../features/covers/useCovers';
 import { FavoritesPageView } from './FavoritesPageView';
 
@@ -23,11 +24,13 @@ export default function FavoritesPage() {
     },
   }), [adapters, dialog]);
   const presenter = useFavoritesPagePresenter(ports);
+  const interactions = useFavoritesPageInteractions(presenter.editing?.key ?? null);
   const coverItems = useMemo(() => presenter.filtered.map(favoriteCoverItem), [presenter.filtered]);
   const covers = useCovers(coverItems);
 
   return (
     <FavoritesPageView
+      titleInputId={interactions.titleInputId}
       rows={presenter.rows}
       filtered={presenter.filtered}
       groups={presenter.groups}

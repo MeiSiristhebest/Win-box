@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import PosterSizeControl from '../components/PosterSizeControl';
 import PluginSlot from '../components/PluginSlot';
 import { SelectionButton } from '../components/ui/SelectionButton';
@@ -6,6 +5,7 @@ import { favoriteTitle, type FavoriteRow, type FavoriteSortMode } from '../featu
 import type { HistoryCategory } from '../lib/historyCategories';
 
 interface FavoritesPageViewProps {
+  titleInputId: string;
   rows: FavoriteRow[];
   filtered: FavoriteRow[];
   groups: HistoryCategory<FavoriteRow>[];
@@ -37,12 +37,6 @@ interface FavoritesPageViewProps {
 }
 
 export function FavoritesPageView(props: FavoritesPageViewProps) {
-  const editTitleRef = useRef<HTMLInputElement>(null);
-  const editingKey = props.editing?.key;
-  useEffect(() => {
-    if (editingKey !== undefined) editTitleRef.current?.focus();
-  }, [editingKey]);
-
   const titleOf = favoriteTitle;
 
   return (
@@ -136,7 +130,7 @@ export function FavoritesPageView(props: FavoritesPageViewProps) {
                             {editingThis && props.editing && (
                               <div className="fav-edit">
                                 <input
-                                  ref={editTitleRef}
+                                  id={props.titleInputId}
                                   value={props.editing.title}
                                   placeholder="显示名（留空用源片名）"
                                   onChange={(event) => props.onSetEditTitle(event.target.value)}
