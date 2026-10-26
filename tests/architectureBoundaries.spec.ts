@@ -91,6 +91,23 @@ describe('architecture dependency rules', () => {
   });
 
   it.each([
+    "import { client } from '../../../api/client';",
+    "import { imageAdapter } from './adapters/imageAdapter';",
+  ])('keeps all renderer view-named components behind presentation contracts: %s', (source) => {
+    const result = inspect('renderer/features/example/ExampleView.tsx', source);
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('renderer views must receive infrastructure through a presenter or view model');
+  });
+
+  it('allows passive renderer views to depend on feature-owned presentation models', () => {
+    const result = inspect('renderer/features/example/ExampleView.tsx', "import type { ExampleViewModel } from './application/exampleViewModel';");
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Architecture boundaries passed.');
+  });
+
+  it.each([
     ['renderer/features/playback/VideoPlayerPresenter.ts', "import { htmlMediaSourceAdapter } from './htmlMediaSourceAdapter';"],
     ['renderer/features/playback/VideoPlayerPresenter.ts', "import { mpvPlaybackSessionAdapter } from './adapters/mpvPlaybackAdapters';"],
     ['renderer/features/playback/usePlayerKernelSelection.ts', "import { mpvStatusQueryAdapter } from './adapters/mpvPlaybackAdapters';"],

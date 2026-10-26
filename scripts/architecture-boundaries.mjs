@@ -1181,11 +1181,17 @@ for (const filePath of await sourceFiles(sourceRoot)) {
       const importerIsUiPrimitive = rendererPath[0] === 'components' && rendererPath[1] === 'ui';
       const importerIsFeature = rendererPath[0] === 'features';
       const importerIsUseCase = importerIsFeature && rendererPath[2] === 'application';
+      const importerIsPassiveView = /(?:^|\/)[^/]+View\.(?:tsx|jsx)$/.test(normalizedFile);
       const target = rendererArea(filePath, specifier);
       if (target && importerIsUiPrimitive && (target.feature || target.page)) {
         violations.push(`${relativeFile} → ${specifier}: UI primitives may not depend on feature or page modules`);
       } else if (target?.page && importerIsFeature) {
         violations.push(`${relativeFile} → ${specifier}: feature modules may not depend on page modules`);
+      }
+      if (importerIsPassiveView && (
+        /(?:^|\/)api\/client(?:\/|$)/.test(specifier) || /(?:^|\/)adapters\//.test(specifier)
+      )) {
+        violations.push(`${relativeFile} → ${specifier}: renderer views must receive infrastructure through a presenter or view model, not import IPC clients or adapters`);
       }
       if (importerIsUseCase) {
         if (isNodeBuiltin(specifier) || /^(?:react|react-dom)(?:\/|$)/.test(specifier)) {
