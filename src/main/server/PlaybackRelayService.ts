@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { pipeline } from 'node:stream';
 import { validateHeaderValue, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { Logger } from '../../shared/types';
 import { isHlsPlaylistUrl } from '../../shared/playbackResult';
@@ -343,17 +344,8 @@ export class PlaybackRelayService {
         const rest = head.subarray(pre);
         if (rest.length) res.write(rest);
         const upstream = resp.body as unknown as NodeJS.ReadableStream;
-        // 客户端 seek 中止（AbortError）属预期，静默；其余交给管道自然结束
-        upstream.on('error', () => { /* ignore */ });
         if ((upstream as { readableEnded?: boolean }).readableEnded) res.end();
-        else (upstream as unknown as { pipe(dest: ServerResponse): unknown }).pipe(res);
-        // 与常规透传同款收尾：客户端断开（seek 关旧连接）→ 立即 destroy 上游，不留悬挂流
-        req.on('close', () => {
-          if (!res.writableEnded) {
-            try { res.destroy(); } catch { /* ignore */ }
-            (upstream as { destroy?: () => void }).destroy?.();
-          }
-        });
+        else this.pipeMediaStream(upstream, res, resp.status, rng, target);
         this.logger.i(`proxy /play: 已剥离图片伪装前导 ${pre} 字节 → TS（${redactUrl(target)}）`);
         return;
       }
@@ -394,35 +386,36 @@ export class PlaybackRelayService {
     res.writeHead(resp.status, fwd);
     // resp.body 是 Node 可读流（undici BodyReadable），直接管道转发 → 边收边发给播放器
     const upstream = resp.body as unknown as NodeJS.ReadableStream;
-    // ★ 快进/拖动进度条会让 <video> 关闭旧的 /play 连接 → 我们 destroy 上游 undici 流；
-    //   未挂 'error' 监听时，销毁 in-flight 流会把 AbortError 冒泡成主进程"未捕获异常"弹窗。
-    //   这里吞掉（seek 中止属预期行为），仅非 AbortError 才记日志。
-    upstream.on('error', (e: unknown) => {
-      if (!(e instanceof Error) || e.name !== 'AbortError') {
-        this.logger.e('proxy /play 上游流错误', e);
-        logPlayDiag({
-          kind: 'relay',
-          stage: 'stream-error',
-          ok: false,
-          status: resp.status,
-          range: rng || undefined,
-          url: redactUrl(target),
-          reason: String((e as Error)?.message ?? e).slice(0, 160),
-        });
-      }
-      (upstream as { destroy?: () => void }).destroy?.();
-    });
     if (bufferedHead.length) res.write(bufferedHead);
     if ((upstream as { readableEnded?: boolean }).readableEnded) res.end();
-    else (upstream as unknown as { pipe(dest: ServerResponse): unknown }).pipe(res);
-    res.on('error', (e: unknown) => {
-      // 客户端断开(seek)时 res 也可能抛 AbortError/EPIPE，一并吞掉避免冒泡
-      if (!(e instanceof Error) || e.name !== 'AbortError') this.logger.e('proxy /play 响应流错误', e);
-    });
-    res.on('close', () => {
-      if (!res.writableEnded) {
-        (upstream as { destroy?: () => void }).destroy?.();
-      }
+    else this.pipeMediaStream(upstream, res, resp.status, rng, target);
+  }
+
+  /**
+   * Couple the upstream and downstream lifetimes. `pipe()` alone does not end
+   * the HTTP response when its source errors, so the browser can wait forever
+   * (or accept a truncated body as complete). `pipeline()` destroys both sides
+   * on failure and also tears down the upstream when the client closes first.
+   */
+  private pipeMediaStream(
+    upstream: NodeJS.ReadableStream,
+    response: ServerResponse,
+    status: number,
+    range: string,
+    target: string,
+  ): void {
+    pipeline(upstream, response, (error: NodeJS.ErrnoException | null) => {
+      if (!error || error.name === 'AbortError' || error.code === 'ABORT_ERR' || error.code === 'ERR_STREAM_PREMATURE_CLOSE') return;
+      this.logger.e('proxy /play 上游流错误', error);
+      logPlayDiag({
+        kind: 'relay',
+        stage: 'stream-error',
+        ok: false,
+        status,
+        range: range || undefined,
+        url: redactUrl(target),
+        reason: String(error.message || error).slice(0, 160),
+      });
     });
   }
 

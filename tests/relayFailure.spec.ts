@@ -9,6 +9,16 @@ import { LocalProxyServer } from '../src/main/server/LocalProxyServer';
 let proxy: LocalProxyServer, base: string;
 const logger = { i: vi.fn(), w: vi.fn(), e: vi.fn() };
 
+function settleWithin<T>(promise: Promise<T>, timeoutMs = 500): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`stream did not settle within ${timeoutMs}ms`)), timeoutMs);
+    promise.then(
+      value => { clearTimeout(timer); resolve(value); },
+      error => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 beforeAll(async () => {
   proxy = new LocalProxyServer(logger);
   await proxy.start(0);
@@ -295,6 +305,74 @@ describe('媒体中继异步失败与 DNS 备用通道', () => {
     const response = await fetch(base + '/play?url=https%3A%2F%2Fcdn.example%2Fmovie', { signal: AbortSignal.timeout(2000) });
     expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.concat(chunks));
     expect(logger.e).not.toHaveBeenCalled();
+  });
+
+  it('响应头发送后上游中断会终止下游，不把部分媒体伪装成完整响应', async () => {
+    let sent = false;
+    const body = new Readable({
+      read() {
+        if (sent) return;
+        sent = true;
+        this.push(Buffer.from('partial'));
+        setTimeout(() => this.destroy(new Error('upstream reset after headers')), 10);
+      },
+    });
+    request.mockResolvedValueOnce({ statusCode: 206, headers: {
+      'content-type': 'video/mp4', 'content-range': 'bytes 1-999/1000', 'content-length': '999',
+    }, body });
+
+    const response = await fetch(base + '/play?url=' + encodeURIComponent('https://cdn.example/movie'), {
+      headers: { Range: 'bytes=1-999' }, signal: AbortSignal.timeout(2000),
+    });
+    expect(response.status).toBe(206);
+    const streamResult = await settleWithin(response.text().then(() => 'completed', () => 'rejected'));
+    expect(streamResult).toBe('rejected');
+    expect(body.destroyed).toBe(true);
+    await vi.waitFor(() => expect(logger.e).toHaveBeenCalledWith('proxy /play 上游流错误', expect.any(Error)));
+  });
+
+  it('图片伪装剥离后上游中断会终止下游，客户端取消也会关闭上游', async () => {
+    const image = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0xff, 0xd9]);
+    const transport = Buffer.alloc(188 * 5, 0xaa);
+    for (let i = 0; i < 5; i++) transport[i * 188] = 0x47;
+    let sent = false;
+    const body = new Readable({
+      read() {
+        if (sent) return;
+        sent = true;
+        this.push(Buffer.concat([image, transport]));
+        setTimeout(() => this.destroy(new Error('upstream reset after image prelude')), 10);
+      },
+    });
+    request.mockResolvedValueOnce({ statusCode: 200, headers: { 'content-type': 'image/jpeg' }, body });
+
+    const response = await fetch(base + '/play?url=' + encodeURIComponent('https://cdn.example/segment.jpg'), {
+      signal: AbortSignal.timeout(2000),
+    });
+    expect(response.headers.get('content-type')).toBe('video/mp2t');
+    const streamResult = await settleWithin(response.arrayBuffer().then(() => 'completed', () => 'rejected'));
+    expect(streamResult).toBe('rejected');
+    expect(body.destroyed).toBe(true);
+    await vi.waitFor(() => expect(logger.e).toHaveBeenCalledWith('proxy /play 上游流错误', expect.any(Error)));
+
+    let activeSent = false;
+    const active = new Readable({
+      read() {
+        if (activeSent) return;
+        activeSent = true;
+        this.push(Buffer.concat([image, transport]));
+      },
+    });
+    request.mockResolvedValueOnce({ statusCode: 200, headers: { 'content-type': 'image/jpeg' }, body: active });
+    const pending = fetch(base + '/play?url=' + encodeURIComponent('https://cdn.example/segment-cancel.jpg'));
+    const cancelResponse = await pending;
+    const closed = new Promise<void>(resolve => active.once('close', resolve));
+    const errorsBeforeClientCancel = logger.e.mock.calls.length;
+    await cancelResponse.body!.cancel();
+    await settleWithin(closed);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(active.destroyed).toBe(true);
+    expect(logger.e).toHaveBeenCalledTimes(errorsBeforeClientCancel);
   });
 
   it('短 jpg 伪装分片预读到 EOF 后仍完整输出剥离后的 TS', async () => {
