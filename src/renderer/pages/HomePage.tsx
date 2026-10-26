@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { HomePageView } from '../features/home/HomePageView';
-import { usePosterSizePreference } from '../features/display';
+import { usePosterSizePreference } from '../features/display/adapters/posterSizePreferenceAdapter';
 import { useHomePagePresenter } from '../features/home/useHomePagePresenter';
 import { useSkinLayout } from '../features/theme/adapters/useThemeStore';
 import { createHomeSearchNavigationAdapter } from '../features/home/adapters/homeSearchNavigationAdapter';

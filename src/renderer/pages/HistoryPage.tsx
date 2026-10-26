@@ -7,7 +7,7 @@ import { useHistoryPagePresenter } from '../features/history/useHistoryPagePrese
 import type { WatchHistory } from '../lib/uiMemoryTypes';
 import { useCovers } from '../features/covers/useCovers';
 import { HistoryPageView } from './HistoryPageView';
-import { usePosterSizePreference } from '../features/display';
+import { usePosterSizePreference } from '../features/display/adapters/posterSizePreferenceAdapter';
 
 /** Composition root: connects history use cases to renderer adapters and the passive page view. */
 export default function HistoryPage() {

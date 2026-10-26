@@ -1,5 +1,5 @@
 import PosterSizeControl from '../components/PosterSizeControl';
-import { usePosterSizePreference } from '../features/display';
+import { usePosterSizePreference } from '../features/display/adapters/posterSizePreferenceAdapter';
 import { useEffect, useRef } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { BOARD_CATEGORIES, boardSourceName, discoverBoardById } from '../../shared/discoverBoards';

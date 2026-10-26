@@ -7,7 +7,7 @@ import { useFavoritesPagePresenter } from '../features/favorites/useFavoritesPag
 import { useFavoritesPageInteractions } from '../features/favorites/useFavoritesPageInteractions';
 import { useCovers } from '../features/covers/useCovers';
 import { FavoritesPageView } from './FavoritesPageView';
-import { usePosterSizePreference } from '../features/display';
+import { usePosterSizePreference } from '../features/display/adapters/posterSizePreferenceAdapter';
 
 /** Composition root for the favorites workflow, renderer adapters and passive view. */
 export default function FavoritesPage() {

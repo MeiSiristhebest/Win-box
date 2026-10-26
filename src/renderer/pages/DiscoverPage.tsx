@@ -1,5 +1,5 @@
 import PosterSizeControl from '../components/PosterSizeControl';
-import { usePosterSizePreference } from '../features/display';
+import { usePosterSizePreference } from '../features/display/adapters/posterSizePreferenceAdapter';
 // src/renderer/pages/DiscoverPage.tsx — 发现页（★ 2026-09-24 起为**默认首页**，侧边栏第一个）
 // 内容：
 //   ① 推荐（豆瓣电影/剧集五分区；主进程持久缓存，过期后台更新）
