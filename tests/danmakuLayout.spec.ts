@@ -1,7 +1,7 @@
 // tests/danmakuLayout.spec.ts
 // 弹幕轨道布局纯函数单测：不重叠不变量、区域三档、密度抽样、时间偏移、超量抽稀、三分区、
 // 重复合并 / 真实测量注入 / 零分配遍历（P0：测量 memo + 重复合并 + 绘制预算热路径）。
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   danmakuArea,
   eachScrollDraw,
@@ -10,7 +10,6 @@ import {
   regionRows,
   scrollDrawList,
   scrollDrawStart,
-  setTextMeasurer,
   zoneRows,
   REGION_RATIO,
 } from '../src/engine/danmaku/layout';
@@ -301,27 +300,28 @@ describe('danmakuArea（绘制区：contain 避让宽银幕黑边）', () => {
   });
 });
 
-// ---- ★ P0-1：渲染层注入真实测量（canvas measureText）+ 宽度 memo ----
-describe('setTextMeasurer / 宽度 memo（P0：不再逐帧重测文本宽）', () => {
-  afterEach(() => setTextMeasurer(null)); // 防泄漏（后续 measureWidth 断言依赖估算兜底）
-
-  it('注入后 measureWidth 走注入值；清空回退估算', () => {
-    setTextMeasurer((text, f) => text.length * f);
-    expect(measureWidth('ab', 10)).toBe(20);
-    setTextMeasurer(null);
+// ---- ★ P0-1：每次布局显式注入文本测量，不共享可变全局依赖 ----
+describe('layout text measurement port / width memo', () => {
+  it('uses the call-scoped measurer and falls back for missing or invalid measurements', () => {
+    const measureByCharacters = (text: string, fontSize: number) => text.length * fontSize;
+    expect(measureWidth('ab', 10, measureByCharacters)).toBe(20);
     expect(measureWidth('ab', 10)).toBe(10 * 0.6 * 2);
+    expect(measureWidth('中', 20, () => -1)).toBe(20);
+    expect(measureWidth('a', 20, () => NaN)).toBe(20 * 0.6);
   });
 
-  it('注入返回负数 / NaN（量不了）→ 回退估算', () => {
-    setTextMeasurer(() => -1);
-    expect(measureWidth('中', 20)).toBe(20);
-    setTextMeasurer(() => NaN);
-    expect(measureWidth('a', 20)).toBe(20 * 0.6);
+  it('keeps concurrent layouts isolated when each has its own measurer', () => {
+    const items = [scroll(0, 'x')];
+    const narrow = layoutDanmaku(items, { ...base, region: 'full', textMeasurer: () => 10 }).scroll;
+    const wide = layoutDanmaku(items, { ...base, region: 'full', textMeasurer: () => 1000 }).scroll;
+
+    expect(narrow[0].width).toBe(10);
+    expect(wide[0].width).toBe(1000);
+    expect(narrow[0].width).toBe(10);
   });
 
-  it('布局宽度写入 PlacedDanmaku.width；scrollDrawStart 以它为出界判据', () => {
-    setTextMeasurer(() => 1000); // 统一宽，便于断言
-    const placed = layoutDanmaku([scroll(0, 'x')], { ...base, region: 'full' }).scroll;
+  it('memoizes measured width in PlacedDanmaku for subsequent draw-boundary checks', () => {
+    const placed = layoutDanmaku([scroll(0, 'x')], { ...base, region: 'full', textMeasurer: () => 1000 }).scroll;
     expect(placed).toHaveLength(1);
     expect(placed[0].width).toBe(1000);
     expect(placed[0].displayText).toBe('x');

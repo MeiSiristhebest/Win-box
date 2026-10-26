@@ -3,7 +3,7 @@
 // 布局（轨道分配）与"逐帧在屏集合"由纯 TS 引擎负责（layoutDanmaku / scrollDrawStart / eachScrollDraw / danmakuArea），
 // 本组件只负责绘制。
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { danmakuArea, eachScrollDraw, layoutDanmaku, scrollDrawStart, setTextMeasurer } from '../../engine/danmaku/layout';
+import { danmakuArea, eachScrollDraw, layoutDanmaku, scrollDrawStart, type TextMeasurer } from '../../engine/danmaku/layout';
 import { DanmakuBitmapCache, type BitmapEntry } from '../lib/danmakuBitmap';
 import { clearDanmakuCanvas, prepareDanmakuCanvas } from '../lib/danmakuCanvas';
 import type { DanmakuItem, DanmakuRegion } from '../../shared/danmaku';
@@ -15,51 +15,63 @@ const danmakuFont = (fontSize: number) => `${fontSize}px 'Microsoft YaHei', 'Pin
 const DRAW_BUDGET_MS = 12;
 
 /**
- * ★ 真实文本测量（canvas `measureText`）+ 小型 LRU，注入引擎（{@link setTextMeasurer}）。
+ * ★ 真实文本测量（canvas `measureText`）+ 小型 LRU，随本覆盖层实例创建和释放。
  *   旧实现按 charCode 估宽（ASCII 一律 0.6×字号）→ 英文/数字/标点判据偏差大；且逐帧重测。
  *   LRU：容量上限后淘汰最久未用；命中即移到队尾（Map 插入序）。
  */
 const MEASURE_CACHE_MAX = 2000;
-const measureCache = new Map<string, number>();
-let measureCtx: CanvasRenderingContext2D | null = null;
 
-function canvasMeasure(text: string, fontSize: number): number {
-  const key = `${fontSize}\u0000${text}`;
-  const hit = measureCache.get(key);
-  if (hit !== undefined) {
-    measureCache.delete(key);
-    measureCache.set(key, hit); // LRU touch
-    return hit;
-  }
-  if (!measureCtx) {
-    measureCtx = document.createElement('canvas').getContext('2d');
-    if (!measureCtx) return -1; // 量不了 → 引擎回退估算
-  }
-  measureCtx.font = danmakuFont(fontSize);
-  const w = measureCtx.measureText(text).width;
-  if (measureCache.size >= MEASURE_CACHE_MAX) {
-    const oldest = measureCache.keys().next().value;
-    if (oldest !== undefined) measureCache.delete(oldest);
-  }
-  measureCache.set(key, w);
-  return w;
+interface CanvasTextMeasurement {
+  measure: TextMeasurer;
+  dispose: () => void;
 }
 
-setTextMeasurer(canvasMeasure);
+/** Canvas context 与 LRU 由单个弹幕覆盖层持有，不在模块导入时改写引擎全局状态。 */
+function createCanvasTextMeasurement(): CanvasTextMeasurement {
+  const measureCache = new Map<string, number>();
+  let measureCtx: CanvasRenderingContext2D | null = null;
+  const measure = (text: string, fontSize: number): number => {
+    const key = `${fontSize}\u0000${text}`;
+    const hit = measureCache.get(key);
+    if (hit !== undefined) {
+      measureCache.delete(key);
+      measureCache.set(key, hit); // LRU touch
+      return hit;
+    }
+    if (!measureCtx) {
+      measureCtx = document.createElement('canvas').getContext('2d');
+      if (!measureCtx) return -1; // 量不了 → 引擎回退估算
+    }
+    measureCtx.font = danmakuFont(fontSize);
+    const width = measureCtx.measureText(text).width;
+    if (measureCache.size >= MEASURE_CACHE_MAX) {
+      const oldest = measureCache.keys().next().value;
+      if (oldest !== undefined) measureCache.delete(oldest);
+    }
+    measureCache.set(key, width);
+    return width;
+  };
+  return {
+    measure,
+    dispose: () => {
+      measureCache.clear();
+      if (measureCtx) {
+        measureCtx.canvas.width = 0;
+        measureCtx.canvas.height = 0;
+        measureCtx = null;
+      }
+    },
+  };
+}
 
-/** 描边（lineWidth 2.4）外扩留量，防位图边缘把描边切掉 */
-const BITMAP_PAD = 4;
-/** 行盒高（与引擎的 lineHeight 同口径：round(fontSize × 1.4)） */
-const danmakuLineH = (fontSize: number) => Math.round(fontSize * 1.4);
-
-/**
- * ★ 文本位图栅格化（P1-①）：在离屏 canvas 上把「描边 + 填充」一次性画好，之后逐帧只 drawImage。
- *   与绘制路径**同字体串 / 同描边参数 / 同 textBaseline** ⇒ 视觉与原来的逐帧 strokeText+fillText 一致。
- *   透明度**不烘进位图**（由逐帧 ctx.globalAlpha 施加）⇒ 调透明度不会失效缓存；DPR 放大后存，HiDPI 依然清晰。
- *   量不了宽 / 拿不到 2D 上下文 ⇒ 返回 null，调用方回退逐帧路径。
- */
-function rasterizeText(text: string, fontSize: number, color: string, dpr: number): BitmapEntry<HTMLCanvasElement> | null {
-  const tw = canvasMeasure(text, fontSize);
+function rasterizeText(
+  text: string,
+  fontSize: number,
+  color: string,
+  dpr: number,
+  measure: TextMeasurer,
+): BitmapEntry<HTMLCanvasElement> | null {
+  const tw = measure(text, fontSize);
   if (!(tw >= 0)) return null;
   const off = document.createElement('canvas');
   const c = off.getContext('2d');
@@ -80,14 +92,28 @@ function rasterizeText(text: string, fontSize: number, color: string, dpr: numbe
   return { bitmap: off, w, h, pad: BITMAP_PAD, bytes: off.width * off.height * 4 };
 }
 
-/** 文本位图缓存：800 条 / 24MB 双阈值，单图超 3MB 不入缓存（★ 这笔内存计入「内存优化」专项预算）。 */
-const bitmapCache = new DanmakuBitmapCache<HTMLCanvasElement>({
-  rasterize: rasterizeText,
-  release: (b) => {
-    b.width = 0; // 置 0×0，让浏览器尽早回收位图内存
-    b.height = 0;
-  },
-});
+function createDanmakuBitmapCache(measure: TextMeasurer): DanmakuBitmapCache<HTMLCanvasElement> {
+  // Each overlay owns its 800-entry / 24 MiB cache; the cache rejects individual bitmaps above 3 MiB.
+  return new DanmakuBitmapCache<HTMLCanvasElement>({
+    rasterize: (text, fontSize, color, dpr) => rasterizeText(text, fontSize, color, dpr, measure),
+    release: (bitmap) => {
+      bitmap.width = 0; // 置 0×0，让浏览器尽早回收位图内存
+      bitmap.height = 0;
+    },
+  });
+}
+
+/** 描边（lineWidth 2.4）外扩留量，防位图边缘把描边切掉 */
+const BITMAP_PAD = 4;
+/** 行盒高（与引擎的 lineHeight 同口径：round(fontSize × 1.4)） */
+const danmakuLineH = (fontSize: number) => Math.round(fontSize * 1.4);
+
+/**
+ * ★ 文本位图栅格化（P1-①）：在离屏 canvas 上把「描边 + 填充」一次性画好，之后逐帧只 drawImage。
+ *   与绘制路径**同字体串 / 同描边参数 / 同 textBaseline** ⇒ 视觉与原来的逐帧 strokeText+fillText 一致。
+ *   透明度**不烘进位图**（由逐帧 ctx.globalAlpha 施加）⇒ 调透明度不会失效缓存；DPR 放大后存，HiDPI 依然清晰。
+ *   量不了宽 / 拿不到 2D 上下文 ⇒ 返回 null，调用方回退逐帧路径。
+ */
 
 interface DanmakuOverlayProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -110,6 +136,8 @@ interface DanmakuOverlayProps {
 
 export default function DanmakuOverlay({ videoRef, mpv = null, items, enabled, region, fontSize, opacity, density, speed, offset, fit = 'contain' }: DanmakuOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const textMeasurement = useMemo(() => createCanvasTextMeasurement(), []);
+  const bitmapCache = useMemo(() => createDanmakuBitmapCache(textMeasurement.measure), [textMeasurement]);
   const [size, setSize] = useState({ w: 0, h: 0 });
   /** 视频真实显示区（相对画布）：contain 时上下留出黑边高度 */
   const [area, setArea] = useState({ top: 0, height: 0 });
@@ -144,8 +172,11 @@ export default function DanmakuOverlay({ videoRef, mpv = null, items, enabled, r
     };
   }, [videoRef, mpv, fit]);
 
-  // ★ 卸载时释放位图缓存（避免 24MB 常驻）；独立空依赖 effect ⇒ 不会随布局重算被反复清空
-  useEffect(() => () => bitmapCache.clear(), []);
+  // 这两份 DOM 资源与覆盖层同生共灭；某一个播放器卸载不会清空另一个实例的缓存。
+  useEffect(() => () => {
+    bitmapCache.clear();
+    textMeasurement.dispose();
+  }, [bitmapCache, textMeasurement]);
 
   // 轨道布局：items/绘制区/偏好变化时重算（纯函数，渲染层只负责绘制）
   const layout = useMemo(
@@ -159,8 +190,9 @@ export default function DanmakuOverlay({ videoRef, mpv = null, items, enabled, r
         region,
         offsetSec: offset,
         mergeDuplicates: true, // ★ 同屏重复弹幕只留 1 条 + 「 ×N」
+        textMeasurer: textMeasurement.measure,
       }),
-    [items, size.w, size.h, area.height, fontSize, speed, density, region, offset],
+    [items, size.w, size.h, area.height, fontSize, speed, density, region, offset, textMeasurement],
   );
 
   useEffect(() => {
@@ -245,7 +277,7 @@ export default function DanmakuOverlay({ videoRef, mpv = null, items, enabled, r
     };
     draw();
     return () => cancelAnimationFrame(raf);
-  }, [enabled, layout, fontSize, opacity, region, area.top, videoRef, speed, mpv]);
+  }, [enabled, layout, fontSize, opacity, region, area.top, videoRef, speed, mpv, bitmapCache]);
 
   return (
     <canvas

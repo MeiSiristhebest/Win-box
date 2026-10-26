@@ -57,6 +57,8 @@ export interface LayoutOpts {
    *   仿 DanmakuFlameMaster 的 DuplicateMergingFilter；默认关以免改变既有布局结果。
    */
   mergeDuplicates?: boolean;
+  /** 文本测量端口：由 renderer 的 canvas adapter 按播放器实例提供；省略时使用纯 TS 宽度估算。 */
+  textMeasurer?: TextMeasurer;
 }
 
 export const REGION_RATIO: Record<DanmakuRegion, number> = { full: 1, half: 0.5, quarter: 0.25 };
@@ -119,19 +121,8 @@ function estimateWidth(text: string, fontSize: number): number {
 /** 真实文本测量器（渲染层注入，如 canvas `measureText`）；返回负数 / NaN 表示量不了 → 回退估算。 */
 export type TextMeasurer = (text: string, fontSize: number) => number;
 
-let textMeasurer: TextMeasurer | null = null;
-
-/**
- * 注入真实文本测量器（传 null 恢复估算）。
- * ★ 引擎保持纯 TS（不 import DOM/Electron）：渲染层在模块加载时注入，单测环境不注入 → 走估算、断言不变。
- *   测量结果的缓存由注入方自带（见 DanmakuOverlay 的 LRU）。
- */
-export function setTextMeasurer(fn: TextMeasurer | null): void {
-  textMeasurer = fn;
-}
-
-/** 文本像素宽：优先真实测量器，缺省走估算。 */
-export function measureWidth(text: string, fontSize: number): number {
+/** 文本像素宽：优先使用本次调用显式提供的测量端口，缺省走估算。 */
+export function measureWidth(text: string, fontSize: number, textMeasurer?: TextMeasurer): number {
   if (textMeasurer) {
     const w = textMeasurer(text, fontSize);
     if (Number.isFinite(w) && w >= 0) return w;
@@ -225,7 +216,7 @@ export function layoutDanmaku(items: DanmakuItem[], opts: LayoutOpts): DanmakuLa
   for (const it of placed0) {
     const cnt = mergeCount?.get(mergeKey(it)) ?? 1;
     const displayText = cnt > 1 ? `${it.text} ×${cnt}` : it.text;
-    const estW = measureWidth(displayText, fontSize); // ★ 只在这里测一次，结果 memo 进 PlacedDanmaku.width
+    const estW = measureWidth(displayText, fontSize, opts.textMeasurer); // ★ 只在这里测一次，结果 memo 进 PlacedDanmaku.width
     if (it.type === 'scroll') {
       const velocity = (width + estW) / duration; // ★ 恒定行程时长 ⇒ 速度随文本宽变化（长句更快）
       let row = -1;
