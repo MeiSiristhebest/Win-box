@@ -1182,6 +1182,7 @@ for (const filePath of await sourceFiles(sourceRoot)) {
       const importerIsFeature = rendererPath[0] === 'features';
       const importerIsUseCase = importerIsFeature && rendererPath[2] === 'application';
       const importerIsPassiveView = /(?:^|\/)[^/]+View\.(?:tsx|jsx)$/.test(normalizedFile);
+      const normalizedSpecifier = specifier.replace(/\\/g, '/');
       const target = rendererArea(filePath, specifier);
       if (target && importerIsUiPrimitive && (target.feature || target.page)) {
         violations.push(`${relativeFile} → ${specifier}: UI primitives may not depend on feature or page modules`);
@@ -1189,7 +1190,7 @@ for (const filePath of await sourceFiles(sourceRoot)) {
         violations.push(`${relativeFile} → ${specifier}: feature modules may not depend on page modules`);
       }
       if (importerIsPassiveView && (
-        /(?:^|\/)api\/client(?:\/|$)/.test(specifier) || /(?:^|\/)adapters\//.test(specifier)
+        /(?:^|\/)api\/client(?:\/|$)/.test(normalizedSpecifier) || /(?:^|\/)adapters\//.test(normalizedSpecifier)
       )) {
         violations.push(`${relativeFile} → ${specifier}: renderer views must receive infrastructure through a presenter or view model, not import IPC clients or adapters`);
       }

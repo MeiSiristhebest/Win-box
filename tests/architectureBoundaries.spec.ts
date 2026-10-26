@@ -93,6 +93,8 @@ describe('architecture dependency rules', () => {
   it.each([
     "import { client } from '../../../api/client';",
     "import { imageAdapter } from './adapters/imageAdapter';",
+    "import { client } from '@/api/client';",
+    "import { imageAdapter } from '@/features/example/adapters/imageAdapter';",
   ])('keeps all renderer view-named components behind presentation contracts: %s', (source) => {
     const result = inspect('renderer/features/example/ExampleView.tsx', source);
     expect(result.error).toBeUndefined();
