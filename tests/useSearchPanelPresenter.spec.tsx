@@ -91,6 +91,19 @@ describe('useSearchPanelPresenter search workflow', () => {
 
   });
 
+  it('clears a pending suggestion debounce when the panel unmounts', async () => {
+    vi.useFakeTimers();
+    const ports = createPorts();
+    const { result, unmount } = renderHook(() => useSearchPanelPresenter(ports));
+
+    act(() => result.current.show());
+    act(() => result.current.changeQuery('待搜索'));
+    unmount();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+
+    expect(ports.recommendations.suggest).not.toHaveBeenCalled();
+  });
+
   it('retries a failed hot list and applies history remove and clear through their ports', async () => {
     const ports = createPorts();
     ports.history.load = vi.fn(() => ['旧片名', '另一部']);
