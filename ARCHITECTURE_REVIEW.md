@@ -1037,3 +1037,11 @@
 - **A/B 结果：** 以完整编译范围顺序对照 `sourceMap: true/false`，插件变换约 7.7 秒/7.4 秒（均为 534 个模块）；约 0.3 秒差值不足以证明稳定收益，因此也不保留该配置改动。当前 `vite.config.ts` 恢复原设置。
 - **有效验证：** 完整 React Compiler 覆盖下，全量 Vitest 为 437 个文件通过、3 个跳过，3724 项通过、5 项跳过；三套 typecheck、全仓 lint/架构边界通过，renderer 生产构建通过。
 - **仍未解决：** Babel 变换仍占 renderer 构建时间的大头；HLS chunk 仍为 574.41KB/178.97KB gzip，超过 500KB 提示。需要另找能保留 hook 编译覆盖的优化方式，并进行受控量测；全仓架构、运行时与桌面实机验收仍未完成。
+
+## 本轮继续：播放器单集解析流程进入应用用例（2026-10-26）
+
+- **确认的问题：** `usePlayerPageSession` 同时实现解析代次管理、结果状态发布、解析错误归一、剧集展示名称生成和成功后写观看记录；这些策略原本只能通过挂载 React hook 一起验证。
+- **已调整：** 新增框架无关的 `resolvePlayerPageEpisode` 应用用例，以播放、历史、来源记忆和状态发布能力为输入；hook 继续拥有 React 生命周期与 stale-generation token，并把当前代次判断作为窄能力注入。解析结果分类和成功后记录现在可脱离 React 测试。
+- **回归覆盖：** 独立测试覆盖成功播放及历史写入、过期请求不污染状态/历史、解析异常、无效播放 URL 与无效集数。
+- **验证：** 新增应用用例与既有 `usePlayerPageSession` 共 8 项测试通过；main、renderer、test 三套 `pnpm run typecheck` 通过。尚未运行本增量后的全量 Vitest、lint、生产构建或桌面播放验收。
+- **原则影响与限制：** 改善 #1、#6、#7、#8、#14 的一处播放器状态/副作用边界；`usePlayerPageSession` 仍承担 hydration、重试、切集和解析请求生命周期，`VideoPlayerPresenter` 仍需审查。14 项全仓整改、运行时完整矩阵、Atomic Design/全局对比度及实机验收均未完成，整体结论不变。

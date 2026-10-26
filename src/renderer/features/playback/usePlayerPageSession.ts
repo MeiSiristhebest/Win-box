@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
-import { formatEpisodeLabel } from '../../lib/epName';
 import { makeStaleGuard } from '../../lib/staleGuard';
-import { playbackResultError } from '../../../shared/playbackResult';
 import { hydratePlayerInit } from './application/hydratePlayerInit';
 import type { PlayerPageHistoryPort, PlayerPageSessionPort, PlayerSourceMemoryPort, PlayerInitData } from './application/playerPageSession';
-import { resolvePlayerPlayback } from './application/resolvePlayerPlayback';
-import { recordOpenedPlayerEpisode } from './application/recordPlayerEpisode';
+import { resolvePlayerPageEpisode } from './application/resolvePlayerPageEpisode';
 import { usePlayerPageEvents } from './usePlayerPageEvents';
 import { usePlayerHistoryProgress } from './usePlayerHistoryProgress';
 import {
@@ -50,34 +47,17 @@ export function usePlayerPageSession(
   const resolve = useCallback(async (data: PlayerInitData, index: number, preparedUrl = '', options?: { parseOffset?: number }) => {
     const episodes = data.episodes;
     if (!episodes || index < 0 || index >= episodes.length) return;
-    const target = episodes[index];
     const generation = resolveGeneration.current.next();
-    const mainTitle = (data.subtitleTitle || data.title || '').trim();
-    const episodeLabel = formatEpisodeLabel(target.name, index);
-    const displayName = mainTitle ? `${mainTitle} - ${episodeLabel}` : episodeLabel;
-
-    dispatch({ type: 'resolution-started', epIndex: index, curName: displayName, playName: mainTitle });
-
-    try {
-      const result = await resolvePlayerPlayback(data, index, preparedUrl, sessionPort, options);
-      if (!resolveGeneration.current.isCurrent(generation)) return;
-      if (result.needDriveCookieBind) {
-        dispatch({ type: 'drive-bind-required', provider: result.needDriveCookieBind });
-        return;
-      }
-      const error = playbackResultError(result);
-      if (error) {
-        dispatch({ type: 'resolution-failed', message: error });
-        return;
-      }
-      dispatch({ type: 'resolution-succeeded', url: result.url, parseName: result.parseName });
-    } catch (error) {
-      if (!resolveGeneration.current.isCurrent(generation)) return;
-      dispatch({ type: 'resolution-failed', message: error instanceof Error ? error.message : String(error) });
-      return;
-    }
-
-    recordOpenedPlayerEpisode({ data, index, displayName, episodeLabel }, historyPort, sourceMemory);
+    await resolvePlayerPageEpisode(
+      { data, index, preparedUrl, parseOffset: options?.parseOffset },
+      {
+        playback: sessionPort,
+        history: historyPort,
+        sourceMemory,
+        publish: dispatch,
+        isCurrent: () => resolveGeneration.current.isCurrent(generation),
+      },
+    );
   }, [historyPort, sessionPort, sourceMemory]);
 
   const applyInit = useCallback(async (incoming: PlayerInitData) => {
