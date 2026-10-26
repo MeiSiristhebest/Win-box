@@ -4,33 +4,35 @@
 import type { MessagePort } from 'node:worker_threads';
 import type { JsSandboxHostPort } from '../JsSandboxPort';
 import type { HttpRequest, HttpResponse, KVStore, Logger } from '../../../shared/types';
-import { SAB_HEADER, SAB_MAX_BYTES, type HostCall, type HostReply, type SabPayload } from './protocol';
+import { SAB_HEADER, SAB_MAX_BYTES, waitForSabReply, type HostCall, type HostReply, type SabPayload } from './protocol';
 
 /** 同步通道：写入请求 → Atomics.wait → 读回 JSON */
 function sabRoundTrip<T>(port: MessagePort, make: (sab: SharedArrayBuffer) => HostCall, timeoutMs: number, seq: () => number): SabPayload<T> {
   const sab = new SharedArrayBuffer(SAB_HEADER + SAB_MAX_BYTES);
   const call = make(sab);
   (call as { id: number }).id = seq();
-  const i32 = new Int32Array(sab, 0, 2);
   try {
     port.postMessage(call);
   } catch (e) {
-    return { ok: false, error: `同步通道投递失败: ${(e as Error).message}` };
+    return { ok: false, code: 'protocol', error: `同步通道投递失败: ${(e as Error).message}` };
   }
-  const waited = Atomics.wait(i32, 0, 0, timeoutMs);
-  if (waited === 'timed-out') return { ok: false, error: '同步请求超时（主进程未及时响应）' };
-  const len = Atomics.load(i32, 1);
-  const bytes = new Uint8Array(sab, SAB_HEADER, Math.max(0, Math.min(len, SAB_MAX_BYTES)));
-  try {
-    return JSON.parse(new TextDecoder().decode(bytes)) as SabPayload<T>;
-  } catch (e) {
-    return { ok: false, error: `同步通道解析失败: ${(e as Error).message}` };
-  }
+  return waitForSabReply<T>(sab, timeoutMs, '同步请求超时（主进程未及时响应）');
 }
 
 export interface RemoteHostOptions {
   jsLibDir: string;
   proxyBase: string;
+}
+
+/** Convert SAB transport failures into an explicit HTTP failure for legacy synchronous spider callers. */
+export function responseForSabFailure(requestUrl: string, failure: SabPayload<unknown>): HttpResponse {
+  const status = failure.code === 'oversized' ? 413 : failure.code === 'timeout' ? 504 : 502;
+  return {
+    status,
+    headers: { 'x-winbox-sync-error-code': failure.code || 'protocol' },
+    content: '',
+    finalUrl: requestUrl,
+  };
 }
 
 /**
@@ -74,26 +76,29 @@ export function createRemoteHost(port: MessagePort, opts: RemoteHostOptions): Js
   const kv: KVStore = {
     get: (key: string): string => {
       const r = sabRoundTrip<string>(port, (sab) => ({ t: 'kv', id: 0, op: 'get', key, sab } as HostCall), 5000, nextId);
+      if (!r.ok) logger.w(`同步 KV 读取失败（${key.slice(0, 100)}）：${r.error || '未知原因'}`);
       return r.ok && typeof r.value === 'string' ? r.value : '';
     },
     set: (key: string, val: string): void => {
-      sabRoundTrip<string>(port, (sab) => ({ t: 'kv', id: 0, op: 'set', key, val, sab } as HostCall), 5000, nextId);
+      const r = sabRoundTrip<string>(port, (sab) => ({ t: 'kv', id: 0, op: 'set', key, val, sab } as HostCall), 5000, nextId);
+      if (!r.ok) logger.w(`同步 KV 写入失败（${key.slice(0, 100)}）：${r.error || '未知原因'}`);
     },
     delete: (key: string): void => {
-      sabRoundTrip<string>(port, (sab) => ({ t: 'kv', id: 0, op: 'delete', key, sab } as HostCall), 5000, nextId);
+      const r = sabRoundTrip<string>(port, (sab) => ({ t: 'kv', id: 0, op: 'delete', key, sab } as HostCall), 5000, nextId);
+      if (!r.ok) logger.w(`同步 KV 删除失败（${key.slice(0, 100)}）：${r.error || '未知原因'}`);
     },
   };
 
   /**
    * 同步 HTTP —— worker 侧阻塞等待（`Atomics.wait`），主进程异步执行后写入 SAB。
-   * 失败/超时返回空响应（对齐 Connect.error 语义：`{ headers: {}, content: '' }`）。
+   * 错误保持成明确的 HTTP 状态和诊断头，不把超大/超时响应伪装成空的 HTTP 200。
    */
   const httpSync = (req: HttpRequest): HttpResponse => {
     const budget = Math.min((req.timeoutMs ?? 10000) + 2000, 60_000);
     const r = sabRoundTrip<HttpResponse>(port, (sab) => ({ t: 'httpSync', id: 0, req, sab } as HostCall), budget, nextId);
     if (r.ok && r.value) return r.value;
     logger.w(`同步请求失败（${req.url.slice(0, 100)}）：${r.error || '未知原因'}`);
-    return { headers: {}, content: '' } as HttpResponse;
+    return responseForSabFailure(req.url, r);
   };
 
   return { http, kv, logger, proxyBase: opts.proxyBase, jsLibDir: opts.jsLibDir, httpSync };

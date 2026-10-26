@@ -10,7 +10,7 @@ import { Worker } from 'node:worker_threads';
 import { readFileSync } from 'node:fs';
 import type { KVStore, Logger } from '../../../shared/types';
 import type { JsSandboxHostPort, JsSpiderRuntimePort, SpiderStyle } from '../JsSandboxPort';
-import { SAB_HEADER, type HostCall, type WorkerReply, type WorkerTask } from './protocol';
+import { publishSabReply, type HostCall, type WorkerReply, type WorkerTask } from './protocol';
 import { SourceProblemError } from '../../spider/errors';
 import { UnsupportedSourceError } from '../../util/errors';
 import { abortError, throwIfAborted } from '../../util/abort';
@@ -185,14 +185,13 @@ export class JsWorkerPool {
           .catch((e: Error) => pw.w.postMessage({ t: 'httpErr', id: msg.id, message: e.message }));
         return;
       case 'httpSync': {
-        // ★ 同步通道：worker 侧已 Atomics.wait —— 父进程**异步**取数（不阻塞主进程）后写回唤醒。
-        //   超时兜底必须**先到先写**（写回即唤醒 worker；后到的结果只丢进已消费的 SAB，无害）。
+        // 同步通道的超时与 HTTP 结果通过 SAB CAS 竞争；第一个回执获胜，迟到结果不会覆写。
         const budget = Math.min((msg.req.timeoutMs ?? 10000) + 1000, 60_000);
-        const timer = setTimeout(() => this.writeSab(msg.sab, { ok: false, error: `上游超时（>${budget}ms）` }), budget);
+        const timer = setTimeout(() => this.writeSab(msg.sab, { ok: false, code: 'timeout', error: `上游超时（>${budget}ms）` }), budget);
         this.host.http
           .request(msg.req)
           .then((res) => { clearTimeout(timer); this.writeSab(msg.sab, { ok: true, value: res }); })
-          .catch((e: Error) => { clearTimeout(timer); this.writeSab(msg.sab, { ok: false, error: e.message }); });
+          .catch((e: Error) => { clearTimeout(timer); this.writeSab(msg.sab, { ok: false, code: 'http-error', error: e.message }); });
         return;
       }
       case 'kv':
@@ -228,19 +227,7 @@ export class JsWorkerPool {
 
   /** SAB 写回（布局见 protocol.ts）：[0]=状态 [1]=长度 [8..]=UTF-8 JSON */
   private writeSab(sab: SharedArrayBuffer, payload: unknown): void {
-    const i32 = new Int32Array(sab, 0, 2);
-    let bytes: Uint8Array;
-    try {
-      bytes = new TextEncoder().encode(JSON.stringify(payload));
-    } catch {
-      bytes = new TextEncoder().encode(JSON.stringify({ ok: false, error: '结果无法序列化' }));
-    }
-    const cap = sab.byteLength - SAB_HEADER;
-    const n = Math.min(bytes.length, cap);
-    new Uint8Array(sab, SAB_HEADER, n).set(bytes.subarray(0, n));
-    Atomics.store(i32, 1, n);
-    Atomics.store(i32, 0, 1);
-    Atomics.notify(i32, 0);
+    publishSabReply(sab, payload);
   }
 
   /** worker 崩溃/被终止：清账 + 摘除（下次任务自动重建）；重复触发只生效一次 */
