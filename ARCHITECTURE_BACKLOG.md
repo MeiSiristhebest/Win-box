@@ -2,7 +2,27 @@
 
 日期：2026-10-26。审计代码：`7469c61e87c0a8a4f8042afd00787ef10ad6f741`；分支：`codex/architecture-cleanup-20261025`。本报告是本次快照的统一待办账本，原 `ARCHITECTURE_REVIEW.md` 保留为过程记录。
 
-## 明确结论
+## 当前修复进度（2026-10-27）
+
+**必需任务 36 项中，已实现并本地提交 16 项；还有 20 项未完成：14 项架构改造、6 项集成/实机验收。** 按原估算范围扣除已完成切片后，剩余约 77–133 单人有效工程小时。原估算不是日历承诺，也不包括未知第三方源恢复时间。
+
+| 已完成任务 | 本地提交 | 本轮/对应验证 |
+|---|---|---|
+| B01、B02 | `003388a215fd` | Worker lifecycle 2 个测试文件、11 项通过 |
+| B03、B04、A03 | `67d6661c7de4` | 进程池/协议限制 5 个测试文件、49 项通过；类型检查与 lint 通过 |
+| B05 | `734cfb0e8810` | 中继断流回归 40 项通过 |
+| B06、B08 | `a41e446d0685` | 设置持久化、网盘配置、插件生命周期 6 个测试文件、93 项通过 |
+| B07、A02 | `1499e737bb25` | 配置同步/全源搜索取消 9 个测试文件、38 项通过；架构检查和全量 typecheck 通过 |
+| B09 | `0deabf3904ec` | Python 标准库探针 6 项及 runner contract 1 项通过 |
+| A01 | `890442fdd754` | 7 个测试文件、141 项通过；全量 typecheck、定向 lint、差异检查通过 |
+| A05 | `1c13299f80d8` | HTTP/HLS/蜘蛛请求 6 个测试文件、98 项通过；主进程/测试 typecheck、lint 通过 |
+| A08 | `9f5adf9fb8e1` | 播放器控制策略 11 个测试文件、43 项通过；架构检查和 renderer/test typecheck 通过 |
+| A09 | `da13bc674149` | HTML5/HLS 恢复策略与会话 2 个专属测试文件、20 项通过；架构检查和 renderer/test typecheck 通过 |
+| A11 | `0717c2671d1d` | 设置页 Presenter 3 个测试文件、13 项通过；全量 typecheck、定向 lint、差异检查通过 |
+
+这些提交均只在本地清理分支，未 push、未发布 Release；未提交的 `libnc.so` 保持原样。Vitest 使用 `pnpm exec vitest` 可正常运行；先前直接用 `node.exe` 启动时报告的 rolldown binding 错误不再作为当前阻塞。尚未跑本候选分支完整测试/构建，也未完成真实线路、安装器、全窗口视觉、RSS/CPU 基准验收。
+
+## 审计基线结论（2026-10-26）
 
 **14 项原则的全面整改尚未完成。已识别的必需工作是 36 个去重任务：9 个已复现缺陷、21 个架构/性能改造项、6 个验收项。预计 122–218 工程小时。另有 2 个可选扩展，不计入这 36 项。**
 
@@ -85,7 +105,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### B01 · JS Worker 崩溃和释放必须结清全部调用
 
-- [ ] P1；原则 #3/#8/#14；**3–5 小时**；可独立开始。
+- [x] P1；原则 #3/#8/#14；**3–5 小时**；可独立开始。
 - **证据/差距：** Worker 退出后第三个排队调用仍 pending；dispose 后已执行调用没有立即结束。旧超时与队列承担了错误的终态所有权。
 - **位置：** [src/engine/js/worker/JsWorkerPool.ts:242](D:/developWorkPlaces/win-box/src/engine/js/worker/JsWorkerPool.ts:242)；[src/engine/js/worker/JsWorkerPool.ts:298](D:/developWorkPlaces/win-box/src/engine/js/worker/JsWorkerPool.ts:298)；[src/engine/js/worker/JsWorkerPool.ts:470](D:/developWorkPlaces/win-box/src/engine/js/worker/JsWorkerPool.ts:470)
 - **重构方向：** 用一个幂等终态操作结清 pending/queued 调用，清理定时器及 abort listener，拒绝迟到回执。
@@ -94,7 +114,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### B02 · 销毁蜘蛛不能新建 Worker，且池必须有明确宿主所有者
 
-- [ ] P1；原则 #1/#5/#7/#8/#14；**2–4 小时**；依赖 B01。
+- [x] P1；原则 #1/#5/#7/#8/#14；**2–4 小时**；依赖 B01。
 - **证据/差距：** 销毁尚未打开的 sandbox 会调用 pick 并创建 3 个 Worker。工厂返回函数隐藏了 pool.dispose，应用生命周期没有显式持有 JS 池。
 - **位置：** [src/engine/js/worker/JsWorkerPool.ts:115](D:/developWorkPlaces/win-box/src/engine/js/worker/JsWorkerPool.ts:115)；[src/engine/js/worker/JsWorkerPool.ts:347](D:/developWorkPlaces/win-box/src/engine/js/worker/JsWorkerPool.ts:347)；[src/engine/js/worker/JsWorkerPool.ts:485](D:/developWorkPlaces/win-box/src/engine/js/worker/JsWorkerPool.ts:485)；[src/main/spider/createSpiderRuntimeAssembly.ts:41](D:/developWorkPlaces/win-box/src/main/spider/createSpiderRuntimeAssembly.ts:41)；[src/main/spider/SpiderRuntimeLifecycle.ts:164](D:/developWorkPlaces/win-box/src/main/spider/SpiderRuntimeLifecycle.ts:164)
 - **重构方向：** 销毁只访问已经存在的 slot；工厂返回可创建、可统一释放的窄能力，由组合根持有并接入配置重置/退出。
@@ -103,7 +123,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### B03 · 进程池 dispose 漏杀同组中间进程
 
-- [ ] P1；原则 #3/#8/#14；**1–2 小时**；可独立开始。
+- [x] P1；原则 #3/#8/#14；**1–2 小时**；可独立开始。
 - **证据/差距：** 遍历 procs 时 kill 会 splice 同一数组；3 个同组进程观测 kill 次数为 [1,0,1]，随后清空登记表丢失中间进程。
 - **位置：** [src/engine/spider/SpiderProcPool.ts:529](D:/developWorkPlaces/win-box/src/engine/spider/SpiderProcPool.ts:529)；[src/engine/spider/SpiderProcPool.ts:570](D:/developWorkPlaces/win-box/src/engine/spider/SpiderProcPool.ts:570)
 - **重构方向：** 对稳定快照回收全部子进程，并结清请求、计时器和组登记。
@@ -112,7 +132,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### B04 · 满池失败回退一次性进程绕过全局资源预算
 
-- [ ] P1；原则 #2/#3/#4/#8/#14；**4–7 小时**；依赖 B03。
+- [x] P1；原则 #2/#3/#4/#8/#14；**4–7 小时**；依赖 B03。
 - **证据/差距：** 全局常驻池满且无可回收空闲组时返回未分类空失败；调用方当作池故障再运行一次性 JVM/Python。边界探针确认池满后另一次 runSubprocess 仍被调用。
 - **位置：** [src/engine/spider/SpiderProcPool.ts:234](D:/developWorkPlaces/win-box/src/engine/spider/SpiderProcPool.ts:234)；[src/engine/spider/JarSpiderBridge.ts:1138](D:/developWorkPlaces/win-box/src/engine/spider/JarSpiderBridge.ts:1138)；[src/engine/spider/PythonSpiderRuntimeAdapter.ts:124](D:/developWorkPlaces/win-box/src/engine/spider/PythonSpiderRuntimeAdapter.ts:124)
 - **重构方向：** 区分容量耗尽、取消、崩溃和源错误；统一 pooled/one-shot 的 admission budget，满载时排队或有界拒绝，真正崩溃的回退也受预算约束。
@@ -121,7 +141,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### B05 · 媒体上游中途失败后下游响应悬挂
 
-- [ ] P1；原则 #3/#8/#14；**2–4 小时**；可独立开始。
+- [x] P1；原则 #3/#8/#14；**2–4 小时**；可独立开始。
 - **证据/差距：** 已发送响应头/数据后，上游 error 只记录日志并销毁上游，没有结束下游。回环探针中客户端一直等待响应体完成。
 - **位置：** [src/main/server/PlaybackRelayService.ts:400](D:/developWorkPlaces/win-box/src/main/server/PlaybackRelayService.ts:400)；[src/main/server/PlaybackRelayService.ts:347](D:/developWorkPlaces/win-box/src/main/server/PlaybackRelayService.ts:347)
 - **重构方向：** 用 pipeline 或等价的双向流生命周期收敛；区分头前错误/头后断流，并在客户端断开时终止上游和测速计时器。
@@ -130,7 +150,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### B06 · 用户设置写盘失败仍确认保存成功
 
-- [ ] P1；原则 #1/#3/#4/#8/#14；**3–6 小时**；可独立开始。
+- [x] P1；原则 #1/#3/#4/#8/#14；**3–6 小时**；可独立开始。
 - **证据/差距：** DavStore 先改内存，再调用吞异常的 flush；注入写盘失败后依然返回成功且内存含新条目。同样的用户设置写回模式还存在于 UC Token、插件字段及启停状态。缓存容错不能作为用户设置的提交语义。
 - **位置：** [src/main/store/JsonStore.ts:53](D:/developWorkPlaces/win-box/src/main/store/JsonStore.ts:53)；[src/main/store/DavStore.ts:74](D:/developWorkPlaces/win-box/src/main/store/DavStore.ts:74)；[src/main/store/UcTvStore.ts:42](D:/developWorkPlaces/win-box/src/main/store/UcTvStore.ts:42)；[src/main/plugin/PluginSettingsService.ts:75](D:/developWorkPlaces/win-box/src/main/plugin/PluginSettingsService.ts:75)；[src/main/plugin/PluginHost.ts:465](D:/developWorkPlaces/win-box/src/main/plugin/PluginHost.ts:465)
 - **重构方向：** 区分可丢弃缓存与用户数据；用户数据使用严格原子写入，写成功才发布内存/广播成功。给消费者定义窄的事务持久化端口，复用 DriveStore 已有严格写模式。
@@ -139,7 +159,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### B07 · 配置已持久化却因运行时观察者异常被报告为失败
 
-- [ ] P1；原则 #1/#3/#8/#13/#14；**2–4 小时**；依赖 B06。
+- [x] P1；原则 #1/#3/#8/#13/#14；**2–4 小时**；依赖 B06。
 - **证据/差距：** commit 已写入新快照并增加 revision 后直接调用可抛异常的 onChange。故障注入得到“调用抛错，但持久化已是新配置”，调用方无法区分保存失败与运行时刷新失败。
 - **位置：** [src/main/store/UserConfigRepository.ts:66](D:/developWorkPlaces/win-box/src/main/store/UserConfigRepository.ts:66)；[src/main/store/UserConfigRepository.ts:88](D:/developWorkPlaces/win-box/src/main/store/UserConfigRepository.ts:88)；[src/main/spider/SourceRuntimeConfiguration.ts:33](D:/developWorkPlaces/win-box/src/main/spider/SourceRuntimeConfiguration.ts:33)
 - **重构方向：** 让持久化结果与运行时同步结果分离；通知失败可重试并有可见诊断，不把它伪装为未保存。避免不可靠的二次隐式回滚覆盖已完成提交。
@@ -148,7 +168,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### B08 · 插件升级不重载代码，启动失败后也不重试
 
-- [ ] P1；原则 #2/#3/#8/#13/#14；**3–6 小时**；可独立开始。
+- [x] P1；原则 #2/#3/#8/#13/#14；**3–6 小时**；可独立开始。
 - **证据/差距：** sync 只判断相同 id 是否已有 box；入口、版本或权限变更不重建 Worker，失败 box 也一直留在表里。两次同步探针均只创建 1 次且没有释放旧 box。
 - **位置：** [src/main/plugin/sandbox/PluginSandboxLifecycle.ts:42](D:/developWorkPlaces/win-box/src/main/plugin/sandbox/PluginSandboxLifecycle.ts:42)；[src/main/plugin/PluginHost.ts:128](D:/developWorkPlaces/win-box/src/main/plugin/PluginHost.ts:128)；[src/main/plugin/PluginHost.ts:411](D:/developWorkPlaces/win-box/src/main/plugin/PluginHost.ts:411)
 - **重构方向：** 按载荷版本/内容指纹、入口和权限形成实例身份；替换时先终止旧会话，启动失败可显式重试，约束并发 refresh 的代次。
@@ -157,7 +177,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### B09 · Python 默认空能力与初始化错误被当成成功
 
-- [ ] P1；原则 #3/#4/#10/#14；**2–4 小时**；可独立开始。
+- [x] P1；原则 #3/#4/#10/#14；**2–4 小时**；可独立开始。
 - **证据/差距：** 继承 base.Spider 而未实现 searchContent 会返回合法空列表；_invoke 只检查方法存在。源 init 内部 TypeError 也被整个吞掉。这与 JS/JVM 已能区分 unsupported/真实执行失败的契约不一致。
 - **位置：** [resources/jvm/python-runner/base/spider.py:27](D:/developWorkPlaces/win-box/resources/jvm/python-runner/base/spider.py:27)；[resources/jvm/python-runner/runner.py:87](D:/developWorkPlaces/win-box/resources/jvm/python-runner/runner.py:87)；[resources/jvm/python-runner/runner.py:214](D:/developWorkPlaces/win-box/resources/jvm/python-runner/runner.py:214)；[resources/jvm/python-runner/runner.py:314](D:/developWorkPlaces/win-box/resources/jvm/python-runner/runner.py:314)
 - **重构方向：** 在兼容适配边界识别继承的默认桩；用签名匹配处理可选 init，传播函数体内部异常。保留真正实现的方法返回空列表这一合法结果。
@@ -170,7 +190,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### A01 · 给 JS sandbox/蜘蛛实例缓存建立每源回收预算
 
-- [ ] P1；原则 #1/#8/#14；**3–6 小时**；依赖 B01、B02。
+- [x] P1；原则 #1/#8/#14；**3–6 小时**；依赖 B01、B02。
 - **证据/差距：** 缓存目前主要靠全量 clear/worker 回收；最后一个保留 Worker 内没有逐源淘汰预算。全仓跨源搜索可逐步积累 VM 上下文，现未量测实际 RSS 增量，不能直接称为已证实内存泄漏。
 - **位置：** [src/engine/spider/SpiderCache.ts:6](D:/developWorkPlaces/win-box/src/engine/spider/SpiderCache.ts:6)；[src/engine/js/worker/entry.ts:20](D:/developWorkPlaces/win-box/src/engine/js/worker/entry.ts:20)；[src/engine/js/worker/JsWorkerPool.ts:456](D:/developWorkPlaces/win-box/src/engine/js/worker/JsWorkerPool.ts:456)
 - **重构方向：** 建立活跃租约、源级 LRU/TTL 或字节/数量双预算；淘汰释放 VM/缓存且不能影响正在执行的源；与显式池所有权接线。
@@ -178,7 +198,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### A02 · 搜索取消从展示代次贯穿 IPC 到后台请求
 
-- [ ] P1；原则 #3/#4/#7/#8/#14；**4–8 小时**；依赖 B01、B04。
+- [x] P1；原则 #3/#4/#7/#8/#14；**4–8 小时**；依赖 B01、B04。
 - **证据/差距：** 当前取消主要使旧结果失效；HomeSearchPort 没有取消能力，broker.clear 只移除登记。快速切关键词、关闭搜索窗口后，旧搜索仍可占用 HTTP/Worker/进程预算到自身截止。
 - **位置：** [src/renderer/features/home/application/HomeSearchWorkflow.ts:88](D:/developWorkPlaces/win-box/src/renderer/features/home/application/HomeSearchWorkflow.ts:88)；[src/renderer/features/home/application/homePorts.ts:71](D:/developWorkPlaces/win-box/src/renderer/features/home/application/homePorts.ts:71)；[src/main/ipc/vodIpc.ts:42](D:/developWorkPlaces/win-box/src/main/ipc/vodIpc.ts:42)；[src/main/spider/AggregateSearchRequestBroker.ts:12](D:/developWorkPlaces/win-box/src/main/spider/AggregateSearchRequestBroker.ts:12)
 - **重构方向：** 加入请求会话/取消端口；共享同词任务按订阅者计数，最后消费者退出才取消底层；不同关键词共享宿主资源预算。
@@ -186,7 +206,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### A03 · 限制子进程协议帧和日志缓冲大小
 
-- [ ] P1；原则 #3/#8/#14；**2–4 小时**；依赖 B03。
+- [x] P1；原则 #3/#8/#14；**2–4 小时**；依赖 B03。
 - **证据/差距：** 一次性 stdout/stderr 和常驻行协议 buf 持续累积，没有单帧/累计字节上限。异常日志或不换行输出能够放大内存；尚未测定生产出现频率。
 - **位置：** [src/engine/spider/SpiderSubprocessRunner.ts:57](D:/developWorkPlaces/win-box/src/engine/spider/SpiderSubprocessRunner.ts:57)；[src/engine/spider/SpiderProcPool.ts:449](D:/developWorkPlaces/win-box/src/engine/spider/SpiderProcPool.ts:449)
 - **重构方向：** 分开结果帧预算与截断日志环；超限返回有类型诊断并回收进程；不能截断合法 JSON 后伪报源无结果。
@@ -202,7 +222,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### A05 · 小型 HTTP 文本与 HLS 清单按字节和读取截止设预算
 
-- [ ] P1；原则 #3/#7/#8/#14；**3–5 小时**；依赖 B05。
+- [x] P1；原则 #3/#7/#8/#14；**3–5 小时**；依赖 B05。
 - **证据/差距：** 文本响应和清单使用完整 arrayBuffer；媒体流的无限 bodyTimeout 被清单缓冲路径沿用。误标的 m3u8/无限响应会占用等待与内存，尚未测量生产频率。
 - **位置：** [src/main/server/UpstreamHttpClient.ts:66](D:/developWorkPlaces/win-box/src/main/server/UpstreamHttpClient.ts:66)；[src/main/server/UpstreamHttpClient.ts:39](D:/developWorkPlaces/win-box/src/main/server/UpstreamHttpClient.ts:39)；[src/main/server/PlaybackRelayService.ts:256](D:/developWorkPlaces/win-box/src/main/server/PlaybackRelayService.ts:256)
 - **重构方向：** 流媒体与清单/配置采用不同读取策略；小体积响应按字节预算+总截止读取；客户端取消贯穿重定向、清单与流。
@@ -226,7 +246,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### A08 · 播放器 Presenter 的跨控制域编排仍过重
 
-- [ ] P2；原则 #1/#4/#6/#8/#11/#14；**5–9 小时**；依赖 B05、A09。
+- [x] P2；原则 #1/#4/#6/#8/#11/#14；**5–9 小时**；依赖 B05、A09。
 - **证据/差距：** 已把解析、音轨、偏好、跳过片段等职责移出，但一个 Presenter 仍交叉接线内核交接、暂停/音量、字幕/弹幕互斥、自动下一集，并组装全部控件动作。视图已被动化，不等于跨会话状态责任已经清晰。
 - **位置：** [src/renderer/features/playback/VideoPlayerPresenter.ts:165](D:/developWorkPlaces/win-box/src/renderer/features/playback/VideoPlayerPresenter.ts:165)；[src/renderer/features/playback/VideoPlayerPresenter.ts:361](D:/developWorkPlaces/win-box/src/renderer/features/playback/VideoPlayerPresenter.ts:361)；[src/renderer/features/playback/VideoPlayerPresenter.ts:690](D:/developWorkPlaces/win-box/src/renderer/features/playback/VideoPlayerPresenter.ts:690)
 - **重构方向：** 按会话状态/控制区域组织专责展示模型；交接/恢复/互斥等业务决策有独立应用策略，顶层只组合和投影；保留窄消费者端口，不机械拆成多个转发文件。
@@ -234,7 +254,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### A09 · HTML5/HLS/FLV 资源绑定与恢复策略仍在同一 React effect
 
-- [ ] P2；原则 #1/#3/#4/#6/#7/#8/#14；**4–7 小时**；依赖 B05。
+- [x] P2；原则 #1/#3/#4/#6/#7/#8/#14；**4–7 小时**；依赖 B05。
 - **证据/差距：** DOM 绑定、HLS/MPEG-TS 初始化/销毁、重试计数、内核/外置回退与观看时间线在一个会话 effect 中协调。已有 time-line 纯规则，但错误恢复矩阵仍依赖整个 hook。
 - **位置：** [src/renderer/features/playback/useHtml5PlaybackSession.ts:53](D:/developWorkPlaces/win-box/src/renderer/features/playback/useHtml5PlaybackSession.ts:53)；[src/renderer/features/playback/useHtml5PlaybackSession.ts:90](D:/developWorkPlaces/win-box/src/renderer/features/playback/useHtml5PlaybackSession.ts:90)
 - **重构方向：** 浏览器媒体适配器拥有元素与库实例；有限的恢复状态/预算决定留在框架无关工作流。按实际协议定义最小控制/事件端口，避免统一成无限大播放器接口。
@@ -250,7 +270,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### A11 · 设置页剩余页面状态与视图分离
 
-- [ ] P2；原则 #1/#6/#11/#14；**2–4 小时**；可独立开始。
+- [x] P2；原则 #1/#6/#11/#14；**2–4 小时**；可独立开始。
 - **证据/差距：** 各设置业务 Presenter 已存在，但页面仍管理共享 busy/初载错误、标签路由、设置检索、初始加载和 JSX。不能因文件里没有直接 IPC 就称为 Passive View。
 - **位置：** [src/renderer/pages/ConfigPage.tsx:111](D:/developWorkPlaces/win-box/src/renderer/pages/ConfigPage.tsx:111)；[src/renderer/pages/ConfigPage.tsx:150](D:/developWorkPlaces/win-box/src/renderer/pages/ConfigPage.tsx:150)；[src/renderer/pages/ConfigPage.tsx:175](D:/developWorkPlaces/win-box/src/renderer/pages/ConfigPage.tsx:175)
 - **重构方向：** 以页面展示模型收口共享状态、路由解析与事件动作；ConfigPage 保留组合根装配，独立 View 只声明式渲染；不把已原子化配置聚合再拆成多个存储。
@@ -417,7 +437,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 阶段之间按任务依赖推进，可穿插，不要求等整仓改完才测试。每个 B/A 任务先有最小可验证切片，再单独提交；确属同一不变量的修改/回归可同一提交。继续使用唯一清理分支，不再创建一堆工作区。普通小切片不增版本号、不发布 Release。
 
-## 本轮验证记录与不能声称的结果
+## 审计基线验证记录与当时不能声称的结果
 
 - 当前快照 `pnpm run architecture:check` 已执行，退出码 0，输出 `Architecture boundaries passed.`；这只覆盖该脚本声明的规则。
 - 全量静态 AST/依赖扫描：1464 模块，解析失败 0；可解析源码运行时跨层违规 0、环 0。它是依赖规则证明，不是全原则通过。

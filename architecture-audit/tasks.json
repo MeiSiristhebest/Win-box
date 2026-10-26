@@ -71,7 +71,7 @@
       "kind": "defect",
       "priority": "P1",
       "title": "JS Worker 崩溃和释放必须结清全部调用",
-      "status": "open",
+      "status": "completed",
       "principles": [
         3,
         8,
@@ -105,14 +105,18 @@
       "probes": [
         "lifecycle.probe.spec.ts:19",
         "lifecycle.probe.spec.ts:33"
-      ]
+      ],
+      "completionEvidence": {
+        "commit": "003388a215fd0e3bc4ea86c99903e443333ecf6f",
+        "verification": "2 个 Vitest 文件，11 项通过"
+      }
     },
     {
       "id": "B02",
       "kind": "defect",
       "priority": "P1",
       "title": "销毁蜘蛛不能新建 Worker，且池必须有明确宿主所有者",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         5,
@@ -159,14 +163,18 @@
       ],
       "probes": [
         "lifecycle.probe.spec.ts:45"
-      ]
+      ],
+      "completionEvidence": {
+        "commit": "003388a215fd0e3bc4ea86c99903e443333ecf6f",
+        "verification": "2 个 Vitest 文件，11 项通过；生命周期销毁不再新建 Worker"
+      }
     },
     {
       "id": "B03",
       "kind": "defect",
       "priority": "P1",
       "title": "进程池 dispose 漏杀同组中间进程",
-      "status": "open",
+      "status": "completed",
       "principles": [
         3,
         8,
@@ -194,14 +202,18 @@
       "dependsOn": [],
       "probes": [
         "lifecycle.probe.spec.ts:74"
-      ]
+      ],
+      "completionEvidence": {
+        "commit": "67d6661c7de43a2434cdcb42f3a1f9bdf02671f2",
+        "verification": "5 个 Vitest 文件，49 项通过；typecheck/lint 通过"
+      }
     },
     {
       "id": "B04",
       "kind": "defect",
       "priority": "P1",
       "title": "满池失败回退一次性进程绕过全局资源预算",
-      "status": "open",
+      "status": "completed",
       "principles": [
         2,
         3,
@@ -238,14 +250,18 @@
       ],
       "probes": [
         "lifecycle.probe.spec.ts:84"
-      ]
+      ],
+      "completionEvidence": {
+        "commit": "67d6661c7de43a2434cdcb42f3a1f9bdf02671f2",
+        "verification": "5 个 Vitest 文件，49 项通过；共享进程容量与回退 admission 有界"
+      }
     },
     {
       "id": "B05",
       "kind": "defect",
       "priority": "P1",
       "title": "媒体上游中途失败后下游响应悬挂",
-      "status": "open",
+      "status": "completed",
       "principles": [
         3,
         8,
@@ -273,14 +289,18 @@
       "dependsOn": [],
       "probes": [
         "relay.probe.spec.ts:8"
-      ]
+      ],
+      "completionEvidence": {
+        "commit": "734cfb0e881069080826bd254f76fce38ca8be3d",
+        "verification": "tests/relayFailure.spec.ts，40 项通过"
+      }
     },
     {
       "id": "B06",
       "kind": "defect",
       "priority": "P1",
       "title": "用户设置写盘失败仍确认保存成功",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         3,
@@ -325,14 +345,18 @@
       "dependsOn": [],
       "probes": [
         "contracts.probe.spec.ts:10"
-      ]
+      ],
+      "completionEvidence": {
+        "commit": "a41e446d0685540dc80ee6bb95111c8e715cd36f",
+        "verification": "6 个设置/插件 Vitest 文件，93 项通过"
+      }
     },
     {
       "id": "B07",
       "kind": "defect",
       "priority": "P1",
       "title": "配置已持久化却因运行时观察者异常被报告为失败",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         3,
@@ -369,14 +393,18 @@
       ],
       "probes": [
         "contracts.probe.spec.ts:23"
-      ]
+      ],
+      "completionEvidence": {
+        "commit": "1499e737bb250d2508af2ce6fc4e0166e9ad79a4",
+        "verification": "9 个配置/搜索 Vitest 文件，38 项通过；architecture:check 与全量 typecheck 通过"
+      }
     },
     {
       "id": "B08",
       "kind": "defect",
       "priority": "P1",
       "title": "插件升级不重载代码，启动失败后也不重试",
-      "status": "open",
+      "status": "completed",
       "principles": [
         2,
         3,
@@ -412,14 +440,18 @@
       "probes": [
         "contracts.probe.spec.ts:44",
         "contracts.probe.spec.ts:53"
-      ]
+      ],
+      "completionEvidence": {
+        "commit": "a41e446d0685540dc80ee6bb95111c8e715cd36f",
+        "verification": "6 个设置/插件 Vitest 文件，93 项通过"
+      }
     },
     {
       "id": "B09",
       "kind": "defect",
       "priority": "P1",
       "title": "Python 默认空能力与初始化错误被当成成功",
-      "status": "open",
+      "status": "completed",
       "principles": [
         3,
         4,
@@ -459,14 +491,18 @@
       "probes": [
         "python-capabilities.probe.py:20",
         "python-capabilities.probe.py:27"
-      ]
+      ],
+      "completionEvidence": {
+        "commit": "0deabf3904ec2bfccfc5ba7ee379e17ade6071ec",
+        "verification": "Python stdlib probe 6 项通过；runner contract 1 项通过"
+      }
     },
     {
       "id": "A01",
       "kind": "debt",
       "priority": "P1",
       "title": "给 JS sandbox/蜘蛛实例缓存建立每源回收预算",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         8,
@@ -500,14 +536,18 @@
         "B01",
         "B02"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "890442fdd75417cadb340b6c17d96fb88e897311",
+        "verification": "7 个 Vitest 文件，141 项通过；全量 typecheck、定向 oxlint、diff check 通过；RSS 由 V05 验收"
+      }
     },
     {
       "id": "A02",
       "kind": "debt",
       "priority": "P1",
       "title": "搜索取消从展示代次贯穿 IPC 到后台请求",
-      "status": "open",
+      "status": "completed",
       "principles": [
         3,
         4,
@@ -548,14 +588,18 @@
         "B01",
         "B04"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "1499e737bb250d2508af2ce6fc4e0166e9ad79a4",
+        "verification": "9 个配置/搜索 Vitest 文件，38 项通过；architecture:check 与全量 typecheck 通过"
+      }
     },
     {
       "id": "A03",
       "kind": "debt",
       "priority": "P1",
       "title": "限制子进程协议帧和日志缓冲大小",
-      "status": "open",
+      "status": "completed",
       "principles": [
         3,
         8,
@@ -583,7 +627,11 @@
       "dependsOn": [
         "B03"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "67d6661c7de43a2434cdcb42f3a1f9bdf02671f2",
+        "verification": "5 个进程池/协议 Vitest 文件，49 项通过；typecheck/lint 通过"
+      }
     },
     {
       "id": "A04",
@@ -635,7 +683,7 @@
       "kind": "debt",
       "priority": "P1",
       "title": "小型 HTTP 文本与 HLS 清单按字节和读取截止设预算",
-      "status": "open",
+      "status": "completed",
       "principles": [
         3,
         7,
@@ -669,7 +717,11 @@
       "dependsOn": [
         "B05"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "1c13299f80d85c1062a0d20f7442cb58de2cbf8d",
+        "verification": "6 个 HTTP/HLS Vitest 文件，98 项通过；main/test typecheck、定向 oxlint、diff check 通过"
+      }
     },
     {
       "id": "A06",
@@ -766,7 +818,7 @@
       "kind": "debt",
       "priority": "P2",
       "title": "播放器 Presenter 的跨控制域编排仍过重",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         4,
@@ -803,14 +855,18 @@
         "B05",
         "A09"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "9f5adf9fb8e10387171e7cd36c7150817ceb9ccc",
+        "verification": "播放器策略 11 个 Vitest 文件，43 项通过；architecture:check、renderer/test typecheck 通过"
+      }
     },
     {
       "id": "A09",
       "kind": "debt",
       "priority": "P2",
       "title": "HTML5/HLS/FLV 资源绑定与恢复策略仍在同一 React effect",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         3,
@@ -842,7 +898,11 @@
       "dependsOn": [
         "B05"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "da13bc6741495aadc8fb969cdbca86612111fb55",
+        "verification": "2 个专属 Vitest 文件，20 项通过；architecture:check、renderer/test typecheck 通过"
+      }
     },
     {
       "id": "A10",
@@ -893,7 +953,7 @@
       "kind": "debt",
       "priority": "P2",
       "title": "设置页剩余页面状态与视图分离",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         6,
@@ -925,7 +985,11 @@
         "max": 4
       },
       "dependsOn": [],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "0717c2671d1d15ae9fb010bcb0842e0e88322e13",
+        "verification": "3 个 Vitest 文件，13 项通过；全量 typecheck、定向 oxlint、diff check 通过"
+      }
     },
     {
       "id": "A12",
@@ -1806,5 +1870,57 @@
     "build": "NOT_RUN",
     "desktopAcceptance": "NOT_RUN",
     "evidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
+  },
+  "latestProgress": {
+    "recordedAt": "2026-10-27",
+    "requiredTaskCount": 36,
+    "completedTaskIds": [
+      "B01",
+      "B02",
+      "B03",
+      "B04",
+      "B05",
+      "B06",
+      "B07",
+      "B08",
+      "B09",
+      "A01",
+      "A02",
+      "A03",
+      "A05",
+      "A08",
+      "A09",
+      "A11"
+    ],
+    "openTaskIds": [
+      "A04",
+      "A06",
+      "A07",
+      "A10",
+      "A12",
+      "A13",
+      "A14",
+      "A15",
+      "A16",
+      "A17",
+      "A18",
+      "A19",
+      "A20",
+      "A21",
+      "V01",
+      "V02",
+      "V03",
+      "V04",
+      "V05",
+      "V06"
+    ],
+    "remainingEngineerHours": {
+      "min": 77,
+      "max": 133
+    },
+    "branch": "codex/architecture-cleanup-20261025",
+    "localCommitsUnpushed": true,
+    "releasePublished": false,
+    "preservedUncommittedUserFile": "libnc.so"
   }
 }
