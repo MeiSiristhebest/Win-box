@@ -46,10 +46,8 @@ import {
   totalDexBytes as estimateTotalDexBytes,
 } from './jarBridgePolicy';
 import {
-  buildJarExecutionClasspaths,
-  buildJarCallArgv,
+  createJarExecutionLaunchPlan,
   buildJarJvmPrefix,
-  buildJarServeArgv,
   jarPoolFailureAction,
 } from './jarExecutionPolicy';
 import { isUsableConvertedJar as isUsableConvertedJarFile } from './convertedJarArtifact';
@@ -913,19 +911,19 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     // ★ 与 callJar 同口径：-cp 只放运行时（stubs/libs/桥/unidbg），蜘蛛 jar/shim jar 只走加载器参数 ——
     //   否则父加载器抢占原始类，native 改写产物（子加载器最前）不生效。
     const shimJarAvailable = Boolean(shimClasses && existsSync(shimJar));
-    const { runtimeClasspath: runtimeCp, loaderClasspath: loadCp } = buildJarExecutionClasspaths({
-      runtimeJars: [this.classpathJars()],
-      nativeJars,
-      spiderJars: jarPaths,
-      shimClasses,
-      shimJar: { path: shimJar, available: shimJarAvailable },
-    });
-    const serveArgv = buildJarServeArgv({
-      jvmPrefix: this.jvmPrefix(runtimeCp, true, loadCp),
-      loaderClasspath: loadCp,
-      shimClasses,
+    const launchPlan = createJarExecutionLaunchPlan({
+      classpaths: {
+        runtimeJars: [this.classpathJars()],
+        nativeJars,
+        spiderJars: jarPaths,
+        shimClasses,
+        shimJar: { path: shimJar, available: shimJarAvailable },
+      },
       nativeArguments: this.nativeProps(nativeJars),
     });
+    const serveArgv = launchPlan.serveArgv(
+      this.jvmPrefix(launchPlan.runtimeClasspath, true, launchPlan.loaderClasspath),
+    );
     const key = servePoolKey(this.javaExe(), serveArgv);
     return this.pool.warm(key, { exe: this.javaExe(), serveArgv, key }, count, { className, method: WARM_METHOD, args: [ext] });
   }
@@ -1078,12 +1076,15 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     //   正确分工：**-cp 只放运行时**（stubs/libs/桥/unidbg）；**蜘蛛 jar 只走加载器参数**（子加载器，
     //   顺序 = 改写产物目录 → shell-shim jar → 蜘蛛 jar）。
     const shimJarAvailable = Boolean(shimClasses && existsSync(shimJar));
-    const { runtimeClasspath: runtimeCp, loaderClasspath: loadCp } = buildJarExecutionClasspaths({
-      runtimeJars: [this.classpathJars()],
-      nativeJars,
-      spiderJars: jarPaths,
-      shimClasses,
-      shimJar: { path: shimJar, available: shimJarAvailable },
+    const launchPlan = createJarExecutionLaunchPlan({
+      classpaths: {
+        runtimeJars: [this.classpathJars()],
+        nativeJars,
+        spiderJars: jarPaths,
+        shimClasses,
+        shimJar: { path: shimJar, available: shimJarAvailable },
+      },
+      nativeArguments: this.nativeProps(nativeJars),
     });
     if (shimClasses && !shimJarAvailable) {
       this.host?.logger.w(`jvm-bridge 已启用 shell-shim（${shimClasses}），但未找到 shell-shim.jar: ${shimJar}，影子类不会生效`);
@@ -1093,30 +1094,21 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     //   只是「期望值」：被上一会话残留 JVM（孤儿）或同 key 并存 JVM 占用时，本 JVM 会退化临时
     //   端口，预登记的猜测值会把播放地址改写到**别的 JVM**（旧 stubs / 无状态），白等预检超时
     //   （最长 20s）才落原生通道。一次性回退路径无信封 → 拿不到端口 → playInner 诚实落原生兜底。
-    const nativeArgs = this.nativeProps(nativeJars);
-    const argv = buildJarCallArgv({
-      jvmPrefix: this.jvmPrefix(runtimeCp, false, loadCp),
-      loaderClasspath: loadCp,
-      shimClasses,
-      nativeArguments: nativeArgs,
-      className,
-      method,
-      args,
-    });
+    const argv = launchPlan.oneShotArgv(
+      this.jvmPrefix(launchPlan.runtimeClasspath, false, launchPlan.loaderClasspath),
+      { className, method, args },
+    );
     // ★ 进程池：常驻 JVM（--serve）跨请求复用 → 二次调用跳过冷启动。
     //   serve argv = javaPrefix + [SpiderRunner, --serve, loadCp]（loadCp 已含 shim jar + 蜘蛛 jar）。
     //   ★ 仅**传输层失败**（进程崩溃/超时/写入失败）才回退一次性保底；
     //     蜘蛛合法返回空串（空搜索）不再误判失败去多打一次冷启动。
     if (this.pool) {
-      const serveArgv = buildJarServeArgv({
-        jvmPrefix: this.jvmPrefix(runtimeCp, true, loadCp),
-        loaderClasspath: loadCp,
-        shimClasses,
-        nativeArguments: nativeArgs,
-      });
+      const serveArgv = launchPlan.serveArgv(
+        this.jvmPrefix(launchPlan.runtimeClasspath, true, launchPlan.loaderClasspath),
+      );
       const key = servePoolKey(this.javaExe(), serveArgv);
       // 本地代理端口 → 池 key：/proxy/<port> 被访问时据此把该 JVM 钉住（播放期间不回收）
-      this.proxyPortKeys.set(spiderProxyPort(loadCp), key);
+      this.proxyPortKeys.set(spiderProxyPort(launchPlan.loaderClasspath), key);
       // ★ 2026-09-26：**含 .so 的加固壳源要更长的预算** —— 守卫/加密走 unidbg 模拟（全局串行），
       //   实测 App88：home ~54s、detail ~295s（首调还要付 ~10s 模拟器启动）；20s 默认预算下
       //   「守卫已通」也会被超时判死。只对这类 jar 抬底，普通源行为不变。

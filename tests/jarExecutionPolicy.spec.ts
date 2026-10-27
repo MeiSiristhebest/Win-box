@@ -4,10 +4,10 @@ import { JarSpiderBridge } from '../src/engine/spider/JarSpiderBridge';
 import { spiderProxyPort } from '../src/engine/spider/jarBridgePolicy';
 import type { SpiderProcPool } from '../src/engine/spider/SpiderProcPool';
 import {
-  buildJarExecutionClasspaths,
   buildJarCallArgv,
   buildJarJvmPrefix,
   buildJarServeArgv,
+  createJarExecutionLaunchPlan,
   jarPoolFailureAction,
 } from '../src/engine/spider/jarExecutionPolicy';
 
@@ -92,32 +92,54 @@ describe('JAR execution policy', () => {
   });
 
   it('keeps runtime and isolated spider classpaths separate for invocation and prewarm', () => {
-    expect(buildJarExecutionClasspaths({
-      runtimeJars: ['stubs.jar;libs.jar'],
-      nativeJars: ['bridge.jar', 'unidbg.jar'],
-      spiderJars: ['site-a.jar', 'site-b.jar'],
-      shimClasses: 'C:/real-spider',
-      shimJar: { path: 'shell-shim.jar', available: true },
-    })).toEqual({
-      runtimeClasspath: 'stubs.jar;libs.jar;bridge.jar;unidbg.jar',
-      loaderClasspath: 'shell-shim.jar;site-a.jar;site-b.jar',
+    const plan = createJarExecutionLaunchPlan({
+      classpaths: {
+        runtimeJars: ['stubs.jar;libs.jar'],
+        nativeJars: ['bridge.jar', 'unidbg.jar'],
+        spiderJars: ['site-a.jar', 'site-b.jar'],
+        shimClasses: 'C:/real-spider',
+        shimJar: { path: 'shell-shim.jar', available: true },
+      },
+      nativeArguments: ['-Dtvbox.native.root=C:/native'],
     });
+    expect(plan.runtimeClasspath).toBe('stubs.jar;libs.jar;bridge.jar;unidbg.jar');
+    expect(plan.loaderClasspath).toBe('shell-shim.jar;site-a.jar;site-b.jar');
+
+    const prefix = ['-cp', plan.runtimeClasspath];
+    expect(plan.serveArgv(prefix)).toEqual([
+      ...prefix,
+      '-Dtvbox.shellShimClasses=C:/real-spider',
+      '-Dtvbox.native.root=C:/native',
+      'SpiderRunner', '--serve', 'shell-shim.jar;site-a.jar;site-b.jar',
+    ]);
+    expect(plan.oneShotArgv(prefix, { className: 'com.example.Spider', method: 'homeContent', args: ['ext'] })).toEqual([
+      ...prefix,
+      '-Dtvbox.shellShimClasses=C:/real-spider',
+      '-Dtvbox.native.root=C:/native',
+      'SpiderRunner', 'shell-shim.jar;site-a.jar;site-b.jar', 'com.example.Spider', 'homeContent', 'ext',
+    ]);
   });
 
   it('does not add a missing or unconfigured shell shim to the loader classpath', () => {
-    expect(buildJarExecutionClasspaths({
-      runtimeJars: ['runtime.jar'],
-      nativeJars: [],
-      spiderJars: ['site.jar'],
-      shimClasses: 'C:/real-spider',
-      shimJar: { path: 'missing-shell-shim.jar', available: false },
+    expect(createJarExecutionLaunchPlan({
+      classpaths: {
+        runtimeJars: ['runtime.jar'],
+        nativeJars: [],
+        spiderJars: ['site.jar'],
+        shimClasses: 'C:/real-spider',
+        shimJar: { path: 'missing-shell-shim.jar', available: false },
+      },
+      nativeArguments: [],
     }).loaderClasspath).toBe('site.jar');
 
-    expect(buildJarExecutionClasspaths({
-      runtimeJars: ['runtime.jar'],
-      nativeJars: [],
-      spiderJars: ['site.jar'],
-      shimJar: { path: 'shell-shim.jar', available: true },
+    expect(createJarExecutionLaunchPlan({
+      classpaths: {
+        runtimeJars: ['runtime.jar'],
+        nativeJars: [],
+        spiderJars: ['site.jar'],
+        shimJar: { path: 'shell-shim.jar', available: true },
+      },
+      nativeArguments: [],
     }).loaderClasspath).toBe('site.jar');
   });
 
@@ -152,7 +174,7 @@ describe('JAR execution policy', () => {
       nativeNeeded: () => boolean;
       classpathJars: () => string;
       nativeProps: () => string[];
-      jvmPrefix: () => string[];
+      jvmPrefix: (classpath: string, serve: boolean, loaderClasspath: string) => string[];
       javaExe: () => string;
       callTimeoutMs: number;
       pool: SpiderProcPool;
@@ -173,7 +195,7 @@ describe('JAR execution policy', () => {
       nativeNeeded: () => false,
       classpathJars: () => 'runtime.jar',
       nativeProps: () => [],
-      jvmPrefix: () => ['-cp', 'runtime.jar'],
+      jvmPrefix: vi.fn((classpath: string) => ['-cp', classpath]),
       javaExe: () => 'java.exe',
       callTimeoutMs: 1000,
       pool: { pin: vi.fn() } as unknown as SpiderProcPool,
@@ -187,5 +209,57 @@ describe('JAR execution policy', () => {
     await expect(bridge.callImpl([loaderClasspath], 'com.example.Spider', 'homeContent', []))
       .rejects.toThrow('搜索已取消');
     expect(oneShotRun).not.toHaveBeenCalled();
+  });
+
+  it('does not build or probe a serve JVM prefix when the process pool is disabled', async () => {
+    const oneShotRun = vi.fn(async () => ({ output: 'ok', reason: '' }));
+    const jvmPrefix = vi.fn((classpath: string, serve: boolean) => {
+      if (serve) throw new Error('serve prefix must remain lazy when pooling is disabled');
+      return ['-cp', classpath];
+    });
+    const bridge = Object.create(JarSpiderBridge.prototype) as unknown as {
+      callImpl: (jars: string[], className: string, method: string, args: string[]) => Promise<unknown>;
+      shellCompatibility: {
+        classesPath: () => string;
+        resolveForJars: () => string;
+        includeFoniImplementation: () => string;
+        shimJarPath: () => string;
+      };
+      shimPreferred: Set<string>;
+      nativeNeeded: () => boolean;
+      classpathJars: () => string;
+      nativeProps: () => string[];
+      jvmPrefix: typeof jvmPrefix;
+      javaExe: () => string;
+      callTimeoutMs: number;
+      pool: null;
+      processAdmission: { tryAcquireFallbackProcessSlot: () => () => void };
+      subprocessRunner: { run: typeof oneShotRun };
+    };
+    Object.assign(bridge, {
+      shellCompatibility: {
+        classesPath: () => '',
+        resolveForJars: () => '',
+        includeFoniImplementation: () => '',
+        shimJarPath: () => 'shim.jar',
+      },
+      shimPreferred: new Set<string>(),
+      nativeNeeded: () => false,
+      classpathJars: () => 'runtime.jar',
+      nativeProps: () => [],
+      jvmPrefix,
+      javaExe: () => 'java.exe',
+      callTimeoutMs: 1000,
+      pool: null,
+      processAdmission: { tryAcquireFallbackProcessSlot: () => () => undefined },
+      subprocessRunner: { run: oneShotRun },
+    });
+
+    await expect(bridge.callImpl(['site.jar'], 'com.example.Spider', 'homeContent', []))
+      .resolves.toEqual({ output: 'ok', reason: '' });
+
+    expect(jvmPrefix).toHaveBeenCalledOnce();
+    expect(jvmPrefix).toHaveBeenCalledWith('runtime.jar', false, 'site.jar');
+    expect(oneShotRun).toHaveBeenCalledOnce();
   });
 });

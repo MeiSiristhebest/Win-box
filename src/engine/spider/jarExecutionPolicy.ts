@@ -31,6 +31,19 @@ export interface JarExecutionClasspaths {
   loaderClasspath: string;
 }
 
+export interface JarInvocationRequest {
+  className: string;
+  method: string;
+  args: readonly string[];
+}
+
+export interface JarExecutionLaunchPlan extends JarExecutionClasspaths {
+  /** Build the cold runner invocation without probing or constructing a serve JVM. */
+  oneShotArgv(jvmPrefix: readonly string[], request: JarInvocationRequest): string[];
+  /** Build the pooled runner invocation only when the caller actually enables the pool. */
+  serveArgv(jvmPrefix: readonly string[]): string[];
+}
+
 /**
  * Keep the JVM parent classpath and the spider child-loader classpath separate.
  * The optional shell shim must precede the spider jars so its compatibility
@@ -44,6 +57,36 @@ export function buildJarExecutionClasspaths(input: JarExecutionClasspathInput): 
   return {
     runtimeClasspath: [...input.runtimeJars, ...input.nativeJars].join(';'),
     loaderClasspath: loaderJars.join(';'),
+  };
+}
+
+/**
+ * Creates the immutable classpath/argv plan shared by pool warmup and live calls.
+ * JVM prefixes remain adapter supplied so a pool-disabled caller never performs
+ * serve-only JVM discovery or setup work.
+ */
+export function createJarExecutionLaunchPlan(input: {
+  classpaths: JarExecutionClasspathInput;
+  nativeArguments: readonly string[];
+}): JarExecutionLaunchPlan {
+  const classpaths = buildJarExecutionClasspaths(input.classpaths);
+  const shimClasses = input.classpaths.shimClasses ?? '';
+  const nativeArguments = [...input.nativeArguments];
+  return {
+    ...classpaths,
+    oneShotArgv: (jvmPrefix, request) => buildJarCallArgv({
+      jvmPrefix,
+      loaderClasspath: classpaths.loaderClasspath,
+      shimClasses,
+      nativeArguments,
+      ...request,
+    }),
+    serveArgv: (jvmPrefix) => buildJarServeArgv({
+      jvmPrefix,
+      loaderClasspath: classpaths.loaderClasspath,
+      shimClasses,
+      nativeArguments,
+    }),
   };
 }
 
