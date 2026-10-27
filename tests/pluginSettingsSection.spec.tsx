@@ -32,7 +32,7 @@ function dependencies(): PluginSettingsDependencies {
       uninstall: vi.fn().mockResolvedValue({ ok: true }),
       setEnabled: vi.fn().mockResolvedValue({ ok: true }),
     },
-    panels: { save: vi.fn().mockResolvedValue({ ok: true }) },
+    panels: { save: vi.fn().mockResolvedValue({ ok: true, panels: [] }) },
     commands: { execute: vi.fn().mockResolvedValue({ ok: true, message: '已跳转' }) },
     skins: { reload: vi.fn().mockResolvedValue(undefined) },
     events: { notifyChanged: vi.fn() },

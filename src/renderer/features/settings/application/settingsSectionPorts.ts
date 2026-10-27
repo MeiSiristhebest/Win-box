@@ -58,8 +58,12 @@ export interface PluginLifecyclePort {
   setEnabled(input: { id: string; enabled: boolean }): Promise<{ ok: boolean; reason?: string; items?: PluginView[] }>;
 }
 
+export type PluginPanelSettingsSaveResult =
+  | { ok: true; panels?: SettingsPanelView[]; refreshError?: string }
+  | { ok: false; reason?: string };
+
 export interface PluginPanelSettingsPort {
-  save(input: { id: string; panelId: string; key: string; value: unknown }): Promise<{ ok: boolean; reason?: string; panels?: SettingsPanelView[] }>;
+  save(input: { id: string; panelId: string; key: string; value: unknown }): Promise<PluginPanelSettingsSaveResult>;
 }
 
 export interface PluginCommandExecutionPort {

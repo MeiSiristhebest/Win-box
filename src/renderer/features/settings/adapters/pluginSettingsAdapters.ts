@@ -7,6 +7,7 @@ import type {
   PluginSettingsEventsPort,
   PluginSkinRegistryPort,
 } from '../application/settingsSectionPorts';
+import { savePluginPanelSetting } from '../application/savePluginPanelSetting';
 import { loadPluginThemeRegistry } from '../../theme/adapters/pluginThemeRegistryAdapter';
 import { createPluginCommandRunner } from '../../plugins/application/pluginCommand';
 import { pluginCommandAdapter } from '../../plugins/adapters/pluginCommandAdapter';
@@ -27,7 +28,10 @@ export const pluginLifecycleAdapter: PluginLifecyclePort = {
 };
 
 export const pluginPanelSettingsAdapter: PluginPanelSettingsPort = {
-  save: (input) => client.pluginSettingSet(input),
+  save: (input) => savePluginPanelSetting({
+    save: (value) => client.pluginSettingSet(value),
+    loadPanels: () => client.pluginSettings(),
+  }, input),
 };
 
 export const pluginCommandExecutionAdapter: PluginCommandExecutionPort = {
