@@ -10,14 +10,14 @@
   .vplayer > .vp-big {
     appearance: none; position: absolute; left: 50%; top: 50%; z-index: 4;
     display: grid; place-items: center; flex: none; box-sizing: border-box; overflow: hidden;
-    width: 44px; min-width: 44px; max-width: 44px; height: 44px; min-height: 44px; max-height: 44px;
+    width: 40px; min-width: 40px; max-width: 40px; height: 40px; min-height: 40px; max-height: 40px;
     padding: 0; border: 1px solid rgba(255, 255, 255, .58); border-radius: 50%;
     color: var(--on-media); background: rgba(15, 18, 23, .92); box-shadow: none;
     -webkit-backdrop-filter: none; backdrop-filter: none;
     opacity: 0; pointer-events: none; transform: translate(-50%, -50%);
     transition: transform .15s ease, background .15s ease, opacity .2s ease;
   }
-  .vplayer > .vp-big svg { display: block; flex: none; width: 20px; height: 20px; }
+  .vplayer > .vp-big svg { display: block; flex: none; width: 18px; height: 18px; }
   .vplayer > .vp-big:hover { color: var(--on-media); background: rgba(15, 18, 23, .98); box-shadow: none; transform: translate(-50%, -50%); }
   .vplayer > .vp-big:active { opacity: 1; transform: translate(-50%, -50%); }
   .vplayer > .vp-big:focus-visible { outline: 2px solid #fff; outline-offset: 3px; box-shadow: none; }

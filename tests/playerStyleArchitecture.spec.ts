@@ -20,23 +20,19 @@ function readRule(css: string, selector: string): string {
 }
 
 describe('player control style architecture', () => {
-  it('keeps one central play/pause style per shell', async () => {
+  it('keeps one compact shared play/pause style without shell overrides', async () => {
     const { css } = await readGlobalStyleComposition();
+    const selector = '.vplayer > .vp-big';
+    const rule = readRule(css, selector);
+
+    expect(css.match(/\.vplayer > \.vp-big\s*\{/g) ?? []).toHaveLength(1);
+    expect(css.match(/\.vplayer > \.vp-big:active\s*\{/g) ?? []).toHaveLength(1);
+    expect(rule).toMatch(/\bwidth\s*:\s*40px\s*;/);
+    expect(rule).toMatch(/\bheight\s*:\s*40px\s*;/);
+    expect(rule).toMatch(/\bbackdrop-filter\s*:\s*none\s*;/);
 
     for (const shell of ['topbar', 'dualbar', 'sidebar', 'pillbar']) {
-      const selector = `:root[data-shell='${shell}'] .vp-big`;
-      const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const declarations = css.match(new RegExp(`${escapedSelector}\\s*\\{`, 'g')) ?? [];
-      expect(declarations, `${shell} should define the button once`).toHaveLength(1);
-
-      const activeSelector = `${selector}:active`.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const activeDeclarations = css.match(new RegExp(`${activeSelector}\\s*\\{`, 'g')) ?? [];
-      expect(activeDeclarations, `${shell} should preserve centering in one active rule`).toHaveLength(1);
-
-      const rule = readRule(css, selector);
-      expect(rule).toMatch(/\bwidth\s*:\s*40px\s*;/);
-      expect(rule).toMatch(/\bheight\s*:\s*40px\s*;/);
-      expect(rule).toMatch(/\bbackdrop-filter\s*:\s*none\s*;/);
+      expect(css).not.toContain(`:root[data-shell='${shell}'] .vp-big {`);
     }
 
     expect(css).not.toMatch(/大号中央播放键|中央大播放键|80px 大键/);
@@ -44,8 +40,9 @@ describe('player control style architecture', () => {
 
   it('keeps the desktop player control compact and free of backdrop blur', async () => {
     const css = await readFile(DESKTOP_STYLES, 'utf8');
-    const selector = ":root[data-ui='desktop'] .vplayer .vp-big";
-    const rule = readRule(css, selector);
+    expect(css).not.toMatch(/:root\[data-ui='desktop'\]\s+\.vplayer\s+\.vp-big\s*\{/);
+    const { css: sharedCss } = await readGlobalStyleComposition();
+    const rule = readRule(sharedCss, '.vplayer > .vp-big');
 
     expect(rule).toMatch(/\bwidth\s*:\s*40px\s*;/);
     expect(rule).toMatch(/\bheight\s*:\s*40px\s*;/);

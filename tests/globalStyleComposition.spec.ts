@@ -37,8 +37,8 @@ describe('global stylesheet composition', () => {
     const pauseRule = css.slice(ruleStart, ruleEnd);
 
     expect(ruleStart).toBeGreaterThan(componentStart);
-    expect(pauseRule).toContain('width: 44px;');
-    expect(pauseRule).toContain('height: 44px;');
+    expect(pauseRule).toContain('width: 40px;');
+    expect(pauseRule).toContain('height: 40px;');
     expect(pauseRule).toContain('border-radius: 50%;');
     expect(pauseRule).toContain('padding: 0;');
     expect(pauseRule).toContain('backdrop-filter: none;');
