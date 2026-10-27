@@ -150,7 +150,7 @@ describe('媒体中继异步失败与 DNS 备用通道', () => {
       statusCode: 403, headers: { 'content-type': 'text/plain' },
       body: Readable.from([Buffer.from('{"error_code":31326,"error_msg":"user is not authorized, hitcode:104"}')]),
     });
-    const redirect = (location: string) => ({ statusCode: 302, headers: { location }, body: { dump: vi.fn().mockResolvedValue(undefined) } });
+    const redirect = (location: string) => ({ statusCode: 302, headers: { location }, body: Readable.from([]) });
     request.mockResolvedValueOnce(redirect('https://bd-ct20.baidupcs.com/file/first'))
       .mockResolvedValueOnce(denied())
       .mockResolvedValueOnce(redirect('https://xa-ct20.baidupcs.com/file/second'))
@@ -175,7 +175,7 @@ describe('媒体中继异步失败与 DNS 备用通道', () => {
     ['https://bd-ct20.baidupcs.com/file/signed', 31326, 119],
     ['https://bd-ct20.baidupcs.com/file/signed', 31045, 104],
   ])('非已验证 CDN 瞬时错误不重试：%s code=%s hitcode=%s', async (location, code, hitcode) => {
-    request.mockResolvedValueOnce({ statusCode: 302, headers: { location }, body: { dump: vi.fn().mockResolvedValue(undefined) } })
+    request.mockResolvedValueOnce({ statusCode: 302, headers: { location }, body: Readable.from([]) })
       .mockResolvedValueOnce({ statusCode: 403, headers: { 'content-type': 'text/plain' }, body: Readable.from([Buffer.from(`{"error_code":${code},"error_msg":"hitcode:${hitcode}"}`)]) });
     const response = await fetch(base + '/play?url=' + encodeURIComponent('https://d.pcs.baidu.com/file/signed'), { signal: AbortSignal.timeout(2000) });
     expect(response.status).toBe(403);
@@ -183,7 +183,7 @@ describe('媒体中继异步失败与 DNS 备用通道', () => {
     expect(request).toHaveBeenCalledTimes(2);
   });
 
-  const redirectTo = (url: string) => ({ statusCode: 302, headers: { location: url }, body: { dump: vi.fn().mockResolvedValue(undefined) } });
+  const redirectTo = (url: string) => ({ statusCode: 302, headers: { location: url }, body: Readable.from([]) });
   const mediaChunk = () => ({
     statusCode: 206, headers: { 'content-type': 'video/mp4', 'content-length': '4', 'content-range': 'bytes 0-3/4000000' },
     body: Readable.from([Buffer.from('DATA')]),
