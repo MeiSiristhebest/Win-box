@@ -4,12 +4,13 @@
 
 ## 当前修复进度（2026-10-27）
 
-**必需任务 36 项中，已实现并本地提交 16 项；还有 20 项未完成：14 项架构改造、6 项集成/实机验收。** 按原估算范围扣除已完成切片后，剩余约 77–133 单人有效工程小时。原估算不是日历承诺，也不包括未知第三方源恢复时间。
+**必需任务 36 项中，已实现并本地提交 18 项；还有 18 项未完成：12 项架构改造、6 项集成/实机验收。** 按原估算范围扣除已完成切片后，剩余约 72–124 单人有效工程小时。原估算不是日历承诺，也不包括未知第三方源恢复时间。
 
 | 已完成任务 | 本地提交 | 本轮/对应验证 |
 |---|---|---|
 | B01、B02 | `003388a215fd` | Worker lifecycle 2 个测试文件、11 项通过 |
 | B03、B04、A03 | `67d6661c7de4` | 进程池/协议限制 5 个测试文件、49 项通过；类型检查与 lint 通过 |
+| A04 | `d83c8858a61a` | SAB 回执协议/Worker 4 个测试文件、42 项通过；main typecheck、lint、差异检查通过 |
 | B05 | `734cfb0e8810` | 中继断流回归 40 项通过 |
 | B06、B08 | `a41e446d0685` | 设置持久化、网盘配置、插件生命周期 6 个测试文件、93 项通过 |
 | B07、A02 | `1499e737bb25` | 配置同步/全源搜索取消 9 个测试文件、38 项通过；架构检查和全量 typecheck 通过 |
@@ -19,8 +20,11 @@
 | A08 | `9f5adf9fb8e1` | 播放器控制策略 11 个测试文件、43 项通过；架构检查和 renderer/test typecheck 通过 |
 | A09 | `da13bc674149` | HTML5/HLS 恢复策略与会话 2 个专属测试文件、20 项通过；架构检查和 renderer/test typecheck 通过 |
 | A11 | `0717c2671d1d` | 设置页 Presenter 3 个测试文件、13 项通过；全量 typecheck、定向 lint、差异检查通过 |
+| A12 | `5e70f582a77d` | 详情收藏身份/窗口展示 7 个测试文件、40 项通过；renderer/test typecheck 通过 |
 
 这些提交均只在本地清理分支，未 push、未发布 Release；未提交的 `libnc.so` 保持原样。Vitest 使用 `pnpm exec vitest` 可正常运行；先前直接用 `node.exe` 启动时报告的 rolldown binding 错误不再作为当前阻塞。尚未跑本候选分支完整测试/构建，也未完成真实线路、安装器、全窗口视觉、RSS/CPU 基准验收。
+
+**部分推进但未关闭：** A17 的弹幕测量隔离（`5cf3f0436108`）和进度条几何策略（`087bb1b24fd7`）共 3 个测试文件、38 项通过；图片查看器交互和播放器视觉验收仍未完成，因此 A17 仍计入剩余任务。
 
 ## 审计基线结论（2026-10-26）
 
@@ -214,7 +218,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### A04 · 共享内存 HTTP 回执只能完成一次，超大响应必须显式失败
 
-- [ ] P1；原则 #3/#8/#14；**2–4 小时**；依赖 B01。
+- [x] P1；原则 #3/#8/#14；**2–4 小时**；依赖 B01。
 - **证据/差距：** 超时回执与迟到 HTTP 结果都可写同一 SAB；超长序列化数据会被截到固定 8 MiB，可能变成不可解析 JSON。这里是代码确认的协议风险，本轮没有并发压力复现。
 - **位置：** [src/engine/js/worker/JsWorkerPool.ts:185](D:/developWorkPlaces/win-box/src/engine/js/worker/JsWorkerPool.ts:185)；[src/engine/js/worker/JsWorkerPool.ts:225](D:/developWorkPlaces/win-box/src/engine/js/worker/JsWorkerPool.ts:225)；[src/engine/js/worker/protocol.ts:19](D:/developWorkPlaces/win-box/src/engine/js/worker/protocol.ts:19)；[src/engine/js/worker/remoteHost.ts:20](D:/developWorkPlaces/win-box/src/engine/js/worker/remoteHost.ts:20)
 - **重构方向：** 使用 first-winner 状态/CAS 或等价单次发布协议；超限写入小型有类型错误帧；把数据写入与完成标志的内存顺序写清楚。
@@ -278,7 +282,7 @@ JS/TS 共 **1464 个模块**完成 Babel AST 解析（应用源码 973 个），
 
 ### A12 · 详情页仍直接编排收藏存储与窗口展示逻辑
 
-- [ ] P2；原则 #1/#4/#5/#6/#7/#11/#14；**3–5 小时**；可独立开始。
+- [x] P2；原则 #1/#4/#5/#6/#7/#11/#14；**3–5 小时**；可独立开始。
 - **证据/差距：** 详情数据与播放已有用例/端口；收藏读写、全局事件订阅、名称兜底、详情窗口判断和 JSX 仍混在页面。
 - **位置：** [src/renderer/pages/DetailPage.tsx:124](D:/developWorkPlaces/win-box/src/renderer/pages/DetailPage.tsx:124)；[src/renderer/pages/DetailPage.tsx:136](D:/developWorkPlaces/win-box/src/renderer/pages/DetailPage.tsx:136)；[src/renderer/pages/DetailPage.tsx:37](D:/developWorkPlaces/win-box/src/renderer/pages/DetailPage.tsx:37)
 - **重构方向：** 复用 favorites feature 的领域键和持久化边界，通过详情收藏端口/Presenter 同步；详情展示与动作模型分开，路由/窗口能力由组合点注入。

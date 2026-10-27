@@ -638,7 +638,7 @@
       "kind": "debt",
       "priority": "P1",
       "title": "共享内存 HTTP 回执只能完成一次，超大响应必须显式失败",
-      "status": "open",
+      "status": "completed",
       "principles": [
         3,
         8,
@@ -676,7 +676,11 @@
       "dependsOn": [
         "B01"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "d83c8858a61a7a2c19869fb9ded485021c17edd1",
+        "verification": "A04 protocol + worker regression 4 files / 42 tests passed; typecheck:main, targeted oxlint and diff check passed"
+      }
     },
     {
       "id": "A05",
@@ -996,7 +1000,7 @@
       "kind": "debt",
       "priority": "P2",
       "title": "详情页仍直接编排收藏存储与窗口展示逻辑",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         4,
@@ -1031,7 +1035,11 @@
         "max": 5
       },
       "dependsOn": [],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "5e70f582a77d79f6ac1471e4619f2f9dc64ccc3f",
+        "verification": "7 Vitest files / 40 tests passed; typecheck:renderer and typecheck:test passed; detail navigation/window/favorite regressions retained"
+      }
     },
     {
       "id": "A13",
@@ -1247,7 +1255,19 @@
         "max": 7
       },
       "dependsOn": [],
-      "probes": []
+      "probes": [],
+      "partialEvidence": [
+        {
+          "commit": "5cf3f0436108609b7674a9acde270e0504b78741",
+          "summary": "per-overlay danmaku measurement and bitmap cache lifecycle",
+          "verification": "danmakuLayout.spec.ts included in combined 3-file / 38-test pass; renderer/test typecheck and architecture check passed"
+        },
+        {
+          "commit": "087bb1b24fd789a8bc54f485d4c8cec9e67cef05",
+          "summary": "pure progress geometry policy",
+          "verification": "playerProgressGeometry.spec.ts and playerProgressBar.spec.tsx included in combined 3-file / 38-test pass; renderer/test typecheck and architecture check passed"
+        }
+      ]
     },
     {
       "id": "A18",
@@ -1887,17 +1907,17 @@
       "A01",
       "A02",
       "A03",
+      "A04",
       "A05",
       "A08",
       "A09",
-      "A11"
+      "A11",
+      "A12"
     ],
     "openTaskIds": [
-      "A04",
       "A06",
       "A07",
       "A10",
-      "A12",
       "A13",
       "A14",
       "A15",
@@ -1915,8 +1935,8 @@
       "V06"
     ],
     "remainingEngineerHours": {
-      "min": 77,
-      "max": 133
+      "min": 72,
+      "max": 124
     },
     "branch": "codex/architecture-cleanup-20261025",
     "localCommitsUnpushed": true,
