@@ -1,0 +1,168 @@
+{
+  "schemaVersion": 1,
+  "runtimePackages": {
+    "staticExternals": [
+      "@babel/core",
+      "@babel/parser",
+      "@babel/plugin-transform-modules-commonjs",
+      "fast-xml-parser",
+      "iconv-lite"
+    ],
+    "dynamicAllowlist": [
+      {
+        "name": "7z-wasm",
+        "reason": "Archive extraction and optional media-runtime installation resolve this package at runtime; the archive worker receives its resolved module path.",
+        "evidence": [
+          "src/main/subtitle/archive.ts",
+          "src/main/player/mediaRuntimeInstallRuntimeAdapter.ts",
+          "dist/main.cjs"
+        ],
+        "requiredAssets": [
+          "node_modules/7z-wasm/7zz.wasm"
+        ]
+      },
+      {
+        "name": "node-unrar-js",
+        "reason": "RAR extraction loads the package and its WASM binary lazily at runtime.",
+        "evidence": [
+          "src/main/subtitle/archive.ts",
+          "dist/main.cjs"
+        ],
+        "requiredAssets": [
+          "node_modules/node-unrar-js/dist/js/unrar.wasm"
+        ]
+      }
+    ]
+  },
+  "bundledPackages": [
+    {
+      "name": "cheerio",
+      "evidence": [
+        "src/engine/js/globals/HtmlParser.ts",
+        "src/main/subtitle/subtitlecatProvider.ts",
+        "scripts/build-main.mjs",
+        "dist/main.cjs",
+        "dist/js-worker.cjs"
+      ]
+    },
+    {
+      "name": "crypto-es",
+      "evidence": [
+        "src/engine/js/globals/cryptoCompat.ts",
+        "scripts/build-main.mjs",
+        "dist/js-worker.cjs"
+      ]
+    },
+    {
+      "name": "undici",
+      "evidence": [
+        "src/main/net/HttpClient.ts",
+        "scripts/build-main.mjs",
+        "dist/main.cjs"
+      ]
+    }
+  ],
+  "rendererBundledPackages": [
+    {
+      "name": "hls.js",
+      "evidence": [
+        "src/renderer/components/VideoPlayer.tsx",
+        "dist/renderer/assets/hls-*.js"
+      ]
+    },
+    {
+      "name": "mpegts.js",
+      "evidence": [
+        "src/renderer/components/VideoPlayer.tsx",
+        "dist/renderer/assets/mpegts-*.js"
+      ]
+    },
+      {
+        "name": "pinyin-match",
+        "evidence": [
+          "src/shared/searchTitleMatching.ts",
+          "dist/renderer/assets/*.js"
+        ]
+      },
+    {
+      "name": "react",
+      "evidence": [
+        "dist/renderer/assets/index-*.js"
+      ]
+    },
+    {
+      "name": "react-dom",
+      "evidence": [
+        "dist/renderer/assets/index-*.js"
+      ]
+    },
+    {
+      "name": "react-router",
+      "evidence": [
+        "dist/renderer/assets/index-*.js"
+      ]
+    },
+    {
+      "name": "react-router-dom",
+      "evidence": [
+        "dist/renderer/assets/index-*.js"
+      ]
+    }
+  ],
+    "rendererExternalPackages": [],
+  "unusedDependencies": [
+    {
+      "name": "qrcode",
+      "reason": "No package import or require exists in application source or generated runtime bundles; QR login code uses the app's own network protocol and does not need a QR encoder package.",
+      "evidence": [
+        "src/main/net/qr/baidu.ts",
+        "src/main/net/qr/casQr.ts",
+        "dist/main.cjs"
+      ]
+    }
+  ],
+  "dynamicRequireAllowlist": [
+    {
+      "artifact": "dist/main.cjs",
+      "expression": "require(workerData.modulePath)",
+      "allowedPackageNames": [
+        "7z-wasm"
+      ],
+      "reason": "The module path is resolved in the parent process from the explicit runtime allowlist before starting the archive worker."
+    },
+    {
+      "artifact": "dist/main.cjs",
+      "expression": "require(name)",
+      "allowedPackageNames": [],
+      "reason": "The script sandbox's synthetic require resolves only the app's registered JS libraries and local package modules; unknown names return an empty module and are not delegated to Node's package resolver."
+    }
+  ],
+  "runtimeAssetRoots": [
+    "dist",
+    "resources"
+  ],
+  "resourceExclusions": [
+    "resources/**/.tmp/**",
+    "resources/**/stubs-src/**",
+    "resources/**/tools/**",
+    "resources/**/__pycache__/**",
+    "resources/jvm/jre/lib/jython-standalone-2.7.3.jar"
+  ],
+  "licenseRetention": {
+    "resourceFilenamePattern": "^(licenses?|licences?|copying|notice|patents?)([._-].*)?$",
+    "bundledPackageLicenseFiles": "Retain license-related files from each package in the transitive dependency closure of code bundled into dist; retain only those files and their ancestor directories.",
+    "supplementalFiles": [
+      {
+        "packageName": "boolbase",
+        "packageVersion": "1.0.0",
+        "path": "resources/licenses/third-party/boolbase/1.0.0/LICENSE",
+        "sourceUrl": "https://github.com/fb55/boolbase/blob/master/LICENSE",
+        "reason": "The published npm package includes only the ISC identifier in package.json and omits its upstream LICENSE file."
+      }
+    ]
+  },
+  "closureLimitations": [
+    "The manifest proves direct package edges from built CJS artifacts and the explicit dynamic-load allowlist. Electron Packager prune remains responsible for transitive package dependency resolution.",
+    "Runtime behavior of arbitrary downloaded JS/JAR/Python sources and native libraries is not statically enumerable; their app-owned resource roots remain included."
+  ]
+}

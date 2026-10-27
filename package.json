@@ -20,7 +20,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:release-assets": "node --test --test-isolation=none scripts/verify-release-assets.check.mjs",
-    "test:package-app-policy": "node --test scripts/package-app-path-policy.check.mjs",
+    "test:package-app-policy": "node --test --test-isolation=none scripts/package-app-path-policy.check.mjs scripts/package-app-runtime-closure.check.mjs scripts/package-app-size-report.check.mjs",
+    "check:package-app-runtime-closure": "node scripts/check-package-app-runtime-closure.mjs",
     "test:subscription-import": "node --experimental-strip-types --test --test-isolation=none scripts/verify-subscription-import.check.mjs",
     "lint": "oxlint --deny-warnings src scripts tests && node scripts/architecture-boundaries.mjs && pnpm run lint:ui",
     "lint:ui": "oxlint --react-plugin --react-perf-plugin --deny-warnings src/renderer && oxlint --jsx-a11y-plugin --deny-warnings src/renderer",
@@ -43,7 +44,7 @@
     "test:installer": "node --test scripts/installer-script.check.mjs",
     "acceptance:install": "node scripts/verify-installation.mjs",
     "acceptance:playback": "node scripts/verify-playback.mjs",
-    "test:acceptance-tools": "node --test scripts/webm-fixture.check.mjs scripts/source-acceptance.check.mjs"
+    "test:acceptance-tools": "node --test --test-isolation=none scripts/webm-fixture.check.mjs scripts/source-acceptance.check.mjs scripts/verify-playback.check.mjs"
   },
   "author": "Win-Box",
   "license": "MIT",
@@ -58,13 +59,14 @@
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
     "@types/node": "^26.6.5",
-    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "@zip.js/zip.js": "^2.23.0",
     "babel-plugin-react-compiler": "1.0.0",
+    "cheerio": "^1.2.0",
     "concurrently": "^10.0.6",
+    "crypto-es": "^3.1.3",
     "electron": "44.8.0",
     "esbuild": "^0.28.2",
     "happy-dom": "21.0.3",
@@ -72,11 +74,13 @@
     "mpegts.js": "^1.8.2",
     "oxlint": "^1.88.0",
     "playwright-core": "1.64.1",
+    "pinyin-match": "^1.2.10",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-router-dom": "^7.18.4",
     "resedit": "^3.1.0",
     "typescript": "^7.0.2",
+    "undici": "^8.12.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.5",
     "wait-on": "^9.5.1"
@@ -86,13 +90,8 @@
     "@babel/core": "^8.0.7",
     "@babel/parser": "^8.0.7",
     "@babel/plugin-transform-modules-commonjs": "^8.0.1",
-    "cheerio": "^1.2.0",
-    "crypto-es": "^3.1.3",
     "fast-xml-parser": "^5.11.2",
     "iconv-lite": "^0.7.3",
-    "node-unrar-js": "2.0.2",
-    "pinyin-match": "^1.2.10",
-    "qrcode": "^1.5.4",
-    "undici": "^8.12.2"
+    "node-unrar-js": "2.0.2"
   }
 }

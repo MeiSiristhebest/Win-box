@@ -6,6 +6,8 @@ import { compileNsis } from './nsis-tool.mjs';
 import { buildInstallerScript } from './installer-script.mjs';
 import { assertReleaseAssets } from './verify-release-assets.mjs';
 import { collectDanglingNodeModulePaths, shouldIgnorePackagedAppPath } from './package-app-path-policy.mjs';
+import { assertPackagedRuntimeClosure, copyBundledPackageLicenses, loadAndValidateRuntimeClosure } from './package-app-runtime-closure.mjs';
+import { inspectPackageOutput, writePackageSizeReport } from './package-app-size-report.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageJson = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'));
@@ -27,7 +29,9 @@ if (outputDirOption !== -1 && (!outputDirArgument || outputDirArgument.startsWit
 const outputDir = outputDirArgument ? resolve(ROOT, outputDirArgument) : releaseDir;
 if (!insideRoot(outputDir)) throw new Error(`Refusing to write output outside the workspace: ${outputDir}`);
 await assertReleaseAssets(ROOT);
-const [{ packager }, { extractFile }] = await Promise.all([
+const runtimeAssetManifest = JSON.parse(await readFile(join(ROOT, 'scripts', 'runtime-assets.json'), 'utf8'));
+const runtimeClosure = await loadAndValidateRuntimeClosure(ROOT, packageJson);
+const [{ packager }, { extractFile, listPackage }] = await Promise.all([
   import('@electron/packager'),
   import('@electron/asar'),
 ]);
@@ -35,6 +39,9 @@ const [{ packager }, { extractFile }] = await Promise.all([
 const stagingDir = join(ROOT, '.tmp', `packager-${process.pid}-${Date.now()}`);
 const expectedStage = join(stagingDir, 'Win-Box-win32-x64');
 const appDir = join(outputDir, 'win-unpacked');
+const installerPath = join(outputDir, `Win-Box.Setup.${version}.exe`);
+const baseline = await inspectPackageOutput({ appDirectory: appDir, installerPath });
+const installerRebuilt = process.argv.includes('--installer');
 const danglingNodeModulePaths = await collectDanglingNodeModulePaths(ROOT);
 if (danglingNodeModulePaths.size) {
   console.log(`Skipping ${danglingNodeModulePaths.size} unresolved node_modules links during package copy.`);
@@ -54,7 +61,10 @@ const packed = await packager({
   overwrite: true,
   prune: true,
   asar: { unpackDir: 'resources' },
-  ignore: (candidate) => shouldIgnorePackagedAppPath(candidate, ROOT, { danglingNodeModulePaths }),
+  ignore: (candidate) => shouldIgnorePackagedAppPath(candidate, ROOT, {
+    danglingNodeModulePaths,
+    runtimeClosure: runtimeClosure.closure,
+  }),
   icon: join(ROOT, 'build', 'icon.ico'),
   appCopyright: 'Win-Box',
   win32metadata: {
@@ -71,28 +81,32 @@ if (!packed.includes(expectedStage)) throw new Error(`Electron Packager returned
 if (!insideRoot(appDir) || !insideRoot(stagingDir)) throw new Error(`Refusing to replace an output outside the workspace: ${appDir}`);
 await stat(expectedStage);
 const archivePath = join(expectedStage, 'resources', 'app.asar');
-const missingDependencies = [];
-for (const name of Object.keys(packageJson.dependencies ?? {})) {
-  try {
-    JSON.parse(extractFile(archivePath, join('node_modules', name, 'package.json')).toString('utf8'));
-  } catch {
-    missingDependencies.push(name);
-  }
-}
-if (missingDependencies.length) {
-  throw new Error(`Packaged ASAR is missing production dependency manifests: ${missingDependencies.join(', ')}`);
-}
+const licenseRecords = await copyBundledPackageLicenses(ROOT, expectedStage, runtimeClosure.closure);
+await assertPackagedRuntimeClosure({
+  archivePath,
+  stagingDirectory: expectedStage,
+  closure: runtimeClosure.closure,
+  extractFile,
+  listPackage,
+  licenseRecords,
+  runtimeAssetManifest,
+});
 await mkdir(dirname(appDir), { recursive: true });
 await rm(appDir, { recursive: true, force: true });
 await rename(expectedStage, appDir);
 console.log(`Windows app staged at ${appDir}`);
 
-if (process.argv.includes('--installer')) {
-  const outFile = join(outputDir, `Win-Box.Setup.${version}.exe`);
+if (installerRebuilt) {
   const nsiPath = join(stagingDir, 'win-box-installer.nsi');
-  const nsi = await buildInstallerScript({ appDir, outFile, version, license: join(ROOT, 'LICENSE'), icon: join(ROOT, 'build', 'icon.ico') });
+  const nsi = await buildInstallerScript({ appDir, outFile: installerPath, version, license: join(ROOT, 'LICENSE'), icon: join(ROOT, 'build', 'icon.ico') });
   await mkdir(dirname(nsiPath), { recursive: true });
   await writeFile(nsiPath, `\uFEFF${nsi}`, 'utf8');
   await compileNsis(nsiPath, { cwd: ROOT });
-  console.log(`Windows installer created at ${outFile}`);
+  console.log(`Windows installer created at ${installerPath}`);
 }
+
+const after = await inspectPackageOutput({ appDirectory: appDir, installerPath });
+const { reportPath, report } = await writePackageSizeReport({ outputDirectory: outputDir, version, before: baseline, after, installerRebuilt });
+console.log(`Package size report: ${reportPath}`);
+console.log(JSON.stringify({ baseline: report.baseline, current: report.current, deltaBytes: report.deltaBytes }, null, 2));
+await rm(stagingDir, { recursive: true, force: true });

@@ -60,6 +60,7 @@
       "source": "https://repo.maven.apache.org/maven2/org/xerial/sqlite-jdbc/3.53.4.0/sqlite-jdbc-3.53.4.0.jar",
       "architecture": "win32-x64",
       "sha256": "BCB1F51E36F940867E83342F9EFBF5968AC44A6BEF4D397BB4AF7B17B45CD2FB",
+      "packagedTransform": "sanitize-sqlite-jar-windows-x64",
       "purpose": "SQLite support for Java spiders."
     },
     {
@@ -193,6 +194,20 @@
       "sha256Policy": "calculate-at-package-time",
       "purpose": "Run ARM/AArch64 native spiders on Windows x64 using unidbg. Generated from project sources with Java 17 bytecode.",
       "phase": "post-build-main"
+    },
+    {
+      "id": "python-spider-runner",
+      "kind": "file",
+      "paths": [
+        "resources/jvm/python-runner/runner.py",
+        "resources/jvm/python-runner/base/spider.py",
+        "resources/jvm/python-runner/base/localProxy.py"
+      ],
+      "version": "repository-source",
+      "source": "resources/jvm/python-runner",
+      "architecture": "any",
+      "sha256Policy": "calculate-at-package-time",
+      "purpose": "Project-owned CPython runner, Spider compatibility surface, and local proxy helper. These scripts must accompany the packaged application because Python spiders execute outside app.asar."
     }
   ],
   "optional": [

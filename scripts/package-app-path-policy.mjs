@@ -1,14 +1,6 @@
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { readdir, realpath } from 'node:fs/promises';
-
-const RENDERER_BUNDLED_PACKAGES = new Set([
-  'hls.js',
-  'mpegts.js',
-  'react',
-  'react-dom',
-  'react-router',
-  'react-router-dom',
-]);
+import { bundledPackageNames, matchesPathPattern } from './package-app-runtime-closure.mjs';
 
 const isInside = (parent, path) => {
   const rel = relative(parent, path);
@@ -25,15 +17,25 @@ function relativeAppPath(candidate, root) {
   return relative(appRoot, value).split(sep).join('/');
 }
 
-function isRendererBundlePackage(rel) {
-  if (!rel.startsWith('node_modules/')) return false;
-  const segments = rel.slice('node_modules/'.length).split('/');
-  const name = segments[0]?.startsWith('@') ? `${segments[0]}/${segments[1] ?? ''}` : segments[0];
-  return RENDERER_BUNDLED_PACKAGES.has(name);
+function packageNamesInPath(rel) {
+  const segments = rel.split('/');
+  const names = [];
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    if (segments[index] !== 'node_modules') continue;
+    const first = segments[index + 1];
+    if (!first || first === '.pnpm' || first === '.bin') continue;
+    if (first.startsWith('@')) {
+      const second = segments[index + 2];
+      if (second) names.push(`${first}/${second}`);
+    } else {
+      names.push(first);
+    }
+  }
+  return names;
 }
 
 /** True when a path is not part of the packaged app's runtime closure. */
-export function shouldIgnorePackagedAppPath(candidate, root, { danglingNodeModulePaths = new Set() } = {}) {
+export function shouldIgnorePackagedAppPath(candidate, root, { danglingNodeModulePaths = new Set(), runtimeClosure = null } = {}) {
   const rel = relativeAppPath(candidate, root);
   if (rel === null) return true;
   if (rel === '.' || rel === '') return false;
@@ -44,12 +46,16 @@ export function shouldIgnorePackagedAppPath(candidate, root, { danglingNodeModul
   if (/^dist\/.+\.map$/i.test(rel)) return true;
 
   if (rel === 'node_modules/.bin' || rel.startsWith('node_modules/.bin/')) return true;
+  if (rel === 'node_modules/.modules.yaml' || rel === 'node_modules/.pnpm' || rel.startsWith('node_modules/.pnpm/')) return true;
   if (/^node_modules\/(?:\.vite|\.vitest|\.vitest-cache)(?:\/|$)/.test(rel)) return true;
   if (/^node_modules\/\.ignored\/@fluentui\/react-icons_tmp_[^/]+(?:\/|$)/.test(rel)) return true;
-  if (isRendererBundlePackage(rel)) return true;
+  const bundledNames = new Set(runtimeClosure ? bundledPackageNames(runtimeClosure) : []);
+  if (packageNamesInPath(rel).some((name) => bundledNames.has(name))) return true;
+
+  if ((runtimeClosure?.resourceExclusions ?? []).some((pattern) => matchesPathPattern(rel, pattern))) return true;
 
   if (rel === 'node_modules' || rel.startsWith('node_modules/')) return false;
-  if (!/^(dist|resources)(\/|$)/.test(rel)) return true;
+  if (!(runtimeClosure?.runtimeAssetRoots ?? ['dist', 'resources']).some((rootName) => rel === rootName || rel.startsWith(`${rootName}/`))) return true;
   if (!rel.startsWith('resources/')) return false;
 
   const parts = rel.split('/');

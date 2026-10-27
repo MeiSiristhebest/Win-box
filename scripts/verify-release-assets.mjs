@@ -23,14 +23,14 @@ function isPeX64(bytes) {
     bytes.readUInt16LE(headerOffset + 4) === 0x8664;
 }
 
-async function checkEntry(root, entry) {
+async function checkEntry(root, entry, resolveAssetPath = (path) => resolve(root, path), { allowPackagedTransform = false } = {}) {
   const failures = [];
   const files = [];
   const fingerprints = [];
   let present = false;
 
   if (entry.kind === 'jar-directory') {
-    const directory = resolve(root, entry.paths[0]);
+    const directory = resolveAssetPath(entry.paths[0]);
     let entries;
     try {
       entries = await readdir(directory, { withFileTypes: true });
@@ -48,7 +48,7 @@ async function checkEntry(root, entry) {
     }
   } else {
     for (const relativePath of entry.paths) {
-      const file = resolve(root, relativePath);
+      const file = resolveAssetPath(relativePath);
       try {
         const info = await stat(file);
         present = true;
@@ -75,8 +75,15 @@ async function checkEntry(root, entry) {
     }
     if (entry.sha256) {
       const actual = createHash('sha256').update(bytes).digest('hex').toUpperCase();
-      if (actual !== entry.sha256.toUpperCase()) {
+      if (actual !== entry.sha256.toUpperCase() && !(allowPackagedTransform && entry.packagedTransform)) {
         failures.push(`${relativePath} (SHA-256 mismatch; expected ${entry.sha256}, got ${actual})`);
+      } else if (allowPackagedTransform && entry.packagedTransform) {
+        fingerprints.push({
+          id: entry.id,
+          path: relativePath,
+          sha256: actual,
+          transformation: entry.packagedTransform,
+        });
       }
     } else if (entry.sha256Policy === 'calculate-at-package-time') {
       fingerprints.push({
@@ -152,4 +159,29 @@ export async function assertReleaseAssets(root, options) {
   console.log('[release assets] Required runtime assets passed preflight.');
   for (const item of fingerprints) console.log(`[release assets] SHA-256 ${item.id} ${item.path}: ${item.sha256}`);
   return { errors, warnings, fingerprints };
+}
+
+export async function assertPackagedReleaseAssets(stagingDirectory, { manifest } = {}) {
+  if (!manifest?.required) throw new Error('Packaged runtime asset verification requires the runtime asset manifest.');
+  const packageRoot = resolve(stagingDirectory);
+  const unpackedRoot = resolve(packageRoot, 'resources', 'app.asar.unpacked');
+  const resolvePackagedPath = (assetPath) => {
+    const normalized = String(assetPath).replaceAll('\\', '/').replace(/^\/+/, '');
+    if (!normalized.startsWith('resources/') || normalized.split('/').includes('..')) {
+      throw new Error(`Packaged runtime asset path must be inside resources/: ${assetPath}`);
+    }
+    return resolve(unpackedRoot, normalized);
+  };
+  const errors = [];
+  const fingerprints = [];
+  for (const entry of manifest.required) {
+    errors.push(...metadataFailures(entry));
+    const result = await checkEntry(packageRoot, entry, resolvePackagedPath, { allowPackagedTransform: true });
+    errors.push(...result.failures);
+    fingerprints.push(...result.fingerprints);
+  }
+  if (errors.length) {
+    throw new Error(`Packaged runtime asset verification failed:\n${errors.map((item) => `- ${item}`).join('\n')}`);
+  }
+  return { errors, fingerprints };
 }

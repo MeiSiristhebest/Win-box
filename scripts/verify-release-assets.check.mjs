@@ -4,7 +4,7 @@ import { after, before, test } from 'node:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inspectReleaseAssets } from './verify-release-assets.mjs';
+import { assertPackagedReleaseAssets, inspectReleaseAssets } from './verify-release-assets.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const tempRoot = join(root, '.tmp');
@@ -33,8 +33,8 @@ function makePe(machine = 0x8664) {
   return bytes;
 }
 
-function makeZip() {
-  const name = Buffer.from('x');
+function makeZip(entryName = 'x') {
+  const name = Buffer.from(entryName);
   const local = Buffer.alloc(30 + name.length);
   local.writeUInt32LE(0x04034b50, 0);
   local.writeUInt16LE(20, 4);
@@ -242,6 +242,42 @@ test('validates each JAR in the dex2jar directory', async () => {
   assert(result.fingerprints.some((item) => item.path === 'runtime/d2j/valid.jar'));
 });
 
+test('verifies required runtime assets inside the packaged app.asar.unpacked resource tree', async () => {
+  const java = makePe();
+  const jar = makeZip();
+  const originalSqliteJar = makeZip('original');
+  const packagedSqliteJar = makeZip('sanitized');
+  await writeFixture('package/Win-Box/resources/app.asar.unpacked/resources/jvm/jre/bin/java.exe', java);
+  await writeFixture('package/Win-Box/resources/app.asar.unpacked/resources/jvm/d2j/dex-tools.jar', jar);
+  await writeFixture('package/Win-Box/resources/app.asar.unpacked/resources/jvm/libs/sqlite-jdbc.jar', packagedSqliteJar);
+
+  const assetManifest = manifest([
+    entry('jre', 'pre-build', 'pe-x64', ['resources/jvm/jre/bin/java.exe'], { sha256: sha256(java) }),
+    entry('dex2jar', 'pre-build', 'jar-directory', ['resources/jvm/d2j']),
+    entry('sqlite-jdbc', 'pre-build', 'jar', ['resources/jvm/libs/sqlite-jdbc.jar'], {
+      sha256: sha256(originalSqliteJar),
+      packagedTransform: 'sanitize-sqlite-jar-windows-x64',
+    }),
+  ]);
+  const result = await assertPackagedReleaseAssets(join(fixtureRoot, 'package', 'Win-Box'), { manifest: assetManifest });
+  assert.deepEqual(result.errors, []);
+  assert.equal(result.fingerprints.length, 2);
+  assert.equal(result.fingerprints[0]?.path, 'resources/jvm/d2j/dex-tools.jar');
+  assert.deepEqual(result.fingerprints[1], {
+    id: 'sqlite-jdbc',
+    path: 'resources/jvm/libs/sqlite-jdbc.jar',
+    sha256: sha256(packagedSqliteJar),
+    transformation: 'sanitize-sqlite-jar-windows-x64',
+  });
+
+  const noTransformManifest = manifest([
+    entry('sqlite-jdbc', 'pre-build', 'jar', ['resources/jvm/libs/sqlite-jdbc.jar'], { sha256: sha256(originalSqliteJar) }),
+  ]);
+  await assert.rejects(assertPackagedReleaseAssets(join(fixtureRoot, 'package', 'Win-Box'), { manifest: noTransformManifest }), /SHA-256 mismatch/);
+
+  await assert.rejects(assertPackagedReleaseAssets(join(fixtureRoot, 'package', 'missing'), { manifest: assetManifest }), /resources\/jvm\/jre\/bin\/java\.exe \(missing\)/);
+});
+
 test('declares the provisioned Java runtime and stubs as build prerequisites', async () => {
   const assetManifest = JSON.parse(await readFile(join(root, 'scripts/runtime-assets.json'), 'utf8'));
 
@@ -272,4 +308,26 @@ test('requires the generated ARM bridge after the main build', async () => {
   assert(!checked.optional.some(item => item.id === 'native-bridge'));
   const result = await inspectReleaseAssets(fixtureRoot, { manifest: manifest([bridge]), phase: 'post-build-main' });
   assert(result.errors.includes('resources/jvm/native-bridge/native-bridge.jar (missing)'));
+});
+
+test('requires Python spider runner scripts in both source and packaged resource trees', async () => {
+  const checked = JSON.parse(await readFile(join(root, 'scripts/runtime-assets.json'), 'utf8'));
+  const pythonRunner = checked.required.find((item) => item.id === 'python-spider-runner');
+  assert(pythonRunner);
+  assert.deepEqual(pythonRunner.paths, [
+    'resources/jvm/python-runner/runner.py',
+    'resources/jvm/python-runner/base/spider.py',
+    'resources/jvm/python-runner/base/localProxy.py',
+  ]);
+
+  const sourceCheck = await inspectReleaseAssets(root, { manifest: { ...checked, required: [pythonRunner], optional: [] } });
+  assert.deepEqual(sourceCheck.errors, []);
+
+  const packagedRoot = join(fixtureRoot, 'python-package', 'Win-Box');
+  for (const path of pythonRunner.paths) await writeFixture(`python-package/Win-Box/resources/app.asar.unpacked/${path}`, Buffer.from('runner fixture'));
+  const packageCheck = await assertPackagedReleaseAssets(packagedRoot, { manifest: { ...checked, required: [pythonRunner], optional: [] } });
+  assert.deepEqual(packageCheck.errors, []);
+
+  await rm(join(packagedRoot, 'resources', 'app.asar.unpacked', 'resources', 'jvm', 'python-runner', 'base', 'spider.py'));
+  await assert.rejects(assertPackagedReleaseAssets(packagedRoot, { manifest: { ...checked, required: [pythonRunner], optional: [] } }), /python-runner\/base\/spider\.py \(missing\)/);
 });
