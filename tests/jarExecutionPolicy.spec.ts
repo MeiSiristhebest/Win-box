@@ -4,6 +4,7 @@ import { JarSpiderBridge } from '../src/engine/spider/JarSpiderBridge';
 import { spiderProxyPort } from '../src/engine/spider/jarBridgePolicy';
 import type { SpiderProcPool } from '../src/engine/spider/SpiderProcPool';
 import {
+  buildJarExecutionClasspaths,
   buildJarCallArgv,
   buildJarJvmPrefix,
   buildJarServeArgv,
@@ -88,6 +89,36 @@ describe('JAR execution policy', () => {
       ...nativeArguments,
       'SpiderRunner', loaderClasspath, 'com.example.Spider', 'homeContent', 'ext', 'filter',
     ]);
+  });
+
+  it('keeps runtime and isolated spider classpaths separate for invocation and prewarm', () => {
+    expect(buildJarExecutionClasspaths({
+      runtimeJars: ['stubs.jar;libs.jar'],
+      nativeJars: ['bridge.jar', 'unidbg.jar'],
+      spiderJars: ['site-a.jar', 'site-b.jar'],
+      shimClasses: 'C:/real-spider',
+      shimJar: { path: 'shell-shim.jar', available: true },
+    })).toEqual({
+      runtimeClasspath: 'stubs.jar;libs.jar;bridge.jar;unidbg.jar',
+      loaderClasspath: 'shell-shim.jar;site-a.jar;site-b.jar',
+    });
+  });
+
+  it('does not add a missing or unconfigured shell shim to the loader classpath', () => {
+    expect(buildJarExecutionClasspaths({
+      runtimeJars: ['runtime.jar'],
+      nativeJars: [],
+      spiderJars: ['site.jar'],
+      shimClasses: 'C:/real-spider',
+      shimJar: { path: 'missing-shell-shim.jar', available: false },
+    }).loaderClasspath).toBe('site.jar');
+
+    expect(buildJarExecutionClasspaths({
+      runtimeJars: ['runtime.jar'],
+      nativeJars: [],
+      spiderJars: ['site.jar'],
+      shimJar: { path: 'shell-shim.jar', available: true },
+    }).loaderClasspath).toBe('site.jar');
   });
 
   it.each([

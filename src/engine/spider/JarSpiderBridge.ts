@@ -46,6 +46,7 @@ import {
   totalDexBytes as estimateTotalDexBytes,
 } from './jarBridgePolicy';
 import {
+  buildJarExecutionClasspaths,
   buildJarCallArgv,
   buildJarJvmPrefix,
   buildJarServeArgv,
@@ -911,10 +912,14 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     if (needsNative && nativeJars.length === 0) return 0;
     // ★ 与 callJar 同口径：-cp 只放运行时（stubs/libs/桥/unidbg），蜘蛛 jar/shim jar 只走加载器参数 ——
     //   否则父加载器抢占原始类，native 改写产物（子加载器最前）不生效。
-    const runtimeCp = [this.classpathJars(), ...nativeJars].join(';');
-    const cpParts = [...jarPaths];
-    if (shimClasses && existsSync(shimJar)) cpParts.unshift(shimJar);
-    const loadCp = cpParts.join(';');
+    const shimJarAvailable = Boolean(shimClasses && existsSync(shimJar));
+    const { runtimeClasspath: runtimeCp, loaderClasspath: loadCp } = buildJarExecutionClasspaths({
+      runtimeJars: [this.classpathJars()],
+      nativeJars,
+      spiderJars: jarPaths,
+      shimClasses,
+      shimJar: { path: shimJar, available: shimJarAvailable },
+    });
     const serveArgv = buildJarServeArgv({
       jvmPrefix: this.jvmPrefix(runtimeCp, true, loadCp),
       loaderClasspath: loadCp,
@@ -1072,13 +1077,17 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     //   壳源详情有剧集空）。桥的静态状态与改写类也因此分属两个加载器，桥只「复用产物」却不生效。
     //   正确分工：**-cp 只放运行时**（stubs/libs/桥/unidbg）；**蜘蛛 jar 只走加载器参数**（子加载器，
     //   顺序 = 改写产物目录 → shell-shim jar → 蜘蛛 jar）。
-    const runtimeCp = [this.classpathJars(), ...nativeJars].join(';');
-    const loadParts = [...jarPaths];
-    if (shimClasses && existsSync(shimJar)) loadParts.unshift(shimJar);
-    else if (shimClasses) {
+    const shimJarAvailable = Boolean(shimClasses && existsSync(shimJar));
+    const { runtimeClasspath: runtimeCp, loaderClasspath: loadCp } = buildJarExecutionClasspaths({
+      runtimeJars: [this.classpathJars()],
+      nativeJars,
+      spiderJars: jarPaths,
+      shimClasses,
+      shimJar: { path: shimJar, available: shimJarAvailable },
+    });
+    if (shimClasses && !shimJarAvailable) {
       this.host?.logger.w(`jvm-bridge 已启用 shell-shim（${shimClasses}），但未找到 shell-shim.jar: ${shimJar}，影子类不会生效`);
     }
-    const loadCp = loadParts.join(';');
     // ★★ 2026-10-09（孤儿端口场景修复，勿回退）★★：tag → 端口映射**只信 serve 信封自报的 `pp`**
     //   （见下方 r.proxyPort），不再在调用前预登记确定性散列端口 —— 确定性端口（19970~19999）
     //   只是「期望值」：被上一会话残留 JVM（孤儿）或同 key 并存 JVM 占用时，本 JVM 会退化临时

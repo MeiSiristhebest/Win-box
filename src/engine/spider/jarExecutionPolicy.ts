@@ -13,6 +13,40 @@ export interface JarJvmPrefixInput {
   proxyJvmArgs?: readonly string[];
 }
 
+export interface JarExecutionClasspathInput {
+  /** Parent classpath containing only the runner and its runtime libraries. */
+  runtimeJars: readonly string[];
+  /** Optional native bridge libraries belong to the parent, ahead of no spider classes. */
+  nativeJars: readonly string[];
+  /** Spider artifacts are loaded by SpiderRunner's isolated child loader. */
+  spiderJars: readonly string[];
+  /** The shell compatibility implementation path, when one is configured. */
+  shimClasses?: string;
+  /** Whether the shadow shim jar exists at the adapter boundary. */
+  shimJar?: { path: string; available: boolean };
+}
+
+export interface JarExecutionClasspaths {
+  runtimeClasspath: string;
+  loaderClasspath: string;
+}
+
+/**
+ * Keep the JVM parent classpath and the spider child-loader classpath separate.
+ * The optional shell shim must precede the spider jars so its compatibility
+ * classes win, while native bridge jars stay on the parent classpath only.
+ */
+export function buildJarExecutionClasspaths(input: JarExecutionClasspathInput): JarExecutionClasspaths {
+  const loaderJars = [
+    ...(input.shimClasses && input.shimJar?.available ? [input.shimJar.path] : []),
+    ...input.spiderJars,
+  ];
+  return {
+    runtimeClasspath: [...input.runtimeJars, ...input.nativeJars].join(';'),
+    loaderClasspath: loaderJars.join(';'),
+  };
+}
+
 const MODULE_OPEN_ARGUMENTS = [
   '--add-opens=java.base/java.lang=ALL-UNNAMED',
   '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
