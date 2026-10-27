@@ -34,7 +34,7 @@ describe('mpvCore · 启动参数', () => {
     expect(args).toContain('--alang=zh,chi,chs,sc,cmn,yue');
     expect(args).toContain('--audio-pitch-correction=yes');
     expect(args).toContain('--sub-auto=fuzzy');
-    expect(args).toContain('--stream-auto-disconnect=0');
+    expect(args).not.toContain('--stream-auto-disconnect=0');
     expect(args).toContain('--rtsp-transport=tcp');
   });
 
