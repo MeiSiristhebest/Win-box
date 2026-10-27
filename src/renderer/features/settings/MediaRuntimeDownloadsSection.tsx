@@ -31,7 +31,7 @@ export function MediaRuntimeDownloadsSection({ active, port, afterMpvInstall }: 
         {progress?.phase === 'download' && progress.total > 0 && <progress aria-label="媒体组件下载进度" value={progress.received} max={progress.total} style={{ width: '100%' }} />}
         <button type="button" onClick={() => void cancel()}>取消下载</button>
       </div>}
-      {message && <output className={message.kind === 'err' ? 'err' : 'status'} style={{ display: 'block', marginTop: 8 }}>{message.text}</output>}
+      {message && <output className={message.kind === 'err' ? 'err' : 'status'} style={{ display: 'block', marginTop: 8, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{message.text}</output>}
     </section>
   );
 }

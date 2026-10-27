@@ -192,6 +192,8 @@ export interface MediaRuntimeInstalledState {
 export interface MediaRuntimeStatus {
   mpv: MediaRuntimeInstalledState;
   ffmpeg: MediaRuntimeInstalledState;
+  /** Warnings from the latest install transaction, including any paths that may need manual cleanup. */
+  warnings?: string[];
 }
 
 /** 启动一次 mpv 会话（每次换集/换源 = 新会话；主进程先停旧进程） */

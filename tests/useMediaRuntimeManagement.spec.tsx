@@ -94,6 +94,67 @@ describe('useMediaRuntimeManagement', () => {
     expect(result.current.message).toEqual({ text: 'MPV 已安装，但播放器状态刷新失败：播放器刷新失败', kind: 'err' });
   });
 
+  it('shows residual cleanup paths after a completed installation', async () => {
+    const port = createPort();
+    const warning = '安装临时目录清理失败，可能残留：C:/Users/example/AppData/Local/Temp/winbox-media-test';
+    vi.mocked(port.install).mockResolvedValue({ ...installedStatus, warnings: [warning] });
+    const { result } = renderHook(() => useMediaRuntimeManagement({ active: true, port, afterMpvInstall: vi.fn(async () => undefined) }));
+
+    await act(async () => { await result.current.install('ffmpeg'); });
+
+    expect(result.current.message).toEqual({
+      text: 'FFmpeg 已安装；后续兼容性探测与转换会使用此版本。\n' + warning,
+      kind: 'ok',
+    });
+  });
+
+  it('does not claim canceled temporary files were cleaned when the workflow reports a residual', async () => {
+    const port = createPort();
+    vi.mocked(port.install).mockRejectedValue(new Error('已取消下载；安装临时目录清理失败，可能残留：C:/temp/workspace'));
+    const { result } = renderHook(() => useMediaRuntimeManagement({ active: true, port, afterMpvInstall: vi.fn(async () => undefined) }));
+
+    await act(async () => { await result.current.install('ffmpeg'); });
+
+    expect(result.current.message).toEqual({
+      text: '已取消下载；安装临时目录清理失败，可能残留：C:/temp/workspace',
+      kind: 'err',
+    });
+  });
+
+  it('reports that there is no active install when cancellation returns false while idle', async () => {
+    const port = createPort();
+    vi.mocked(port.cancelInstall).mockResolvedValue(false);
+    const { result } = renderHook(() => useMediaRuntimeManagement({ active: true, port, afterMpvInstall: vi.fn(async () => undefined) }));
+
+    await act(async () => { await result.current.cancel(); });
+
+    expect(result.current.message).toEqual({ text: '当前没有正在运行的安装任务。', kind: 'ok' });
+  });
+
+  it('does not claim cancellation succeeded when the UI is busy but main has no active controller', async () => {
+    const port = createPort();
+    vi.mocked(port.cancelInstall).mockResolvedValue(false);
+    let resolveInstall!: (status: MediaRuntimeStatus) => void;
+    vi.mocked(port.install).mockReturnValue(new Promise((resolve) => { resolveInstall = resolve; }));
+    const { result } = renderHook(() => useMediaRuntimeManagement({ active: true, port, afterMpvInstall: vi.fn(async () => undefined) }));
+    let installPromise!: Promise<void>;
+    await act(async () => {
+      installPromise = result.current.install('ffmpeg');
+      await Promise.resolve();
+    });
+
+    await act(async () => { await result.current.cancel(); });
+    expect(result.current.message).toEqual({
+      text: '未能停止当前安装任务；它可能尚未开始或已结束，请等待状态更新。',
+      kind: 'err',
+    });
+
+    await act(async () => {
+      resolveInstall(installedStatus);
+      await installPromise;
+    });
+  });
+
   it('renders the optional runtime install flow through its injected port', async () => {
     const port = createPort();
     const afterMpvInstall = vi.fn(async () => undefined);

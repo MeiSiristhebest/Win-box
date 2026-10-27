@@ -41,6 +41,7 @@ export function useMediaRuntimeManagement({ active, port, afterMpvInstall }: Med
     try {
       const nextStatus = await port.install(runtime);
       setStatus(nextStatus);
+      const cleanupWarnings = nextStatus.warnings ?? [];
       if (runtime === 'mpv') {
         try {
           await afterMpvInstall();
@@ -50,16 +51,20 @@ export function useMediaRuntimeManagement({ active, port, afterMpvInstall }: Med
         }
       }
       setMessage({
-        text: runtime === 'mpv'
+        text: [runtime === 'mpv'
           ? 'MPV 已安装并设为应用内兼容播放内核。'
-          : 'FFmpeg 已安装；后续兼容性探测与转换会使用此版本。',
+          : 'FFmpeg 已安装；后续兼容性探测与转换会使用此版本。', ...cleanupWarnings].join('\n'),
         kind: 'ok',
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      setMessage(reason.includes('取消')
-        ? { text: '已取消安装；临时文件已清理。', kind: 'ok' }
-        : { text: `安装失败：${reason}`, kind: 'err' });
+      if (reason.includes('清理失败') || reason.includes('残留')) {
+        setMessage({ text: reason, kind: 'err' });
+      } else if (reason.includes('取消')) {
+        setMessage({ text: '已取消安装；临时文件清理完成，原有版本仍可使用。', kind: 'ok' });
+      } else {
+        setMessage({ text: `安装失败：${reason}`, kind: 'err' });
+      }
     } finally {
       busyRef.current = false;
       setBusy(null);
@@ -70,7 +75,13 @@ export function useMediaRuntimeManagement({ active, port, afterMpvInstall }: Med
   const cancel = useCallback(async () => {
     try {
       const canceled = await port.cancelInstall();
-      if (!canceled) setMessage({ text: '当前步骤已进入本地解压，无法立即中断；完成后即可使用。', kind: 'ok' });
+      if (canceled) {
+        setMessage({ text: '已发送取消请求，正在停止并清理临时文件…', kind: 'ok' });
+      } else if (busyRef.current) {
+        setMessage({ text: '未能停止当前安装任务；它可能尚未开始或已结束，请等待状态更新。', kind: 'err' });
+      } else {
+        setMessage({ text: '当前没有正在运行的安装任务。', kind: 'ok' });
+      }
     } catch (error) {
       setMessage({ text: `取消失败：${error instanceof Error ? error.message : String(error)}`, kind: 'err' });
     }
