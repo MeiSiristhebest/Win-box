@@ -12,15 +12,15 @@ export interface SourceCatalogApplicationPorts {
 export class SourceCatalogApplicationService {
   constructor(private readonly ports: SourceCatalogApplicationPorts) {}
 
-  async home(key: string, profileId?: string): Promise<HomeResult> {
+  async home(key: string, profileId?: string, signal?: AbortSignal): Promise<HomeResult> {
     const { context, source } = this.resolve(key, profileId);
-    const result = await this.ports.gateway.home(source);
+    const result = await this.ports.gateway.home(source, undefined, signal);
     return { ...result, items: result.items.map((item) => withSourceRef(item, context.profileId)) };
   }
 
-  async category(key: string, tid: string, pg: string, extend: Record<string, string>, profileId?: string): Promise<CategoryResult> {
+  async category(key: string, tid: string, pg: string, extend: Record<string, string>, profileId?: string, signal?: AbortSignal): Promise<CategoryResult> {
     const { context, source } = this.resolve(key, profileId);
-    const result = await this.ports.gateway.category(source, tid, pg, extend);
+    const result = await this.ports.gateway.category(source, tid, pg, extend, undefined, signal);
     return { ...result, items: result.items.map((item) => withSourceRef(item, context.profileId)) };
   }
 

@@ -263,8 +263,8 @@ const ipcServices: MainIpcApplicationPorts = {
   driveFileCleanup: hostServices.driveFileCleanup,
   livePlayback: hostServices.livePlayback,
   vod: {
-    home: (key, profileId) => hostServices.sourceCatalog.home(key, profileId),
-    category: (key, tid, page, extend, profileId) => hostServices.sourceCatalog.category(key, tid, page, extend, profileId),
+    home: (key, profileId, signal) => hostServices.sourceCatalog.home(key, profileId, signal),
+    category: (key, tid, page, extend, profileId, signal) => hostServices.sourceCatalog.category(key, tid, page, extend, profileId, signal),
     detail: (key, ids, profileId) => hostServices.sourceCatalog.detail(key, ids, profileId),
     search: (key, keyword, profileId, signal) => hostServices.sourceCatalog.search(key, keyword, profileId, signal),
     searchAll: (keyword, options, onProgress, signal) => hostServices.aggregateSearchRunner.run(keyword, options, onProgress, signal),

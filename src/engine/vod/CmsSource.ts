@@ -118,8 +118,8 @@ export class CmsSource {
   /** 首页：GET api → 分类 + 推荐。
    * 兼容"裸地址只回分类不回列表"的 CMS：若解析到分类但首页无条目，
    * 自动回退拉第一个分类的第 1 页作为首页内容（homeFallback=true），根治有效源首页空白。 */
-  async home(api: string, type: number, sourceKey: string, timeoutMs = 20000): Promise<SourceCatalogResult> {
-    const text = await this.fetchText(api, timeoutMs);
+  async home(api: string, type: number, sourceKey: string, timeoutMs = 20000, signal?: AbortSignal): Promise<SourceCatalogResult> {
+    const text = await this.fetchText(api, timeoutMs, signal);
     const sortClasses = this.parseSort(text, type);
     const abs = this.parseBody(text, type, sourceKey);
     const movie = abs?.movie ?? null;
@@ -133,11 +133,12 @@ export class CmsSource {
     if (base.items.length === 0 && sortClasses.length > 0) {
       try {
         const first = sortClasses[0];
-        const fallback = await this.category(api, type, sourceKey, String(first.id), '1', {}, timeoutMs);
+        const fallback = await this.category(api, type, sourceKey, String(first.id), '1', {}, timeoutMs, signal);
         if (fallback.items.length > 0) {
           return { ...base, items: fallback.items, pagecount: fallback.pagecount || 1, total: fallback.total || fallback.items.length, homeFallback: true };
         }
       } catch {
+        if (signal?.aborted) throw abortError(signal);
         // 回退失败不致命：保留分类结果，用户仍可点分类浏览
       }
     }
@@ -153,6 +154,7 @@ export class CmsSource {
     pg: string,
     extend: Record<string, string>,
     timeoutMs = 20000,
+    signal?: AbortSignal,
   ): Promise<CmsResult> {
     const params: Record<string, string> = {
       ac: this.ac(type),
@@ -162,7 +164,7 @@ export class CmsSource {
     const fKeys = Object.keys(extend);
     if (fKeys.length > 0) params['f'] = JSON.stringify(extend);
     const url = withQuery(api, params);
-    const text = await this.fetchText(url, timeoutMs);
+    const text = await this.fetchText(url, timeoutMs, signal);
     const abs = this.parseBody(text, type, sourceKey);
     const movie = abs?.movie ?? null;
     return {

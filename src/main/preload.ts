@@ -137,8 +137,10 @@ const api = {
     },
   },
   vod: {
-    home: (key: string, profileId?: string) => invoke(IPC.VOD_HOME, { key, profileId }),
-    category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }) => invoke(IPC.VOD_CATEGORY, a),
+    home: (key: string, profileId?: string, requestId?: string) => invoke(IPC.VOD_HOME, { key, profileId, requestId }),
+    cancelHome: (requestId: string) => ipcRenderer.send(IPC.VOD_HOME_CANCEL, requestId),
+    category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string; requestId?: string }) => invoke(IPC.VOD_CATEGORY, a),
+    cancelCategory: (requestId: string) => ipcRenderer.send(IPC.VOD_CATEGORY_CANCEL, requestId),
     detail: (a: { key: string; ids: string[]; profileId?: string }) => invoke(IPC.VOD_DETAIL, a),
     search: (a: { key: string; wd: string; profileId?: string; requestId?: string }) => invoke(IPC.VOD_SEARCH, a),
     cancelSearch: (requestId: string) => ipcRenderer.send(IPC.VOD_SEARCH_CANCEL, requestId),

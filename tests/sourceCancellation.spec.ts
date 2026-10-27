@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CmsSourceAdapter } from '../src/engine/vod/CmsSourceAdapter';
+import { CmsSource } from '../src/engine/vod/CmsSource';
 import { SourceGateway } from '../src/engine/vod/SourceGateway';
 import { SpiderSourceAdapter } from '../src/engine/vod/SpiderSourceAdapter';
 import { throwIfSearchAborted } from '../src/engine/vod/searchRuntime';
@@ -92,5 +93,60 @@ describe('source search cancellation contract', () => {
     expect(() => throwIfSearchAborted(AbortSignal.abort(reason))).toThrow(
       expect.objectContaining({ name: 'AbortError', message: reason.message, cause: reason }),
     );
+  });
+});
+
+describe('source browse cancellation contract', () => {
+  it('aborts an in-flight CMS home HTTP request at the network boundary', async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | undefined;
+    const http = {
+      request: vi.fn((request: { signal?: AbortSignal }) => {
+        receivedSignal = request.signal;
+        return new Promise<never>((_resolve, reject) => {
+          request.signal?.addEventListener('abort', () => reject(request.signal?.reason), { once: true });
+        });
+      }),
+    };
+    const cms = new CmsSource({ http: http as never, logger: { i: vi.fn() } });
+    const gateway = new SourceGateway({
+      catalog: [new CmsSourceAdapter(cms)], playback: [], proxy: [],
+    }, { w: vi.fn() });
+
+    const pending = gateway.home(source, 1000, controller.signal);
+    await vi.waitFor(() => expect(http.request).toHaveBeenCalledTimes(1));
+    controller.abort(new Error('browse superseded'));
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError', message: 'browse superseded' });
+    expect(receivedSignal).toBe(controller.signal);
+  });
+
+  it('aborts Spider home fallback and category runtime calls promptly', async () => {
+    const homeController = new AbortController();
+    const homeContent = vi.fn((_filter: boolean, signal?: AbortSignal) => new Promise<string>((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const homeVideoContent = vi.fn(() => '{"list":[]}');
+    const homeAdapter = new SpiderSourceAdapter({ forSource: () => ({ homeContent, homeVideoContent }) }, { i: vi.fn(), w: vi.fn() });
+    const homeGateway = new SourceGateway({ catalog: [homeAdapter], playback: [], proxy: [] }, { w: vi.fn() });
+    const homePending = homeGateway.home({ ...source, type: 3 }, 1000, homeController.signal);
+    await vi.waitFor(() => expect(homeContent).toHaveBeenCalledTimes(1));
+    homeController.abort(new Error('home superseded'));
+    await expect(homePending).rejects.toMatchObject({ name: 'AbortError', message: 'home superseded' });
+    expect(homeContent.mock.calls[0]?.[1]).toBe(homeController.signal);
+    expect(homeVideoContent).not.toHaveBeenCalled();
+
+    const categoryController = new AbortController();
+    const categoryContent = vi.fn((_tid: string, _page: string, _filter: boolean, _extend: Record<string, string>, signal?: AbortSignal) =>
+      new Promise<string>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+      }));
+    const categoryAdapter = new SpiderSourceAdapter({ forSource: () => ({ categoryContent }) }, { i: vi.fn(), w: vi.fn() });
+    const categoryGateway = new SourceGateway({ catalog: [categoryAdapter], playback: [], proxy: [] }, { w: vi.fn() });
+    const categoryPending = categoryGateway.category({ ...source, type: 3 }, 'genre', '2', {}, 1000, categoryController.signal);
+    await vi.waitFor(() => expect(categoryContent).toHaveBeenCalledTimes(1));
+    categoryController.abort(new Error('category superseded'));
+    await expect(categoryPending).rejects.toMatchObject({ name: 'AbortError', message: 'category superseded' });
+    expect(categoryContent.mock.calls[0]?.[4]).toBe(categoryController.signal);
   });
 });

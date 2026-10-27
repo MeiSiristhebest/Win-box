@@ -276,19 +276,19 @@ export class JarSpider extends Spider {
     return enrichExt(this.ext || '', this.host?.driveTokens?.());
   }
 
-  homeContent(_filter: boolean): Promise<string> {
-    return this.call('homeContent');
+  homeContent(_filter: boolean, signal?: AbortSignal): Promise<string> {
+    return this.call('homeContent', [], undefined, signal);
   }
-  homeVideoContent(): Promise<string> {
-    return this.call('homeVideoContent');
+  homeVideoContent(signal?: AbortSignal): Promise<string> {
+    return this.call('homeVideoContent', [], undefined, signal);
   }
-  categoryContent(tid: string, pg: string, _filter: boolean, extend: Record<string, string>): Promise<string> {
+  categoryContent(tid: string, pg: string, _filter: boolean, extend: Record<string, string>, signal?: AbortSignal): Promise<string> {
     // ★ 对 key/value 做百分号编码再拼 `&`：筛选值里可能含 `&`/`=`/空格/中文，
     //   而 SpiderRunner 侧用 split("&") + indexOf('=') 还原 —— 不编码会在解析时被错切。
     const kv = Object.entries(extend || {})
       .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
       .join('&');
-    return this.call('categoryContent', [tid, pg, kv]);
+    return this.call('categoryContent', [tid, pg, kv], undefined, signal);
   }
   detailContent(ids: string[]): Promise<string> {
     return this.call('detailContent', [ids.join(',')]);

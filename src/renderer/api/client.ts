@@ -61,20 +61,20 @@ async function afterConfigMutation<T>(request: Promise<IpcResult<T>>): Promise<T
   return result;
 }
 
-let searchRequestSequence = 0;
+let vodRequestSequence = 0;
 
-function nextSearchRequestId(): string {
-  searchRequestSequence = (searchRequestSequence + 1) % Number.MAX_SAFE_INTEGER;
-  return `${Date.now().toString(36)}-${searchRequestSequence.toString(36)}`;
+function nextVodRequestId(): string {
+  vodRequestSequence = (vodRequestSequence + 1) % Number.MAX_SAFE_INTEGER;
+  return `${Date.now().toString(36)}-${vodRequestSequence.toString(36)}`;
 }
 
-function invokeSearchWithCancellation<T>(
+function invokeVodRequestWithCancellation<T>(
   signal: AbortSignal | undefined,
   start: (requestId: string) => Promise<IpcResult<T>>,
   cancel: (requestId: string) => void,
 ): Promise<T> {
   if (signal?.aborted) return Promise.reject(abortError(signal));
-  const requestId = nextSearchRequestId();
+  const requestId = nextVodRequestId();
   const request = unwrap(start(requestId));
   if (!signal) return request;
 
@@ -224,14 +224,18 @@ export const client = {
   ucTvQrCreate: () => unwrap(window.api.drives.ucTvQrCreate()),
   ucTvQrPoll: () => unwrap(window.api.drives.ucTvQrPoll()),
   ucTvRemove: () => unwrap(window.api.drives.ucTvRemove()),
-  home: (key: string, profileId?: string) => unwrap(window.api.vod.home(key, profileId)),
-  category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }) => unwrap(window.api.vod.category(a)),
+  home: (key: string, profileId?: string, signal?: AbortSignal) =>
+    invokeVodRequestWithCancellation(signal, (requestId) => window.api.vod.home(key, profileId, requestId),
+      (requestId) => window.api.vod.cancelHome(requestId)),
+  category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }, signal?: AbortSignal) =>
+    invokeVodRequestWithCancellation(signal, (requestId) => window.api.vod.category({ ...a, requestId }),
+      (requestId) => window.api.vod.cancelCategory(requestId)),
   detail: (a: { key: string; ids: string[]; profileId?: string }) => unwrap(window.api.vod.detail(a)),
   search: (a: { key: string; wd: string; profileId?: string }, signal?: AbortSignal) =>
-    invokeSearchWithCancellation(signal, (requestId) => window.api.vod.search({ ...a, requestId }),
+    invokeVodRequestWithCancellation(signal, (requestId) => window.api.vod.search({ ...a, requestId }),
       (requestId) => window.api.vod.cancelSearch(requestId)),
   searchAll: (wd: string, opts?: { refresh?: boolean; profileId?: string; profileIds?: string[] }, signal?: AbortSignal) =>
-    invokeSearchWithCancellation(signal, (requestId) => window.api.vod.searchAll(wd, opts, requestId),
+    invokeVodRequestWithCancellation(signal, (requestId) => window.api.vod.searchAll(wd, opts, requestId),
       (requestId) => window.api.vod.cancelSearchAll(requestId)),
   onSearchAllProgress: (cb: (ev: SearchAllProgressEvent) => void) => window.api.vod.onSearchAllProgress(cb as (ev: unknown) => void),
   play: (a: { key: string; flag: string; id: string; profileId?: string; parseOffset?: number }) => unwrap(window.api.vod.play(a)),

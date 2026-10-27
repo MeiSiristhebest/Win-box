@@ -2,12 +2,13 @@ import type { HomeResult } from '../SourcePorts';
 import type { SpiderSourceLogger } from '../SpiderSourcePorts';
 import { SpiderResultNormalizer, PAGE_ITEMS_ONE_PAGE } from '../SpiderResultNormalizer';
 import { SOURCE_PROBLEM_TEXT, SourceProblemError } from '../../spider/errors';
+import { abortError, awaitWithAbort, throwIfAborted } from '../../util/abort';
 
 /** The catalog operations needed to build a spider-backed home page. */
 export interface SpiderHomeContentPort {
-  homeContent?: (filter: boolean) => string | Promise<string>;
-  homeVideoContent?: () => string | Promise<string>;
-  categoryContent?: (tid: string, page: string, filter: boolean, extend: Record<string, string>) => string | Promise<string>;
+  homeContent?: (filter: boolean, signal?: AbortSignal) => string | Promise<string>;
+  homeVideoContent?: (signal?: AbortSignal) => string | Promise<string>;
+  categoryContent?: (tid: string, page: string, filter: boolean, extend: Record<string, string>, signal?: AbortSignal) => string | Promise<string>;
   readonly lastReason?: string;
 }
 
@@ -32,7 +33,8 @@ export class SpiderHomeContentService {
     private readonly deadline: SpiderHomeDeadlinePort,
   ) {}
 
-  async load(sourceKey: string, spider: SpiderHomeContentPort, timeoutMs: number): Promise<HomeResult> {
+  async load(sourceKey: string, spider: SpiderHomeContentPort, timeoutMs: number, signal?: AbortSignal): Promise<HomeResult> {
+    throwIfAborted(signal);
     if (!spider.homeContent && !spider.homeVideoContent) {
       throw unsupportedHome(sourceKey);
     }
@@ -43,13 +45,14 @@ export class SpiderHomeContentService {
     let homeFailure: SourceProblemError | null = null;
     try {
       if (spider.homeContent) {
-        homeJson = await this.deadline.within(
-          Promise.resolve(spider.homeContent(true)),
+        homeJson = await awaitWithAbort(this.deadline.within(
+          Promise.resolve(spider.homeContent(true, signal)),
           Math.max(200, deadline - this.deadline.now()),
           `homeContent 超时（>${budgetMs}ms）`,
-        );
+        ), signal);
       }
     } catch (error) {
+      if (signal?.aborted) throw abortError(signal);
       // Invocation failures can recover through recommendations. Preparation and
       // unsupported-runtime failures have no homeContent operation identity.
       if (!isHomeInvocationFailure(error)) throw error;
@@ -73,7 +76,7 @@ export class SpiderHomeContentService {
     }
 
     const baseItems = parsed?.items ?? [];
-    const recItems = await this.tryHomeRecommendation(spider, sourceKey, deadline, onNotice);
+    const recItems = await this.tryHomeRecommendation(spider, sourceKey, deadline, onNotice, signal);
     const classes = parsed?.classes ?? [];
     // Prefer a fallback only when it gives the user more results.
     let items = recItems.length > baseItems.length ? recItems : baseItems;
@@ -83,7 +86,7 @@ export class SpiderHomeContentService {
     if (items.length < PAGE_ITEMS_ONE_PAGE && classes.length > 0) {
       const firstClass = classes[0];
       if (firstClass) {
-        const recommendation = await this.tryFirstCategory(spider, sourceKey, firstClass.id, deadline, onNotice);
+        const recommendation = await this.tryFirstCategory(spider, sourceKey, firstClass.id, deadline, onNotice, signal);
         if (recommendation && recommendation.items.length > items.length) {
           items = recommendation.items;
           categoryPage = recommendation;
@@ -117,14 +120,15 @@ export class SpiderHomeContentService {
     typeId: string,
     deadline: number,
     onNotice: (message: string) => void,
+    signal?: AbortSignal,
   ): Promise<ClassRecommendation | null> {
     if (!spider.categoryContent) return null;
     try {
-      const json = await this.deadline.within(
-        Promise.resolve(spider.categoryContent(typeId, '1', true, {})),
+      const json = await awaitWithAbort(this.deadline.within(
+        Promise.resolve(spider.categoryContent(typeId, '1', true, {}, signal)),
         Math.max(200, deadline - this.deadline.now()),
         'homeContent 分类兜底超时',
-      );
+      ), signal);
       const result = this.normalizer.parseSpiderJson(json, sourceKey);
       onNotice(result ? '' : spiderReason(spider));
       if (!result || result.items.length === 0) {
@@ -139,6 +143,7 @@ export class SpiderHomeContentService {
         total: result.total || result.items.length,
       };
     } catch (error) {
+      if (signal?.aborted) throw abortError(signal);
       const message = errorMessage(error);
       this.logger.w(`vm:home type3 ${sourceKey} 分类兜底失败: ${message}`);
       onNotice(message);
@@ -151,14 +156,15 @@ export class SpiderHomeContentService {
     sourceKey: string,
     deadline: number,
     onNotice: (message: string) => void,
+    signal?: AbortSignal,
   ): Promise<ParsedCatalog['items']> {
     if (!spider.homeVideoContent) return [];
     try {
-      const json = await this.deadline.within(
-        Promise.resolve(spider.homeVideoContent()),
+      const json = await awaitWithAbort(this.deadline.within(
+        Promise.resolve(spider.homeVideoContent(signal)),
         Math.max(200, deadline - this.deadline.now()),
         'homeVideoContent 回退超时',
-      );
+      ), signal);
       const result = this.normalizer.parseSpiderJson(json, sourceKey);
       onNotice(result ? '' : spiderReason(spider));
       if (!result || result.items.length === 0) {
@@ -168,6 +174,7 @@ export class SpiderHomeContentService {
       this.logger.i(`vm:home type3 ${sourceKey} 已用 homeVideoContent 回退 ${result.items.length} 条`);
       return result.items;
     } catch (error) {
+      if (signal?.aborted) throw abortError(signal);
       const message = errorMessage(error);
       this.logger.w(`vm:home type3 ${sourceKey} homeVideoContent 回退失败: ${message}`);
       onNotice(message);

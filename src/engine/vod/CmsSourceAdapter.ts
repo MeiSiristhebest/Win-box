@@ -13,13 +13,15 @@ export class CmsSourceAdapter implements SourceCatalogPort, SourcePlaybackPort {
     return CMS_SOURCE_TYPES.has(bean.type);
   }
 
-  async home(bean: SourceBean, timeoutMs = 20000): Promise<HomeResult> {
-    const result = await this.catalog.home(bean.api, bean.type, bean.key, timeoutMs);
+  async home(bean: SourceBean, timeoutMs = 20000, signal?: AbortSignal): Promise<HomeResult> {
+    throwIfAborted(signal);
+    const result = await awaitWithAbort(this.catalog.home(bean.api, bean.type, bean.key, timeoutMs, signal), signal);
     return { ...result, sourceKey: bean.key };
   }
 
-  async category(bean: SourceBean, tid: string, pg: string, extend: Record<string, string>, timeoutMs = 20000): Promise<CategoryResult> {
-    const result = await this.catalog.category(bean.api, bean.type, bean.key, tid, pg, extend, timeoutMs);
+  async category(bean: SourceBean, tid: string, pg: string, extend: Record<string, string>, timeoutMs = 20000, signal?: AbortSignal): Promise<CategoryResult> {
+    throwIfAborted(signal);
+    const result = await awaitWithAbort(this.catalog.category(bean.api, bean.type, bean.key, tid, pg, extend, timeoutMs, signal), signal);
     return { ...result, sourceKey: bean.key };
   }
 

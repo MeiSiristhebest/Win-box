@@ -19,8 +19,8 @@ export interface CategoryResult extends SourceCatalogResult {
 }
 
 export interface CmsCatalogPort {
-  home(api: string, type: number, sourceKey: string, timeoutMs?: number): Promise<SourceCatalogResult>;
-  category(api: string, type: number, sourceKey: string, tid: string, pg: string, extend: Record<string, string>, timeoutMs?: number): Promise<SourceCatalogResult>;
+  home(api: string, type: number, sourceKey: string, timeoutMs?: number, signal?: AbortSignal): Promise<SourceCatalogResult>;
+  category(api: string, type: number, sourceKey: string, tid: string, pg: string, extend: Record<string, string>, timeoutMs?: number, signal?: AbortSignal): Promise<SourceCatalogResult>;
   detail(api: string, type: number, sourceKey: string, ids: string[], timeoutMs?: number): Promise<VodDetail | null>;
   search(api: string, type: number, sourceKey: string, wd: string, timeoutMs?: number, signal?: AbortSignal): Promise<VodItem[]>;
 }
@@ -30,16 +30,16 @@ export interface SourceAdapterIdentity {
 }
 
 export interface SourceCatalogPort extends SourceAdapterIdentity {
-  home(bean: SourceBean, timeoutMs: number): Promise<HomeResult>;
-  category(bean: SourceBean, tid: string, pg: string, extend: Record<string, string>, timeoutMs: number): Promise<CategoryResult>;
+  home(bean: SourceBean, timeoutMs: number, signal?: AbortSignal): Promise<HomeResult>;
+  category(bean: SourceBean, tid: string, pg: string, extend: Record<string, string>, timeoutMs: number, signal?: AbortSignal): Promise<CategoryResult>;
   detail(bean: SourceBean, ids: string[], timeoutMs: number): Promise<VodDetail | null>;
   search(bean: SourceBean, wd: string, quick: boolean, budgetMs: number, signal?: AbortSignal): Promise<VodItem[]>;
 }
 
 /** Application-facing query surface; source selection stays behind the gateway port. */
 export interface SourceQueryGatewayPort {
-  home(bean: SourceBean): Promise<HomeResult>;
-  category(bean: SourceBean, tid: string, pg: string, extend: Record<string, string>): Promise<CategoryResult>;
+  home(bean: SourceBean, timeoutMs?: number, signal?: AbortSignal): Promise<HomeResult>;
+  category(bean: SourceBean, tid: string, pg: string, extend: Record<string, string>, timeoutMs?: number, signal?: AbortSignal): Promise<CategoryResult>;
   detail(bean: SourceBean, ids: string[]): Promise<VodDetail | null>;
   search(bean: SourceBean, wd: string, signal?: AbortSignal): Promise<VodItem[]>;
 }

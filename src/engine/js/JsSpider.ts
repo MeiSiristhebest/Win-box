@@ -79,9 +79,9 @@ export class JsSpider extends Spider {
   }
 
   /** 调用一组候选名并字符串化结果 */
-  private async callStr(names: string[], args: unknown[], timeoutMs: number): Promise<string> {
-    const sb = await this.getSandbox();
-    return this.stringify(await this.callRuntimeMethod(sb, names, args, timeoutMs, names[0] ?? 'unknown'));
+  private async callStr(names: string[], args: unknown[], timeoutMs: number, signal?: AbortSignal): Promise<string> {
+    const sb = await this.getSandbox(signal);
+    return this.stringify(await this.callRuntimeMethod(sb, names, args, timeoutMs, names[0] ?? 'unknown', signal));
   }
 
   /** Normalize failures from any substitutable runtime to the Spider boundary error contract. */
@@ -135,12 +135,12 @@ export class JsSpider extends Spider {
   }
 
   // ---------------- Spider 方法映射 ----------------
-  override async homeContent(filter: boolean): Promise<string> {
-    return this.callStr(['homeContent', 'home'], [filter], TIMEOUT_HOME);
+  override async homeContent(filter: boolean, signal?: AbortSignal): Promise<string> {
+    return this.callStr(['homeContent', 'home'], [filter], TIMEOUT_HOME, signal);
   }
 
-  override async homeVideoContent(): Promise<string> {
-    return this.callStr(['homeVideoContent', 'homeVod', 'homeVid'], [], TIMEOUT_HOME);
+  override async homeVideoContent(signal?: AbortSignal): Promise<string> {
+    return this.callStr(['homeVideoContent', 'homeVod', 'homeVid'], [], TIMEOUT_HOME, signal);
   }
 
   override async categoryContent(
@@ -148,8 +148,9 @@ export class JsSpider extends Spider {
     pg: string,
     filter: boolean,
     extend: Record<string, string>,
+    signal?: AbortSignal,
   ): Promise<string> {
-    return this.callStr(['categoryContent', 'category'], [tid, pg, filter, extend ?? {}], TIMEOUT_HOME);
+    return this.callStr(['categoryContent', 'category'], [tid, pg, filter, extend ?? {}], TIMEOUT_HOME, signal);
   }
 
   override async detailContent(ids: string[]): Promise<string> {

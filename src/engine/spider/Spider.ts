@@ -53,17 +53,17 @@ export abstract class Spider {
   }
 
   /** 首页分类 + 推荐。filter=true 时返回分类筛选 */
-  homeContent(_filter: boolean): Promise<string> | string {
+  homeContent(_filter: boolean, _signal?: AbortSignal): Promise<string> | string {
     return '';
   }
 
   /** 首页最近更新（homeContent 不含时用） */
-  homeVideoContent(): Promise<string> | string {
+  homeVideoContent(_signal?: AbortSignal): Promise<string> | string {
     return '';
   }
 
   /** 分类列表：tid=分类id, pg=页码, extend=筛选参数 */
-  categoryContent(_tid: string, _pg: string, _filter: boolean, _extend: Record<string, string>): Promise<string> | string {
+  categoryContent(_tid: string, _pg: string, _filter: boolean, _extend: Record<string, string>, _signal?: AbortSignal): Promise<string> | string {
     return '';
   }
 

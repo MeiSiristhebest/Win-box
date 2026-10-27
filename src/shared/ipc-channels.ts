@@ -129,7 +129,9 @@ export const IPC = {
    */
   DRIVE_BIND_KEYS: 'drive:bindKeys',
   VOD_HOME: 'vod:home',
+  VOD_HOME_CANCEL: 'vod:homeCancel',
   VOD_CATEGORY: 'vod:category',
+  VOD_CATEGORY_CANCEL: 'vod:categoryCancel',
   VOD_DETAIL: 'vod:detail',
   VOD_SEARCH: 'vod:search',
   VOD_SEARCH_CANCEL: 'vod:searchCancel',

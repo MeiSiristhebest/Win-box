@@ -112,6 +112,31 @@ describe('VOD IPC adapter', () => {
     await expect(request).resolves.toMatchObject({ ok: false, error: { message: '搜索已由调用窗口取消' } });
   });
 
+  it('cancels home and category browse operations through sender-scoped IPC requests', async () => {
+    const { host } = register();
+    vi.mocked(host.home).mockImplementationOnce((_key, _profileId, signal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const homeRequest = invoke(IPC.VOD_HOME, { key: 'source-a', requestId: 'home-a' });
+    await vi.waitFor(() => expect(host.home).toHaveBeenCalledTimes(1));
+    const homeSignal = vi.mocked(host.home).mock.calls[0][2];
+    send(IPC.VOD_HOME_CANCEL, 'home-a');
+    expect(homeSignal?.aborted).toBe(true);
+    await expect(homeRequest).resolves.toMatchObject({ ok: false, error: { message: '首页浏览已由调用窗口取消' } });
+
+    vi.mocked(host.category).mockImplementationOnce((_key, _tid, _page, _extend, _profileId, signal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const categoryRequest = invoke(IPC.VOD_CATEGORY, {
+      key: 'source-a', tid: 'genre', pg: '2', requestId: 'category-a',
+    });
+    await vi.waitFor(() => expect(host.category).toHaveBeenCalledTimes(1));
+    const categorySignal = vi.mocked(host.category).mock.calls[0][5];
+    send(IPC.VOD_CATEGORY_CANCEL, 'category-a');
+    expect(categorySignal?.aborted).toBe(true);
+    await expect(categoryRequest).resolves.toMatchObject({ ok: false, error: { message: '分类浏览已由调用窗口取消' } });
+  });
+
   it('aborts active searches when their renderer window is destroyed', async () => {
     const { host } = register();
     vi.mocked(host.searchAll).mockImplementationOnce((_query, _options, _progress, signal) => new Promise((_resolve, reject) => {

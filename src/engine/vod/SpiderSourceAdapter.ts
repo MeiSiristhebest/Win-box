@@ -24,19 +24,21 @@ export class SpiderSourceAdapter implements SpiderSourcePort {
     });
   }
 
-  async home(bean: SourceBean, timeoutMs: number): Promise<HomeResult> {
-    return this.homeContent.load(bean.key, this.spiders.forSource(bean), timeoutMs);
+  async home(bean: SourceBean, timeoutMs: number, signal?: AbortSignal): Promise<HomeResult> {
+    throwIfAborted(signal);
+    return this.homeContent.load(bean.key, this.spiders.forSource(bean), timeoutMs, signal);
   }
 
-  async category(bean: SourceBean, tid: string, pg: string, extend: Record<string, string>, timeoutMs = 20000): Promise<CategoryResult> {
+  async category(bean: SourceBean, tid: string, pg: string, extend: Record<string, string>, timeoutMs = 20000, signal?: AbortSignal): Promise<CategoryResult> {
+    throwIfAborted(signal);
     const sp = this.spiders.forSource(bean);
     const category = requireOperation(sp, 'categoryContent', bean.key);
     const budget = this.requestTimeout(timeoutMs);
-    const json = await this.withTimeout(
-      Promise.resolve(category(tid, pg, true, extend)),
+    const json = await awaitWithAbort(this.withTimeout(
+      Promise.resolve(category(tid, pg, true, extend, signal)),
       budget,
       `categoryContent 超时（>${budget}ms）`,
-    );
+    ), signal);
     const reason = this.spiderReason(sp);
     if (reason && !this.normalizer.parseSpiderJson(json, bean.key)) throw new SourceProblemError('SPIDER_ERROR', reason);
     return this.normalizer.normalizeSpiderJson(json, bean.key, false);

@@ -150,8 +150,10 @@ declare global {
         onNavDriveBind: (cb: () => void) => () => void;
       };
       vod: {
-  home: (key: string, profileId?: string) => Promise<IpcResult<HomeResult>>;
-  category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string }) => Promise<IpcResult<HomeResult>>;
+  home: (key: string, profileId?: string, requestId?: string) => Promise<IpcResult<HomeResult>>;
+  cancelHome: (requestId: string) => void;
+  category: (a: { key: string; tid: string; pg: string; extend?: Record<string, string>; profileId?: string; requestId?: string }) => Promise<IpcResult<HomeResult>>;
+  cancelCategory: (requestId: string) => void;
   detail: (a: { key: string; ids: string[]; profileId?: string }) => Promise<IpcResult<VodDetail | null>>;
   search: (a: { key: string; wd: string; profileId?: string; requestId?: string }) => Promise<IpcResult<VodItem[]>>;
   cancelSearch: (requestId: string) => void;

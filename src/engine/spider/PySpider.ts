@@ -188,15 +188,15 @@ export class PySpider extends Spider {
     return this.loadError;
   }
 
-  homeContent(_filter: boolean): Promise<string> {
-    return this.call('homeContent', []);
+  homeContent(_filter: boolean, signal?: AbortSignal): Promise<string> {
+    return this.call('homeContent', [], undefined, signal);
   }
-  homeVideoContent(): Promise<string> {
-    return this.call('homeVideoContent', []);
+  homeVideoContent(signal?: AbortSignal): Promise<string> {
+    return this.call('homeVideoContent', [], undefined, signal);
   }
-  categoryContent(tid: string, pg: string, _filter: boolean, extend: Record<string, string>): Promise<string> {
+  categoryContent(tid: string, pg: string, _filter: boolean, extend: Record<string, string>, signal?: AbortSignal): Promise<string> {
     // extend 以 JSON 字符串传入，Python 侧 json.loads 解析
-    return this.call('categoryContent', [tid, pg, JSON.stringify(extend || {})]);
+    return this.call('categoryContent', [tid, pg, JSON.stringify(extend || {})], undefined, signal);
   }
   detailContent(ids: string[]): Promise<string> {
     // ids 以 JSON 数组字符串传入，runner.py 用 json.loads 还原为 Python list

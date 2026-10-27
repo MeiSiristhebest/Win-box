@@ -4,9 +4,9 @@ type SpiderJson = string | Promise<string>;
 
 /** Catalog protocol independent of runtime classes and host services. */
 export interface SpiderCatalogCapabilities {
-  homeContent(filter: boolean): SpiderJson;
-  homeVideoContent(): SpiderJson;
-  categoryContent(tid: string, page: string, filter: boolean, extend: Record<string, string>): SpiderJson;
+  homeContent(filter: boolean, signal?: AbortSignal): SpiderJson;
+  homeVideoContent(signal?: AbortSignal): SpiderJson;
+  categoryContent(tid: string, page: string, filter: boolean, extend: Record<string, string>, signal?: AbortSignal): SpiderJson;
   detailContent(ids: string[]): SpiderJson;
 }
 

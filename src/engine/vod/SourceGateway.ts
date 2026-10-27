@@ -30,12 +30,17 @@ export class SourceGateway implements SourceQueryGatewayPort {
     );
   }
 
-  async home(bean: SourceBean, timeoutMs = 20000): Promise<HomeResult> {
-    return this.adapterFor(this.adapters.catalog, bean, 'home').home(bean, sourceRequestTimeoutMs(bean, timeoutMs));
+  async home(bean: SourceBean, timeoutMs = 20000, signal?: AbortSignal): Promise<HomeResult> {
+    throwIfAborted(signal);
+    const request = this.adapterFor(this.adapters.catalog, bean, 'home').home(bean, sourceRequestTimeoutMs(bean, timeoutMs), signal);
+    return awaitWithAbort(request, signal);
   }
 
-  async category(bean: SourceBean, tid: string, pg: string, extend: Record<string, string>, timeoutMs = 20000): Promise<CategoryResult> {
-    return this.adapterFor(this.adapters.catalog, bean, 'category').category(bean, tid, pg, extend, sourceRequestTimeoutMs(bean, timeoutMs));
+  async category(bean: SourceBean, tid: string, pg: string, extend: Record<string, string>, timeoutMs = 20000, signal?: AbortSignal): Promise<CategoryResult> {
+    throwIfAborted(signal);
+    const request = this.adapterFor(this.adapters.catalog, bean, 'category')
+      .category(bean, tid, pg, extend, sourceRequestTimeoutMs(bean, timeoutMs), signal);
+    return awaitWithAbort(request, signal);
   }
 
   async detail(bean: SourceBean, ids: string[], timeoutMs = 20000): Promise<VodDetail | null> {
