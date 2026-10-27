@@ -2,6 +2,7 @@ import type { ProfileSitesView, SourceBean } from '../../../../shared/types';
 
 export interface SourcePickerPresentationInput {
   sources: SourceBean[];
+  controlledSources?: boolean;
   activeSourceKey: string;
   profileSites: ProfileSitesView | null;
   selectedProfileId: string;
@@ -16,7 +17,11 @@ export function presentSourcePicker(input: SourcePickerPresentationInput) {
       ?? profiles.find(profile => profile.id === input.profileSites?.activeId)
     : undefined;
   const sourceOptions = selectedProfile
-    ? selectedProfile.sites
+    ? selectedProfile.id === input.profileSites?.activeId
+      ? input.controlledSources
+        ? input.sources.map(source => ({ key: source.key, name: source.name || source.key }))
+        : selectedProfile.sites
+      : selectedProfile.sites
     : input.sources.map(source => ({ key: source.key, name: source.name || source.key }));
   const normalizedQuery = input.query.trim().toLowerCase();
   const filteredSources = normalizedQuery

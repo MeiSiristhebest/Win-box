@@ -133,6 +133,9 @@
   flex: 0 0 132px; max-width: 132px; overflow-y: auto; padding-right: 4px; margin-right: 4px;
   border-right: 1px solid var(--border-soft);
 }
+.srcpick-sub-row { display: flex; align-items: stretch; gap: 3px; }
+.srcpick-sub-row .srcpick-sub { flex: 1 1 auto; min-width: 0; }
+.srcpick-sub-preview { flex: 0 0 auto; width: auto; padding-inline: 8px; font-size: 12px; }
 .srcpick-col-src { flex: 1 1 auto; min-width: 0; overflow-y: auto; }
 .srcpick-item { width: 100%; padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .srcpick-item:hover { background: var(--accent-soft, rgba(120,170,255,.12)); }

@@ -34,7 +34,22 @@ describe('SourcePicker child repository switching', () => {
     fireEvent.click(screen.getByRole('button'));
     expect(await screen.findByRole('region', { name: '订阅和来源' })).toBeTruthy();
     expect(await screen.findByRole('button', { name: '点播子仓' })).toBeTruthy();
+    expect(port.loadCurrentSources).toHaveBeenCalledTimes(1);
     expect(port.loadProfileSites).toHaveBeenCalledOnce();
+  });
+
+  it('activates a profile immediately when its profile row is clicked', async () => {
+    const port = createPort();
+    render(<SourcePicker port={port} />);
+    fireEvent.click(screen.getByRole('button'));
+
+    fireEvent.click(await screen.findByRole('button', { name: '点播子仓' }));
+
+    expect(port.activateProfile).toHaveBeenCalledTimes(1);
+    expect(port.activateProfile).toHaveBeenCalledWith('vod');
+    expect(port.switchProfileSource).not.toHaveBeenCalled();
+    await act(async () => { await Promise.resolve(); });
+    expect(port.publishProfileChanged).toHaveBeenCalledTimes(1);
   });
 
   it('labels the active profile and source in addition to the visual selection state', async () => {
@@ -54,24 +69,38 @@ describe('SourcePicker child repository switching', () => {
     const port = createPort();
     const onPick = vi.fn();
     const sites = [
-      { key: 'live', name: '直播源' },
-      { key: 'live-alt', name: '备用直播源' },
+      { key: 'controlled-live', name: '外部直播源' },
+      { key: 'controlled-alt', name: '外部备用源' },
     ] as SourceBean[];
-    render(<SourcePicker sites={sites} current="live" onPick={onPick} port={port} />);
+    const view = render(<SourcePicker sites={sites} current="controlled-live" onPick={onPick} port={port} />);
 
-    expect(screen.getByRole('button', { name: '切换站点，当前：直播源' })).toBeTruthy();
+    const trigger = screen.getByRole('button', { name: '切换站点，当前：外部直播源' });
     expect(port.loadCurrentSources).not.toHaveBeenCalled();
     expect(port.subscribeToCurrentSourcesRefresh).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: '切换站点，当前：直播源' }));
-    const activeSource = await screen.findByRole('button', { name: '直播源 当前' });
+    fireEvent.click(trigger);
+    const activeSource = await screen.findByRole('button', { name: '外部直播源 当前' });
     expect(activeSource.getAttribute('aria-current')).toBe('true');
     expect(activeSource.getAttribute('aria-pressed')).toBe('true');
+    expect(await screen.findByRole('button', { name: '外部备用源' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '直播源' })).toBeNull();
 
-    fireEvent.click(await screen.findByRole('button', { name: '备用直播源' }));
+    fireEvent.click(activeSource);
+    expect(onPick).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '切换站点，当前：外部直播源' })).toBeTruthy();
+
+    view.rerender(<SourcePicker sites={sites} current="controlled-alt" onPick={onPick} port={port} />);
+    expect(screen.getByRole('button', { name: '切换站点，当前：外部备用源' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '切换站点，当前：外部备用源' }));
+    const updatedActiveSource = await screen.findByRole('button', { name: '外部备用源 当前' });
+    expect(updatedActiveSource.getAttribute('aria-current')).toBe('true');
+    expect(updatedActiveSource.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(await screen.findByRole('button', { name: '外部直播源' }));
 
     expect(onPick).toHaveBeenCalledOnce();
-    expect(onPick).toHaveBeenCalledWith('live-alt');
+    expect(onPick).toHaveBeenCalledWith('controlled-live');
+    expect(screen.getByRole('button', { name: '切换站点，当前：外部备用源' })).toBeTruthy();
     expect(port.loadCurrentSources).not.toHaveBeenCalled();
     expect(port.setActiveSource).not.toHaveBeenCalled();
     expect(port.switchProfileSource).not.toHaveBeenCalled();
@@ -82,14 +111,19 @@ describe('SourcePicker child repository switching', () => {
   it('selects the first filtered source with Enter', async () => {
     const port = createPort();
     render(<SourcePicker port={port} />);
-    fireEvent.click(screen.getByRole('button'));
+    const trigger = screen.getByRole('button', { name: /切换站点/ });
+    fireEvent.click(trigger, { detail: 1 });
     const input = await screen.findByRole('textbox', { name: '筛选订阅源' });
     fireEvent.change(input, { target: { value: '备用' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     await act(async () => { await Promise.resolve(); });
 
+    expect(port.setActiveSource).toHaveBeenCalledTimes(1);
     expect(port.setActiveSource).toHaveBeenCalledWith('live-alt');
+    expect(port.publishSourceChanged).toHaveBeenCalledTimes(1);
     expect(port.publishSourceChanged).toHaveBeenCalledWith('live-alt');
+    expect(screen.queryByRole('region', { name: '订阅和来源' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('closes with Escape and restores focus to the trigger', async () => {
@@ -123,19 +157,33 @@ describe('SourcePicker child repository switching', () => {
     fireEvent.click(screen.getByRole('button'), { detail: 1 });
     const panel = screen.getByRole('region', { name: '订阅和来源' });
     fireEvent.pointerLeave(panel);
-    await act(async () => { await vi.advanceTimersByTimeAsync(3280); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2999); });
+    expect(screen.getByRole('region', { name: '订阅和来源' })).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(panel.classList.contains('srcpick-closing')).toBe(true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(279); });
+    expect(screen.getByRole('region', { name: '订阅和来源' })).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
 
     expect(screen.queryByRole('region', { name: '订阅和来源' })).toBeNull();
   });
 
-  it('atomically switches to the selected profile and source', async () => {
+  it('previews a profile without activating it, then atomically switches that profile and source', async () => {
     const port = createPort();
     render(<SourcePicker port={port} />);
     fireEvent.click(screen.getByRole('button'));
-    fireEvent.click(await screen.findByRole('button', { name: '点播子仓' }));
+    const preview = await screen.findByRole('button', { name: '仅预览点播子仓来源' });
+    fireEvent.click(preview);
+    expect(preview.getAttribute('aria-pressed')).toBe('true');
+    expect(port.activateProfile).not.toHaveBeenCalled();
+
     fireEvent.click(await screen.findByRole('button', { name: '点播站点' }));
     await act(async () => { await Promise.resolve(); });
+    expect(port.switchProfileSource).toHaveBeenCalledTimes(1);
     expect(port.switchProfileSource).toHaveBeenCalledWith('vod', 'vod');
+    expect(port.activateProfile).not.toHaveBeenCalled();
+    expect(port.setActiveSource).not.toHaveBeenCalled();
+    expect(port.publishProfileChanged).toHaveBeenCalledTimes(1);
     expect(port.publishProfileChanged).toHaveBeenCalledWith('vod');
   });
 
@@ -145,7 +193,9 @@ describe('SourcePicker child repository switching', () => {
     fireEvent.click(screen.getByRole('button'));
     fireEvent.click(await screen.findByRole('button', { name: '备用直播源' }));
     await act(async () => { await Promise.resolve(); });
+    expect(port.setActiveSource).toHaveBeenCalledTimes(1);
     expect(port.setActiveSource).toHaveBeenCalledWith('live-alt');
+    expect(port.publishSourceChanged).toHaveBeenCalledTimes(1);
     expect(port.publishSourceChanged).toHaveBeenCalledWith('live-alt');
   });
 });

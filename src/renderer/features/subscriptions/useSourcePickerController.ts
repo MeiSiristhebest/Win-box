@@ -7,6 +7,7 @@ interface SourcePickerControllerOptions {
   enabled: boolean;
   open: boolean;
   onPick?: (sourceKey: string) => void;
+  currentSourceKey?: string;
 }
 
 function describeFailure(cause: unknown): string {
@@ -18,7 +19,7 @@ export function resolveSourcePickerPaneId(currentId: string, profiles: ProfileSi
 }
 
 /** Owns source/profile loading and selection. The component keeps only panel and DOM interaction state. */
-export function useSourcePickerController({ port, enabled, open, onPick }: SourcePickerControllerOptions) {
+export function useSourcePickerController({ port, enabled, open, onPick, currentSourceKey }: SourcePickerControllerOptions) {
   const [sources, setSources] = useState<SourceBean[]>([]);
   const [activeSourceKey, setActiveSourceKey] = useState('');
   const [profileSites, setProfileSites] = useState<ProfileSitesView | null>(null);
@@ -95,7 +96,11 @@ export function useSourcePickerController({ port, enabled, open, onPick }: Sourc
   const clearError = useCallback(() => setError(''), []);
 
   const activateProfile = useCallback(async (profileId: string) => {
-    if (!profileId || switchInProgress.current || !profileSites || profileId === profileSites.activeId) return false;
+    if (!profileId || switchInProgress.current || !profileSites) return false;
+    if (profileId === profileSites.activeId) {
+      setSelectedProfileId(profileId);
+      return true;
+    }
     switchInProgress.current = true;
     setSwitching(true);
     setError('');
@@ -112,6 +117,12 @@ export function useSourcePickerController({ port, enabled, open, onPick }: Sourc
       if (alive.current) setSwitching(false);
     }
   }, [port, profileSites]);
+
+  const previewProfile = useCallback((profileId: string) => {
+    if (switchInProgress.current || !profileSites?.profiles.some(profile => profile.id === profileId)) return false;
+    setSelectedProfileId(profileId);
+    return true;
+  }, [profileSites]);
 
   const selectSource = useCallback(async (sourceKey: string, targetProfileId?: string, activeProfileId?: string) => {
     if (switchInProgress.current) return false;
@@ -148,19 +159,20 @@ export function useSourcePickerController({ port, enabled, open, onPick }: Sourc
   const pickSource = useCallback(async (sourceKey: string) => {
     const targetProfileId = profileSites && profileSites.profiles.length > 1 ? selectedProfileId : '';
     const activeProfileId = profileSites?.activeId ?? '';
+    const knownCurrentSourceKey = currentSourceKey ?? activeSourceKey;
     if (!targetProfileId || targetProfileId === activeProfileId) {
       if (onPick) {
-        if (sourceKey !== activeSourceKey) onPick(sourceKey);
+        if (sourceKey !== knownCurrentSourceKey) onPick(sourceKey);
         return true;
       }
-      if (sourceKey === activeSourceKey) return true;
+      if (sourceKey === knownCurrentSourceKey) return true;
       return selectSource(sourceKey);
     }
     return selectSource(sourceKey, targetProfileId, activeProfileId);
-  }, [activeSourceKey, onPick, profileSites, selectedProfileId, selectSource]);
+  }, [activeSourceKey, currentSourceKey, onPick, profileSites, selectedProfileId, selectSource]);
 
   return {
     model: { sources, activeSourceKey, profileSites, selectedProfileId, error, switching },
-    actions: { beginOpen, refreshSources, refreshProfileSites, activateProfile, pickSource, clearError },
+    actions: { beginOpen, refreshSources, refreshProfileSites, activateProfile, previewProfile, pickSource, clearError },
   };
 }

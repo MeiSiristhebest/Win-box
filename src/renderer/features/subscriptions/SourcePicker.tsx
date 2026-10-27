@@ -14,10 +14,9 @@
 // ★ 2026-10-09（用户指令：「删除之前版本做的换源的下拉菜单调整源的位置的功能，不美观」）：
 //   源行内管理按钮（⤒置顶 / ↑上移 / ↓下移 / ✕删除）与本组件内的对应逻辑已删除 —— 源管理只在配置页保留
 //   （IPC `cfg:moveSource` / `cfg:deleteSource` 未动）。
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { useAnchoredPanel } from '../../components/useAnchoredPanel';
-import { isNativeModalOpen } from '../../lib/modalScope';
+import { useSourcePickerOverlay } from '../../components/useSourcePickerOverlay';
 import type { SourceBean } from '../../../shared/types';
 import type { SourcePickerPort } from './application/sourcePickerPort';
 import { presentSourcePicker } from './application/sourcePickerPresentation';
@@ -37,42 +36,17 @@ export interface SourcePickerProps {
   disabled?: boolean;
 }
 
-/**
- * ★ 2026-10-16（用户要求「换源下拉框常驻时间增加到 3s，3s 后动画回缩」）：
- *   鼠标离开换源区域（按钮 + 弹层）后弹层**常驻 3s**（期间指针移回区域内即取消；也足够越过
- *   「按钮 ↔ 弹层」那道 6px 缝隙），到时先播一段「回缩」出场动画、动画走完才真正卸载。
- */
-const LEAVE_HOLD_MS = 3000;
-/** 「回缩」出场动画时长（与 CSS 的 `--dur-panel` 对齐；动画走完才 setOpen(false)，见 scheduleLeave） */
-const CLOSE_ANIM_MS = 280;
-
 export default function SourcePicker({ sites, current, onPick, port, variant = 'pill', disabled }: SourcePickerProps) {
-  const [open, setOpen] = useState(false);
+  const overlay = useSourcePickerOverlay({ variant, disabled });
+  const { open, query: q, setQuery: setQ, closing, inputRef, triggerRef, panelRef, wrapRef, panelId, panelPosition } = overlay;
   const selfLoad = sites === undefined || current === undefined;
-  const { model, actions } = useSourcePickerController({ port, enabled: selfLoad, open, onPick });
+  const { model, actions } = useSourcePickerController({ port, enabled: selfLoad, open, onPick, currentSourceKey: current });
   const { sources: ownSites, activeSourceKey: ownKey, profileSites: views, selectedProfileId: paneId, error, switching } = model;
-  /** 源名检索词（只过滤右栏） */
-  const [q, setQ] = useState('');
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const keyboardInteraction = useRef(false);
-  const panelId = useId();
-  const panelRef = useRef<HTMLElement | null>(null);
-  const panelPosition = useAnchoredPanel(open, triggerRef, panelRef, 420, variant === 'sidebar' ? 'top' : 'bottom');
-  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const list = sites ?? ownSites;
+  const cur = current ?? ownKey;
   const srcColRef = useRef<HTMLDivElement | null>(null);
   /** ★ 2026-10-16（用户要求「展开即定位当前所在的源」）：当前源那一行的 DOM（定位用，见上面 effect） */
   const activeRef = useRef<HTMLButtonElement | null>(null);
-  /** ★ 2026-09-30：鼠标移出的宽限计时器（移回区域内即取消，见 cancelLeave/scheduleLeave） */
-  const leaveTimerRef = useRef<number | null>(null);
-  /** ★ 2026-10-16：弹层正在播「回缩」出场动画（播完才 setOpen(false)） */
-  const [closing, setClosing] = useState(false);
-  /** 回缩动画的收尾计时器（与 leaveTimerRef 一起在「移回区域内 / 卸载」时清掉） */
-  const closeTimerRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (open) inputRef.current?.focus();
-  }, [open]);
 
   // ★ 2026-09-30：换订阅 / 改检索词后右栏回到顶部 —— 否则沿用上一份订阅的滚动位置，
   //   看上去像"列表里混着别的源"。
@@ -90,91 +64,17 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
       return;
     }
     col.scrollTop = Math.max(0, el.offsetTop - col.offsetTop - (col.clientHeight - el.offsetHeight) / 2);
-  }, [open, q, paneId, views]);
+  }, [open, q, paneId, views, cur, list]);
 
-  // 打开时外部点击 / Esc 关闭
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent): void => {
-      if (!wrapRef.current?.contains(e.target as Node) && !panelRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent): void => {
-      if (isNativeModalOpen()) return;
-      if (e.key === 'Escape' && !e.isComposing) {
-        e.preventDefault();
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  const list = sites ?? ownSites;
-  const cur = current ?? ownKey;
   const presentation = presentSourcePicker({
     sources: list,
+    controlledSources: sites !== undefined,
     activeSourceKey: cur,
     profileSites: views,
     selectedProfileId: paneId,
     query: q,
   });
   const { label, profiles, selectedProfile: pane, hasMultipleProfiles: multi, paneIsActive, filteredSources: filtered } = presentation;
-
-  // ★ 2026-09-30（用户要求）：鼠标移出换源区域（按钮 + 弹层，弹层是 wrapper 的 DOM 子节点）即自动收起。
-  //   ★ 2026-10-16（用户要求）：收起前先**常驻 3s**（原来 150ms 太短，一移开就没了），
-  //     到时再播「回缩」出场动画（CSS `.srcpick-closing`），动画走完才真正卸载。
-  //     ——常驻期间（含回缩动画期间）指针回到区域内 → cancelLeave 全部取消，弹层照旧。
-  const cancelLeave = (): void => {
-    if (leaveTimerRef.current !== null) {
-      clearTimeout(leaveTimerRef.current);
-      leaveTimerRef.current = null;
-    }
-    // 回缩动画播到一半指针又回来了 → 掐掉收尾计时器、退回常态（弹层不消失）
-    if (closeTimerRef.current !== null) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-    setClosing((prev) => (prev ? false : prev));
-  };
-  const scheduleLeave = (): void => {
-    if (!open) return;
-    if (keyboardInteraction.current && (wrapRef.current?.contains(document.activeElement) || panelRef.current?.contains(document.activeElement))) return;
-    cancelLeave();
-    leaveTimerRef.current = window.setTimeout(() => {
-      leaveTimerRef.current = null;
-      setClosing(true); // ① 先展开「回缩」出场动画
-      closeTimerRef.current = window.setTimeout(() => {
-        closeTimerRef.current = null;
-        setOpen(false); // ② 动画走完才卸载
-        setClosing(false);
-      }, CLOSE_ANIM_MS);
-    }, LEAVE_HOLD_MS);
-  };
-  // 卸载时清掉两个计时器
-  useEffect(
-    () => () => {
-      if (leaveTimerRef.current !== null) clearTimeout(leaveTimerRef.current);
-      if (closeTimerRef.current !== null) clearTimeout(closeTimerRef.current);
-    },
-    [],
-  );
-
-  /** 左键单击开关弹层（原「长按 ≥500ms / 右键」已移除） */
-  const toggleOpen = (): void => {
-    if (disabled) return;
-    cancelLeave();
-    actions.clearError();
-    if (!open) {
-      actions.beginOpen();
-      setQ('');
-    }
-    setOpen(!open);
-  };
 
   /**
    * ★ 2026-10-16（用户要求）：**左侧点选订阅时，配置档案也同步切换**（不再只是"浏览"）。
@@ -190,10 +90,9 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
    * 否则先切换档案再选中源（一步完成），并广播两类变更事件让各页同步。
    */
   const pickSource = async (k: string): Promise<void> => {
-    setOpen(false);
-    triggerRef.current?.focus();
+    overlay.closeToTrigger();
     if (await actions.pickSource(k)) return;
-    setOpen(true);
+    overlay.reopen();
   };
 
   const isSidebar = variant === 'sidebar';
@@ -202,9 +101,9 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
     <div
       ref={wrapRef}
       className={`srcpick${isSidebar ? ' srcpick-side' : ''}`}
-      onPointerEnter={cancelLeave}
-      onPointerLeave={scheduleLeave}
-      onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget) && !panelRef.current?.contains(event.relatedTarget)) setOpen(false); }}
+      onPointerEnter={overlay.cancelLeave}
+      onPointerLeave={overlay.scheduleLeave}
+      onBlur={overlay.onWrapperBlur}
     >
       <button
         ref={triggerRef}
@@ -215,7 +114,7 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
         aria-controls={panelId}
         aria-label={`切换站点，当前：${label}`}
         title={`当前源：${label}\n点击切换源`}
-        onClick={(event) => { keyboardInteraction.current = event.detail === 0; toggleOpen(); }}
+        onClick={(event) => overlay.toggle(event, () => { actions.clearError(); actions.beginOpen(); })}
         onContextMenu={(e) => e.preventDefault()}
       >
         {isSidebar ? <span className="srcpick-label">站点</span> : null}
@@ -229,8 +128,8 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
           style={panelPosition}
           className={`srcpick-pop${pane && multi ? ' srcpick-pop-wide' : ''}${isSidebar ? ' srcpick-pop-side' : ''}${closing ? ' srcpick-closing' : ''}`}
           aria-label="订阅和来源"
-          onPointerEnter={cancelLeave}
-          onPointerLeave={scheduleLeave}
+          onPointerEnter={overlay.cancelLeave}
+          onPointerLeave={overlay.scheduleLeave}
         >
           {error && <div className="err" role="alert">{error}</div>}
           <div className="srcpick-pop-tip">
@@ -243,33 +142,41 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
             placeholder="输入源名检索…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              keyboardInteraction.current = true;
-              cancelLeave();
-              if (e.key === 'Enter' && !e.nativeEvent.isComposing && filtered.length) void pickSource(filtered[0].key);
-            }}
+            onKeyDown={(event) => overlay.onSearchKeyDown(event, () => {
+              if (filtered.length) void pickSource(filtered[0].key);
+            })}
           />
           <div className="srcpick-cols">
             {pane && multi && (
               <div className="srcpick-col-sub">
                 {profiles.map((p) => (
-                  <button
-                    type="button"
-                    key={p.id}
-                    aria-pressed={p.id === pane.id}
-                    aria-current={p.id === presentation.activeProfileId ? 'true' : undefined}
-                    className={`srcpick-item ui-action srcpick-sub${p.id === pane.id ? ' active' : ''}${p.id === views!.activeId ? ' cur' : ''}`}
-                    title={`${p.name}（${p.sites.length} 个源）${p.id === views!.activeId ? ' · 当前使用' : ''}${p.id === pane.id && p.id !== views!.activeId ? ' · 正在查看' : ''}`}
-                    disabled={switching}
-                    onClick={() => selectPane(p.id)}
-                  >
-                    <span className="srcpick-sname">{p.name}</span>
-                    {(p.id === pane.id || p.id === views!.activeId) && (
-                      <span className={`srcpick-item-state${p.id === views!.activeId ? ' current' : ''}`}>
-                        {p.id === views!.activeId ? '当前使用' : '查看中'}
-                      </span>
-                    )}
-                  </button>
+                  <div className="srcpick-sub-row" key={p.id}>
+                    <button
+                      type="button"
+                      aria-pressed={p.id === pane.id}
+                      aria-current={p.id === presentation.activeProfileId ? 'true' : undefined}
+                      className={`srcpick-item ui-action srcpick-sub${p.id === pane.id ? ' active' : ''}${p.id === views!.activeId ? ' cur' : ''}`}
+                      title={`${p.name}（${p.sites.length} 个源）${p.id === views!.activeId ? ' · 当前使用' : ''}${p.id === pane.id && p.id !== views!.activeId ? ' · 正在查看' : ''}`}
+                      disabled={switching}
+                      onClick={() => selectPane(p.id)}
+                    >
+                      <span className="srcpick-sname">{p.name}</span>
+                      {(p.id === pane.id || p.id === views!.activeId) && (
+                        <span className={`srcpick-item-state${p.id === views!.activeId ? ' current' : ''}`}>
+                          {p.id === views!.activeId ? '当前使用' : '查看中'}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="srcpick-item ui-action srcpick-sub-preview"
+                      aria-label={`仅预览${p.name}来源`}
+                      aria-pressed={p.id === pane.id}
+                      title={`仅预览${p.name}来源，不立即激活`}
+                      disabled={switching}
+                      onClick={() => actions.previewProfile(p.id)}
+                    >预览</button>
+                  </div>
                 ))}
               </div>
             )}
