@@ -45,8 +45,8 @@ export interface HomeSearchFrameScheduler {
 
 /** IPC boundary required by the browse controller; adapters live at the page composition root. */
 export interface HomeBrowsePort {
-  home(key: string, profileId?: string): Promise<HomeCategoryResult>;
-  category(request: HomeCategoryRequest): Promise<HomeCategoryResult>;
+  home(key: string, profileId?: string, signal?: AbortSignal): Promise<HomeCategoryResult>;
+  category(request: HomeCategoryRequest, signal?: AbortSignal): Promise<HomeCategoryResult>;
 }
 
 /** Semantic browse-session operations exposed to source restoration workflows. */

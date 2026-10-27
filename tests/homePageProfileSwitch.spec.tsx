@@ -48,7 +48,7 @@ describe('HomePage child repository switching', () => {
     state.home.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     act(() => window.dispatchEvent(new CustomEvent('winbox:source-changed', { detail: 'other' })));
     view.rerender(page(true));
-    await waitFor(() => expect(state.home).toHaveBeenLastCalledWith('other', 'A'));
+    await waitFor(() => expect(state.home).toHaveBeenLastCalledWith('other', 'A', expect.any(AbortSignal)));
     expect(screen.queryByText('A影片')).toBeNull();
     await act(async () => finish({ sourceKey: 'other', sortClasses: [], items: [{ id: 'new', name: '新站点影片', pic: '', remarks: '', year: '', area: '', type: '', sourceKey: 'other' }], page: 1, pagecount: 1, total: 1 }));
     await screen.findByText('新站点影片');
@@ -63,7 +63,7 @@ describe('HomePage child repository switching', () => {
     act(() => notifyProfileChanged());
     await screen.findByText('B影片');
     expect(screen.queryByText('A影片')).toBeNull();
-    expect(state.home).toHaveBeenLastCalledWith('same-key', 'B');
+    expect(state.home).toHaveBeenLastCalledWith('same-key', 'B', expect.any(AbortSignal));
   });
 
   it('clears old films and categories when switching to a live-only child', async () => {
@@ -104,7 +104,7 @@ describe('HomePage child repository switching', () => {
     await act(async () => { finishOld(profileConfig('A')); });
     expect(screen.queryByText('A影片')).toBeNull();
     expect(screen.getByText('B影片')).toBeTruthy();
-    expect(state.home).toHaveBeenLastCalledWith('same-key', 'B');
+    expect(state.home).toHaveBeenLastCalledWith('same-key', 'B', expect.any(AbortSignal));
   });
 
   it('ignores an old home response after clearing a live-only child', async () => {

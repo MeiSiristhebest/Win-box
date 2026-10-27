@@ -54,7 +54,7 @@ describe('real inline aggregate entry', () => {
   it('executes all-profile search on the inline search route instead of navigating again', async () => {
     render(<MemoryRouter initialEntries={['/search?agg=跨仓影片']}><HomePage onOpenDetail={vi.fn()} /></MemoryRouter>);
     await screen.findByText('跨仓影片');
-    expect(client.searchAll).toHaveBeenCalledWith('跨仓影片', { refresh: false, profileIds: ['A', 'B'] });
+    expect(client.searchAll).toHaveBeenCalledWith('跨仓影片', { refresh: false, profileIds: ['A', 'B'] }, expect.any(AbortSignal));
     expect(openSearchWindow).not.toHaveBeenCalled();
     expect(client.home).not.toHaveBeenCalled();
     act(() => window.dispatchEvent(new CustomEvent('winbox:source-changed', { detail: 'same-key' })));

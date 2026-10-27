@@ -11,6 +11,9 @@ export type HomeBrowseSnapshot = {
   tid: string;
   filters: Record<string, string>;
   fallback: boolean;
+  /** Optional for compatibility with snapshots created before waterfall state was included. */
+  wfNoMore?: boolean;
+  lastPageSignature?: string;
 };
 
 export type HomeBrowseReturnDestination =

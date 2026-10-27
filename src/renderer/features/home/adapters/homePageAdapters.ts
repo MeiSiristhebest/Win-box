@@ -8,8 +8,8 @@ import type {
 } from '../application/homePorts';
 
 export const homeBrowseAdapter: HomeBrowsePort = {
-  home: (...args) => client.home(...args),
-  category: (request) => client.category(request),
+  home: (key, profileId, signal) => client.home(key, profileId, signal),
+  category: (request, signal) => client.category(request, signal),
 };
 
 export const homeSearchAdapter: HomeSearchPort = {

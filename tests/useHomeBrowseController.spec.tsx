@@ -48,31 +48,35 @@ function homeResult(id: string, sourceKey: string) {
 
 function useBrowseHarness(categoryState: HomeCategoryStateMemoryPort = { read: () => undefined, save: () => undefined }) {
   const [key, setKey] = React.useState('source-a');
-  const [browseLoading, setBrowseLoading] = React.useState(false);
-  const [err, setErr] = React.useState('');
   const keyRef = React.useRef(key);
   const profileIdRef = React.useRef('profile-a');
   const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const selectSource = React.useCallback((sourceKey: string) => {
+    keyRef.current = sourceKey;
+    setKey(sourceKey);
+  }, []);
   const controller = useHomeBrowseController({
-    data: {
-      home: (sourceKey, profileId) => client.home(sourceKey, profileId),
-      category: (request) => client.category(request),
+    ports: {
+      data: {
+        home: (sourceKey, profileId, signal) => client.home(sourceKey, profileId, signal),
+        category: (request, signal) => client.category(request, signal),
+      },
+      context: {
+        activeSourceKey: () => keyRef.current,
+        selectSource,
+        activeProfileId: () => profileIdRef.current,
+        setActiveProfileId: (profileId) => { profileIdRef.current = profileId; },
+      },
+      categoryState,
+      browseStarted: vi.fn(),
+      memoryRestoreStarted: vi.fn(),
     },
-    key,
-    setKey,
-    keyRef,
-    profileIdRef,
     contentRef,
-    browseLoading,
     aggMode: false,
     waterfall: false,
     waterfallObserver: { observe: () => () => undefined },
-    categoryState,
-    setBrowseLoading,
-    setBrowseError: setErr,
-    onBrowseStart: vi.fn(),
   });
-  return { ...controller, key, setKey, keyRef, browseLoading, err, categoryState };
+  return { ...controller, key, setKey: selectSource, keyRef, browseLoading: controller.loading, err: controller.error, categoryState };
 }
 
 beforeEach(() => {
@@ -133,6 +137,35 @@ describe('useHomeBrowseController', () => {
 
     expect(result.current.items.map((item) => item.id)).toEqual(['current item']);
     expect(result.current.err).toBe('');
+    expect(result.current.browseLoading).toBe(false);
+  });
+
+  it('does not let a stale category page replace results after a filter/page request supersedes it', async () => {
+    const oldPage = deferred<Awaited<ReturnType<typeof client.category>>>();
+    const categoryResult = (id: string, page: number) => ({
+      sourceKey: 'source-a',
+      sortClasses: [],
+      items: [{ id, name: id, pic: '', remarks: '', year: '', area: '', type: '', sourceKey: 'source-a' }],
+      page,
+      pagecount: 4,
+      total: 12,
+    }) as Awaited<ReturnType<typeof client.category>>;
+    vi.mocked(client.category)
+      .mockReturnValueOnce(oldPage.promise)
+      .mockResolvedValueOnce(categoryResult('filtered page', 1));
+
+    const { result } = renderHook(() => useBrowseHarness());
+    act(() => { void result.current.loadCategory('genre', 3, { area: 'east' }); });
+    act(() => { void result.current.loadCategory('genre', 1, { area: 'west' }); });
+    await waitFor(() => expect(result.current.items.map((item) => item.id)).toEqual(['filtered page']));
+
+    await act(async () => {
+      oldPage.resolve(categoryResult('stale page', 3));
+      await oldPage.promise;
+    });
+
+    expect(result.current.items.map((item) => item.id)).toEqual(['filtered page']);
+    expect(result.current.pageInfo.page).toBe(1);
     expect(result.current.browseLoading).toBe(false);
   });
 
@@ -208,7 +241,7 @@ describe('useHomeBrowseController', () => {
     expect(categoryState.read).toHaveBeenCalledWith('source-a', 'genre', 'profile-a');
     expect(client.category).toHaveBeenCalledWith({
       key: 'source-a', tid: 'genre', pg: '3', extend: { area: 'east' }, profileId: 'profile-a',
-    });
+    }, expect.any(AbortSignal));
 
     act(() => result.current.chooseFilter('area', 'west'));
     expect(categoryState.save).toHaveBeenCalledWith('source-a', 'genre', 'profile-a', {
@@ -232,6 +265,25 @@ describe('useHomeBrowseController', () => {
     await waitFor(() => expect(result.current.pg).toBe(4));
     expect(client.category).toHaveBeenLastCalledWith({
       key: 'source-a', tid: 'genre', pg: '4', extend: {}, profileId: 'profile-a',
-    });
+    }, expect.any(AbortSignal));
+  });
+
+  it('aborts the superseded network request when a new browse category starts', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof client.home>>>();
+    vi.mocked(client.home).mockReturnValue(pending.promise);
+    vi.mocked(client.category).mockResolvedValue({
+      sourceKey: 'source-a', sortClasses: [], items: [], page: 1, pagecount: 1, total: 0,
+    } as Awaited<ReturnType<typeof client.category>>);
+
+    const { result } = renderHook(() => useBrowseHarness());
+    act(() => { void result.current.loadHome('source-a'); });
+    const oldSignal = vi.mocked(client.home).mock.calls[0]?.[2];
+    expect(oldSignal?.aborted).toBe(false);
+
+    act(() => { void result.current.loadCategory('genre', 1); });
+
+    expect(oldSignal?.aborted).toBe(true);
+    expect(vi.mocked(client.category).mock.calls[0]?.[1]).toBeInstanceOf(AbortSignal);
+    pending.resolve(homeResult('ignored', 'source-a'));
   });
 });

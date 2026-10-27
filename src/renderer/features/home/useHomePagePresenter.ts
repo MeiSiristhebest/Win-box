@@ -72,18 +72,25 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
   const searchWindow = homeSearchNavigation.isSearchWindow();
   const requestedProfileId = (searchParams.get('profileId') || '').trim();
   /** ★ 2026-09-28：用于判断当前是否在 /search 路由（URL 同步搜索词只在该路由做，避免 /home 被改成搜索路由而重挂载） */
-  const [browseLoading, setBrowseLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
-  const loading = aggMode ? searchLoading : browseLoading;
-  const [browseError, setBrowseError] = useState('');
   const [searchError, setSearchError] = useState('');
   const [sourceError, setSourceError] = useState('');
   const [profileReady, setProfileReady] = useState(false);
   const keyRef = useRef('');
+  const browseStartedRef = useRef<() => void>(() => undefined);
   /** ★ 2026-09-26：`/search?agg=` 外部入口的本轮关键词（非空即需要跑一次全源搜索） */
   const aggParam = (searchParams.get('agg') || '').trim();
   const requestedAllProfiles = searchParams.get('profiles') !== 'current';
   const contentRef = useRef<HTMLDivElement>(null);
+  const browseContext = useMemo(() => ({
+    activeSourceKey: () => keyRef.current,
+    selectSource: (sourceKey: string) => {
+      keyRef.current = sourceKey;
+      setKey(sourceKey);
+    },
+    activeProfileId: () => profileIdRef.current,
+    setActiveProfileId: (profileId: string) => { profileIdRef.current = profileId; },
+  }), []);
   /** 挂载恢复：数据就绪后回滚一次滚动位置（loadCategory 异步，须等 items 渲染） */
   const memRestoreRef = useRef(false);
   /**
@@ -94,21 +101,17 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
    *   而这份列表用户进搜索前明明已经看过了，没有任何理由再取一次。
    */
   const browse = useHomeBrowseController({
-    data: ports.browse,
-    key,
-    setKey,
-    keyRef,
-    profileIdRef,
+    ports: {
+      data: ports.browse,
+      context: browseContext,
+      categoryState: ports.categoryState,
+      browseStarted: () => browseStartedRef.current(),
+      memoryRestoreStarted: () => { memRestoreRef.current = true; },
+    },
     contentRef,
-    browseLoading,
     aggMode,
     waterfall: waterfallMode,
     waterfallObserver: ports.waterfallObserver,
-    categoryState: ports.categoryState,
-    setBrowseLoading,
-    setBrowseError,
-    onMemoryRestoreStart: () => { memRestoreRef.current = true; },
-    onBrowseStart: () => search.browseStarted(),
   });
   const {
     classes,
@@ -134,6 +137,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
     wfStatusText,
     wfNoMore,
   } = browse;
+  const loading = aggMode ? searchLoading : browse.loading;
   const browseSearchSession = browse.searchBrowsePort;
   const classLevels: HomeCascadeLevel[] = buildHomeCascadeLevels({ classes, tid, filtersActive, filtersOpen: filterPanel.isOpen });
   function onCascadePick(level: string, value: string): void {
@@ -156,7 +160,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
       dispatchSearch: dispatchHomeSearch,
       setSearchLoading,
       setSearchError,
-      clearBrowseLoading: () => setBrowseLoading(false),
+      clearBrowseLoading: browse.clearLoading,
       clearBrowseResults: clearResults,
       restoreBrowse: (snapshot) => {
         setSearchError('');
@@ -168,6 +172,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
       loadHome,
     },
   });
+  browseStartedRef.current = search.browseStarted;
   const { applySearchMem, setProfileSearchScope, doSearch, openFolder, exitFolder, exitSearch } = search;
   const resultProfileId = activeProfileId;
   const resultView = useMemo(() => projectSearchResults(agg?.items ?? [], wd, { mode: aggMatchMode, profileId: aggProfileFilter, sourceId: aggSrc, defaultProfileId: resultProfileId }), [agg, wd, aggMatchMode, aggProfileFilter, aggSrc, resultProfileId]);
@@ -189,7 +194,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
     profileIdRef,
     restorePendingRef: memRestoreRef,
     items,
-    loading: browseLoading,
+    loading: browse.loading,
     categoryId: tid,
     page: pg,
     filters: filtersActive,
@@ -204,7 +209,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
       setProfileId: setActiveProfileId,
       setSites, setProfiles, setProfileReady, setSourceError,
       clearWorkflowLoading: () => {
-        setBrowseLoading(false);
+        browse.clearLoading();
         setSearchLoading(false);
       },
       dispatchSearch: dispatchHomeSearch,
@@ -326,7 +331,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
       filtersOpen: filterPanel.isOpen,
       fallback,
       items,
-      loading: browseLoading,
+      loading: browse.loading,
       waterfall,
       tid,
       pg,
@@ -336,7 +341,7 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
       waterfallSentinelRef: wfSentinelRef,
       jumpPage,
       picOf: coverSessions.picOf,
-      error: browseError,
+      error: browse.error,
       hasSources: sites.length > 0,
       listStyle,
       cardStyle,
