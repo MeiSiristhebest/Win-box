@@ -1,7 +1,7 @@
 import { Outlet, Route, Routes, useNavigate } from 'react-router-dom';
 import WindowTitleBar from './layouts/WindowTitleBar';
 import PageErrorBoundary from './components/PageErrorBoundary';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { KeepAliveRoutes } from './features/navigation/KeepAliveRoutes';
 import { useLocation } from 'react-router-dom';
 const ConfigPage = lazy(() => import('./pages/ConfigPage'));
@@ -21,10 +21,9 @@ const ComponentShowcasePage = lazy(() => import('./pages/ComponentShowcasePage')
 const FavoritesPage = lazy(() => import('./pages/FavoritesPage'));
 /** ★ 2026-09-29：启动更新提示（本地版本低于 GitHub 最新 Release 时由用户决定是否更新） */
 import UpdateGate from './components/UpdateGate';
-import { loadUiMemory, sameEpProgress, saveUiMemory, markHistoryOnlyWriter } from './lib/uiMemory';
+import { sameEpProgress, markHistoryOnlyWriter } from './lib/uiMemory';
 import { MODIFIED_BUILD_DISCLAIMER } from './lib/disclaimerText';
 // ★ 2026-10-17（用户要求）：收藏（独立 localStorage 键，不并入 uiMemory）
-import { FAVORITES_EVENT, loadFavorites } from './features/favorites/favoritesRuntime';
 // ★ 2026-09-30（用户要求）：显式绑定第三方播放器时点播直接由它播放（详见 lib/externalPlay.ts）
 import { playVodExternal } from './lib/externalPlay';
 import { useShowDiscover } from './lib/uiPrefs';
@@ -56,6 +55,11 @@ import { pluginKeymapAdapter } from './features/plugins/adapters/pluginKeymapAda
 import { PluginKeymapsProvider } from './features/plugins/PluginKeymapsContext';
 import { pluginCommandAdapter } from './features/plugins/adapters/pluginCommandAdapter';
 import { reportPageError } from './features/diagnostics/adapters/pageErrorReporterAdapter';
+import { appHomePath, decideAppBackAction, shouldHandleAppBackShortcut } from './features/appShell/application/appNavigationPolicy';
+import { appMemorySessionAdapter } from './features/appShell/adapters/appMemorySessionAdapter';
+import { auxiliaryWindowNavigationAdapter } from './features/appShell/adapters/auxiliaryWindowNavigationAdapter';
+import { useAppMemorySession } from './features/appShell/useAppMemorySession';
+import { useAuxiliaryWindowNavigation } from './features/appShell/useAuxiliaryWindowNavigation';
 
 const coverRuntimePorts = {
   lookup: coverLookupAdapter,
@@ -114,6 +118,11 @@ function AppShell() {
   const runPluginCommand = usePluginCommandRunner();
   const nav = useNavigate();
   const loc = useLocation();
+  const isPlayerWin = loc.pathname === '/player';
+  const isAuxiliaryWindow = isDetailWindow() || isSearchWindow();
+  const navigateAuxiliary = useCallback((route: string) => nav(route), [nav]);
+  useAppMemorySession({ isPlayerWindow: isPlayerWin, port: appMemorySessionAdapter });
+  useAuxiliaryWindowNavigation({ enabled: isAuxiliaryWindow, navigate: navigateAuxiliary, port: auxiliaryWindowNavigationAdapter });
   // ★ 2026-10-15：把本窗口的导航函数交给搜索入口 —— 「单页内」模式下搜索在**本窗口内**跳转（伪墓碑）。
   useEffect(() => {
     bindSearchNavigation((to) => nav(to));
@@ -133,7 +142,7 @@ function AppShell() {
     .map((g) => ({ ...g, items: g.items.filter((n) => showDiscover || n.to !== '/') }))
     .filter((g) => g.items.length > 0);
   /** 返回/回退的落点：发现被关掉时回「点播」 */
-  const backHome = showDiscover ? '/' : '/home';
+  const backHome = appHomePath(showDiscover);
   useEffect(() => {
     if (!showDiscover && loc.pathname === '/') nav('/home', { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -158,10 +167,10 @@ function AppShell() {
                     : 'Win-Box';
   /** 工具栏返回箭头（‹）：macOS 窗口的导航回退 */
   const goBack = (): void => {
-    if (window.history.length > 1) nav(-1);
-    // ★ 2026-10-08：独立详情窗口没有可退的历史 → 返回 = 关窗（更符合「点开一个独立窗口」的直觉）
-    else if (isDetailWindow() || isSearchWindow()) void client.winClose();
-    else nav(backHome, { replace: true });
+    const action = decideAppBackAction({ historyLength: window.history.length, auxiliaryWindow: isAuxiliaryWindow, homePath: backHome });
+    if (action.kind === 'history') nav(-1);
+    else if (action.kind === 'close-window') void client.winClose();
+    else nav(action.path, { replace: true });
   };
   // 首次启动免责声明弹窗：已同意过（localStorage 标记）则不再弹出
   const [disclaim, setDisclaim] = useState(() => {
@@ -172,15 +181,19 @@ function AppShell() {
     const onKey = (e: KeyboardEvent) => {
       if (isNativeModalOpen()) return;
       const t = e.target as HTMLElement | null;
-      const typing =
+      const typingTarget =
         t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-      if (typing) return;
-      const altLeft = e.altKey && e.key === 'ArrowLeft';
-      const backspace = e.key === 'Backspace';
-      if ((altLeft || backspace) && loc.pathname !== backHome) {
-        e.preventDefault();
-        goBack(); // ★ 2026-10-08：与工具栏/返回键同一套语义（详情窗口无历史 → 关窗）
-      }
+      if (!shouldHandleAppBackShortcut({
+        key: e.key,
+        altKey: e.altKey,
+        composing: e.isComposing,
+        typingTarget: !!typingTarget,
+        modalOpen: false,
+        pathname: loc.pathname,
+        homePath: backHome,
+      })) return;
+      e.preventDefault();
+      goBack(); // Alt+← / Backspace 共用同一导航决策。
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -190,47 +203,6 @@ function AppShell() {
   // ★ 2026-10-18 插件快捷键（`contributes.keymap`，scope=app）：命中即交给宿主受控动作词表执行
   //   （插件不跑代码；键位在校验期已保证含 Ctrl/Alt/Meta，与宿主裸键不重叠）
   usePluginKeymaps('app', (km) => { void runPluginCommand(km, message => dialog.confirm(message, { title: km.label })); });
-
-  // 初始化加载历史记录
-  useEffect(() => {
-    loadUiMemory();
-    // ★ 2026-10-17（用户要求）：收藏（独立 localStorage 键）——启动即加载，跨启动保留
-    loadFavorites();
-    // ★ 2026-09-30（用户要求「软件关闭后，所有的墓碑机制都应该脱钩」）：
-    //   页面状态类记忆（搜索态/浏览态/详情态）的**脱钩在 renderer/main.tsx 挂载前完成** ——
-    //   必须早于首屏渲染，否则 HomePage 会先从 uiMem 恢复出上一次的搜索界面（用户报的现象）。
-    //   会话凭据 = 主进程 sessionId（每次启动必变）；观看历史/播放进度照常跨启动保留。
-    // ★ 持久化兜底：Electron 关闭窗口/刷新可能不触发 React 卸载 cleanup，
-    //   这里监听确定性退出信号立即写盘，保证重启后历史/进度仍在。
-    const flush = () => saveUiMemory();
-    window.addEventListener('beforeunload', flush);
-    window.addEventListener('pagehide', flush);
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') flush();
-      else if (!isPlayerWin) {
-        // ★ 播放器窗口写在共享 localStorage 的历史，主窗口在恢复可见时重载，
-        //   否则主窗口启动时只 load 一次（当时为空），历史页永远读不到播放器窗口的记录。
-        loadUiMemory();
-        // ★ 2026-10-17：收藏同款（辅助窗口点收藏/移除后，切回主窗口即同步）
-        loadFavorites();
-        window.dispatchEvent(new Event(FAVORITES_EVENT));
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      window.removeEventListener('beforeunload', flush);
-      window.removeEventListener('pagehide', flush);
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 页面卸载时保存历史记录
-  useEffect(() => {
-    return () => {
-      saveUiMemory();
-    };
-  }, []);
 
   // ★ 播放网盘资源未绑定 cookie → 播放器/内嵌播放窗口发起「去绑定」：
   //   主窗口收到后跳到「点播页」（网盘绑定入口统一在源主页的「网盘绑定」按钮；配置页不再放网盘配置）。
@@ -242,36 +214,6 @@ function AppShell() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loc.pathname]);
-
-  // 独立播放器窗口：#/player 时渲染无侧栏的播放界面（独立 BrowserWindow 使用）
-  const isPlayerWin = loc.pathname === '/player';
-
-  // ★ 2026-10-08（用户要求「详情页独立窗口」）：详情窗口复用 —— 主进程在已开的详情窗口上再点片子时
-  //   发 `win:navigate`，本窗口切到新路由（不新开窗口、不整页重载，窗口位置/尺寸保留）。
-  useEffect(() => {
-    if (!isDetailWindow() && !isSearchWindow()) return;
-    const off = client.winOnNavigate((route) => nav(route));
-    // 首次挂载完成后通知主进程，补发加载期间收到的最新路由。
-    const timer = window.setTimeout(() => { void client.winRouteReady().catch(() => undefined); }, 0);
-    return () => { window.clearTimeout(timer); off(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // ★ 2026-09-20 修复「历史续播位置过期」：独立播放器窗口关闭 → 主窗口重新获得焦点，
-  //   此时重载 localStorage 历史（播放器窗口关窗时把最新进度写入了 localStorage），
-  //   并广播刷新事件让历史页进度/列表即时同步（此前须切走再切回历史页才刷新）。
-  useEffect(() => {
-    if (isPlayerWin) return;
-    const onFocus = () => {
-      loadUiMemory();
-      window.dispatchEvent(new Event('winbox:history-refresh'));
-      // ★ 2026-10-17：收藏同款 —— 在独立详情/搜索窗口里点的收藏，回到主窗口即能看到
-      loadFavorites();
-      window.dispatchEvent(new Event(FAVORITES_EVENT));
-    };
-    window.addEventListener('focus', onFocus);
-    return () => window.removeEventListener('focus', onFocus);
-  }, [isPlayerWin]);
 
   /**
    * ★ 2026-10-17（B3「冻结/解冻」）：播放器窗口打开期间，把**本窗口里不可见**的已解码图片释放掉
