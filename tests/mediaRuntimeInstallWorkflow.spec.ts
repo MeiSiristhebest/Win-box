@@ -98,6 +98,19 @@ function createPorts(options: {
 }
 
 describe('MediaRuntimeInstallWorkflow', () => {
+  it('preserves the active runtime when official release metadata cannot be read', async () => {
+    const { ports, removed, getActiveManifest } = createPorts();
+    vi.mocked(ports.resolvePlan).mockRejectedValueOnce(new Error('release metadata timeout'));
+    const workflow = new MediaRuntimeInstallWorkflow(ports);
+
+    await expect(workflow.install('mpv', new AbortController().signal)).rejects.toThrow('release metadata timeout');
+
+    expect(getActiveManifest()).toBe(oldManifest);
+    expect(ports.createWorkspace).not.toHaveBeenCalled();
+    expect(ports.download).not.toHaveBeenCalled();
+    expect(removed).toEqual([]);
+  });
+
   it('keeps the previous active manifest and removes new files when manifest commit fails', async () => {
     const { ports, removed, getActiveManifest, workspace } = createPorts({ failCommit: true });
     const workflow = new MediaRuntimeInstallWorkflow(ports);

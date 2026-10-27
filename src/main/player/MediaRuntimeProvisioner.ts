@@ -11,10 +11,9 @@ import { playerSettings } from './playerSettings';
 import { distDir, mediaRuntimesDir, userDataDir } from '../util/paths';
 import {
   runtimeAssetSha256,
-  runtimeReleaseApiUrl,
   selectRuntimeReleaseAsset,
-  type MediaRuntimeRelease,
 } from './mediaRuntimeReleasePolicy';
+import { readMediaRuntimeRelease } from './mediaRuntimeReleaseCatalog';
 import {
   downloadVerifiedMediaRuntime,
   MAX_MEDIA_RUNTIME_ARCHIVE_BYTES,
@@ -137,7 +136,7 @@ export class MediaRuntimeProvisioner {
     this.controller = controller;
     const workflow = new MediaRuntimeInstallWorkflow({
       resolvePlan: async (selectedRuntime, signal) => {
-        const release = await this.getRelease(selectedRuntime, signal);
+        const release = await readMediaRuntimeRelease(selectedRuntime, signal);
         const asset = selectRuntimeReleaseAsset(selectedRuntime, release);
         const sha256 = runtimeAssetSha256(asset);
         const version = String(release.tag_name || '').trim();
@@ -268,24 +267,6 @@ export class MediaRuntimeProvisioner {
 
   private emit(runtime: MediaRuntimeId, phase: MediaRuntimeProgress['phase'], received: number, total: number, message: string): void {
     try { this.progress?.({ runtime, phase, received, total, message }); } catch { /* UI may have closed */ }
-  }
-
-  private async getRelease(runtime: MediaRuntimeId, signal: AbortSignal): Promise<MediaRuntimeRelease> {
-    const url = runtimeReleaseApiUrl(runtime);
-    const response = await fetch(url, {
-      signal,
-      headers: {
-        accept: 'application/vnd.github+json',
-        'x-github-api-version': '2022-11-28',
-        'user-agent': 'Win-Box media runtime installer',
-      },
-    });
-    if (!response.ok) throw new Error('读取官方发行信息失败（HTTP ' + response.status + '）');
-    const value = await response.json() as Partial<MediaRuntimeRelease>;
-    if (!Array.isArray(value.assets) || typeof value.tag_name !== 'string' || typeof value.html_url !== 'string') {
-      throw new Error('官方发行信息格式异常');
-    }
-    return value as MediaRuntimeRelease;
   }
 
   private async extract(archivePath: string, tempRoot: string, extractedRoot: string, signal: AbortSignal): Promise<void> {
