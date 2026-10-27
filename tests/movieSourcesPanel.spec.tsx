@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MovieSourcesPanel } from '../src/renderer/features/detail/MovieSourcesPanel';
+import { openDetailRoute } from '../src/renderer/lib/detailWin';
 import { client } from '../src/renderer/api/client';
 import { mergeSearchResults } from '../src/engine/vod/aggSearch';
 import { sourceIdentityKey } from '../src/shared/sourceIdentity';
@@ -15,6 +16,11 @@ vi.mock('../src/renderer/lib/keepAlive', () => ({ usePageActive: () => true }));
 vi.mock('../src/renderer/lib/detailWin', () => ({ openDetailRoute: vi.fn() }));
 vi.mock('../src/renderer/lib/useCovers', () => ({ useCovers: (items: Array<{ pic: string }>) => ({ picOf: (item: { pic: string }) => item.pic, onError: vi.fn(), items }) }));
 const vod = (name: string, id = name): VodItem => ({ id, name, pic: 'https://images.test/' + id + '.jpg', remarks: '高清', year: '2026', area: '', type: '剧集', sourceKey: 'fixture' });
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 beforeEach(() => {
   vi.clearAllMocks();
   const config = profileConfig('A');
@@ -66,6 +72,75 @@ describe('movie source posters and filters', () => {
     fireEvent.click(await screen.findByRole('button', { name: /浏览网盘目录/ }));
     await screen.findByRole('button', { name: /第01集/ });
     expect(client.category).toHaveBeenCalledWith({ key: 'same', tid: '夸克（92个）', pg: '1', extend: {}, profileId: 'B' });
+  });
+
+  it('returns from a cloud folder to the filtered aggregate result list', async () => {
+    vi.mocked(client.searchAll).mockResolvedValue(mergeSearchResults([{ profileId: 'B', key: 'same', name: '乙源', status: 'ok', items: [
+      { ...vod('夸克（目录）'), tag: 'folder' },
+      vod('嫁金钗 01'),
+    ] }]));
+    vi.mocked(client.category).mockResolvedValue({ sourceKey: 'same', sortClasses: [], items: [vod('第01集')], page: 1, pagecount: 1, total: 1 });
+    const user = userEvent.setup();
+    show();
+
+    await user.click(await screen.findByRole('button', { name: /浏览网盘目录/ }));
+    await screen.findByRole('button', { name: /第01集/ });
+    await user.click(screen.getByRole('button', { name: '返回全部片源' }));
+
+    expect(await screen.findByRole('button', { name: /嫁金钗 01/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /第01集/ })).toBeNull();
+  });
+
+  it('ignores a pending folder response after the user changes the profile filter', async () => {
+    const category = deferred<{ sourceKey: string; sortClasses: []; items: VodItem[]; page: number; pagecount: number; total: number }>();
+    vi.mocked(client.searchAll).mockResolvedValue(mergeSearchResults([
+      { profileId: 'A', profileName: '甲仓', key: 'alpha', name: '甲源', status: 'ok', items: [vod('嫁金钗 第一集', 'alpha-item')] },
+      { profileId: 'B', profileName: '乙仓', key: 'beta', name: '乙源', status: 'ok', items: [{ ...vod('嫁金钗网盘目录', 'beta-folder'), tag: 'folder' }] },
+    ]));
+    vi.mocked(client.category).mockReturnValue(category.promise);
+    const user = userEvent.setup();
+    show();
+
+    await user.selectOptions(await screen.findByRole('combobox', { name: '按子仓筛选' }), 'B');
+    await user.click(await screen.findByRole('button', { name: /浏览网盘目录/ }));
+    await waitFor(() => expect(client.category).toHaveBeenCalledOnce());
+    await user.selectOptions(screen.getByRole('combobox', { name: '按子仓筛选' }), 'A');
+
+    await act(async () => { category.resolve({ sourceKey: 'beta', sortClasses: [], items: [vod('第01集', 'stale-episode')], page: 1, pagecount: 1, total: 1 }); });
+
+    expect(await screen.findByRole('button', { name: /嫁金钗 第一集/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '返回全部片源' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /第01集/ })).toBeNull();
+  });
+
+  it('ignores a pending folder response after aggregate search is refreshed', async () => {
+    const category = deferred<{ sourceKey: string; sortClasses: []; items: VodItem[]; page: number; pagecount: number; total: number }>();
+    vi.mocked(client.searchAll)
+      .mockResolvedValueOnce(mergeSearchResults([{ profileId: 'B', profileName: '乙仓', key: 'beta', name: '乙源', status: 'ok', items: [{ ...vod('嫁金钗网盘目录', 'beta-folder'), tag: 'folder' }] }]))
+      .mockResolvedValueOnce(mergeSearchResults([{ profileId: 'B', profileName: '乙仓', key: 'beta', name: '乙源', status: 'ok', items: [vod('嫁金钗 新搜索结果', 'fresh-result')] }]));
+    vi.mocked(client.category).mockReturnValue(category.promise);
+    const user = userEvent.setup();
+    show();
+
+    await user.click(await screen.findByRole('button', { name: /浏览网盘目录/ }));
+    await waitFor(() => expect(client.category).toHaveBeenCalledOnce());
+    await user.click(screen.getByRole('button', { name: '重新搜索' }));
+
+    expect(await screen.findByRole('button', { name: /嫁金钗 新搜索结果/ })).toBeTruthy();
+    await act(async () => { category.resolve({ sourceKey: 'beta', sortClasses: [], items: [vod('第01集', 'stale-episode')], page: 1, pagecount: 1, total: 1 }); });
+
+    expect(screen.queryByRole('button', { name: '返回全部片源' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /第01集/ })).toBeNull();
+  });
+
+  it('shows detail navigation failures instead of dropping the user action silently', async () => {
+    vi.mocked(openDetailRoute).mockRejectedValueOnce(new Error('detail window unavailable'));
+    const user = userEvent.setup();
+    show();
+
+    await user.click(await screen.findByRole('button', { name: /嫁金钗，甲仓/ }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('detail window unavailable');
   });
 
   it('renders only a bounded first page of posters', async () => {

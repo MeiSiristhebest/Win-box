@@ -58,6 +58,7 @@ export function useMovieSources(title: string, enabled: boolean, port: MovieSour
     loading: current?.loading ?? Boolean(query && enabled),
     error: current?.error ?? '',
     query,
+    generation: key,
     refresh: useCallback(() => { retryCount.current = { title, count: 0 }; setRevision(value => value + 1); }, [title]),
   };
 }
