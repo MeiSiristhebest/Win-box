@@ -22,6 +22,13 @@ async function files(directory, prefix = '') {
 const digest = async path => createHash('sha256').update(await readFile(path)).digest('hex');
 const exists = async path => !!await stat(path).catch(() => null);
 
+export function parseInstallationAcceptanceArgs(args, defaultAppDir) {
+  const stopRunningProcess = args.includes('--stop-running');
+  const positional = args.filter(argument => argument !== '--stop-running');
+  if (positional.length > 1) throw new Error('Usage: verify-installation.mjs [win-unpacked-dir] [--stop-running]');
+  return { appDir: positional[0] || defaultAppDir, stopRunningProcess };
+}
+
 function execute(path) {
   const child = spawnSync(path, ['/S'], { windowsHide: true, timeout: 120_000, encoding: 'utf8' });
   if (child.error) throw child.error;
@@ -98,8 +105,8 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const version = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')).version;
-  const appDir = process.argv[2] || join(ROOT, `release${version}`, 'win-unpacked');
-  const result = { recordedAt: new Date().toISOString(), ...await verifyInstallation(appDir) };
+  const options = parseInstallationAcceptanceArgs(process.argv.slice(2), join(ROOT, `release${version}`, 'win-unpacked'));
+  const result = { recordedAt: new Date().toISOString(), ...await verifyInstallation(options.appDir, options) };
   await writeFile(join(ROOT, '.tmp/installation-acceptance.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
 }
