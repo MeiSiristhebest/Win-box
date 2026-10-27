@@ -990,6 +990,26 @@ describe('PluginHost — L4 沙箱（kind:"code"）', () => {
     writeFileSync(join(dir, 'main.js'), 'winbox.log.i("x")');
   }
 
+  function writeCodePackage(id: string, version: string): string {
+    const pluginManifest: PluginManifest = {
+      manifestVersion: 1,
+      id,
+      name: 'L4 插件',
+      version,
+      apiVersion: HOST_API_VERSION,
+      kind: 'code',
+      main: 'main.js',
+      permissions: ['log'],
+      contributes: [],
+    };
+    const filePath = join(root, `${id}-${version}.winbox`);
+    writeFileSync(filePath, buildZip([
+      { name: 'plugin.json', bytes: Buffer.from(JSON.stringify(pluginManifest)) },
+      { name: 'main.js', bytes: Buffer.from('winbox.log.i("x")') },
+    ]));
+    return filePath;
+  }
+
   it('启用 + code + 就位 → 沙箱启动；list() 带 kind/permissions/sandbox', async () => {
     writeCode('l4-demo');
     const h = l4Host();
@@ -1015,6 +1035,26 @@ describe('PluginHost — L4 沙箱（kind:"code"）', () => {
     expect(made).toHaveLength(2);
     expect(previous.disposed).toBe(true);
     expect((await h.list())[0].sandbox?.running).toBe(true);
+  });
+
+  it('同 id 安装新版本会原子更新 plugin.json、列表快照并替换运行沙箱', async () => {
+    writeCode('l4-demo', { version: '1.0.0' });
+    const h = l4Host();
+    await h.init();
+    const previous = made[0];
+
+    const installed = await h.installFromFile(writeCodePackage('l4-demo', '2.0.0'));
+
+    expect(installed.ok).toBe(true);
+    expect(installed.items?.[0]).toMatchObject({ id: 'l4-demo', version: '2.0.0', kind: 'code', ready: true });
+    expect(JSON.parse(readFileSync(join(pluginsDir, 'l4-demo.winbox', 'plugin.json'), 'utf-8'))).toMatchObject({
+      id: 'l4-demo',
+      version: '2.0.0',
+    });
+    expect((await h.list())[0]).toMatchObject({ version: '2.0.0', sandbox: { running: true } });
+    expect(previous.disposed).toBe(true);
+    expect(made).toHaveLength(2);
+    expect(readdirSync(pluginsDir).some((name) => name.endsWith('.tmp') || name.endsWith('.bak'))).toBe(false);
   });
 
   it('并发 refresh 只提交最新登记表代次', async () => {

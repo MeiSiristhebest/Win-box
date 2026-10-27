@@ -73,6 +73,59 @@ describe('usePluginSettingsPresenter', () => {
     expect(dependencies.skins.reload).not.toHaveBeenCalled();
   });
 
+  it('upgrades an existing plugin id and publishes the refreshed version snapshot', async () => {
+    const dependencies = createDependencies();
+    const upgradedPlugin: PluginView = { ...plugin, version: '2.0.0', name: 'Sample v2' };
+    vi.mocked(dependencies.catalog.listPlugins)
+      .mockResolvedValueOnce([plugin])
+      .mockResolvedValue([upgradedPlugin]);
+    vi.mocked(dependencies.catalog.inspectInstallSource).mockResolvedValue({
+      canceled: false,
+      ok: true,
+      path: 'sample-plugin-v2.winbox',
+      id: plugin.id,
+      name: upgradedPlugin.name,
+      version: upgradedPlugin.version,
+      kind: 'asset',
+    });
+    vi.mocked(dependencies.lifecycle.install).mockResolvedValue({ ok: true, items: [upgradedPlugin] });
+    const { result } = renderHook(() => usePluginSettingsPresenter(dependencies, vi.fn(), true));
+    await waitFor(() => expect(result.current.pluginItems).toEqual([plugin]));
+
+    await act(async () => { await result.current.installPlugin(); });
+
+    expect(dependencies.lifecycle.install).toHaveBeenCalledWith('sample-plugin-v2.winbox');
+    expect(dependencies.catalog.listPlugins).toHaveBeenCalledTimes(2);
+    expect(result.current.pluginItems).toEqual([upgradedPlugin]);
+    expect(result.current.pluginMessage).toEqual({ text: '安装成功', kind: 'ok' });
+    expect(dependencies.events.notifyChanged).toHaveBeenCalledOnce();
+    expect(dependencies.skins.reload).toHaveBeenCalledOnce();
+  });
+
+  it('preserves the installed version and reports a failed same-id upgrade', async () => {
+    const dependencies = createDependencies();
+    vi.mocked(dependencies.catalog.inspectInstallSource).mockResolvedValue({
+      canceled: false,
+      ok: true,
+      path: 'sample-plugin-v2.winbox',
+      id: plugin.id,
+      name: plugin.name,
+      version: '2.0.0',
+      kind: 'asset',
+    });
+    vi.mocked(dependencies.lifecycle.install).mockResolvedValue({ ok: false, reason: '替换插件目录失败' });
+    const { result } = renderHook(() => usePluginSettingsPresenter(dependencies, vi.fn(), true));
+    await waitFor(() => expect(result.current.pluginItems).toEqual([plugin]));
+
+    await act(async () => { await result.current.installPlugin(); });
+
+    expect(result.current.pluginItems).toEqual([plugin]);
+    expect(result.current.pluginMessage).toEqual({ text: '替换插件目录失败', kind: 'err' });
+    expect(dependencies.catalog.listPlugins).toHaveBeenCalledOnce();
+    expect(dependencies.events.notifyChanged).not.toHaveBeenCalled();
+    expect(dependencies.skins.reload).not.toHaveBeenCalled();
+  });
+
   it.each([
     { enabled: false, description: '停用' },
     { enabled: true, description: '启用' },
