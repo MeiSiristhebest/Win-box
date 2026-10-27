@@ -732,7 +732,7 @@
       "kind": "debt",
       "priority": "P2",
       "title": "媒体组件下载补齐传输预算和可替换安装用例",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         4,
@@ -766,7 +766,11 @@
         "max": 5
       },
       "dependsOn": [],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "49e807a",
+        "verification": "Media-runtime install protection and test ports are committed. Six focused Vitest files / 47 tests passed: download bounds, archive preflight/worker failures, path safety, install failure/cancellation, repeated upgrade preserving the active version; web and test TypeScript checks passed."
+      }
     },
     {
       "id": "A07",
@@ -815,7 +819,11 @@
         "B04",
         "B09"
       ],
-      "probes": []
+      "probes": [],
+      "reviewEvidence": {
+        "commit": "1e02ab1033da8bab561ffa70d7ace96ef675d0d4",
+        "verification": "预热与调用共用父/子 classpath 规划；JAR 执行策略 17 项通过，typecheck、architecture:check、Oxlint 通过。只完成 classpath 小切片，产物准备与运行会话仍耦合。"
+      }
     },
     {
       "id": "A08",
@@ -913,7 +921,7 @@
       "kind": "debt",
       "priority": "P2",
       "title": "首页浏览分页、筛选恢复与请求生命周期仍依赖 React 状态",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         4,
@@ -950,7 +958,11 @@
       "dependsOn": [
         "A02"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "c2b3c58a5459ca0b8838ba13950875959ca9648a",
+        "verification": "9 个 Vitest 文件 / 53 项通过；renderer/full typecheck、architecture:check、定向 Oxlint 通过。"
+      }
     },
     {
       "id": "A11",
@@ -1046,7 +1058,7 @@
       "kind": "debt",
       "priority": "P2",
       "title": "发现/榜单及影片来源面板补齐展示模型和错误状态",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         4,
@@ -1080,14 +1092,18 @@
         "max": 7
       },
       "dependsOn": [],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "0d7ac15",
+        "verification": "Discovery error/retry regression test committed. Seven focused Vitest files / 36 tests passed across board loading, retryable credential state, source filtering/folders, cover fallback, relevance, and discovery-to-detail navigation; web/test TypeScript checks passed."
+      }
     },
     {
       "id": "A14",
       "kind": "debt",
       "priority": "P2",
       "title": "插件设置页仍把安装、启停、字段写回与 JSX 混合",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         4,
@@ -1124,14 +1140,18 @@
         "B06",
         "B08"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "0f1da27",
+        "verification": "Plugin keymap View/Presenter and lifecycle states committed. Five focused Vitest files / 91 tests passed, including plugin host install/upgrade/enable/disable/uninstall flows, field save failure, busy controls, cancel and keymap loading/empty/error/retry; web/test TypeScript checks passed."
+      }
     },
     {
       "id": "A15",
       "kind": "debt",
       "priority": "P2",
       "title": "来源选择器的业务投影与浮层状态继续归位",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         6,
@@ -1165,14 +1185,18 @@
         "max": 5
       },
       "dependsOn": [],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "ef68c65",
+        "verification": "Source picker overlay, controlled/self-loading selection, profile preview/atomic switch, keyboard/focus and leave-delay behavior committed. Fourteen tests across source picker presentation/profile switching and ShellFrame passed. Follow-up uqp removes the obsolete component path and corrects the ShellFrame mock path."
+      }
     },
     {
       "id": "A16",
       "kind": "debt",
       "priority": "P2",
       "title": "AppShell 的导航规则与跨窗口内存同步独立成会话边界",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         4,
@@ -1208,7 +1232,11 @@
         "max": 5
       },
       "dependsOn": [],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "c0c52417b0edbcac6d39f2bc799f480f597f0744",
+        "verification": "与 A13-A16 相关的 12 个测试文件 / 52 项通过；导航、内存会话、辅助窗口握手和卸载清理验收覆盖。"
+      }
     },
     {
       "id": "A17",
@@ -1274,7 +1302,7 @@
       "kind": "debt",
       "priority": "P2",
       "title": "统一原子组件、交互状态和样式所有权，消除跨外壳补丁级联",
-      "status": "open",
+      "status": "completed",
       "principles": [
         2,
         6,
@@ -1324,14 +1352,18 @@
         "A15",
         "A17"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "71b05cf77ec62fd02cdc54cf35af59660c06b42d",
+        "verification": "6 个 Vitest 文件 / 51 项通过；typecheck、architecture:check、目标 Oxlint 通过；实机 DPI/整窗复核保留在 V03。"
+      }
     },
     {
       "id": "A19",
       "kind": "debt",
       "priority": "P2",
       "title": "本地脚本/目录/直播导入业务离开 IPC 适配器",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         4,
@@ -1368,14 +1400,18 @@
       "dependsOn": [
         "B07"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "eef29ad53de768af2892b196daaed1c709dd3d17",
+        "verification": "4 个 Vitest 文件 / 24 项通过；全量 typecheck、architecture:check、目标 Oxlint 与 diff check 通过。"
+      }
     },
     {
       "id": "A20",
       "kind": "debt",
       "priority": "P2",
       "title": "架构门禁从大量特定文件规则扩到明确模块角色",
-      "status": "open",
+      "status": "completed",
       "principles": [
         2,
         6,
@@ -1415,7 +1451,11 @@
         "A18",
         "A19"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "b1bd331",
+        "verification": "tests/architectureBoundaries.spec.ts 258/258 passed; node scripts/architecture-boundaries.mjs passed; reviewed architecture-boundary implementation."
+      }
     },
     {
       "id": "A21",
@@ -1460,7 +1500,7 @@
       "kind": "validation",
       "priority": "P1",
       "title": "JS/JVM/Python/原生桥共同替换契约与生命周期矩阵验收",
-      "status": "open",
+      "status": "completed",
       "principles": [
         3,
         4,
@@ -1510,7 +1550,11 @@
         "A04",
         "A07"
       ],
-      "probes": []
+      "probes": [],
+      "completionEvidence": {
+        "commit": "3ed15ca",
+        "verification": "Runtime matrix committed. Shared JS/JVM/Python adapter/runner scenarios 27/27 passed; actual JVM loader and filesystem probes 10/10 passed; web/test TypeScript checks passed. Three native ARM asset-dependent tests were skipped and are explicitly NOT RUN, not PASS."
+      }
     },
     {
       "id": "V02",
@@ -1659,7 +1703,11 @@
         "B06",
         "A21"
       ],
-      "probes": []
+      "probes": [],
+      "reviewEvidence": {
+        "commit": "6a7344072429e0ac13a4773748c64e505f0e1192",
+        "verification": "新增 --stop-running 实际验收入口和 3 项参数测试。此前 scratch 安装/覆盖/卸载/数据保留通过，但运行中进程实际停止仍 NOT_RUN。"
+      }
     },
     {
       "id": "V05",
@@ -1892,7 +1940,7 @@
     "evidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
   "latestProgress": {
-    "recordedAt": "2026-10-27",
+    "recordedAt": "2026-10-28",
     "requiredTaskCount": 36,
     "completedTaskIds": [
       "B01",
@@ -1909,25 +1957,25 @@
       "A03",
       "A04",
       "A05",
+      "A06",
       "A08",
       "A09",
-      "A11",
-      "A12"
-    ],
-    "openTaskIds": [
-      "A06",
-      "A07",
       "A10",
+      "A11",
+      "A12",
       "A13",
       "A14",
       "A15",
       "A16",
-      "A17",
       "A18",
       "A19",
       "A20",
+      "V01"
+    ],
+    "openTaskIds": [
+      "A07",
+      "A17",
       "A21",
-      "V01",
       "V02",
       "V03",
       "V04",
@@ -1935,8 +1983,8 @@
       "V06"
     ],
     "remainingEngineerHours": {
-      "min": 72,
-      "max": 124
+      "min": 33,
+      "max": 58
     },
     "branch": "codex/architecture-cleanup-20261025",
     "localCommitsUnpushed": true,
