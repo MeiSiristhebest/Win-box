@@ -8,7 +8,7 @@ import { usePageActive } from '../../lib/keepAlive';
 import { useMovieSources } from '../discovery/useMovieSources';
 import { movieSourceFolderAdapter, movieSourcesSearchAdapter } from '../discovery/adapters/movieSourcesAdapters';
 import { loadMovieSourceFolder } from '../discovery/application/movieSourcesUseCases';
-import { projectMovieSourceCover, projectMovieSourceDetailQuery } from '../discovery/application/movieSourcesPanelPresentation';
+import { projectMovieSourceCover, projectMovieSourceDetailQuery, projectMovieSourcesPanelStatus } from '../discovery/application/movieSourcesPanelPresentation';
 import { useMovieSourcesPanelPresenter } from '../discovery/useMovieSourcesPanelPresenter';
 import { SearchResultFilters } from '../search/SearchResultFilters';
 import '../discovery/movie.css';
@@ -27,6 +27,17 @@ export function MovieSourcesPanel({ title: name, poster = '' }: { title: string;
     ),
   }), [navigate]);
   const panel = useMovieSourcesPanelPresenter(search.report, search.query, search.generation, panelPort);
+  const panelStatus = projectMovieSourcesPanelStatus({
+    searchLoading: search.loading,
+    searchError: search.error,
+    report: search.report,
+    resultCount: panel.view.items.length,
+    folderActive: panel.folderTarget !== null,
+    folderLoading: panel.folderLoading,
+    folderError: panel.folderError,
+    folderErrorKind: panel.folderErrorKind,
+    folderItemCount: panel.folder?.items.length ?? 0,
+  });
   const coverItem = useCallback((item: AggVodItem) => projectMovieSourceCover(item, search.query, poster), [search.query, poster]);
   const covers = useCovers(panel.visibleItems.map(coverItem), active, true);
   const openRef = useRef(panel.openItem);
@@ -42,10 +53,10 @@ export function MovieSourcesPanel({ title: name, poster = '' }: { title: string;
       <div><h2>播放来源</h2><p>在全部已导入子仓中查找“{search.query}”，选择片源后查看剧集并播放。</p></div>
       <button type="button" onClick={() => { panel.resetForSearch(); search.refresh(); }} disabled={search.loading}>重新搜索</button>
     </header>
-    {search.loading && <output>{search.progress ? `正在搜索 ${search.progress.done}/${search.progress.total} 个源…` : '正在查找全部片源…'}</output>}
-    {search.error && <div role="alert" className="err">{search.error}</div>}
-    {panel.folderError && <div role="alert" className="err">{panel.folderError}</div>}
-    {panel.folder ? <div className="row"><button type="button" onClick={panel.backToResults}>返回全部片源</button><span>{panel.folder.name}</span></div> : <>
+    {panelStatus.kind === 'searching' && <output>{search.progress ? `正在搜索 ${search.progress.done}/${search.progress.total} 个源…` : panelStatus.message}</output>}
+    {(panelStatus.kind === 'search-error' || panelStatus.kind === 'partial-error' || panelStatus.kind === 'folder-error' || panelStatus.kind === 'detail-error') && <div role="alert" className="err"><span>{panelStatus.message}</span>{(panelStatus.kind === 'search-error' || panelStatus.kind === 'partial-error') && <button type="button" onClick={() => { panel.resetForSearch(); search.refresh(); }}>{panelStatus.retryLabel}</button>}{panelStatus.kind === 'folder-error' && <button type="button" onClick={panel.retryFolder}>{panelStatus.retryLabel}</button>}</div>}
+    {panel.folderTarget && <div className="row"><button type="button" onClick={panel.backToResults}>返回全部片源</button><span>{panel.folder?.name ?? panel.folderTarget.name}</span></div>}
+    {!panel.folder && <>
       <SearchResultFilters profiles={panel.view.profiles} sources={panel.view.sources} profileId={panel.profileId} sourceId={panel.sourceId} mode={panel.mode} hiddenCount={panel.view.hiddenCount}
         onProfile={panel.selectProfile} onSource={panel.selectSource} onMode={panel.selectMode} />
       {search.report && <p className="muted">已检查 {search.report.perSource.length} 个源 · {panel.hitSourceCount} 个源命中 · 显示 {panel.view.items.length} 条{search.report.pendingSources ? ` · ${search.report.pendingSources} 个源正在准备运行时，将自动重试` : ''}</p>}
@@ -55,7 +66,7 @@ export function MovieSourcesPanel({ title: name, poster = '' }: { title: string;
       return <MovieSourceCard key={itemKey} item={item} comparison={panel.comparisonByItem.get(itemKey)} pic={covers.picOf(coverItem(item))} disabled={panel.folderLoading} onOpen={onOpen} onImageError={onImageError} />;
     })}</div>
     {panel.sourceItems.length > panel.visibleItems.length && <button type="button" onClick={panel.showMore}>显示更多片源（还有 {panel.sourceItems.length - panel.visibleItems.length} 条）</button>}
-    {!search.loading && !panel.folderLoading && !search.error && panel.sourceItems.length === 0 && <p className="empty">{panel.folder ? '目录暂未返回条目。' : '当前筛选下没有匹配片源，可以更换来源或匹配方式。'}</p>}
+    {(panelStatus.kind === 'empty' || panelStatus.kind === 'folder-empty') && <p className="empty">{panelStatus.message}</p>}
     {!!search.report?.perSource.length && <details onToggle={event => panel.toggleSourceStates(event.currentTarget.open)}><summary>查看各源搜索状态</summary>{panel.showStates && search.report.perSource.map(source => <p key={JSON.stringify([source.profileId, source.key])}>{source.profileName} / {source.name}：{source.status === 'error' ? source.error : source.count ? `返回 ${source.count} 条` : '本次无返回结果'}</p>)}</details>}
   </section>;
 }

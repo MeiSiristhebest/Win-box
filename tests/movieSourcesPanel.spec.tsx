@@ -143,6 +143,36 @@ describe('movie source posters and filters', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('detail window unavailable');
   });
 
+  it('shows a search failure with an explicit retry and recovers when the connection returns', async () => {
+    vi.mocked(client.searchAll)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(mergeSearchResults([{ profileId: 'A', key: 'one', name: '源', status: 'ok', items: [vod('嫁金钗', 'recovered')] }]));
+    const user = userEvent.setup();
+    show();
+
+    expect((await screen.findByRole('alert')).textContent).toContain('offline');
+    await user.click(screen.getByRole('button', { name: '重试搜索' }));
+
+    expect(await screen.findByRole('button', { name: /嫁金钗，源/ })).toBeTruthy();
+    expect(client.searchAll).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets users retry a failed cloud-folder read', async () => {
+    vi.mocked(client.searchAll).mockResolvedValue(mergeSearchResults([{ profileId: 'B', key: 'same', name: '乙源', status: 'ok', items: [{ ...vod('夸克（目录）'), tag: 'folder' }] }]));
+    vi.mocked(client.category)
+      .mockRejectedValueOnce(new Error('folder offline'))
+      .mockResolvedValueOnce({ sourceKey: 'same', sortClasses: [], items: [vod('第01集')], page: 1, pagecount: 1, total: 1 });
+    const user = userEvent.setup();
+    show();
+
+    await user.click(await screen.findByRole('button', { name: /浏览网盘目录/ }));
+    expect((await screen.findByRole('alert')).textContent).toContain('folder offline');
+    await user.click(screen.getByRole('button', { name: '重试加载目录' }));
+
+    expect(await screen.findByRole('button', { name: /第01集/ })).toBeTruthy();
+    expect(client.category).toHaveBeenCalledTimes(2);
+  });
+
   it('renders only a bounded first page of posters', async () => {
     vi.mocked(client.searchAll).mockResolvedValue(mergeSearchResults([{ profileId: 'A', key: 'one', name: '源', status: 'ok', items: Array.from({ length: 140 }, (_, i) => vod('嫁金钗 ' + i, String(i))) }]));
     const { container } = show();

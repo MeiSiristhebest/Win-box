@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { DiscoverSection } from '../src/shared/types';
-import { projectBoardDirectory } from '../src/renderer/features/discovery/application/boardDirectoryPresentation';
+import { projectBoardDirectory, projectBoardDirectoryViewState } from '../src/renderer/features/discovery/application/boardDirectoryPresentation';
 
 const sections: DiscoverSection[] = [
   { id: 'popular', title: '热门', items: Array.from({ length: 4 }, (_, index) => ({ title: `影片 ${index}` } as DiscoverSection['items'][number])) },
@@ -34,5 +34,47 @@ describe('projectBoardDirectory', () => {
 
     expect(projection.lockedBoards).toEqual([]);
     expect(projection.boards.some((board) => board.provider.toLocaleLowerCase().includes('tmdb'))).toBe(false);
+  });
+});
+
+describe('projectBoardDirectoryViewState', () => {
+  const initial = {
+    active: true,
+    boardCount: 0,
+    sectionsStatus: 'idle' as const,
+    sectionsError: '',
+    credentialsStatus: 'idle' as const,
+    credentialsError: '',
+  };
+
+  it('treats active idle reads as loading and does not flash an empty state', () => {
+    const state = projectBoardDirectoryViewState(initial);
+
+    expect(state.loading).toBe(true);
+    expect(state.empty).toBe(false);
+    expect(state.sections.status).toBe('loading');
+    expect(state.credentials.status).toBe('loading');
+  });
+
+  it('keeps failed resources visible and avoids claiming the directory is empty', () => {
+    const state = projectBoardDirectoryViewState({
+      ...initial,
+      sectionsStatus: 'failed',
+      sectionsError: 'feed unavailable',
+      credentialsStatus: 'failed',
+      credentialsError: 'settings unavailable',
+    });
+
+    expect(state.sections).toEqual({ status: 'failed', error: 'feed unavailable' });
+    expect(state.credentials).toEqual({ status: 'failed', error: 'settings unavailable' });
+    expect(state.empty).toBe(false);
+  });
+
+  it('shows empty only after both resources have completed successfully', () => {
+    expect(projectBoardDirectoryViewState({
+      ...initial,
+      sectionsStatus: 'ready',
+      credentialsStatus: 'ready',
+    }).empty).toBe(true);
   });
 });

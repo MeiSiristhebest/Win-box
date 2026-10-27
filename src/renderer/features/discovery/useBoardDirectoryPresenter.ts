@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DiscoverSection } from '../../../shared/types';
+import type { BoardDirectoryLoadStatus } from './application/boardDirectoryPresentation';
 import type { DiscoverBoardDirectoryPort } from './application/discoveryPorts';
 
-type LoadStatus = 'idle' | 'loading' | 'ready' | 'failed';
+type LoadStatus = BoardDirectoryLoadStatus;
 
 export interface BoardDirectoryPresentationState {
   sections: DiscoverSection[];

@@ -12,6 +12,44 @@ export interface BoardDirectoryProjection {
   previews: Record<string, { items: DiscoverSection['items']; stale?: boolean }>;
 }
 
+export type BoardDirectoryLoadStatus = 'idle' | 'loading' | 'ready' | 'failed';
+
+export interface BoardDirectoryViewState {
+  sections: { status: 'idle' | 'loading' | 'ready' | 'failed'; error: string };
+  credentials: { status: 'idle' | 'loading' | 'ready' | 'failed'; error: string };
+  loading: boolean;
+  empty: boolean;
+}
+
+/** Project asynchronous resource state into view decisions without losing a failed/unknown state. */
+export function projectBoardDirectoryViewState(input: {
+  active: boolean;
+  boardCount: number;
+  sectionsStatus: BoardDirectoryLoadStatus;
+  sectionsError: string;
+  credentialsStatus: BoardDirectoryLoadStatus;
+  credentialsError: string;
+}): BoardDirectoryViewState {
+  const sectionsStatus = input.sectionsStatus === 'idle' && input.active ? 'loading' : input.sectionsStatus;
+  const credentialsStatus = input.credentialsStatus === 'idle' && input.active ? 'loading' : input.credentialsStatus;
+  const sections = {
+    status: sectionsStatus,
+    error: sectionsStatus === 'failed' ? input.sectionsError : '',
+  };
+  const credentials = {
+    status: credentialsStatus,
+    error: credentialsStatus === 'failed' ? input.credentialsError : '',
+  };
+
+  return {
+    sections,
+    credentials,
+    loading: sections.status === 'loading' || credentials.status === 'loading',
+    // Don't call the directory empty while a failed request could still supply boards.
+    empty: input.boardCount === 0 && sections.status === 'ready' && credentials.status === 'ready',
+  };
+}
+
 export interface BoardCredentialState {
   hasCredentials: boolean | null;
   status: 'idle' | 'loading' | 'ready' | 'failed';

@@ -26,7 +26,9 @@ export function useMovieSourcesPanelPresenter(
   const [sourceId, setSourceId] = useState('');
   const [mode, setMode] = useState<SearchMatchMode>('related');
   const [folder, setFolder] = useState<{ name: string; items: AggVodItem[] } | null>(null);
+  const [folderTarget, setFolderTarget] = useState<AggVodItem | null>(null);
   const [folderError, setFolderError] = useState('');
+  const [folderErrorKind, setFolderErrorKind] = useState<'folder' | 'detail' | ''>('');
   const [folderLoadingContext, setFolderLoadingContext] = useState<string | null>(null);
   const [showStates, setShowStates] = useState(false);
   const folderRequest = useRef(0);
@@ -46,7 +48,9 @@ export function useMovieSourcesPanelPresenter(
   const resetForSearch = useCallback(() => {
     invalidateFolderRequest();
     setFolder(null);
+    setFolderTarget(null);
     setFolderError('');
+    setFolderErrorKind('');
     setCap(60);
   }, [invalidateFolderRequest]);
   const view = useMemo(
@@ -61,18 +65,24 @@ export function useMovieSourcesPanelPresenter(
     }
     return map;
   }, [view.items, report?.perSource]);
-  const sourceItems = folder?.items ?? view.items;
+  const sourceItems = folderTarget ? folder?.items ?? [] : view.items;
   const visibleItems = sourceItems.slice(0, cap);
 
   const openItem = useCallback(async (item: AggVodItem): Promise<void> => {
     setFolderError('');
+    setFolderErrorKind('');
     if (item.tag !== 'folder') {
       try { await port.openDetail(item); }
-      catch (error) { setFolderError(failureMessage(error)); }
+      catch (error) {
+        setFolderErrorKind('detail');
+        setFolderError(failureMessage(error));
+      }
       return;
     }
     const context = folderContext;
     const request = ++folderRequest.current;
+    setFolderTarget(item);
+    setFolder(null);
     setFolderLoadingContext(context);
     try {
       const items = await port.loadFolder(item);
@@ -81,7 +91,10 @@ export function useMovieSourcesPanelPresenter(
         setCap(60);
       }
     } catch (error) {
-      if (request === folderRequest.current && context === folderContextRef.current) setFolderError(failureMessage(error));
+      if (request === folderRequest.current && context === folderContextRef.current) {
+        setFolderErrorKind('folder');
+        setFolderError(failureMessage(error));
+      }
     } finally {
       if (request === folderRequest.current && context === folderContextRef.current) setFolderLoadingContext(null);
     }
@@ -91,6 +104,9 @@ export function useMovieSourcesPanelPresenter(
     if (id === profileId) return;
     invalidateFolderRequest();
     setFolderError('');
+    setFolderErrorKind('');
+    setFolder(null);
+    setFolderTarget(null);
     setProfileId(id);
     setSourceId('');
     setCap(60);
@@ -99,6 +115,9 @@ export function useMovieSourcesPanelPresenter(
     if (id === sourceId) return;
     invalidateFolderRequest();
     setFolderError('');
+    setFolderErrorKind('');
+    setFolder(null);
+    setFolderTarget(null);
     setSourceId(id);
     setCap(60);
   }, [invalidateFolderRequest, sourceId]);
@@ -106,6 +125,9 @@ export function useMovieSourcesPanelPresenter(
     if (value === mode) return;
     invalidateFolderRequest();
     setFolderError('');
+    setFolderErrorKind('');
+    setFolder(null);
+    setFolderTarget(null);
     setMode(value);
     setCap(60);
   }, [invalidateFolderRequest, mode]);
@@ -113,9 +135,14 @@ export function useMovieSourcesPanelPresenter(
   const backToResults = useCallback(() => {
     invalidateFolderRequest();
     setFolder(null);
+    setFolderTarget(null);
     setFolderError('');
+    setFolderErrorKind('');
     setCap(60);
   }, [invalidateFolderRequest]);
+  const retryFolder = useCallback(() => {
+    if (folderTarget) void openItem(folderTarget);
+  }, [folderTarget, openItem]);
   const toggleSourceStates = useCallback((open: boolean) => setShowStates(open), []);
   const hitSourceCount = new Set(view.items.map((item) => sourceIdentityKey(item.sourceRef?.profileId, item.sourceKey))).size;
 
@@ -127,13 +154,16 @@ export function useMovieSourcesPanelPresenter(
     mode,
     comparisonByItem,
     folder,
+    folderTarget,
     folderError,
+    folderErrorKind,
     folderLoading,
     sourceItems,
     visibleItems,
     showStates,
     hitSourceCount,
     openItem,
+    retryFolder,
     backToResults,
     selectProfile,
     selectSource,
