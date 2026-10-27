@@ -124,6 +124,46 @@ describe('downloadVerifiedMediaRuntime', () => {
     await expect(downloadVerifiedMediaRuntime(input(), port)).rejects.toThrow('超过官方记录');
   });
 
+  it('cancels an unbounded response as soon as the streamed byte budget is exceeded', async () => {
+    let chunksRead = 0;
+    let canceled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(Uint8Array.of(1));
+      },
+      cancel() { canceled = true; },
+    });
+    const writeResponseBody = vi.fn(async (
+      stream: ReadableStream<Uint8Array>,
+      _destination: string,
+      _signal: AbortSignal,
+      inspectChunk: (chunk: Uint8Array) => void,
+    ) => {
+      const reader = stream.getReader();
+      try {
+        for (;;) {
+          const next = await reader.read();
+          if (next.done) return;
+          chunksRead += 1;
+          inspectChunk(next.value);
+        }
+      } catch (error) {
+        await reader.cancel(error).catch(() => undefined);
+        throw error;
+      } finally {
+        reader.releaseLock();
+      }
+    });
+    const port: MediaRuntimeDownloadPort = {
+      request: vi.fn(async () => response(body)),
+      writeResponseBody,
+    };
+
+    await expect(downloadVerifiedMediaRuntime(input(), port)).rejects.toThrow('超过官方记录');
+    expect(chunksRead).toBe(4);
+    expect(canceled).toBe(true);
+  });
+
   it('rejects a short response and a digest mismatch', async () => {
     await expect(downloadVerifiedMediaRuntime(input({ expectedBytes: 4 }), portFor(bytes([1, 2, 3])))).rejects.toThrow('大小与官方记录不符');
     await expect(downloadVerifiedMediaRuntime(input({ expectedSha256: '0'.repeat(64) }), portFor(bytes([1, 2, 3])))).rejects.toThrow('SHA-256 校验失败');
@@ -149,6 +189,30 @@ describe('downloadVerifiedMediaRuntime', () => {
 
     await expect(downloadVerifiedMediaRuntime(input({ timeoutMs: 10 }), port)).rejects.toThrow('超过总时限');
     expect(port.request).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a body writer that resolves after the deadline and cancels the unread response', async () => {
+    let canceled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(Uint8Array.from([1, 2, 3])); },
+      cancel() { canceled = true; },
+    });
+    const port: MediaRuntimeDownloadPort = {
+      request: vi.fn(async () => response(body)),
+      writeResponseBody: async (_body, _destination, _signal, inspectChunk) => {
+        inspectChunk(Uint8Array.from([1, 2, 3]));
+        await new Promise(resolve => setTimeout(resolve, 20));
+      },
+    };
+
+    await expect(downloadVerifiedMediaRuntime(input({ timeoutMs: 5 }), port)).rejects.toThrow('超过总时限');
+    expect(canceled).toBe(true);
+  });
+
+  it.each([0, -1, Number.NaN, 2_147_483_648])('rejects invalid total deadline %s before requesting the asset', async timeoutMs => {
+    const port = portFor(bytes([1, 2, 3]));
+    await expect(downloadVerifiedMediaRuntime(input({ timeoutMs }), port)).rejects.toThrow('总时限无效');
+    expect(port.request).not.toHaveBeenCalled();
   });
 
   it('aborts a stalled body when the user cancels the installation', async () => {

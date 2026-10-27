@@ -6,6 +6,7 @@ import { isTrustedRuntimeDownloadRedirect } from './mediaRuntimeReleasePolicy';
 
 export const MAX_MEDIA_RUNTIME_ARCHIVE_BYTES = 250 * 1024 * 1024;
 export const MEDIA_RUNTIME_DOWNLOAD_TIMEOUT_MS = 15 * 60 * 1000;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 export interface MediaRuntimeDownloadPort {
   request(url: string, init: { signal: AbortSignal; headers: Record<string, string>; redirect: 'manual' }): Promise<Response>;
@@ -61,19 +62,25 @@ export async function downloadVerifiedMediaRuntime(
   }
   if (!/^[a-f0-9]{64}$/i.test(expectedSha256)) throw new Error('官方发行包 SHA-256 格式异常');
   if (signal.aborted) throw new Error('已取消下载');
+  const timeoutMs = input.timeoutMs ?? MEDIA_RUNTIME_DOWNLOAD_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > MAX_TIMER_DELAY_MS) {
+    throw new Error('媒体组件下载总时限无效');
+  }
 
   const deadline = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
     deadline.abort(new Error('media runtime download deadline exceeded'));
-  }, input.timeoutMs ?? MEDIA_RUNTIME_DOWNLOAD_TIMEOUT_MS);
+  }, timeoutMs);
   const onAbort = (): void => deadline.abort(signal.reason);
   signal.addEventListener('abort', onAbort, { once: true });
   if (signal.aborted) onAbort();
 
+  let response: Response | null = null;
   try {
-    const response = await requestTrustedRedirectChain(url, port, deadline.signal);
+    response = await requestTrustedRedirectChain(url, port, deadline.signal);
+    throwIfDownloadTerminated(signal, timedOut);
     if (!response.ok || !response.body) {
       await discardResponseBody(response);
       throw new Error('下载官方发行包失败（HTTP ' + response.status + '）');
@@ -100,10 +107,14 @@ export async function downloadVerifiedMediaRuntime(
         input.onProgress?.(received, expectedBytes);
       }
     });
+    // A test or platform port can finish concurrently with abort. Do not accept
+    // a transfer that crossed the deadline just because its writer resolved.
+    throwIfDownloadTerminated(signal, timedOut);
 
     if (received !== expectedBytes) throw new Error('下载文件大小与官方记录不符');
     if (hash.digest('hex') !== expectedSha256.toLowerCase()) throw new Error('SHA-256 校验失败，文件已丢弃');
   } catch (error) {
+    if (response) await discardResponseBody(response);
     if (timedOut) throw new Error('下载超过总时限，已停止并清理临时文件');
     if (signal.aborted) throw new Error('已取消下载');
     throw error;
@@ -111,6 +122,11 @@ export async function downloadVerifiedMediaRuntime(
     clearTimeout(timer);
     signal.removeEventListener('abort', onAbort);
   }
+}
+
+function throwIfDownloadTerminated(signal: AbortSignal, timedOut: boolean): void {
+  if (timedOut) throw new Error('下载超过总时限，已停止并清理临时文件');
+  if (signal.aborted) throw new Error('已取消下载');
 }
 
 const MAX_RUNTIME_DOWNLOAD_REDIRECTS = 8;

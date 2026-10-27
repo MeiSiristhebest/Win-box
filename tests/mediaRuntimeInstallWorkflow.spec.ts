@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { MediaRuntimeProgress, MediaRuntimeStatus } from '../src/shared/player';
+import { downloadVerifiedMediaRuntime, type MediaRuntimeDownloadPort } from '../src/main/player/mediaRuntimeDownload';
 import {
   MediaRuntimeInstallWorkflow,
   type MediaRuntimeInstallManifest,
@@ -137,6 +138,62 @@ describe('MediaRuntimeInstallWorkflow', () => {
     ['an oversized response', '下载响应超过官方记录的文件大小'],
   ])('preserves the old active runtime after %s', async (_scenario, failure) => {
     const { ports, removed, getActiveManifest, workspace } = createPorts({ failDownload: failure });
+    const workflow = new MediaRuntimeInstallWorkflow(ports);
+
+    await expect(workflow.install('mpv', new AbortController().signal)).rejects.toThrow(failure);
+
+    expect(getActiveManifest()).toBe(oldManifest);
+    expect(ports.extract).not.toHaveBeenCalled();
+    expect(ports.commitActive).not.toHaveBeenCalled();
+    expect(removed).toEqual([workspace.root]);
+  });
+
+  it.each([
+    ['a stalled real response body', '下载超过总时限'],
+    ['an oversized real response body', '下载响应超过官方记录的文件大小'],
+  ])('keeps the previous active runtime and cleans the workspace after %s', async (scenario, failure) => {
+    const { ports, removed, getActiveManifest, workspace } = createPorts();
+    const body = scenario === 'a stalled real response body'
+      ? new ReadableStream<Uint8Array>({ start() {} })
+      : new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(Uint8Array.from([1, 2, 3, 4]));
+          controller.close();
+        },
+      });
+    const downloadPort: MediaRuntimeDownloadPort = {
+      request: vi.fn(async () => new Response(body)),
+      writeResponseBody: async (stream, _destination, signal, inspectChunk) => {
+        const reader = stream.getReader();
+        let onAbort: (() => void) | undefined;
+        const aborted = new Promise<never>((_resolve, reject) => {
+          onAbort = () => reject(signal.reason ?? new Error('download aborted'));
+          if (signal.aborted) onAbort();
+          else signal.addEventListener('abort', onAbort, { once: true });
+        });
+        try {
+          for (;;) {
+            const next = await Promise.race([reader.read(), aborted]);
+            if (next.done) return;
+            inspectChunk(next.value);
+          }
+        } catch (error) {
+          await reader.cancel(error).catch(() => undefined);
+          throw error;
+        } finally {
+          if (onAbort) signal.removeEventListener('abort', onAbort);
+          reader.releaseLock();
+        }
+      },
+    };
+    vi.mocked(ports.download).mockImplementation((plan, destination, signal) => downloadVerifiedMediaRuntime({
+      url: plan.downloadUrl,
+      destination,
+      expectedBytes: plan.size,
+      expectedSha256: plan.sha256,
+      signal,
+      timeoutMs: 5,
+    }, downloadPort));
     const workflow = new MediaRuntimeInstallWorkflow(ports);
 
     await expect(workflow.install('mpv', new AbortController().signal)).rejects.toThrow(failure);
