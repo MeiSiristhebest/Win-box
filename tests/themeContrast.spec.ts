@@ -212,6 +212,72 @@ describe('shell semantic warning colors', () => {
   });
 });
 
+describe('dualbar shell theme contrast wiring', () => {
+  it('pairs legacy shell foregrounds, surfaces, and boundaries through semantic tokens', async () => {
+    const css = await readFile(new URL('shell-dualbar.css', stylesDirectory), 'utf8');
+    const lastRule = (selector: string): string => {
+      const matches = [...css.matchAll(new RegExp(`${selector}\\s*\\{([^}]*)\\}`, 'g'))];
+      return matches.at(-1)?.[1] ?? '';
+    };
+
+    const header = lastRule(":root\\[data-shell='dualbar'\\] \\.bb-head");
+    expect(header).toMatch(/background:\s*var\(--surface-1\)/);
+    expect(header).toMatch(/border-bottom:\s*1px\s+solid\s+var\(--text-dim\)/);
+
+    const navigation = lastRule(":root\\[data-shell='dualbar'\\] \\.bb-tab");
+    expect(navigation).toMatch(/color:\s*var\(--text-dim\)/);
+    const selectedNavigation = lastRule(":root\\[data-shell='dualbar'\\] \\.bb-tab\.active");
+    expect(selectedNavigation).toMatch(/background:\s*var\(--color-accent\)/);
+    expect(selectedNavigation).toMatch(/color:\s*var\(--on-accent\)/);
+
+    const categoryPanel = lastRule(":root\\[data-shell='dualbar'\\] \\.cascade");
+    expect(categoryPanel).toMatch(/background:\s*var\(--surface-2\)/);
+    expect(categoryPanel).toMatch(/border:\s*1px\s+solid\s+var\(--text-dim\)/);
+
+    const mediaCard = lastRule(":root\\[data-shell='dualbar'\\] \\.card-media \\.card");
+    expect(mediaCard).toMatch(/background:\s*var\(--surface-2\)/);
+    expect(mediaCard).toMatch(/border:\s*1px\s+solid\s+var\(--text-dim\)/);
+
+    const spotlight = lastRule(":root\\[data-shell='dualbar'\\] \\.spot");
+    expect(spotlight).toMatch(/--surface-1/);
+    expect(spotlight).toMatch(/--accent/);
+    expect(spotlight).toMatch(/border:\s*1px\s+solid\s+var\(--text-dim\)/);
+    expect(lastRule(":root\\[data-shell='dualbar'\\] \\.spot-veil")).toMatch(/var\(--surface-0\)/);
+    expect(lastRule(":root\\[data-shell='dualbar'\\] \\.spot-title")).toMatch(/color:\s*var\(--text\)/);
+
+    const playerChrome = lastRule(":root\\[data-shell='dualbar'\\]:not\\(\\[data-mpv\\]\\) \\.app\\.pwin\\.pvwin \\.mini-strip");
+    expect(playerChrome).toMatch(/background:\s*var\(--surface-1\)/);
+    expect(playerChrome).toMatch(/color:\s*var\(--text\)/);
+  });
+
+  it('keeps semantic text and control boundaries readable on dark and light base palettes', async () => {
+    const css = await readFile(new URL('global-foundation.css', stylesDirectory), 'utf8');
+    const palettes = [
+      { name: 'dark base', selector: ':root' },
+      { name: 'light base', selector: ":root[data-base='light']" },
+    ] as const;
+
+    for (const palette of palettes) {
+      const tokens = readRootTokens(css, palette.selector);
+      const baseSurface = parseColor(tokens['--surface-0']);
+      const controlText = parseColor(tokens['--text-dim']);
+      const bodyText = parseColor(tokens['--text']);
+      expect(baseSurface, `${palette.name} needs a base surface`).not.toBeNull();
+      expect(controlText, `${palette.name} needs control text`).not.toBeNull();
+      expect(bodyText, `${palette.name} needs body text`).not.toBeNull();
+
+      for (const surfaceToken of surfaceTokens) {
+        const rawSurface = parseColor(tokens[surfaceToken]);
+        expect(rawSurface, `${palette.name} needs ${surfaceToken}`).not.toBeNull();
+        const surface = composite(rawSurface!, baseSurface!);
+        expect(contrastRatio(bodyText!, surface), `${palette.name}: --text on ${surfaceToken}`).toBeGreaterThanOrEqual(4.5);
+        expect(contrastRatio(controlText!, surface), `${palette.name}: --text-dim on ${surfaceToken}`).toBeGreaterThanOrEqual(4.5);
+        expect(contrastRatio(controlText!, surface), `${palette.name}: --text-dim boundary on ${surfaceToken}`).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+});
+
 describe('native option popup readability', () => {
   it('sets explicit themed foreground, surface, selected, and disabled colors outside desktop mode', async () => {
     const css = await readFile(new URL('global-foundation.css', stylesDirectory), 'utf8');

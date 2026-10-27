@@ -17,14 +17,14 @@
 :root[data-shell='dualbar'] .main { background: var(--surface-0); }
 /* 标题栏并进导航条（一体化）：只保留窗口控制，浅色小圆角按钮 */
 :root[data-shell='dualbar'] .nf-nav .tb-btn { color: var(--text-dim); border-radius: 4px; }
-:root[data-shell='dualbar'] .nf-nav .tb-btn:hover { background: #f1f2f3; color: var(--text); }
+:root[data-shell='dualbar'] .nf-nav .tb-btn:hover { background: var(--surface-3); color: var(--text); }
 :root[data-shell='dualbar'] .nf-nav .tb-btn.tb-close:hover { background: var(--accent-2); color: var(--on-accent); }
 /* 独立播放器窗口仍用完整标题栏 */
 :root[data-shell='dualbar'] .app.pwin .titlebar { background: #000; border-bottom: none; }
 
 .nf-nav { /* 结构由 netflix.css 定义，这里只改配色 */ }
 :root[data-shell='dualbar'] .nf-nav {
-  background: rgba(255, 255, 255, .86); border-bottom: 1px solid var(--border);
+  background: var(--surface-1); border-bottom: 1px solid var(--text-dim);
   backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
   box-shadow: 0 1px 10px rgba(24, 25, 28, .04);
   padding: 10px 26px 12px; gap: 22px;
@@ -47,10 +47,10 @@
 /* ---- 卡片：白底 + 12px 圆角 + 轻阴影，hover 弹簧上浮 + 封面慢推变焦（B 站标志性反馈） ---- */
 :root[data-shell='dualbar'] .content { padding: 14px 22px 26px; }
 :root[data-shell='dualbar'] .card {
-  background: #fff; border: 1px solid transparent; border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0, 0, 0, .05);
+  background: var(--surface-2); border: 1px solid transparent; border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0, 0, 0, .05);
   transition: border-color var(--dur-state) var(--ease-standard), background var(--dur-state) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
 }
-:root[data-shell='dualbar'] .card-media .card { border: 1px solid var(--border); overflow: hidden; }
+:root[data-shell='dualbar'] .card-media .card { border: 1px solid var(--text-dim); overflow: hidden; }
 :root[data-shell='dualbar'] .card-media:hover .card {
   border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: color-mix(in srgb, var(--accent) 5%, transparent);
   box-shadow: none; transform: none;
@@ -82,7 +82,7 @@
 
 /* ---- 按钮：主蓝 / 次白描边 / 粉（强调）；统一弹性过渡 + 按压回弹 ---- */
 :root[data-shell='dualbar'] button {
-  background: #fff; border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); font-weight: 500;
+  background: var(--surface-3); border: 1px solid var(--text-dim); color: var(--text-dim); border-radius: var(--radius-sm); font-weight: 500;
   transition: background var(--dur-state) var(--ease-standard), border-color var(--dur-state) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
     box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring);
 }
@@ -95,7 +95,7 @@
 :root[data-shell='dualbar'] button.primary:hover { background: var(--color-accent); color: var(--on-accent); box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--accent) 55%, transparent); }
 :root[data-shell='dualbar'] .linkbtn { border: none; background: none; color: var(--text-accent); }
 :root[data-shell='dualbar'] .tag {
-  background: #fff; border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); padding: 4px 12px;
+  background: var(--surface-3); border: 1px solid var(--text-dim); color: var(--text-dim); border-radius: var(--radius-sm); padding: 4px 12px;
   transition: background var(--dur-state) var(--ease-standard), border-color var(--dur-state) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
     box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
 }
@@ -107,15 +107,16 @@
 :root[data-shell='dualbar'] input,
 :root[data-shell='dualbar'] select,
 :root[data-shell='dualbar'] textarea {
-  background: #fff; border: 1px solid var(--border); color: var(--text);
+  background: var(--surface-3); border: 1px solid var(--text-dim); color: var(--text);
   transition: border-color var(--dur-quick) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard);
 }
 :root[data-shell='dualbar'] input:focus, :root[data-shell='dualbar'] select:focus { border-color: var(--text-accent, var(--accent)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
-:root[data-shell='dualbar'] ::placeholder { color: var(--text-faint); }
+:root[data-shell='dualbar'] ::placeholder { color: var(--text-dim); opacity: 1; }
+:root[data-shell='dualbar'] :is(input, select, textarea, button):disabled { color: var(--text-dim); background: var(--surface-3); border-color: var(--text-dim); opacity: 1; }
 /* 浏览器表面也要是设计的一部分：选中色 / 插入符 */
 :root[data-shell='dualbar'] ::selection { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 :root[data-shell='dualbar'] input, :root[data-shell='dualbar'] textarea { caret-color: var(--text-accent, var(--accent)); }
-:root[data-shell='dualbar'] .topbar { background: rgba(255, 255, 255, .86); border-bottom: 1px solid var(--border); backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3); }
+:root[data-shell='dualbar'] .topbar { background: var(--surface-1); border-bottom: 1px solid var(--text-dim); backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3); }
 /* 内容区滚动条：浅色细条，悬停加亮 */
 :root[data-shell='dualbar'] ::-webkit-scrollbar { width: 9px; height: 9px; }
 :root[data-shell='dualbar'] ::-webkit-scrollbar-track { background: transparent; }
@@ -130,7 +131,7 @@
 
 /* ---- 详情页：选集按钮（B 站播放页的集数块） ---- */
 :root[data-shell='dualbar'] .ep {
-  background: #fff; border: 1px solid var(--border); color: var(--text-dim); border-radius: var(--radius-sm); font-weight: 500;
+  background: var(--surface-3); border: 1px solid var(--text-dim); color: var(--text-dim); border-radius: var(--radius-sm); font-weight: 500;
   transition: background var(--dur-state) var(--ease-standard), border-color var(--dur-state) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
     box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
 }
@@ -168,13 +169,13 @@
    仅针对独立播放器窗口（`.app.pwin.pvwin`，含标题栏/小窗条/窗口壳；mpv 内核的浮层除外）；
    视频舞台 `.vplayer` 仍是纯黑（观看时需要），详情窗口等其它 `.app.pwin` 不受影响。 */
 :root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin,
-:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .main { background: #fff; }
-:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .titlebar { background: #fff; border-bottom: 1px solid var(--border); }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .main { background: var(--surface-0); }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .titlebar { background: var(--surface-1); border-bottom: 1px solid var(--text-dim); }
 :root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .tb-title { color: var(--text); }
 :root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .tb-btn { color: var(--text-dim); }
 :root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .tb-btn:hover { background: var(--surface-0); color: var(--text); }
 :root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .tb-btn.tb-close:hover { background: var(--accent-2); color: var(--on-accent); }
-:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .mini-strip { background: rgba(241, 242, 243, .92); color: var(--text-dim); }
+:root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .mini-strip { background: var(--surface-1); color: var(--text); }
 :root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .mini-btn { color: var(--text-dim); }
 :root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .mini-btn:hover { background: var(--accent-soft); color: var(--text-accent, var(--accent)); }
 :root[data-shell='dualbar']:not([data-mpv]) .app.pwin.pvwin .mini-strip-close:hover { background: var(--danger); color: var(--on-danger); }
@@ -204,7 +205,7 @@
   background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent-2) 22%, transparent), transparent 68%);
 }
 :root[data-shell='dualbar'] .app-ambient .amb-blob-3 {
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, .85), rgba(255, 255, 255, 0) 70%);
+  background: radial-gradient(circle at 50% 50%, var(--surface-1), transparent 70%);
 }
 :root[data-shell='dualbar'] .app-ambient .amb-grain { opacity: .22; }
 /* 浅色幕布底：左上品牌蓝余光 + 右上品牌粉余光 + 冷调浅灰渐变（光斑之外的静态打底光，保证「有颜色」） */
@@ -212,7 +213,7 @@
   background:
     radial-gradient(1200px 520px at 6% -12%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 62%),
     radial-gradient(1000px 460px at 98% 2%, color-mix(in srgb, var(--accent-2) 16%, transparent), transparent 60%),
-    linear-gradient(180deg, #eef3f8, #f4f6f8 60%, #f6f8fa);
+    linear-gradient(180deg, var(--surface-0), var(--surface-0));
 }
 /* 外壳各级透明 + 抬层：氛围才看得见；内容（z-index:1）才盖得住氛围（z-index:0 的 fixed 层） */
 :root[data-shell='dualbar'] .main { background: transparent; position: relative; z-index: 1; }
@@ -224,10 +225,10 @@
    ★ 整条头仍是可拖拽（先例：B 站皮肤曾因漏设 drag 而整窗拖不动）；交互件显式 no-drag。 */
 :root[data-shell='dualbar'] .bb-head {
   flex: none; position: relative; z-index: 30;
-  background: rgba(255, 255, 255, .88);
+  background: var(--surface-1);
   backdrop-filter: blur(22px) saturate(1.5);
   -webkit-backdrop-filter: blur(22px) saturate(1.5);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--text-dim);
   box-shadow: 0 1px 12px rgba(24, 25, 28, .05);
   -webkit-app-region: drag;
 }
@@ -266,18 +267,18 @@
 :root[data-shell='dualbar'] .bb-top .sp-bar {
   width: 100%; box-sizing: border-box; justify-content: flex-start;
   height: 34px; border-radius: 999px; padding: 0 16px; gap: 8px;
-  background: #f1f2f3; border: 1px solid transparent; color: var(--text-faint); font-size: 12.5px;
+  background: var(--surface-3); border: 1px solid var(--text-dim); color: var(--text-dim); font-size: 12.5px;
   transition: background var(--dur-quick) var(--ease-standard), border-color var(--dur-quick) var(--ease-standard),
     color var(--dur-quick) var(--ease-standard);
 }
-:root[data-shell='dualbar'] .bb-top .sp-bar:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text-accent); }
+:root[data-shell='dualbar'] .bb-top .sp-bar:hover { background: var(--surface-3); border-color: var(--text-dim); color: var(--text); }
 :root[data-shell='dualbar'] .bb-top .titlebar {
   height: auto; width: auto; flex: none; background: none; border: none; padding: 0; box-shadow: none;
 }
 :root[data-shell='dualbar'] .bb-top .tb-title { display: none; }
 :root[data-shell='dualbar'] .bb-top .tb-controls { gap: 3px; -webkit-app-region: no-drag; }
 :root[data-shell='dualbar'] .bb-top .tb-btn { width: 34px; height: 30px; border-radius: var(--radius-sm); color: var(--text-dim); }
-:root[data-shell='dualbar'] .bb-top .tb-btn:hover { background: #f1f2f3; color: var(--text); }
+:root[data-shell='dualbar'] .bb-top .tb-btn:hover { background: var(--surface-3); color: var(--text); }
 :root[data-shell='dualbar'] .bb-top .tb-btn.tb-close:hover { background: var(--accent-2); color: var(--on-accent); }
 /* 第二行：分类 tab 条（选中蓝胶囊 + 弹跳） */
 :root[data-shell='dualbar'] .bb-tabs { display: flex; align-items: center; gap: 4px; padding: 0 14px 10px; overflow-x: auto; }
@@ -299,29 +300,29 @@
 
 /* ---- ③ 页面内顶栏：玻璃条（原实心白）+ 胶囊按钮 ---- */
 :root[data-shell='dualbar'] .topbar {
-  background: rgba(255, 255, 255, .78); border-bottom: 1px solid rgba(227, 229, 231, .8);
+  background: var(--surface-1); border-bottom: 1px solid var(--text-dim);
   backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
   min-height: 48px;
 }
 :root[data-shell='dualbar'] .topbar button {
-  background: rgba(255, 255, 255, .8); border: 1px solid var(--border); border-radius: 999px; padding: 5px 13px;
+  background: var(--surface-3); border: 1px solid var(--text-dim); border-radius: 999px; padding: 5px 13px;
 }
 :root[data-shell='dualbar'] .topbar button:hover {
-  background: #fff; border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text-accent);
+  background: var(--surface-3); border-color: var(--text-dim); color: var(--text);
 }
 
 /* ---- ④ 分类条：玻璃分段容器 + 胶囊 chips（原「散装 chips 直接铺在页面上」） ---- */
 :root[data-shell='dualbar'] .cascade {
   padding: 11px 15px; margin-bottom: 22px; border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, .68); border: 1px solid rgba(227, 229, 231, .85);
+  background: var(--surface-2); border: 1px solid var(--text-dim);
   backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
   box-shadow: 0 12px 28px -22px rgba(24, 25, 28, .45);
 }
-:root[data-shell='dualbar'] .cascade-row + .cascade-row { border-top: 1px solid rgba(24, 25, 28, .06); padding-top: 6px; }
-:root[data-shell='dualbar'] .cascade-label { color: var(--text-faint); font-size: 12px; font-weight: 700; letter-spacing: .12em; }
+:root[data-shell='dualbar'] .cascade-row + .cascade-row { border-top: 1px solid var(--text-dim); padding-top: 6px; }
+:root[data-shell='dualbar'] .cascade-label { color: var(--text-dim); font-size: 12px; font-weight: 700; letter-spacing: .12em; }
 :root[data-shell='dualbar'] .tag {
   border-radius: 999px; padding: 5px 14px; font-size: 12.5px;
-  background: rgba(255, 255, 255, .9); border: 1px solid var(--border); color: var(--text-dim);
+  background: var(--surface-3); border: 1px solid var(--text-dim); color: var(--text-dim);
   transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
     border-color var(--dur-quick) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
 }
@@ -357,8 +358,8 @@
 :root[data-shell='dualbar'] .card-media { transition: transform var(--dur-state) var(--ease-spring); }
 :root[data-shell='dualbar'] .card-media:hover { transform: none; z-index: auto; }
 :root[data-shell='dualbar'] .card-media .card {
-  border: 1px solid rgba(227, 229, 231, .95); border-radius: 14px; overflow: hidden;
-  background: linear-gradient(180deg, rgba(255, 255, 255, .97), rgba(246, 248, 250, .93));
+  border: 1px solid var(--text-dim); border-radius: 14px; overflow: hidden;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
   box-shadow: none;
   transition: border-color var(--dur-state) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard),
     background var(--dur-state) var(--ease-standard);
@@ -372,7 +373,7 @@
 :root[data-shell='dualbar'] .card-media .card > :first-child { position: relative; overflow: hidden; }
 :root[data-shell='dualbar'] .card-media .meta { padding: 9px 11px 11px; }
 :root[data-shell='dualbar'] .no-cover {
-  background: linear-gradient(180deg, #f6f7f8, #eef1f3);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface-3));
   color: var(--text-secondary); border-radius: 0;
 }
 
@@ -380,7 +381,7 @@
    通用按钮的按压反馈在前段定义；中央播放键单独保留居中位移。 */
 :root[data-shell='dualbar'] button {
   border-radius: 999px; padding: 6px 16px;
-  background: rgba(255, 255, 255, .82); border: 1px solid var(--border); color: var(--text-dim); font-weight: 500;
+  background: var(--surface-3); border: 1px solid var(--text-dim); color: var(--text-dim); font-weight: 500;
 }
 :root[data-shell='dualbar'] button:hover {
   background: color-mix(in srgb, var(--accent) 9%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--text-accent); box-shadow: none;
@@ -404,34 +405,33 @@
   border-bottom-right-radius: 0;
 }
 
-/* ---- ⑧ 首屏聚光卡：**浅色纱幕** + 蓝粉环境色 + 深色标题（浅色皮肤的可读性解法） ---- */
+/* ---- ⑧ 首屏聚光卡：主题表面 + 品牌环境色；文字与底色随主题配对 ---- */
 :root[data-shell='dualbar'] .spot {
-  border: 1px solid rgba(227, 229, 231, .9);
-  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  border: 1px solid var(--text-dim);
+  background: var(--surface-2);
   box-shadow: 0 30px 66px -36px rgba(24, 25, 28, .45), inset 0 1px 0 rgba(255, 255, 255, .95);
 }
 /* 模糊海报当环境色底：浅色皮肤提亮（不是压暗），只留颜色不留形象 */
 :root[data-shell='dualbar'] .spot-art-layer { filter: blur(52px) saturate(1.5) brightness(1.08); }
-/* ★ 浅色纱幕：白 / 浅灰高 alpha 渐变 + 两处品牌色柔光，压住模糊海报，深色标题依然可读 */
+/* ★ 文字区用主题底色覆盖模糊海报，保证暗色和亮色主题下都保持可读 */
 :root[data-shell='dualbar'] .spot-veil {
   background:
-    radial-gradient(760px 360px at 8% 0%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 66%),
-    radial-gradient(620px 340px at 96% 100%, color-mix(in srgb, var(--accent-2) 12%, transparent), transparent 62%),
-    linear-gradient(102deg, rgba(255, 255, 255, .95) 0%, rgba(255, 255, 255, .84) 40%,
-      rgba(255, 255, 255, .46) 68%, rgba(255, 255, 255, .84) 100%);
+    radial-gradient(760px 360px at 8% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 66%),
+    radial-gradient(620px 340px at 96% 100%, color-mix(in srgb, var(--accent-2) 10%, transparent), transparent 62%),
+    linear-gradient(102deg, var(--surface-0) 0%, var(--surface-0) 58%, transparent 84%);
 }
 :root[data-shell='dualbar'] .spot-kicker { color: var(--text-accent); }
 :root[data-shell='dualbar'] .spot-kicker-dot { background: var(--accent-2); box-shadow: 0 0 12px color-mix(in srgb, var(--accent-2) 95%, transparent); }
-:root[data-shell='dualbar'] .spot-title { color: var(--text); text-shadow: 0 1px 12px rgba(255, 255, 255, .9); }
+:root[data-shell='dualbar'] .spot-title { color: var(--text); text-shadow: none; }
 :root[data-shell='dualbar'] .spot-meta { color: var(--text-dim); }
 :root[data-shell='dualbar'] .spot-year { color: var(--text-accent, var(--accent)); font-weight: 700; }
-:root[data-shell='dualbar'] .spot-sep { color: var(--text-faint); }
+:root[data-shell='dualbar'] .spot-sep { color: var(--text-dim); }
 :root[data-shell='dualbar'] .spot-rank { color: var(--text-accent); font-weight: 700; letter-spacing: .06em; }
 :root[data-shell='dualbar'] .spot-go { display: inline-flex; align-items: center; gap: 7px; padding: 9px 22px; font-size: 14px; }
 :root[data-shell='dualbar'] .spot-next {
-  background: rgba(255, 255, 255, .88); border: 1px solid var(--border); color: var(--text-dim); padding: 9px 18px; font-weight: 600;
+  background: var(--surface-1); border: 1px solid var(--text-dim); color: var(--text-dim); padding: 9px 18px; font-weight: 600;
 }
-:root[data-shell='dualbar'] .spot-next:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--text-accent, var(--accent)); }
+:root[data-shell='dualbar'] .spot-next:hover { background: var(--surface-3); border-color: var(--text-dim); color: var(--text); }
 :root[data-shell='dualbar'] .spot-poster {
   box-shadow: 0 22px 46px -20px rgba(24, 25, 28, .42), 0 0 0 1px rgba(24, 25, 28, .06),
     0 0 64px -14px color-mix(in srgb, var(--accent) 40%, transparent);
@@ -441,8 +441,8 @@
   filter: brightness(.97) saturate(.82);
   box-shadow: 0 16px 34px -20px rgba(24, 25, 28, .3), 0 0 0 1px rgba(24, 25, 28, .05);
 }
-:root[data-shell='dualbar'] .spot-dot { background: rgba(24, 25, 28, .18); }
-:root[data-shell='dualbar'] .spot-dot:hover { background: rgba(24, 25, 28, .36); }
+:root[data-shell='dualbar'] .spot-dot { background: var(--text-dim); }
+:root[data-shell='dualbar'] .spot-dot:hover { background: var(--text-dim); }
 :root[data-shell='dualbar'] .spot-dot.active { background: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 80%, transparent); }
 
 /* ============================================================================
@@ -450,10 +450,12 @@
    哔哔要的是「彩色横幅 + 扁平白卡 + 悬浮药丸控制条」，而不是另一套玻璃卡。
    ============================================================================ */
 
-/* ---- ⑨ 首屏：**彩色横幅**（蓝→粉渐变纱幕 + 更亮的景），而不是灰蒙蒙的白纱 ---- */
+/* ---- ⑨ 首屏：表面渐层与品牌色氛围随当前主题切换 ---- */
 :root[data-shell='dualbar'] .spot {
-  border: none; border-radius: 20px;
-  background: linear-gradient(115deg, #e8f4fb 0%, #f3f0f6 52%, #fdeef3 100%);
+  border: 1px solid var(--text-dim); border-radius: 20px;
+  background: linear-gradient(115deg,
+    color-mix(in srgb, var(--surface-1) 92%, var(--accent) 8%) 0%,
+    color-mix(in srgb, var(--surface-1) 92%, var(--accent-2) 8%) 100%);
   box-shadow: 0 20px 46px -26px rgba(24, 25, 28, .4), inset 0 0 0 1px rgba(24, 25, 28, .05);
 }
 :root[data-shell='dualbar'] .spot-art-layer { filter: blur(36px) saturate(2.2) brightness(1.12); }
@@ -464,14 +466,14 @@
   -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 38%);
   mask-image: linear-gradient(to right, transparent 0%, #000 38%);
 }
-/* 纱幕：只在文字区压一层极薄的白（左侧 .72 → 中段即消失），色彩层交给品牌渐变底与右半幅氛围 */
+/* 纱幕在标题区域使用主题表面，向海报侧渐隐，避免固定白纱盖在暗色主题上 */
 :root[data-shell='dualbar'] .spot-veil {
-  background: linear-gradient(100deg, rgba(255, 255, 255, .72) 0%, rgba(255, 255, 255, .34) 34%, rgba(255, 255, 255, 0) 62%);
+  background: linear-gradient(100deg, var(--surface-0) 0%, var(--surface-0) 58%, transparent 84%);
 }
 :root[data-shell='dualbar'] .spot-kicker { color: var(--text-accent); }
 :root[data-shell='dualbar'] .spot-title {
   font-size: clamp(30px, 3.8vw, 46px);
-  color: #12161c; text-shadow: 0 2px 14px rgba(255, 255, 255, .9), 0 0 2px rgba(255, 255, 255, .8);
+  color: var(--text); text-shadow: none;
 }
 /* 海报放大 + 落地：带品牌蓝长影，ghost 预告错位更明显 */
 :root[data-shell='dualbar'] .spot-stage { width: 204px; height: 306px; }
@@ -493,8 +495,8 @@
 /* ---- ⑪ 卡片：**扁平白卡**（细边 + 几乎无阴影）+ uiverse 式 **skew 扫光** ----
    ★ 与 netflix（裸图放大）、大果（大圆角玻璃）、大豆（M3 色调容器）三套**卡片解剖**互不相同。 */
 :root[data-shell='dualbar'] .card-media .card {
-  border: 1px solid var(--border); border-radius: var(--radius);
-  background: #fff;
+  border: 1px solid var(--text-dim); border-radius: var(--radius);
+  background: var(--surface-2);
   box-shadow: none;
 }
 :root[data-shell='dualbar'] .card-media:hover .card {
