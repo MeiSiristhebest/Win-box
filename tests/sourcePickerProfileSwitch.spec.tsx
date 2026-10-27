@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SourcePicker from '../src/renderer/features/subscriptions/SourcePicker';
 import type { SourcePickerPort } from '../src/renderer/features/subscriptions/application/sourcePickerPort';
+import type { SourceBean } from '../src/shared/types';
 
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
@@ -47,6 +48,35 @@ describe('SourcePicker child repository switching', () => {
     expect(activeProfile.getAttribute('aria-pressed')).toBe('true');
     expect(activeSource.getAttribute('aria-current')).toBe('true');
     expect(activeSource.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('uses controlled sources and current selection without self-loading or changing the source through the port', async () => {
+    const port = createPort();
+    const onPick = vi.fn();
+    const sites = [
+      { key: 'live', name: '直播源' },
+      { key: 'live-alt', name: '备用直播源' },
+    ] as SourceBean[];
+    render(<SourcePicker sites={sites} current="live" onPick={onPick} port={port} />);
+
+    expect(screen.getByRole('button', { name: '切换站点，当前：直播源' })).toBeTruthy();
+    expect(port.loadCurrentSources).not.toHaveBeenCalled();
+    expect(port.subscribeToCurrentSourcesRefresh).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '切换站点，当前：直播源' }));
+    const activeSource = await screen.findByRole('button', { name: '直播源 当前' });
+    expect(activeSource.getAttribute('aria-current')).toBe('true');
+    expect(activeSource.getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(await screen.findByRole('button', { name: '备用直播源' }));
+
+    expect(onPick).toHaveBeenCalledOnce();
+    expect(onPick).toHaveBeenCalledWith('live-alt');
+    expect(port.loadCurrentSources).not.toHaveBeenCalled();
+    expect(port.setActiveSource).not.toHaveBeenCalled();
+    expect(port.switchProfileSource).not.toHaveBeenCalled();
+    expect(port.publishSourceChanged).not.toHaveBeenCalled();
+    expect(port.publishProfileChanged).not.toHaveBeenCalled();
   });
 
   it('selects the first filtered source with Enter', async () => {
