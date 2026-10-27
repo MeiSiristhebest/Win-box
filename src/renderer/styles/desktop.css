@@ -379,12 +379,9 @@
     outline: 2px solid var(--focus-ring-color);
     outline-offset: 1px;
   }
-  :root[data-ui='desktop'] .vp-ctl { min-height: 0; background: transparent; color: #fff; border: 0; box-shadow: none; }
+  :root[data-ui='desktop'] .vp-ctl:not(.vp-on):not([aria-expanded='true']):not([aria-pressed='true']) { min-height: 0; background: transparent; color: #fff; border: 0; box-shadow: none; }
   :root[data-ui='desktop'] .vplayer .vp-ctl.vp-rate { min-height: 40px; }
-  :root[data-ui='desktop'] .vp-ctl:hover { background: #ffffff24; color: #fff; }
-  :root[data-ui='desktop'] .vplayer .vp-ctl:is(.vp-on, [aria-expanded='true'], [aria-pressed='true']):not(.vp-rate) {
-    color: #d5e4ff; background: #172d4e; border: 1px solid #83aaff; box-shadow: inset 0 -2px #83aaff;
-  }
+  :root[data-ui='desktop'] .vp-ctl:hover:not(.vp-on):not([aria-expanded='true']):not([aria-pressed='true']) { background: #ffffff24; color: #fff; }
   :root[data-ui='desktop'] .vplayer .vp-vpanel { color: #f3f5f9; background: #181b21; border-color: #727b8a; box-shadow: var(--shadow-lg); }
   :root[data-ui='desktop'] .vplayer .vp-vpct { color: #f3f5f9; }
   :root[data-ui='desktop'] .vplayer :is(.vp-ctl, .vp-big, .vp-citem, .vp-skipmenu-item, .vp-rate, .vp-vtrack, .vsp-btn, .ivi-nav-btn):disabled {
@@ -662,22 +659,6 @@
   :root[data-ui='desktop'] .desktop-main .dav-row { min-height: 48px; }
   :root[data-ui='desktop'] .desktop-main .dav-row:focus-visible { position: relative; z-index: 1; }
 
-  /* Keep playback legible and light: compact solid transport control, no glass blur. */
-  :root[data-ui='desktop'] .vplayer .vp-big {
-    width: 40px;
-    height: 40px;
-    min-height: 40px;
-    padding: 0;
-    border: 1px solid #ffffff68;
-    border-radius: 10px;
-    color: #fff;
-    background: #111419ed;
-    box-shadow: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-  :root[data-ui='desktop'] .vplayer .vp-big svg { width: 20px; height: 20px; }
-  :root[data-ui='desktop'] .vplayer .vp-big:hover { background: #242a33; transform: translate(-50%, -50%); }
   @media (max-width: 900px) {
     :root[data-ui='desktop'] .desktop-main .live-page-layout { grid-template-columns: minmax(170px, 210px) minmax(0, 1fr); gap: 14px; }
     :root[data-ui='desktop'] .desktop-main .live-page-layout > .left { padding: 12px; }

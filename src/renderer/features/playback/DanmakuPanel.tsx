@@ -63,7 +63,9 @@ export function DanmakuPanel({
               {(['full', 'half', 'quarter'] as const).map((region) => (
                 <button
                   key={region}
+                  type="button"
                   className={`vsp-btn${settings.region === region ? ' active' : ''}`}
+                  aria-pressed={settings.region === region}
                   onClick={() => onSettingsCommand({ type: 'select-region', region })}
                 >
                   {region === 'full' ? '全屏' : region === 'half' ? '半屏' : '1/4 屏'}

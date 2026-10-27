@@ -343,8 +343,6 @@
 :root[data-shell='pillbar'] .vp-ctl { color: #EDEDF2; }
 /* 倍速下拉（压在视频上）：深色玻璃，不做白底（写在 select 规则之后，同特异度取后者） */
 :root[data-shell='pillbar'] .vp-rate { background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .16); color: var(--on-media); }
-:root[data-shell='pillbar'] .vp-ctl.vp-on { color: var(--text-accent-secondary, var(--accent-2)); background: rgba(255, 255, 255, .18); }
-:root[data-shell='pillbar'] .vp-ctl.vp-on:hover { color: var(--text-accent-secondary, var(--accent-2)); background: rgba(255, 255, 255, .26); }
 :root[data-shell='pillbar'] .vp-vfill { background: var(--accent); }
 :root[data-shell='pillbar'] .vp-toast { background: rgba(24, 22, 28, .8); }
 /* 播放器内弹层（字幕 / 弹幕 / 画质 / 跳过 / 投屏）：白卡片 + 深字（浅色皮肤的“浅色抽屉”） */
@@ -554,7 +552,7 @@
      ⑤ 排版 → 海报墙 chips / 节标题 → **带品牌光条的大字号标题**（与 netflix「大字号 + 光条」对位）；
      ⑥ 卡片 → 「白卡」→ **白玻璃卡**（描边 + 双层阴影 + shine 扫光 + 悬停浮出豆绿播放钮）；
      ⑧ 首屏 → 发现页**浅色聚光卡**（.spot：模糊海报做环境色 + 浅色纱幕 + 深色大字号标题）。
-   ★ 历史守卫全部保留：`.vp-ctl` 重置、`.vp-big:active` 位移守卫、pvwin 白壳、普通搜索条宽度、弹窗底兜底。
+    ★ 历史守卫全部保留：`.vp-ctl` 重置、pvwin 白壳、普通搜索条宽度、弹窗底兜底。
    ★ M3 克制口径：大豆是**浅色**皮肤，光斑与纱幕都要**柔和**，只给极淡的色温偏移，不花哨。
    ============================================================================ */
 
@@ -777,7 +775,7 @@
         与 netflix「全出血 billboard」/ 哔哔「彩色横幅」/ 大果「Today 玻璃卡」都不重叠；
      ⑦ 卡片 → **M3 tonal 卡**：圆角 20px + 状态层（**去掉 shine 扫光**，那是哔哔的语言）；
      ⑨ 播放器 → **M3 bottom-app-bar dock**：近实心 tonal 圆角条 + 厚圆进度 + 40px 圆钮 + 40px 中央播放键。
-   ★ 历史守卫全部保留：`.vp-ctl` 重置、`.vp-big:active` 位移守卫、pvwin 白壳、普通搜索条宽度、弹窗底兜底。
+    ★ 历史守卫全部保留：`.vp-ctl` 重置、pvwin 白壳、普通搜索条宽度、弹窗底兜底。
    ============================================================================ */
 
 /* ---- ① 环境：暖纸白打底 + 豆绿 / 豆瓣橙 / 极淡中性光（克制） + 极淡颗粒 ---- */
@@ -1001,25 +999,6 @@
 }
 :root[data-shell='pillbar'] .vp-ctl:hover { background: rgba(255, 255, 255, .1); color: var(--on-media); box-shadow: none; }
 /* 开启态：豆绿 tonal 底 + 豆绿图标（.a.b 组合压过 hover 反压） */
-:root[data-shell='pillbar'] .vp-ctl.vp-on { color: var(--text-accent, var(--accent)); background: color-mix(in srgb, var(--accent) 24%, transparent); }
-:root[data-shell='pillbar'] .vp-ctl.vp-on:hover { color: var(--text-accent, var(--accent)); background: color-mix(in srgb, var(--accent) 32%, transparent); }
-/* 中央播放/暂停键：40px 高对比实底按钮，无模糊玻璃层。 */
-:root[data-shell='pillbar'] .vp-big {
-  width: 40px; height: 40px; border-radius: 10px; border: none; color: var(--on-accent);
-  background: var(--color-accent);
-  box-shadow: none;
-  box-sizing: border-box;
-  min-height: 40px;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-/* ★ hover 必须带 translate(-50%,-50%)（元素 left/top:50% 定位，缺位移会跳走半个身位） */
-:root[data-shell='pillbar'] .vp-big:hover {
-  transform: translate(-50%, -50%);
-  background: linear-gradient(150deg, #33A02D, #1B7018);
-}
-/* ★ 重申按下位移守卫（generic button 规则之后，§C62） */
-:root[data-shell='pillbar'] .vp-big:active { transform: translate(-50%, -50%); }
 /* 小窗模式：dock 收敛（避免大内边距挤占小窗空间） */
 :root[data-shell='pillbar'] .vplayer.vp-mini .vp-controls { padding: 10px 14px 12px; border-radius: 22px; }
 }

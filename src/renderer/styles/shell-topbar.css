@@ -84,8 +84,6 @@
 }
 :root[data-shell='topbar'] button:hover { background: rgba(109, 109, 110, .38); color: var(--text); box-shadow: none; }
 :root[data-shell='topbar'] button:active { transform: scale(.96); }
-/* 中央播放键使用 translate(-50%,-50%) 定位，按下时保留居中位置。 */
-:root[data-shell='topbar'] .vp-big:active { transform: translate(-50%, -50%); }
 /* 红色只留给真正的品牌行动（详情页播放键悬停等），普通 primary 不作大红块 */
 :root[data-shell='topbar'] button.primary { background: rgba(255, 255, 255, .14); color: var(--text); font-weight: 600; }
 :root[data-shell='topbar'] button.primary:hover { background: rgba(255, 255, 255, .24); box-shadow: none; }
@@ -311,7 +309,7 @@
               导航项「下划线」→ **红胶囊 + 弹跳**；分类条「散装 chips」→ **玻璃分段容器**；
      ④ 卡片 → 「裸图」→ **玻璃卡**（描边 + 双层阴影 + shine 扫光 + 悬停浮出红色播放钮）；
      ⑤ 排版 → 章节标题 → **带红色光条的大字号标题**。
-   ★ 历史守卫全部保留：`.vp-ctl` 26×26 重置、`.vp-big:active` 位移守卫、pvwin 黑壳、导航 z-index 40。
+    ★ 历史守卫全部保留：`.vp-ctl` 26×26 重置、pvwin 黑壳、导航 z-index 40。
    ============================================================================ */
 
 /* ---- ① 环境：**本皮肤不用环境光**（Netflix 的品牌基因就是纯黑影院；加彩色光斑反而不像它） ----
@@ -566,24 +564,7 @@
 :root[data-shell='topbar'] .vp-bar { gap: 14px; }
 :root[data-shell='topbar'] .vp-ctl { width: 32px; height: 32px; border-radius: 6px; color: var(--text); }
 :root[data-shell='topbar'] .vp-ctl:hover { color: var(--text-accent, var(--accent)); background: rgba(255, 255, 255, .16); }
-:root[data-shell='topbar'] .vp-ctl.vp-on { color: var(--text-accent, var(--accent)); background: color-mix(in srgb, var(--accent) 22%, transparent); }
 :root[data-shell='topbar'] .vp-time { font-size: 12.5px; font-weight: 600; color: #f0f0f2; }
-/* 中央播放键：40px 白色实心键（悬停转红） */
-:root[data-shell='topbar'] .vp-big {
-  width: 40px; height: 40px; border-radius: 10px;
-  background: rgba(255, 255, 255, .92); border: none; color: var(--on-light);
-  box-shadow: none;
-  transition: transform var(--dur-state) var(--ease-spring), background var(--dur-state) var(--ease-standard), color var(--dur-state) var(--ease-standard);
-  box-sizing: border-box;
-  min-height: 40px;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-/* hover 必须保留 translate(-50%,-50%)（缺位移按钮会跳到右下半个身位） */
-:root[data-shell='topbar'] .vp-big:hover {
-  transform: translate(-50%, -50%);
-  background: var(--accent); color: #fff;
-}
 :root[data-shell='topbar'] .vp-next { background: rgba(10, 10, 11, .93); border-radius: 6px; }
 :root[data-shell='topbar'] .vp-next button { background: var(--accent); }
 

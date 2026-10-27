@@ -56,6 +56,8 @@ describe('player playback options', () => {
 
     expect(buttons).toHaveLength(PLAYER_FITS.length);
     expect(buttons[0].classList.contains('active')).toBe(true);
+    expect(buttons[0].getAttribute('aria-pressed')).toBe('true');
+    expect(buttons[1].getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(container.querySelector('.vp-ctl') as HTMLButtonElement);
     fireEvent.click(buttons[1]);
     fireEvent.pointerOver(host);

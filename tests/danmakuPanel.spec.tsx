@@ -114,7 +114,10 @@ describe('DanmakuPanel', () => {
   it('dispatches semantic region and endpoint commands to the play session', () => {
     render(<Harness />);
 
+    expect(screen.getByRole('button', { name: '全屏' }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: '半屏' }).getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(screen.getByRole('button', { name: '半屏' }));
+    expect(screen.getByRole('button', { name: '半屏' }).getAttribute('aria-pressed')).toBe('true');
     expect(readSettings().region).toBe('half');
     fireEvent.click(screen.getByRole('button', { name: '弹幕源 1/2 启用 ▼' }));
     fireEvent.click(screen.getByLabelText('源一'));

@@ -38,13 +38,6 @@
 .vp-spin { width: 30px; height: 30px; border-radius: 50%; border: 3px solid rgba(255,255,255,.18);
   border-top-color: var(--text-accent, var(--accent)); animation: vspin .8s linear infinite; }
 @keyframes vspin { to { transform: rotate(360deg); } }
-.vp-big { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
-  width: 40px; height: 40px; min-height: 40px; padding: 0; border-radius: 10px; border: 1px solid rgba(255,255,255,.38); display: flex; align-items: center; justify-content: center;
-  background: rgba(15,18,23,.84); color: #fff; backdrop-filter: none; box-shadow: none;
-  transition: transform .15s, background .15s, opacity .2s; opacity: 0; pointer-events: none; box-sizing: border-box; -webkit-backdrop-filter: none; }
-.vp-big svg { width: 20px; height: 20px; }
-.vplayer.vui .vp-big { opacity: 1; pointer-events: auto; }
-.vp-big:hover { background: rgba(15,18,23,.96); transform: translate(-50%, -50%); }
 .vp-err { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px;
   align-items: center; justify-content: center; color: #fff; background: rgba(0,0,0,.72); font-size: 14px; padding: 20px; text-align: center; }
 /* ★ 网盘资源未绑定 cookie 提示卡片：覆盖于加载/错误之上（z-index 最高，优先可操作） */
@@ -85,9 +78,6 @@
 /* ★ 2026-09-30（用户要求）：播放器「置顶」按钮的**已开启态**——高亮色 + 亮底 + 实心图标，与未开启明显区分。
    ★ 皮肤样式（netflix/bilibili/apple）里的 `:root[data-theme='X'] .vp-ctl` 特异度 (0,3,0) 更高，
      故这里带 `:root[data-theme]` 前缀（(0,4,0)）压过它们 —— 否则默认皮肤下置顶态仍是白色，看不出开没开。 */
-.vp-ctl.vp-on,
-:root[data-theme] .vp-ctl.vp-on { color: #fff; background: #111419ed; border-color: #ffffff68; box-shadow: 0 0 0 1px #ffffff30; }
-:root[data-theme] .vp-ctl.vp-on:hover { color: #fff; background: #242a33; border-color: #ffffff88; }
 /* ★ 2026-10-17（阶段3）：**MPV 内核专属**技术信息条 —— 位于控制条内部、进度条之上，随 `.vui` 一起显隐。
    （只在非小窗分支渲染；皮肤若要覆盖，按 §C54 用 `:root[data-theme]` 前缀压特异度。） */
 .vp-tech { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; color: rgba(255,255,255,.82); }

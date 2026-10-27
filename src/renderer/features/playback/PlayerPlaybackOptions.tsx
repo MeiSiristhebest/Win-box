@@ -40,7 +40,9 @@ export function PlayerFitControl({
               {PLAYER_FITS.map((option) => (
                 <button
                   key={option.value}
+                  type="button"
                   className={`vsp-btn${fit === option.value ? ' active' : ''}`}
+                  aria-pressed={fit === option.value}
                   onClick={() => { onFitSelect(option.value); onFitPointerLeave(); triggerRef.current?.focus(); }}
                 >
                   {option.label}

@@ -88,7 +88,6 @@
 }
 :root[data-shell='dualbar'] button:hover { border-color: var(--text-accent, var(--accent)); color: var(--text-accent); background: color-mix(in srgb, var(--accent) 6%, transparent); box-shadow: none; }
 :root[data-shell='dualbar'] button:active { transform: scale(.96); }
-:root[data-shell='dualbar'] .vp-big:active { transform: translate(-50%, -50%); }
 :root[data-shell='dualbar'] button.primary {
   background: var(--color-accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
   box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--accent) 50%, transparent);
@@ -193,7 +192,7 @@
      ⑤ 排版 → 章节标题 → **带蓝色光条的大字号标题**。
    ★ 浅色皮肤专属：聚光卡用**浅色纱幕**（白 / 浅灰高 alpha 渐变）压在模糊海报上，
      让深色标题（--text #18191c）依然可读 —— 即「浅色聚光卡」，绝不用黑幕。
-   ★ 历史守卫全部保留：`.vp-ctl` 重置 (0,3,0) 仍压过通用 button (0,2,1)、`.vp-big:active` 位移守卫、
+    ★ 历史守卫全部保留：`.vp-ctl` 重置 (0,3,0) 仍压过通用 button (0,2,1)、
      pvwin 白壳（(0,5,0) 压过本块 .main 透明）、播放器舞台 `.vplayer` 黑底不动、导航 z-index 40。
    ============================================================================ */
 
@@ -534,22 +533,5 @@
 :root[data-shell='dualbar'] .vp-bar { gap: 12px; }
 :root[data-shell='dualbar'] .vp-ctl { width: 30px; height: 30px; border-radius: 999px; color: #fff; }
 :root[data-shell='dualbar'] .vp-ctl:hover { color: #fff; background: color-mix(in srgb, var(--accent) 34%, transparent); }
-:root[data-shell='dualbar'] .vp-ctl.vp-on { color: #fff; background: color-mix(in srgb, var(--accent-2) 34%, transparent); }
 :root[data-shell='dualbar'] .vp-time { color: #eaeaf0; font-size: 12px; }
-:root[data-shell='dualbar'] .vp-big {
-  width: 40px; height: 40px; border-radius: 10px;
-  background: color-mix(in srgb, var(--accent) 88%, transparent); border: none; color: #fff;
-  box-shadow: none;
-  transition: transform var(--dur-state) var(--ease-spring), background var(--dur-state) var(--ease-standard);
-  box-sizing: border-box;
-  min-height: 40px;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-/* hover 必须保留 translate(-50%,-50%)（缺位移按钮会跳到右下半个身位） */
-:root[data-shell='dualbar'] .vp-big:hover {
-  transform: translate(-50%, -50%);
-  background: color-mix(in srgb, var(--accent-2) 95%, transparent);
-}
-
 }

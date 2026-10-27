@@ -516,7 +516,7 @@
      ⑥ 卡片 → 「裸图」→ **白玻璃卡**（描边 + 双层阴影 + shine 扫光 + 悬停浮出的蓝色播放钮）；
      ⑦ 按钮 → 主行动系统蓝胶囊 + 次要按钮玻璃胶囊（增量收敛既有规则）；
      ⑧ 首屏 → 发现页**浅色聚光卡**（.spot：模糊海报环境色底 + 浅色纱幕 + 清晰海报主体 + 大字标题）。
-   ★ 历史守卫全部保留：`.vp-ctl` 26×26 重置、`.vp-big:active` 位移守卫、pvwin 白壳 / mpv 例外、
+    ★ 历史守卫全部保留：`.vp-ctl` 26×26 重置、pvwin 白壳 / mpv 例外、
      交通灯 .ap-light*、`.titlebar.ap-titlebar` 的 all:unset —— 本块**只追加**，不改任何既有规则。
    ============================================================================ */
 
@@ -720,7 +720,7 @@
      大豆    = M3 色调容器 + 大圆钮；
      大果    = **保留玻璃侧栏** + **Today 大卡首屏** + **mac 原生贴底发丝玻璃条**（本条）。
    ★ 历史守卫全部保留：`.vp-ctl` 无底无框无内边距（2026-10-15 实测曾被撑成 55×39）、
-     `.vp-big` 的 translate(-50%,-50%) 位移守卫、pvwin 白壳 / mpv 例外、交通灯 .ap-light*、
+      pvwin 白壳 / mpv 例外、交通灯 .ap-light*、
      `.titlebar.ap-titlebar` 的 all:unset —— 本块**只追加**，不改任何既有规则。
    ============================================================================ */
 
@@ -912,22 +912,7 @@
 /* 图标按钮 32×32 圆角 8px 白；hover 白底 12%；开启态蓝底白字（重置「无底无框无内边距」仍在更上方生效） */
 :root[data-shell='sidebar'] .vp-ctl { width: 32px; height: 32px; border-radius: 8px; color: #fff; }
 :root[data-shell='sidebar'] .vp-ctl:hover { color: #fff; background: rgba(255, 255, 255, .12); }
-:root[data-shell='sidebar'] .vp-ctl.vp-on { color: var(--on-accent); background: var(--accent); }
-:root[data-shell='sidebar'] .vp-ctl.vp-on:hover { color: #fff; background: #0a84ff; }
 :root[data-shell='sidebar'] .vp-time { color: #98989d; font-size: var(--fs-sm); font-weight: 500; }
-/* 中央播放/暂停键保持 40px 实底，无模糊玻璃层。 */
-:root[data-shell='sidebar'] .vp-big {
-  width: 40px; height: 40px; box-sizing: border-box; border-radius: 10px;
-  background: rgba(255, 255, 255, .14); border: 1px solid rgba(255, 255, 255, .5); color: #fff;
-  backdrop-filter: none; -webkit-backdrop-filter: none;
-  box-shadow: none;
-  transition: transform var(--dur-state) var(--ease-spring), background var(--dur-state) var(--ease-standard);
-  min-height: 40px;
-}
-/* ★ hover / active **必须**保留 translate(-50%,-50%)（元素 left/top:50% 定位；缺了会跳半个身位） */
-:root[data-shell='sidebar'] .vp-big:hover { transform: translate(-50%, -50%); background: rgba(255, 255, 255, .24); }
-:root[data-shell='sidebar'] .vp-big:active { transform: translate(-50%, -50%); }
-
 /* ---- 窄窗：收窄 Today 卡内边距与海报卡（本块 .spot-stage 特异度高于 global 的 900px 覆盖，需自行让位） ---- */
 @media (max-width: 900px) {
   :root[data-shell='sidebar'] .spot { padding: 26px 24px; }
