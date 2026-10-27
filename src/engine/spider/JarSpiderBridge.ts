@@ -52,6 +52,8 @@ import {
 } from './jarExecutionPolicy';
 import { isUsableConvertedJar as isUsableConvertedJarFile } from './convertedJarArtifact';
 import { prepareConvertedJarArtifact } from './JarArtifactPreparation';
+import { repairDexConstructorArtifact } from './dexConstructorRepair';
+import { runDexConstructorRepairProcess } from './dexConstructorRepairProcess';
 import { ConversionInFlightError, JarConversionRegistry } from './JarConversionRegistry';
 import { JarClasspathResolver } from './JarClasspathResolver';
 import { normalizeSpiderRuntimeFailure } from './spiderRuntimeFailure';
@@ -753,53 +755,39 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
 
   /** 修复在副本上异步执行；退出/失败后仍可收编原始 part，不必重跑 dex2jar。 */
   private async repairDexConstructors(rawJar: string, part: string): Promise<void> {
-    const raw = readFileSync(rawJar);
-    if (looksLikeZip(raw) && !listZipEntries(raw).some(n => /^classes\d*\.dex$/i.test(n))) return;
     const bridgeJar = join(this.jvmDir, 'native-bridge', 'native-bridge.jar');
-    if (!existsSync(bridgeJar)) {
+    const result = await repairDexConstructorArtifact({
+      rawJar: resolve(rawJar),
+      partialJar: resolve(part),
+      bridgeJar,
+      timeoutMs: DEX2JAR_TIMEOUT_MS,
+    }, {
+      shouldRepair: (path) => {
+        const raw = readFileSync(path);
+        return !looksLikeZip(raw) || listZipEntries(raw).some(name => /^classes\d*\.dex$/i.test(name));
+      },
+      repairToolExists: existsSync,
+      runtime: () => ({
+        javaExecutable: resolve(this.javaExe()),
+        bridgeJar: resolve(bridgeJar),
+        dex2jarClasspath: this.dirJars(join(this.jvmDir, 'd2j')).map(path => resolve(path)).join(';'),
+      }),
+      workspacePath: (partialPath) => `${partialPath}.constructors.jar`,
+      copy: copyFileSync,
+      run: (command) => runDexConstructorRepairProcess(command, {
+        spawn: (executable, args, options) => spawn(executable, args, options),
+        track: (child) => this.subprocessRunner.track(child),
+        release: (child) => this.subprocessRunner.release(child),
+      }),
+      isUsable: (path) => isUsableConvertedJar(path),
+      promote: (workspaceJar, partialJar) => renameSync(workspaceJar, partialJar),
+      remove: (path) => { try { rmSync(path, { force: true }); } catch { /* next repair overwrites a stale copy */ } },
+    });
+    if (result.status === 'skipped' && result.reason === 'repair-tool-missing') {
       this.host?.logger.w('jvm-bridge DEX 构造器修复工具缺失，跳过修复');
-      return;
     }
-    // Baksmali 的子进程需要完整 classpath；不能把未展开的目录通配符传给它。
-    const d2jCp = this.dirJars(join(this.jvmDir, 'd2j')).map(p => resolve(p)).join(';');
-    const java = resolve(this.javaExe());
-    const work = `${part}.constructors.jar`;
-    copyFileSync(part, work);
-    try {
-      const output = await new Promise<string>((resolveOutput, reject) => {
-        const child = spawn(java, [
-          '-Xmx384m', '-XX:+UseSerialGC', '-XX:TieredStopAtLevel=1', '-Dfile.encoding=UTF-8',
-          '-cp', [resolve(bridgeJar), d2jCp].join(';'), 'com.winbox.nativebridge.DexJarRepair',
-          resolve(rawJar), resolve(work), java, d2jCp,
-        ], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
-        this.subprocessRunner.track(child);
-        let out = '';
-        let settled = false;
-        const finish = (error?: Error) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          this.subprocessRunner.release(child);
-          if (error) reject(error);
-          else resolveOutput(out);
-        };
-        const timer = setTimeout(() => {
-          child.kill();
-          finish(new Error('DEX 构造器修复超时'));
-        }, DEX2JAR_TIMEOUT_MS);
-        timer.unref?.();
-        const onData = (data: Buffer | string) => { out = (out + String(data)).slice(-8000); };
-        child.stdout?.on('data', onData);
-        child.stderr?.on('data', onData);
-        child.on('error', (error) => finish(error));
-        child.on('close', (code) => finish(code === 0 ? undefined : new Error(`DEX 构造器修复失败（code=${code}）：${out.slice(-400)}`)));
-      });
-      const fixed = /fixed sites = (\d+)/.exec(output);
-      if (!fixed || !isUsableConvertedJar(work)) throw new Error(`DEX 构造器修复未完成：${output.slice(-400)}`);
-      renameSync(work, part);
-      this.host?.logger.i(`jvm-bridge DEX 构造器修复完成：${fixed[1]} 处（${basename(part)}）`);
-    } finally {
-      try { rmSync(work, { force: true }); } catch { /* 下次收编时覆盖副本 */ }
+    if (result.status === 'repaired') {
+      this.host?.logger.i(`jvm-bridge DEX 构造器修复完成 ${result.fixedSites} 处（${basename(part)}）`);
     }
   }
 
