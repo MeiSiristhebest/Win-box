@@ -54,6 +54,7 @@ import { isUsableConvertedJar as isUsableConvertedJarFile } from './convertedJar
 import { prepareConvertedJarArtifact } from './JarArtifactPreparation';
 import { repairDexConstructorArtifact } from './dexConstructorRepair';
 import { runDexConstructorRepairProcess } from './dexConstructorRepairProcess';
+import { runJarConversionWorkflow, type JarConversionWorkflowEvent } from './JarConversionWorkflow';
 import { ConversionInFlightError, JarConversionRegistry } from './JarConversionRegistry';
 import { JarClasspathResolver } from './JarClasspathResolver';
 import { normalizeSpiderRuntimeFailure } from './spiderRuntimeFailure';
@@ -602,105 +603,91 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
 
   private async doConvertStage(jarUrl: string, key: string, target: string): Promise<string> {
     const { bytes: jarBytes, usedLabel } = await this.jarArchiveDownloader.download(jarUrl, isJarOrDex);
-    const progress = this.conversionRegistry.progressView(jarUrl);
-    this.host?.logger.i(`jvm-bridge jar 下载完成（key=${key.slice(0, 8)}，${jarBytes.length}B，耗时 ${progress ? Date.now() - progress.startedAt : 0}ms）`);
-    this.conversionRegistry.setStage(jarUrl, 'convert');
-    if (usedLabel && usedLabel !== '默认 UA') {
-      this.host?.logger.i(`jvm-bridge jar 按「${usedLabel}」重试成功（首次响应未通过 jar 校验）: ${jarUrl}`);
-    }
-    // 下载是异步的，期间目录仍可能被外部删除 → 再次兜底
-    this.ensureCacheDir();
-    const rawJar = join(this.cacheDir, `${key}.raw.jar`);
-    writeFileSync(rawJar, jarBytes);
-
-    /**
-     * ★ 2026-09-29：**内容哈希复用**（用户报「摸鱼源还要经历大 jar 加载」的正面优化）。
-     *
-     * 缓存键是 URL 的 md5，源站换域名/换文件名/加查询参数就会**重新转换**（大 jar 20s~3min），
-     * 即便 jar 内容一字节没变。这里用「内容 md5 → 已有产物」的索引把这种白白重转直接省掉：
-     * 命中即把已有产物硬链接（跨卷退化为拷贝）成本次 target，**完全跳过 dex2jar**。
-     * 索引由 finishConvert 在任何一次成功转换后写入（含"收编上次会话遗留产物"）。
-     */
-    const contentKey = contentHashOf(jarBytes);
-    {
-      const hit = tryCloneByContent(this.cacheDir, contentKey, key, (p) => this.artifactOk(p));
-      if (hit.reused) {
-        this.host?.logger.i(
-          `jvm-bridge 内容哈希复用：jar 内容未变（${(jarBytes.length / 1048576).toFixed(2)}MB），` +
-            `直接复用已有产物、跳过 dex2jar（${basename(hit.from || '')} → ${basename(target)}）: ${jarUrl}`,
-        );
-        this.finishConvert(jarUrl, target, contentKey);
-        return target;
-      }
-    }
-
-    // 2) ★★ 先「收编」上次会话遗留、已经跑完的后台转换（2026-09-27 新增，勿删）★★
-    //    场景：关窗/重启时 detached 的转换进程仍在跑并已写出完整产物 → 这里只需
-    //    「合并 raw 资源 + 原子改名」，秒级完成，用户不必再等一次 dex2jar。
-    if (await this.adoptFinishedPart(key, rawJar, target, false)) {
-      this.host?.logger.i(`jvm-bridge 已收编后台完成的转换产物（上次会话遗留，无需重转）: ${basename(target)}`);
-      this.finishConvert(jarUrl, target, contentKey);
-      return target;
-    }
-
-    // 3) ★★ 后台已有转换在跑 → **接管等待**，绝不另起第二个进程 ★★
-    //    （两个 dex2jar 写同一个 part 会把产物写坏；见 DetachedDex2jar 进程生命周期约束）
-    const lock = this.detachedDex2jar.readLock(key);
-    if (this.detachedDex2jar.isAlive(lock)) {
-      this.host?.logger.i(
-        `jvm-bridge 检测到该 jar 的后台转换仍在进行（pid=${lock.pid}，已 ${formatDuration(Date.now() - lock.startedAt)}）→ 接管等待`,
-      );
-      this.conversionRegistry.attachToProgress(jarUrl, lock.startedAt);
-      const ok = await this.detachedDex2jar.waitForAttached(
-        key,
-        lock,
-        () => this.adoptFinishedPart(key, rawJar, target, false),
-      );
-      if (!ok) {
-        throw new ConversionInFlightError(
-          `该 jar 的后台转换仍在进行（已 ${formatDuration(Date.now() - lock.startedAt)}），稍后自动重试`,
-        );
-      }
-      this.finishConvert(jarUrl, target, contentKey);
-      return target;
-    }
-    // 锁指向的进程已经不在（或锁过期 = 僵死）→ 清掉残留，按「新转换」处理
-    if (lock) this.detachedDex2jar.clearLock(key);
-
-    // 4) dex2jar 转换（dex2jar 可直接读含 classes.dex 的 jar/apk/zip，无需先解压）
-    //
-    //    ★★ 堆参数必须显式给、且**按 dex 体积自适应** —— 这是「多数 JAR 源无法显示」的头号原因 ★★
-    //
-    //    ① GC：JRE17 默认 G1 会按「机器物理内存」推导堆上限。低可用内存机器上 G1 预留
-    //       274MB 虚拟空间失败 → 转换进程直接崩溃（hs_err_pid*.log：
-    //       insufficient memory / mmap failed）→ 上层只看到「转换失败」，与 jar 质量无关。
-    //       `-XX:+UseSerialGC` 不预留大块虚拟空间，换掉 G1 即消失。
-    //    ② 堆上限：历史上写死 `-Xmx256m`（对 400KB~1MB 的 dex 绰绰有余），但 10MB 级 dex
-    //       **必然 OOM**（dex2jar IR 优化 RemoveLocalFromSSA）→ 该 jar 的全部源一起报废。
-    //       现按 `d2jHeapMb()` 估算（~128MB/1MB dex，按机器内存封顶），OOM 时再按 2× 重试一次。
-    //    ③ `-XX:TieredStopAtLevel=1` 压低 JIT 线程/代码缓存开销（一次性任务，不需要 C2 峰值性能）。
-    //    ④ **异步 spawn**（不再是 execFileSync）：大 jar 转换要几分钟，同步执行会把整个主进程
-    //       （含 IPC / 搜索）冻住 —— 用户观感就是「搜一次卡半天」。
-    //    ⑤ ★ 2026-09-27：**detached + 输出落文件**（见 DetachedDex2jar 进程生命周期约束）——
-    //       关软件也转完；App 重启后走 2)/3) 收编或接管。
-    const jdk = this.javaExe();
-    const d2jCp = this.dirJars(join(this.jvmDir, 'd2j')).join(';');
-    const dexBytes = totalDexBytes(jarBytes);
-    await this.dex2jarConversion.convert({
-      executable: jdk,
-      classpath: d2jCp,
-      rawJar,
-      key,
-      dexBytes,
-      rawJarBytes: jarBytes.length,
+    return runJarConversionWorkflow({ jarUrl, key, target, jarBytes, usedLabel }, {
+      now: () => Date.now(),
+      onEvent: (event: JarConversionWorkflowEvent) => {
+        switch (event.type) {
+          case 'download-completed':
+            this.host?.logger.i(
+              `jvm-bridge jar 下载完成（key=${event.key.slice(0, 8)}，${event.byteLength}B，耗时 ${event.elapsedMs}ms）`,
+            );
+            break;
+          case 'download-retry-succeeded':
+            this.host?.logger.i(`jvm-bridge jar 按「${event.usedLabel}」重试成功（首次响应未通过 jar 校验）：${event.jarUrl}`);
+            break;
+          case 'content-reused':
+            this.host?.logger.i(
+              `jvm-bridge 内容哈希复用：jar 内容未变（${(event.byteLength / 1048576).toFixed(2)}MB），` +
+                `直接复用已有产物、跳过 dex2jar（${basename(event.from || '')} → ${basename(event.target)}）：${event.jarUrl}`,
+            );
+            break;
+          case 'detached-part-adopted':
+            this.host?.logger.i(`jvm-bridge 已收编后台完成的转换产物（上次会话遗留，无需重转）：${basename(event.target)}`);
+            break;
+          case 'attached-to-detached-conversion':
+            this.host?.logger.i(
+              `jvm-bridge 检测到 jar 的后台转换仍在进行（pid=${event.pid}，已 ${formatDuration(event.elapsedMs)}）→ 接管等待`,
+            );
+            break;
+        }
+      },
+      progress: {
+        startedAt: (url) => this.conversionRegistry.progressView(url)?.startedAt ?? null,
+        setConvertStage: (url) => this.conversionRegistry.setStage(url, 'convert'),
+        attachTo: (url, startedAt) => this.conversionRegistry.attachToProgress(url, startedAt),
+      },
+      cache: {
+        ensureDirectory: () => this.ensureCacheDir(),
+        rawJarPath: (cacheKey) => join(this.cacheDir, `${cacheKey}.raw.jar`),
+        writeRawJar: (path, bytes) => writeFileSync(path, bytes),
+        contentKey: contentHashOf,
+        reuseByContent: (contentKey, cacheKey) => tryCloneByContent(
+          this.cacheDir,
+          contentKey,
+          cacheKey,
+          (path) => this.artifactOk(path),
+        ),
+        complete: (url, output, contentKey) => this.finishConvert(url, output, contentKey),
+      },
+      artifacts: {
+        adoptPart: (cacheKey, rawPath, output, strict) => this.adoptFinishedPart(cacheKey, rawPath, output, strict),
+      },
+      detached: {
+        readLock: (cacheKey) => this.detachedDex2jar.readLock(cacheKey),
+        isAlive: (lock) => this.detachedDex2jar.isAlive(lock),
+        clearLock: (cacheKey) => this.detachedDex2jar.clearLock(cacheKey),
+        waitForAttached: (cacheKey, lock, adoptPart) =>
+          this.detachedDex2jar.waitForAttached(cacheKey, lock, adoptPart),
+      },
+      converter: {
+        convert: ({ rawJar, key: cacheKey, jarBytes: bytes }) => {
+          const rawBytes = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+          return this.dex2jarConversion.convert({
+            executable: this.javaExe(),
+            classpath: this.dirJars(join(this.jvmDir, 'd2j')).join(';'),
+            rawJar,
+            key: cacheKey,
+            dexBytes: totalDexBytes(rawBytes),
+            rawJarBytes: rawBytes.length,
+          });
+        },
+      },
     });
-    // 5) 校验 + 合并 raw 资源 + 原子改名 part → target（strict：本次刚跑完，失败必须报准原因）
-    await this.adoptFinishedPart(key, rawJar, target, true);
-    this.finishConvert(jarUrl, target, contentKey);
-    return target;
   }
 
-  /** Publish conversion state only after the artifact has passed validation and atomic promotion. */
+  /**
+   * ★ 2026-09-27：某 jar 的转换进度（上层在「等待期」显示「已等 X」）。
+   * @returns null = 当前没有转换在跑；attached = 正在接管上次会话遗留的后台转换
+   */
+  conversionProgress(jarUrl: string): { elapsedMs: number; attached: boolean; stage: 'download' | 'convert' } | null {
+    const url = normalizeJarUrl(jarUrl);
+    if (!url) return null;
+    const { elapsedMs, attached, stage } = this.conversionRegistry.progressView(url) ?? {};
+    if (elapsedMs === undefined || attached === undefined || stage === undefined) return null;
+    return { elapsedMs, attached, stage };
+  }
+
+  /** Publish the conversion cache entry only after a validated artifact is ready. */
   private finishConvert(jarUrl: string, target: string, contentKey?: string): void {
     if (this.jarNeedsNative(target)) this.prewarmNativeRuntime();
     if (contentKey) recordContentKey(this.cacheDir, contentKey, md5Hex(jarUrl));
@@ -725,23 +712,11 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
         w: (message) => this.host?.logger.w(message),
       }),
       promote: (partPath, destination) => {
-        // Same-volume rename is the publication boundary; remove stale output first.
         try { rmSync(destination, { force: true }); } catch { /* best effort */ }
         try { renameSync(partPath, destination); } catch { /* best effort */ }
         return this.artifactOk(destination);
       },
     });
-  }
-  /**
-   * ★ 2026-09-27：某 jar 的转换进度（上层在「等待期」显示「已等 X」）。
-   * @returns null = 当前没有转换在跑；attached = 正在接管上次会话遗留的后台转换
-   */
-  conversionProgress(jarUrl: string): { elapsedMs: number; attached: boolean; stage: 'download' | 'convert' } | null {
-    const url = normalizeJarUrl(jarUrl);
-    if (!url) return null;
-    const { elapsedMs, attached, stage } = this.conversionRegistry.progressView(url) ?? {};
-    if (elapsedMs === undefined || attached === undefined || stage === undefined) return null;
-    return { elapsedMs, attached, stage };
   }
 
   private dirJars(dir: string): string[] {
@@ -1070,6 +1045,11 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
       this.jvmPrefix(launchPlan.runtimeClasspath, false, launchPlan.loaderClasspath),
       { className, method, args },
     );
+    // Keep the native-runtime budget consistent across pooled execution and cold recovery.
+    // A transport failure in --serve must not shorten the retry for the same .so-backed call.
+    const executionTimeoutMs = nativeJars.length
+      ? Math.max(timeoutMs ?? this.callTimeoutMs, NATIVE_CALL_MIN_TIMEOUT_MS)
+      : timeoutMs ?? this.callTimeoutMs;
     // ★ 进程池：常驻 JVM（--serve）跨请求复用 → 二次调用跳过冷启动。
     //   serve argv = javaPrefix + [SpiderRunner, --serve, loadCp]（loadCp 已含 shim jar + 蜘蛛 jar）。
     //   ★ 仅**传输层失败**（进程崩溃/超时/写入失败）才回退一次性保底；
@@ -1084,7 +1064,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
       // ★ 2026-09-26：**含 .so 的加固壳源要更长的预算** —— 守卫/加密走 unidbg 模拟（全局串行），
       //   实测 App88：home ~54s、detail ~295s（首调还要付 ~10s 模拟器启动）；20s 默认预算下
       //   「守卫已通」也会被超时判死。只对这类 jar 抬底，普通源行为不变。
-      const tmo = nativeJars.length ? Math.max(timeoutMs ?? this.callTimeoutMs, NATIVE_CALL_MIN_TIMEOUT_MS) : timeoutMs ?? this.callTimeoutMs;
+      const tmo = executionTimeoutMs;
       let cancellationError: Error | undefined;
       try {
         const preferredPort = tag && method === 'playerContent' ? this.detailProxyPortByTag.get(tag) : undefined;
@@ -1155,7 +1135,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
       if (cancellationError) throw cancellationError;
     }
     throwIfAborted(signal);
-    return this.runSubprocessWithinProcessBudget(this.javaExe(), argv, className, method, timeoutMs, undefined, signal);
+    return this.runSubprocessWithinProcessBudget(this.javaExe(), argv, className, method, executionTimeoutMs, undefined, signal);
   }
 
   /**

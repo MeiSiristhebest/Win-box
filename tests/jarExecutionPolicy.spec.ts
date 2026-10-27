@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LOCAL_PROXY_BASE } from '../src/shared/constants';
-import { JarSpiderBridge } from '../src/engine/spider/JarSpiderBridge';
+import { JarSpiderBridge, NATIVE_CALL_MIN_TIMEOUT_MS } from '../src/engine/spider/JarSpiderBridge';
 import { spiderProxyPort } from '../src/engine/spider/jarBridgePolicy';
 import type { SpiderProcPool } from '../src/engine/spider/SpiderProcPool';
 import {
@@ -261,5 +261,70 @@ describe('JAR execution policy', () => {
     expect(jvmPrefix).toHaveBeenCalledOnce();
     expect(jvmPrefix).toHaveBeenCalledWith('runtime.jar', false, 'site.jar');
     expect(oneShotRun).toHaveBeenCalledOnce();
+  });
+
+  it('preserves the native-call timeout when a pooled transport failure falls back to one-shot', async () => {
+    const oneShotFallback = vi.fn(async (..._args: unknown[]) => ({
+      ok: true,
+      output: 'recovered',
+      reason: '',
+      failureKind: null,
+      problemCode: null,
+    }));
+    const bridge = Object.create(JarSpiderBridge.prototype) as unknown as {
+      callImpl: (jars: string[], className: string, method: string, args: string[]) => Promise<unknown>;
+      shellCompatibility: {
+        classesPath: () => string;
+        resolveForJars: () => string;
+        includeFoniImplementation: () => string;
+        shimJarPath: () => string;
+      };
+      shimPreferred: Set<string>;
+      nativeNeeded: () => boolean;
+      ensureNativeRuntime: () => Promise<string[]>;
+      nativeProps: () => string[];
+      classpathJars: () => string;
+      jvmPrefix: (classpath: string, serve: boolean, loaderClasspath: string) => string[];
+      javaExe: () => string;
+      callTimeoutMs: number;
+      pool: SpiderProcPool;
+      poolSubmit: (...args: unknown[]) => Promise<{ ok: false; data: string; reason: 'exit' }>;
+      processAdmission: { tryAcquireFallbackProcessSlot: () => () => void };
+      proxyPortKeys: Map<number, string>;
+      detailProxyPortByTag: Map<string, number>;
+      proxyPortByTag: Map<string, number>;
+      runSubprocessWithinProcessBudget: (...args: unknown[]) => Promise<unknown>;
+    };
+    const poolSubmit = vi.fn(async (..._args: unknown[]) => ({ ok: false as const, data: '', reason: 'exit' as const }));
+    const runSubprocessWithinProcessBudget = vi.fn(async (...args: unknown[]) => oneShotFallback(...args));
+    Object.assign(bridge, {
+      shellCompatibility: {
+        classesPath: () => '',
+        resolveForJars: () => '',
+        includeFoniImplementation: () => '',
+        shimJarPath: () => 'shim.jar',
+      },
+      shimPreferred: new Set<string>(),
+      nativeNeeded: () => true,
+      ensureNativeRuntime: async () => ['native-bridge.jar'],
+      nativeProps: () => [],
+      classpathJars: () => 'runtime.jar',
+      jvmPrefix: (classpath: string) => ['-cp', classpath],
+      javaExe: () => 'java.exe',
+      callTimeoutMs: 1000,
+      pool: { pin: vi.fn() } as unknown as SpiderProcPool,
+      poolSubmit,
+      processAdmission: { tryAcquireFallbackProcessSlot: () => () => undefined },
+      proxyPortKeys: new Map<number, string>(),
+      detailProxyPortByTag: new Map<string, number>(),
+      proxyPortByTag: new Map<string, number>(),
+      runSubprocessWithinProcessBudget,
+    });
+
+    await expect(bridge.callImpl(['site.jar'], 'com.example.Spider', 'playerContent', []))
+      .resolves.toMatchObject({ ok: true, output: 'recovered' });
+
+    expect(poolSubmit.mock.calls[0]?.[7]).toBe(NATIVE_CALL_MIN_TIMEOUT_MS);
+    expect(runSubprocessWithinProcessBudget.mock.calls[0]?.[4]).toBe(NATIVE_CALL_MIN_TIMEOUT_MS);
   });
 });
