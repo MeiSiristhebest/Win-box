@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { PluginSettingsDependencies } from '../src/renderer/features/settings/application/settingsSectionPorts';
-import type { UiCommandView } from '../src/shared/plugin';
+import type { PluginView, UiCommandView } from '../src/shared/plugin';
 import { PluginSettingsSection } from '../src/renderer/features/settings/PluginSettingsSection';
 
 vi.mock('../src/renderer/components/AppDialog', () => ({
@@ -17,6 +17,19 @@ const command: UiCommandView = {
   placement: ['config'],
   action: 'navigate',
   to: 'home',
+};
+
+const plugin: PluginView = {
+  id: 'sample-plugin',
+  name: 'Sample',
+  version: '1.0.0',
+  source: 'user',
+  level: 'L1',
+  kind: 'asset',
+  permissions: [],
+  enabled: true,
+  ready: true,
+  modes: [],
 };
 
 function dependencies(): PluginSettingsDependencies {
@@ -63,5 +76,48 @@ describe('PluginSettingsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: '安装插件…' }));
     await vi.waitFor(() => expect(ports.catalog.inspectInstallSource).toHaveBeenCalledOnce());
     expect(ports.lifecycle.install).toHaveBeenCalledWith('sample.winbox');
+  });
+
+  it('shows an explicit loading state and prevents duplicate refresh while plugins are loading', async () => {
+    const ports = dependencies();
+    let resolvePlugins: ((items: PluginView[]) => void) | undefined;
+    vi.mocked(ports.catalog.listPlugins).mockImplementation(() => new Promise((resolve) => {
+      resolvePlugins = resolve;
+    }));
+    render(<PluginSettingsSection active dependencies={ports} />);
+
+    expect(await screen.findByText('正在加载插件…')).toBeTruthy();
+    expect((screen.getByRole('button', { name: '刷新' }) as HTMLButtonElement).disabled).toBe(true);
+
+    resolvePlugins?.([]);
+    expect(await screen.findByText('共 0 个')).toBeTruthy();
+  });
+
+  it('reflects the selected enabled state and disables lifecycle controls while a change is pending', async () => {
+    const ports = dependencies();
+    const disabledPlugin = { ...plugin, enabled: false };
+    vi.mocked(ports.catalog.listPlugins)
+      .mockResolvedValueOnce([plugin])
+      .mockResolvedValue([disabledPlugin]);
+    let completeToggle: ((result: { ok: boolean; items: PluginView[] }) => void) | undefined;
+    vi.mocked(ports.lifecycle.setEnabled).mockImplementation(() => new Promise((resolve) => {
+      completeToggle = resolve;
+    }));
+    render(<PluginSettingsSection active dependencies={ports} />);
+
+    const enabledControl = await screen.findByRole('checkbox', { name: '启用' }) as HTMLInputElement;
+    expect(enabledControl.checked).toBe(true);
+    fireEvent.click(enabledControl);
+
+    await vi.waitFor(() => expect(ports.lifecycle.setEnabled).toHaveBeenCalledWith({ id: plugin.id, enabled: false }));
+    expect(enabledControl.disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '安装插件…' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '卸载' }) as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => {
+      completeToggle?.({ ok: true, items: [disabledPlugin] });
+    });
+    await vi.waitFor(() => expect(enabledControl.checked).toBe(false));
+    expect(enabledControl.disabled).toBe(false);
   });
 });

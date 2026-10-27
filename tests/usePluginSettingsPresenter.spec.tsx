@@ -73,6 +73,80 @@ describe('usePluginSettingsPresenter', () => {
     expect(dependencies.skins.reload).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { enabled: false, description: '停用' },
+    { enabled: true, description: '启用' },
+  ])('applies a successful $description action and publishes the refreshed plugin state', async ({ enabled }) => {
+    const dependencies = createDependencies();
+    const updatedPlugin = { ...plugin, enabled };
+    vi.mocked(dependencies.catalog.listPlugins)
+      .mockResolvedValueOnce([plugin])
+      .mockResolvedValue([updatedPlugin]);
+    vi.mocked(dependencies.lifecycle.setEnabled).mockResolvedValue({ ok: true, items: [updatedPlugin] });
+    const { result } = renderHook(() => usePluginSettingsPresenter(dependencies, vi.fn(), true));
+    await waitFor(() => expect(result.current.pluginsStatus).toBe('ready'));
+
+    await act(async () => { await result.current.togglePluginEnabled(plugin.id, enabled); });
+
+    expect(dependencies.lifecycle.setEnabled).toHaveBeenCalledWith({ id: plugin.id, enabled });
+    expect(result.current.pluginItems).toEqual([updatedPlugin]);
+    expect(result.current.pluginMessage).toEqual({ text: enabled ? '已启用' : '已停用', kind: 'ok' });
+    expect(dependencies.events.notifyChanged).toHaveBeenCalledOnce();
+    expect(dependencies.skins.reload).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { enabled: false, description: '停用' },
+    { enabled: true, description: '启用' },
+  ])('preserves the current plugin state and reports a failed $description action', async ({ enabled }) => {
+    const dependencies = createDependencies();
+    vi.mocked(dependencies.lifecycle.setEnabled).mockResolvedValue({ ok: false, reason: 'permission denied' });
+    const { result } = renderHook(() => usePluginSettingsPresenter(dependencies, vi.fn(), true));
+    await waitFor(() => expect(result.current.pluginsStatus).toBe('ready'));
+
+    await act(async () => { await result.current.togglePluginEnabled(plugin.id, enabled); });
+
+    expect(dependencies.lifecycle.setEnabled).toHaveBeenCalledWith({ id: plugin.id, enabled });
+    expect(result.current.pluginItems).toEqual([plugin]);
+    expect(result.current.pluginMessage).toEqual({ text: 'permission denied', kind: 'err' });
+    expect(dependencies.events.notifyChanged).not.toHaveBeenCalled();
+    expect(dependencies.skins.reload).not.toHaveBeenCalled();
+  });
+
+  it('asks before uninstall and leaves the plugin untouched when the user cancels', async () => {
+    const dependencies = createDependencies();
+    const confirm = vi.fn().mockResolvedValue(false);
+    const { result } = renderHook(() => usePluginSettingsPresenter(dependencies, confirm, true));
+    await waitFor(() => expect(result.current.pluginsStatus).toBe('ready'));
+
+    await act(async () => { await result.current.uninstallPlugin(plugin.id, plugin.name); });
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining('卸载插件「Sample」？'),
+      expect.objectContaining({ title: '卸载插件', confirmLabel: '卸载', tone: 'danger' }),
+    );
+    expect(dependencies.lifecycle.uninstall).not.toHaveBeenCalled();
+    expect(dependencies.events.notifyChanged).not.toHaveBeenCalled();
+    expect(result.current.pluginItems).toEqual([plugin]);
+    expect(result.current.pluginBusy).toBe(false);
+  });
+
+  it('uninstalls only after confirmation and applies the returned plugin snapshot', async () => {
+    const dependencies = createDependencies();
+    const confirm = vi.fn().mockResolvedValue(true);
+    vi.mocked(dependencies.catalog.listPlugins).mockResolvedValueOnce([plugin]).mockResolvedValue([]);
+    vi.mocked(dependencies.lifecycle.uninstall).mockResolvedValue({ ok: true, items: [] });
+    const { result } = renderHook(() => usePluginSettingsPresenter(dependencies, confirm, true));
+    await waitFor(() => expect(result.current.pluginsStatus).toBe('ready'));
+
+    await act(async () => { await result.current.uninstallPlugin(plugin.id, plugin.name); });
+
+    expect(dependencies.lifecycle.uninstall).toHaveBeenCalledWith(plugin.id);
+    expect(result.current.pluginItems).toEqual([]);
+    expect(result.current.pluginMessage).toEqual({ text: '已卸载', kind: 'ok' });
+    expect(dependencies.events.notifyChanged).toHaveBeenCalledOnce();
+  });
+
   it('keeps settings-load failure distinct from an empty plugin list', async () => {
     const dependencies = createDependencies();
     vi.mocked(dependencies.catalog.listPlugins).mockRejectedValue(new Error('catalog unavailable'));
