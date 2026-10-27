@@ -23,6 +23,7 @@ public class LoaderProbe {
     }
 
     public String searchContent(String key, boolean quick, String page) throws Exception {
+        if ("explode".equals(key)) throw new IllegalStateException("fixture execution failed");
         String loaded = value(Thread.currentThread().getContextClassLoader());
         if (key.isEmpty() && !quick && "1".equals(page)) return loaded;
         return loaded + ":" + key + ":" + quick + ":" + page;

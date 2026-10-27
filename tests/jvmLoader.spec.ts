@@ -72,6 +72,38 @@ describe.skipIf(!runnable)('真实 JVM 私有蜘蛛类加载（设置 JAVA_HOME�
     return result.stdout.trim();
   }
 
+  async function runResidentSequence(requests: Array<{ id: string; method: string; args: string[] }>): Promise<{
+    code: number | null;
+    stdout: string;
+    stderr: string;
+  }> {
+    return new Promise((resolvePromise, rejectPromise) => {
+      const args = ['-noverify', '-Dfile.encoding=UTF-8', '-Dtvbox.spiderCacheDir=' + join(dir, 'sandbox'),
+        '-cp', cp, 'SpiderRunner', '--serve', fullJar];
+      const child = spawn(java, args, { windowsHide: true });
+      let stdout = '', stderr = '';
+      const timeout = setTimeout(() => {
+        child.kill();
+        rejectPromise(new Error('resident JVM fixture did not finish'));
+      }, 15000);
+      child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+        stdout += chunk;
+        const replies = stdout.trim().split(/\r?\n/).filter(Boolean);
+        if (replies.length >= requests.length && child.stdin.writable && !child.stdin.writableEnded) child.stdin.end('quit\n');
+      });
+      child.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+      child.once('error', (error) => {
+        clearTimeout(timeout);
+        rejectPromise(error);
+      });
+      child.once('close', (code) => {
+        clearTimeout(timeout);
+        resolvePromise({ code, stdout, stderr });
+      });
+      for (const request of requests) child.stdin.write(JSON.stringify({ ...request, className: 'com.github.catvod.spider.LoaderProbe' }) + '\n');
+    });
+  }
+
   it('Context 能看到已加载蜘蛛的私有类', async () => expect(await run('homeContent')).toBe('private-helper-ok'));
   it('一次性调用 TCCL 能看到私有类', async () => expect(await run('searchContent')).toBe('private-helper-ok'));
   it('常驻工作线程 TCCL 能看到私有类', async () => expect(await run('searchContent', true)).toBe('private-helper-ok'));
@@ -93,6 +125,30 @@ describe.skipIf(!runnable)('真实 JVM 私有蜘蛛类加载（设置 JAVA_HOME�
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('WINBOX_OPERATION_UNSUPPORTED:categoryContent');
   });
+  it('一次性与常驻 JVM 都报告蜘蛛异常，且常驻进程在错误后仍可服务', async () => {
+    const oneShotFailure = spawnSync(java, [
+      '-noverify', '-Dfile.encoding=UTF-8', '-Dtvbox.spiderCacheDir=' + join(dir, 'sandbox'),
+      '-cp', cp, 'SpiderRunner', fullJar, 'com.github.catvod.spider.LoaderProbe', 'searchContent', '', 'explode', 'false', '1',
+    ], { encoding: 'utf8', timeout: 15000 });
+    expect(oneShotFailure.status).toBe(1);
+    expect(oneShotFailure.stderr).toContain('fixture execution failed');
+
+    const resident = await runResidentSequence([
+      { id: 'before-error', method: 'searchContent', args: ['', 'query', 'false', '3'] },
+      { id: 'execution-error', method: 'searchContent', args: ['', 'explode', 'false', '1'] },
+      { id: 'legal-empty', method: 'playerContent', args: ['', 'flag', 'id', '[]'] },
+      { id: 'after-error', method: 'searchContent', args: ['', 'query', 'false', '4'] },
+    ]);
+    expect(resident.code, resident.stderr).toBe(0);
+    const replies = new Map(resident.stdout.trim().split(/\r?\n/).map((line) => {
+      const reply = JSON.parse(line) as { id: string; ok: boolean; data: string };
+      return [reply.id, reply] as const;
+    }));
+    expect(replies.get('before-error')).toMatchObject({ ok: true, data: 'private-helper-ok:query:false:3' });
+    expect(replies.get('execution-error')).toMatchObject({ ok: false, data: expect.stringContaining('fixture execution failed') });
+    expect(replies.get('legal-empty')).toMatchObject({ ok: true, data: '' });
+    expect(replies.get('after-error')).toMatchObject({ ok: true, data: 'private-helper-ok:query:false:4' });
+  }, 60000);
   it('shell-shim 缓存加载器仍绑定后续 Context 和 TCCL', async () =>
     expect(await run('homeVideoContent', true, true)).toBe('private-helper-ok:private-helper-ok:private-helper-ok'));
 });
