@@ -5,6 +5,7 @@ import { sanitizePackagedApp } from './after-pack.mjs';
 import { compileNsis } from './nsis-tool.mjs';
 import { buildInstallerScript } from './installer-script.mjs';
 import { assertReleaseAssets } from './verify-release-assets.mjs';
+import { collectDanglingNodeModulePaths, shouldIgnorePackagedAppPath } from './package-app-path-policy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageJson = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'));
@@ -34,25 +35,9 @@ const [{ packager }, { extractFile }] = await Promise.all([
 const stagingDir = join(ROOT, '.tmp', `packager-${process.pid}-${Date.now()}`);
 const expectedStage = join(stagingDir, 'Win-Box-win32-x64');
 const appDir = join(outputDir, 'win-unpacked');
-
-function shouldIgnore(candidate) {
-  // Packager's current copy filter passes app-relative paths, while its type comment says absolute.
-  const value = candidate.replaceAll('\\', '/');
-  const absolute = /^[A-Za-z]:\//.test(value) || value.startsWith('//');
-  const rel = absolute
-    ? relative(ROOT, candidate).split(sep).join('/')
-    : value.replace(/^\/+/, '');
-  if (absolute && (rel === '..' || rel.startsWith('../') || isAbsolute(rel))) return true;
-  if (rel === '.' || rel === '') return false;
-  if (rel === 'package.json' || rel === 'LICENSE' || rel === 'LICENSE.txt') return false;
-  if (rel === 'node_modules/.bin' || rel.startsWith('node_modules/.bin/')) return true;
-  if (rel === 'node_modules' || rel.startsWith('node_modules/')) return false;
-  if (!/^(dist|resources)(\/|$)/.test(rel)) return true;
-  if (!rel.startsWith('resources/')) return false;
-  const parts = rel.split('/');
-  const filename = parts.at(-1) ?? '';
-  return parts.some((part) => ['.tmp', 'stubs-src', 'tools', '__pycache__'].includes(part)) ||
-    filename === 'jython-standalone-2.7.3.jar' || /^(?:hs_err_pid|replay_pid).*\.log$/i.test(filename);
+const danglingNodeModulePaths = await collectDanglingNodeModulePaths(ROOT);
+if (danglingNodeModulePaths.size) {
+  console.log(`Skipping ${danglingNodeModulePaths.size} unresolved node_modules links during package copy.`);
 }
 
 await mkdir(stagingDir, { recursive: true });
@@ -69,7 +54,7 @@ const packed = await packager({
   overwrite: true,
   prune: true,
   asar: { unpackDir: 'resources' },
-  ignore: shouldIgnore,
+  ignore: (candidate) => shouldIgnorePackagedAppPath(candidate, ROOT, { danglingNodeModulePaths }),
   icon: join(ROOT, 'build', 'icon.ico'),
   appCopyright: 'Win-Box',
   win32metadata: {
