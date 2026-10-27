@@ -15,7 +15,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import WindowTitleBar from './WindowTitleBar';
 import AppAmbient from '../components/AppAmbient';
 import SearchPanel from '../components/SearchPanel';
-import SourcePicker from '../components/SourcePicker';
+import SourcePicker from '../features/subscriptions/SourcePicker';
 import { ProfileSwitcher } from '../features/subscriptions/ProfileSwitcher';
 import { profileSwitcherAdapter } from '../features/subscriptions/adapters/profileSwitcherAdapter';
 import { sourcePickerAdapter } from '../features/subscriptions/adapters/sourcePickerAdapter';

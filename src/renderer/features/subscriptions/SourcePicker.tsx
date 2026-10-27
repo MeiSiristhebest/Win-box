@@ -1,4 +1,4 @@
-// src/renderer/components/SourcePicker.tsx
+// src/renderer/features/subscriptions/SourcePicker.tsx
 // 换源入口：**源名只显示文字**，**左键单击**弹出源列表浮层选择；**鼠标离开（按钮 + 弹层）即自动收起**。
 // 经典皮肤与 TopNav 皮肤共用本组件。
 // ★ 2026-09-24（用户定稿）：换源改成「手机 TVBox」那套 —— 源名只显示文字。
@@ -16,11 +16,12 @@
 //   （IPC `cfg:moveSource` / `cfg:deleteSource` 未动）。
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useAnchoredPanel } from './useAnchoredPanel';
-import { isNativeModalOpen } from '../lib/modalScope';
-import type { SourceBean } from '../../shared/types';
-import type { SourcePickerPort } from '../features/subscriptions/application/sourcePickerPort';
-import { useSourcePickerController } from '../features/subscriptions/useSourcePickerController';
+import { useAnchoredPanel } from '../../components/useAnchoredPanel';
+import { isNativeModalOpen } from '../../lib/modalScope';
+import type { SourceBean } from '../../../shared/types';
+import type { SourcePickerPort } from './application/sourcePickerPort';
+import { presentSourcePicker } from './application/sourcePickerPresentation';
+import { useSourcePickerController } from './useSourcePickerController';
 
 export interface SourcePickerProps {
   /** 源列表（不传则内部自取） */
@@ -48,7 +49,7 @@ const CLOSE_ANIM_MS = 280;
 export default function SourcePicker({ sites, current, onPick, port, variant = 'pill', disabled }: SourcePickerProps) {
   const [open, setOpen] = useState(false);
   const selfLoad = sites === undefined || current === undefined;
-  const { model, actions } = useSourcePickerController({ port, enabled: selfLoad, open });
+  const { model, actions } = useSourcePickerController({ port, enabled: selfLoad, open, onPick });
   const { sources: ownSites, activeSourceKey: ownKey, profileSites: views, selectedProfileId: paneId, error, switching } = model;
   /** 源名检索词（只过滤右栏） */
   const [q, setQ] = useState('');
@@ -115,18 +116,14 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
 
   const list = sites ?? ownSites;
   const cur = current ?? ownKey;
-  const curBean = list.find((s) => s.key === cur);
-  const label = curBean ? curBean.name || curBean.key : list[0] ? list[0].name || list[0].key : '未导入源';
-
-  const multi = (views?.profiles.length ?? 0) > 1;
-  const pane = multi ? views!.profiles.find((p) => p.id === paneId) ?? views!.profiles.find((p) => p.id === views!.activeId) : undefined;
-  /** 右栏源清单：双栏时取左栏订阅的清单；单栏（无档案/只有一份）时退回既有源列表 */
-  const paneSites = pane ? pane.sites : list.map((s) => ({ key: s.key, name: s.name || s.key }));
-  const paneIsActive = !pane || pane.id === views?.activeId;
-  const query = q.trim().toLowerCase();
-  const filtered = query
-    ? paneSites.filter((s) => (s.name || s.key).toLowerCase().includes(query) || s.key.toLowerCase().includes(query))
-    : paneSites;
+  const presentation = presentSourcePicker({
+    sources: list,
+    activeSourceKey: cur,
+    profileSites: views,
+    selectedProfileId: paneId,
+    query: q,
+  });
+  const { label, profiles, selectedProfile: pane, hasMultipleProfiles: multi, paneIsActive, filteredSources: filtered } = presentation;
 
   // ★ 2026-09-30（用户要求）：鼠标移出换源区域（按钮 + 弹层，弹层是 wrapper 的 DOM 子节点）即自动收起。
   //   ★ 2026-10-16（用户要求）：收起前先**常驻 3s**（原来 150ms 太短，一移开就没了），
@@ -193,18 +190,9 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
    * 否则先切换档案再选中源（一步完成），并广播两类变更事件让各页同步。
    */
   const pickSource = async (k: string): Promise<void> => {
-    const targetProfile = pane && multi ? pane.id : '';
-    const activeId = views?.activeId || '';
     setOpen(false);
     triggerRef.current?.focus();
-    if (!targetProfile || targetProfile === activeId) {
-      if (onPick) {
-        if (k !== cur) onPick(k);
-        return;
-      }
-      if (k === cur) return;
-      if (await actions.selectSource(k)) return;
-    } else if (await actions.selectSource(k, targetProfile, activeId)) return;
+    if (await actions.pickSource(k)) return;
     setOpen(true);
   };
 
@@ -246,9 +234,7 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
         >
           {error && <div className="err" role="alert">{error}</div>}
           <div className="srcpick-pop-tip">
-            {views
-              ? `点击源名切换 · 共 ${filtered.length} 个${multi ? ` · ${views.profiles.length} 份订阅` : ''}`
-              : '正在加载订阅…'}
+            {presentation.tip}
           </div>
           <input
             ref={inputRef}
@@ -266,30 +252,37 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
           <div className="srcpick-cols">
             {pane && multi && (
               <div className="srcpick-col-sub">
-                {views!.profiles.map((p) => (
+                {profiles.map((p) => (
                   <button
                     type="button"
                     key={p.id}
                     aria-pressed={p.id === pane.id}
+                    aria-current={p.id === presentation.activeProfileId ? 'true' : undefined}
                     className={`srcpick-item ui-action srcpick-sub${p.id === pane.id ? ' active' : ''}${p.id === views!.activeId ? ' cur' : ''}`}
-                    title={`${p.name}（${p.sites.length} 个源）${p.id === views!.activeId ? ' · 当前订阅' : ''}`}
+                    title={`${p.name}（${p.sites.length} 个源）${p.id === views!.activeId ? ' · 当前使用' : ''}${p.id === pane.id && p.id !== views!.activeId ? ' · 正在查看' : ''}`}
                     disabled={switching}
                     onClick={() => selectPane(p.id)}
                   >
-                    {p.name}
+                    <span className="srcpick-sname">{p.name}</span>
+                    {(p.id === pane.id || p.id === views!.activeId) && (
+                      <span className={`srcpick-item-state${p.id === views!.activeId ? ' current' : ''}`}>
+                        {p.id === views!.activeId ? '当前使用' : '查看中'}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
             )}
             <div className="srcpick-col-src" ref={srcColRef}>
               {filtered.length === 0 && (
-                <div className="srcpick-item muted">{paneSites.length === 0 ? '（未导入源）' : '（无匹配源）'}</div>
+                <div className="srcpick-item muted">{presentation.emptyMessage}</div>
               )}
               {filtered.map((s) => (
                 <button
                   type="button"
                   key={s.key}
                   aria-pressed={paneIsActive && s.key === cur}
+                  aria-current={paneIsActive && s.key === cur ? 'true' : undefined}
                   className={`srcpick-item ui-action${paneIsActive && s.key === cur ? ' active' : ''}`}
                   ref={paneIsActive && s.key === cur ? activeRef : undefined}
                   title={`${s.name || s.key}（${s.key}）`}
@@ -297,6 +290,7 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
                   onClick={() => void pickSource(s.key)}
                 >
                   <span className="srcpick-sname">{s.name || s.key}</span>
+                  {paneIsActive && s.key === cur && <span className="srcpick-item-state current">当前</span>}
                 </button>
               ))}
             </div>

@@ -130,7 +130,7 @@
 .srcpick-search { width: 100%; height: 28px; font-size: 12px; padding: 0 8px; margin-bottom: 6px; box-sizing: border-box; }
 .srcpick-cols { display: flex; gap: 0; flex: 1 1 auto; min-height: 0; max-height: 296px; }
 .srcpick-col-sub {
-  flex: 0 0 112px; max-width: 112px; overflow-y: auto; padding-right: 4px; margin-right: 4px;
+  flex: 0 0 132px; max-width: 132px; overflow-y: auto; padding-right: 4px; margin-right: 4px;
   border-right: 1px solid var(--border-soft);
 }
 .srcpick-col-src { flex: 1 1 auto; min-width: 0; overflow-y: auto; }
@@ -140,9 +140,14 @@
 /* ★ 2026-10-09（用户要求「删除换源下拉里调源位置的功能，不美观」）：源行回到「纯源名」——
    行内管理按钮（⤒/↑/↓/✕）已从 SourcePicker 删除，相关样式一并移除；源管理只在配置页保留。 */
 .srcpick-col-src .srcpick-item { display: flex; align-items: center; gap: 6px; }
+.srcpick-col-sub .srcpick-item { display: flex; align-items: center; gap: 4px; }
 .srcpick-sname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 左栏订阅项：当前生效订阅加圆点标记（悬停 title 里带源数；行内 ::before，保证 ellipsis 作用在整行） */
-.srcpick-sub.cur::before { content: '● '; color: var(--text-accent-secondary, var(--accent-2)); font-size: 12px; vertical-align: 2px; }
+/* 当前使用/正在查看用文字标识，避免只靠圆点或颜色表达选择状态。 */
+.srcpick-item-state {
+  flex: 0 0 auto; padding: 1px 5px; border: 1px solid var(--border-soft); border-radius: 999px;
+  background: var(--surface-2); color: var(--text-secondary); font-size: 10px; font-weight: 600; line-height: 16px;
+}
+.srcpick-item-state.current { border-color: var(--accent-border, var(--accent)); background: var(--accent-soft, rgba(120,170,255,.12)); color: var(--text-accent); }
 .srcpick-sub.active { background: var(--accent-soft, rgba(120,170,255,.12)); font-weight: 600; }
 /* 顶栏搜索按钮与面板 */
 .sp-btn { cursor: pointer; }

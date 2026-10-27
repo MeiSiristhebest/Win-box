@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import SourcePicker from '../src/renderer/components/SourcePicker';
+import SourcePicker from '../src/renderer/features/subscriptions/SourcePicker';
 import type { SourcePickerPort } from '../src/renderer/features/subscriptions/application/sourcePickerPort';
 
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -36,6 +36,44 @@ describe('SourcePicker child repository switching', () => {
     expect(port.loadProfileSites).toHaveBeenCalledOnce();
   });
 
+  it('labels the active profile and source in addition to the visual selection state', async () => {
+    const port = createPort();
+    render(<SourcePicker port={port} />);
+    fireEvent.click(screen.getByRole('button'));
+
+    const activeProfile = await screen.findByRole('button', { name: '直播子仓 当前使用' });
+    const activeSource = await screen.findByRole('button', { name: '直播源 当前' });
+    expect(activeProfile.getAttribute('aria-current')).toBe('true');
+    expect(activeProfile.getAttribute('aria-pressed')).toBe('true');
+    expect(activeSource.getAttribute('aria-current')).toBe('true');
+    expect(activeSource.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('selects the first filtered source with Enter', async () => {
+    const port = createPort();
+    render(<SourcePicker port={port} />);
+    fireEvent.click(screen.getByRole('button'));
+    const input = await screen.findByRole('textbox', { name: '筛选订阅源' });
+    fireEvent.change(input, { target: { value: '备用' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await act(async () => { await Promise.resolve(); });
+
+    expect(port.setActiveSource).toHaveBeenCalledWith('live-alt');
+    expect(port.publishSourceChanged).toHaveBeenCalledWith('live-alt');
+  });
+
+  it('closes with Escape and restores focus to the trigger', async () => {
+    const port = createPort();
+    render(<SourcePicker port={port} />);
+    const trigger = screen.getByRole('button', { name: /切换站点/ });
+    fireEvent.click(trigger);
+    const input = await screen.findByRole('textbox', { name: '筛选订阅源' });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(screen.queryByRole('region', { name: '订阅和来源' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it('keeps the portaled panel open while the pointer is inside it', async () => {
     vi.useFakeTimers();
     const port = createPort();
@@ -46,6 +84,18 @@ describe('SourcePicker child repository switching', () => {
     fireEvent.pointerEnter(panel);
     await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
     expect(screen.getByRole('region', { name: '订阅和来源' })).toBeTruthy();
+  });
+
+  it('closes after the pointer leave delay and exit animation', async () => {
+    vi.useFakeTimers();
+    const port = createPort();
+    render(<SourcePicker port={port} />);
+    fireEvent.click(screen.getByRole('button'), { detail: 1 });
+    const panel = screen.getByRole('region', { name: '订阅和来源' });
+    fireEvent.pointerLeave(panel);
+    await act(async () => { await vi.advanceTimersByTimeAsync(3280); });
+
+    expect(screen.queryByRole('region', { name: '订阅和来源' })).toBeNull();
   });
 
   it('atomically switches to the selected profile and source', async () => {

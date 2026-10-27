@@ -610,9 +610,14 @@ describe('architecture dependency rules', () => {
     expect(result.stderr).toContain('injected ProfileSwitcherPort');
   });
 
+  it('keeps the source picker feature view off the renderer IPC client', () => {
+    const result = inspect('renderer/features/subscriptions/SourcePicker.tsx', "import { client } from '../../api/client';");
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('renderer IPC client imports belong in adapters');
+  });
+
   it.each([
-    ['renderer/components/SourcePicker.tsx', "import { client } from '../api/client';"],
-    ['renderer/components/SourcePicker.tsx', "import { notifyProfileChanged } from '../lib/configEvents';"],
     ['renderer/features/subscriptions/useSourcePickerController.ts', "import { client } from '../../../api/client';"],
     ['renderer/features/subscriptions/useSourcePickerController.ts', "import { sourcePickerAdapter } from './adapters/sourcePickerAdapter';"],
   ])('keeps source selection behind its injected consumer port: %s', (file, source) => {

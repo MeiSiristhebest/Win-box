@@ -6,6 +6,7 @@ interface SourcePickerControllerOptions {
   port: SourcePickerPort;
   enabled: boolean;
   open: boolean;
+  onPick?: (sourceKey: string) => void;
 }
 
 function describeFailure(cause: unknown): string {
@@ -17,7 +18,7 @@ export function resolveSourcePickerPaneId(currentId: string, profiles: ProfileSi
 }
 
 /** Owns source/profile loading and selection. The component keeps only panel and DOM interaction state. */
-export function useSourcePickerController({ port, enabled, open }: SourcePickerControllerOptions) {
+export function useSourcePickerController({ port, enabled, open, onPick }: SourcePickerControllerOptions) {
   const [sources, setSources] = useState<SourceBean[]>([]);
   const [activeSourceKey, setActiveSourceKey] = useState('');
   const [profileSites, setProfileSites] = useState<ProfileSitesView | null>(null);
@@ -144,8 +145,22 @@ export function useSourcePickerController({ port, enabled, open }: SourcePickerC
     }
   }, [activeSourceKey, port]);
 
+  const pickSource = useCallback(async (sourceKey: string) => {
+    const targetProfileId = profileSites && profileSites.profiles.length > 1 ? selectedProfileId : '';
+    const activeProfileId = profileSites?.activeId ?? '';
+    if (!targetProfileId || targetProfileId === activeProfileId) {
+      if (onPick) {
+        if (sourceKey !== activeSourceKey) onPick(sourceKey);
+        return true;
+      }
+      if (sourceKey === activeSourceKey) return true;
+      return selectSource(sourceKey);
+    }
+    return selectSource(sourceKey, targetProfileId, activeProfileId);
+  }, [activeSourceKey, onPick, profileSites, selectedProfileId, selectSource]);
+
   return {
     model: { sources, activeSourceKey, profileSites, selectedProfileId, error, switching },
-    actions: { beginOpen, refreshSources, refreshProfileSites, activateProfile, selectSource, clearError },
+    actions: { beginOpen, refreshSources, refreshProfileSites, activateProfile, pickSource, clearError },
   };
 }
