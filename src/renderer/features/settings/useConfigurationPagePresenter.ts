@@ -11,6 +11,16 @@ import { useConfigurationSnapshotSession } from './useConfigurationSnapshotSessi
 
 export type ConfigurationLoadStatus = 'loading' | 'ready' | 'failed';
 
+interface ConfigurationLoadState {
+  port: ConfigurationSnapshotPort | null;
+  status: ConfigurationLoadStatus;
+  error: string;
+}
+
+interface ConfigurationLoadResult extends ConfigurationLoadState {
+  generation: number;
+}
+
 interface ConfigurationPagePresenterOptions {
   searchParams: URLSearchParams;
   navigateToTab(tab: ConfigurationSettingsTab): void;
@@ -27,33 +37,57 @@ export function useConfigurationPagePresenter({
   const { configuration, refresh } = useConfigurationSnapshotSession(configurationPort);
   const [busy, setBusy] = useState(false);
   const [settingsQuery, setSettingsQuery] = useState('');
-  const [configurationError, setConfigurationError] = useState('');
-  const [configurationLoadStatus, setConfigurationLoadStatus] = useState<ConfigurationLoadStatus>('loading');
+  const [configurationLoad, setConfigurationLoad] = useState<ConfigurationLoadState>({
+    port: null,
+    status: 'loading',
+    error: '',
+  });
   const loadGeneration = useRef(0);
 
-  const loadConfiguration = useCallback(async (): Promise<boolean> => {
+  const requestConfigurationLoad = useCallback((): Promise<ConfigurationLoadResult> => {
     const generation = ++loadGeneration.current;
-    setConfigurationError('');
-    setConfigurationLoadStatus('loading');
-    try {
-      await refresh();
-      if (generation !== loadGeneration.current) return false;
-      setConfigurationLoadStatus('ready');
-      return true;
-    } catch (error) {
-      if (generation !== loadGeneration.current) return false;
-      setConfigurationError(error instanceof Error ? error.message : String(error));
-      setConfigurationLoadStatus('failed');
-      return false;
-    }
-  }, [refresh]);
+    return Promise.resolve()
+      .then(() => refresh())
+      .then<ConfigurationLoadResult, ConfigurationLoadResult>(
+        () => ({ generation, port: configurationPort, status: 'ready', error: '' }),
+        (error: unknown) => ({
+          generation,
+          port: configurationPort,
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+  }, [configurationPort, refresh]);
 
   useEffect(() => {
-    void loadConfiguration();
+    let active = true;
+    void requestConfigurationLoad().then((result) => {
+      if (active && result.generation === loadGeneration.current) {
+        const { generation: _generation, ...state } = result;
+        setConfigurationLoad(state);
+      }
+    });
     return () => {
+      active = false;
       loadGeneration.current += 1;
     };
-  }, [loadConfiguration]);
+  }, [requestConfigurationLoad]);
+
+  const retryConfigurationLoad = useCallback(async () => {
+    setConfigurationLoad({ port: configurationPort, status: 'loading', error: '' });
+    const result = await requestConfigurationLoad();
+    if (result.generation !== loadGeneration.current) return false;
+    const { generation: _generation, ...state } = result;
+    setConfigurationLoad(state);
+    return result.status === 'ready';
+  }, [configurationPort, requestConfigurationLoad]);
+
+  const configurationLoadStatus = configurationLoad.port === configurationPort
+    ? configurationLoad.status
+    : 'loading';
+  const configurationError = configurationLoad.port === configurationPort
+    ? configurationLoad.error
+    : '';
 
   const searchTerm = normalizeConfigurationSettingsSearch(settingsQuery);
   const matchingSections: readonly ConfigurationSettingsSection[] = searchConfigurationSettings(searchTerm);
@@ -74,7 +108,7 @@ export function useConfigurationPagePresenter({
     setBusy,
     configurationError,
     configurationLoadStatus,
-    retryConfigurationLoad: loadConfiguration,
+    retryConfigurationLoad,
     requestedSection: route.requestedSection,
     requestedTab: route.requestedTab,
     tab: route.activeTab,

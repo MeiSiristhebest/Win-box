@@ -18,7 +18,6 @@ export function useDetailFavoriteMetadata(
 
   useEffect(() => {
     let active = true;
-    setState({ requestKey, metadata: emptyMetadata });
     void port.load(sourceKey, requestedProfileId)
       .then((result) => {
         if (active) setState({ requestKey, metadata: result });

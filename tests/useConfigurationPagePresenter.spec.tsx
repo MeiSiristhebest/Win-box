@@ -76,7 +76,10 @@ describe('useConfigurationPagePresenter', () => {
   it('shows an initial load failure and retries to a ready configuration state', async () => {
     const load = vi.fn()
       .mockRejectedValueOnce(new Error('configuration unavailable'))
-      .mockResolvedValueOnce(configuration('recovered'));
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveRetry = resolve;
+      }));
+    let resolveRetry: ((value: UserConfig) => void) | undefined;
     const configurationPort = createConfigurationPort(load);
     const { result } = renderHook(() => useConfigurationPagePresenter({
       searchParams: new URLSearchParams(),
@@ -87,8 +90,17 @@ describe('useConfigurationPagePresenter', () => {
     await waitFor(() => expect(result.current.configurationLoadStatus).toBe('failed'));
     expect(result.current.configurationError).toBe('configuration unavailable');
 
+    let retry: Promise<boolean> | undefined;
+    act(() => {
+      retry = result.current.retryConfigurationLoad();
+    });
+    expect(result.current.configurationLoadStatus).toBe('loading');
+    expect(result.current.configurationError).toBe('');
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+
     await act(async () => {
-      await result.current.retryConfigurationLoad();
+      resolveRetry?.(configuration('recovered'));
+      await retry;
     });
     expect(result.current.configurationLoadStatus).toBe('ready');
     expect(result.current.configurationError).toBe('');

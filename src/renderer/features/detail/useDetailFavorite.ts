@@ -21,7 +21,7 @@ export function useDetailFavorite(input: DetailFavoriteInput, port: DetailFavori
     { sourceKey, vodId, name, profileId },
     port,
     setCurrentFavorite,
-  ), [name, port, profileId, sourceKey, vodId]);
+  ), [name, port, profileId, setCurrentFavorite, sourceKey, vodId]);
 
   const toggle = useCallback(() => {
     const result = toggleDetailFavorite({

@@ -1,4 +1,4 @@
-import { useMemo, useReducer, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { SourceBean } from '../../../shared/types';
 import { projectSearchResults } from '../search/application/searchResultProjection';
 import { usePageActive } from '../../lib/keepAlive';
@@ -172,7 +172,9 @@ export function useHomePagePresenter({ onOpenDetail, route, filterPanel, waterfa
       loadHome,
     },
   });
-  browseStartedRef.current = search.browseStarted;
+  useLayoutEffect(() => {
+    browseStartedRef.current = search.browseStarted;
+  }, [search.browseStarted]);
   const { applySearchMem, setProfileSearchScope, doSearch, openFolder, exitFolder, exitSearch } = search;
   const resultProfileId = activeProfileId;
   const resultView = useMemo(() => projectSearchResults(agg?.items ?? [], wd, { mode: aggMatchMode, profileId: aggProfileFilter, sourceId: aggSrc, defaultProfileId: resultProfileId }), [agg, wd, aggMatchMode, aggProfileFilter, aggSrc, resultProfileId]);
