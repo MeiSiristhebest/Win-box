@@ -14,7 +14,7 @@ import type { JsSpiderHostPort } from '../spider/SpiderPorts';
 import { enrichExt } from '../spider/driveExt';
 import { SourceProblemError, sourceProblemCodeForReason } from '../spider/errors';
 import { UnsupportedSourceError } from '../util/errors';
-import { abortError, throwIfAborted } from '../util/abort';
+import { abortError, awaitWithAbort, throwIfAborted } from '../util/abort';
 
 /** 调用超时：首页/分类 20s，其它 15s（任务书约定） */
 const TIMEOUT_HOME = 20000;
@@ -59,7 +59,7 @@ export class JsSpider extends Spider {
   private async getSandbox(signal?: AbortSignal): Promise<JsSpiderRuntimePort> {
     throwIfAborted(signal);
     if (!this.sandbox) {
-      throw new SourceProblemError('SPIDER_ERROR', 'JS 沙箱不可用', { sourceKey: this.siteKey });
+      throw new SourceProblemError('SPIDER_ERROR', '蜘蛛实例已销毁', { sourceKey: this.siteKey });
     }
     try {
       await this.sandbox.ensureLoaded(signal);
@@ -94,9 +94,10 @@ export class JsSpider extends Spider {
     signal?: AbortSignal,
   ): Promise<unknown> {
     try {
-      const result = signal
-        ? await sandbox.callMethod(names, args, timeoutMs, signal)
-        : await sandbox.callMethod(names, args, timeoutMs);
+      const invocation = signal
+        ? sandbox.callMethod(names, args, timeoutMs, signal)
+        : sandbox.callMethod(names, args, timeoutMs);
+      const result = await awaitWithAbort(invocation, signal);
       throwIfAborted(signal);
       return result;
     } catch (error) {

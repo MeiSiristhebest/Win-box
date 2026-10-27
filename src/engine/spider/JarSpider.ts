@@ -40,6 +40,7 @@ export class JarSpider extends Spider {
   private runtime: JarSpiderRuntimePort;
   private clsName: string;
   private ready = false;
+  private destroyed = false;
   private preparation: Promise<boolean> | null = null;
 
   constructor(init: SpiderInit, runtime: JarSpiderRuntimePort) {
@@ -157,6 +158,7 @@ export class JarSpider extends Spider {
 
   private async call(method: string, args: string[] = [], timeoutMs?: number, signal?: AbortSignal): Promise<string> {
     throwIfAborted(signal);
+    if (this.destroyed) throw new SourceProblemError('SPIDER_ERROR', '蜘蛛实例已销毁', { sourceKey: this.siteKey, operation: method });
     const ready = await awaitWithAbort(this.ensureReady(), signal);
     throwIfAborted(signal);
     if (!ready) {
@@ -183,7 +185,10 @@ export class JarSpider extends Spider {
     throwIfAborted(signal);
     let result: SpiderCallResult;
     try {
-      result = await this.runtime.call(paths, this.clsName, method, [this.enrichedExt(), ...args], timeoutMs ?? this.timeoutMs, this.siteKey, signal);
+      result = await awaitWithAbort(
+        this.runtime.call(paths, this.clsName, method, [this.enrichedExt(), ...args], timeoutMs ?? this.timeoutMs, this.siteKey, signal),
+        signal,
+      );
     } catch (error) {
       if (signal?.aborted) throw abortError(signal);
       if (error instanceof SourceProblemError) throw error;
@@ -314,6 +319,7 @@ export class JarSpider extends Spider {
     return this.call('proxy', [JSON.stringify(params || {})]);
   }
   async destroy(): Promise<void> {
+    this.destroyed = true;
     this.ready = false;
   }
 }

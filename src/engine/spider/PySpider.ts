@@ -19,6 +19,7 @@ export class PySpider extends Spider {
   /** 已下载到本地的脚本路径 */
   private pyPath = '';
   private ready = false;
+  private destroyed = false;
   /** 准备期失败原因（脚本下载/缓存），优先于调用期原因 */
   private loadError = '';
   private preparation: Promise<boolean> | null = null;
@@ -147,6 +148,7 @@ export class PySpider extends Spider {
    */
   private async call(method: string, args: string[], timeoutMs?: number, signal?: AbortSignal): Promise<string> {
     throwIfAborted(signal);
+    if (this.destroyed) throw new SourceProblemError('SPIDER_ERROR', '蜘蛛实例已销毁', { sourceKey: this.siteKey, operation: method });
     const ready = await awaitWithAbort(this.ensureReady(), signal);
     throwIfAborted(signal);
     if (!ready) {
@@ -156,7 +158,7 @@ export class PySpider extends Spider {
     throwIfAborted(signal);
     let result: SpiderCallResult;
     try {
-      result = await this.runtime.callPython(
+      result = await awaitWithAbort(this.runtime.callPython(
         this.pyPath,
         this.clsName,
         method,
@@ -164,7 +166,7 @@ export class PySpider extends Spider {
         timeoutMs ?? this.timeoutMs,
         this.siteKey,
         signal,
-      );
+      ), signal);
     } catch (e) {
       if (signal?.aborted) throw abortError(signal);
       // Runtime setup reports PY_UNSUPPORTED explicitly; unexpected execution failures
@@ -219,6 +221,7 @@ export class PySpider extends Spider {
     return this.call('proxy', [JSON.stringify(params || {})]);
   }
   async destroy(): Promise<void> {
+    this.destroyed = true;
     this.ready = false;
   }
 }
