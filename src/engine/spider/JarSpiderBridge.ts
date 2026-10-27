@@ -51,6 +51,7 @@ import {
   jarPoolFailureAction,
 } from './jarExecutionPolicy';
 import { isUsableConvertedJar as isUsableConvertedJarFile } from './convertedJarArtifact';
+import { prepareConvertedJarArtifact } from './JarArtifactPreparation';
 import { ConversionInFlightError, JarConversionRegistry } from './JarConversionRegistry';
 import { JarClasspathResolver } from './JarClasspathResolver';
 import { normalizeSpiderRuntimeFailure } from './spiderRuntimeFailure';
@@ -704,48 +705,31 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
   }
 
   private async adoptFinishedPart(key: string, rawJar: string, target: string, strict: boolean): Promise<boolean> {
-    const part = this.detachedDex2jar.partPath(key);
-    let size = 0;
-    try {
-      size = existsSync(part) ? statSync(part).size : 0;
-    } catch {
-      size = 0;
-    }
-    if (size === 0) {
-      if (strict) throw new Error('dex2jar 转换产物为空');
-      return false;
-    }
-    if (!isUsableConvertedJar(part)) {
-      if (strict) throw new Error('dex2jar 转换产物为空（只得到空 jar，未产出任何 class）');
-      return false;
-    }
-    // ★★ 把 raw jar 里 dex2jar「不认」的资源原样搬回转换产物 —— 加固/壳类蜘蛛的生死线 ★★
-    //   见 copyJarResources 的详细说明（缺 assets/*.so 会让 DexNative.<clinit> 直接 NPE）。
-    copyJarResources(rawJar, part, this.host?.logger);
-    // R8 删除子类构造器后，dex2jar 会错误地 NEW 抽象祖先类。普通 JAR 与运行时载荷同样需要修复。
-    await this.repairDexConstructors(rawJar, part);
-    // ★★ 修补 dex2jar 的「super 调用被转成自递归 invokespecial」—— 否则调用即 StackOverflowError ★★
-    //   实测影响整族盘搜蜘蛛（sun.json 的 Pan/MiPan/PanSou/Baiku/KuLe/… 全部 init 就崩），
-    //   见 classFix.ts 文件头。属于增强步骤：失败只记日志，不让「能用的产物」变成失败。
-    fixSelfSuperCallsInJarFile(part, [join(this.jvmDir, 'stubs', 'stubs.jar'), ...this.libJars()], {
-      i: (m) => this.host?.logger.i(m),
-      w: (m) => this.host?.logger.w(m),
+    return prepareConvertedJarArtifact({ key, rawJar, target, strict }, {
+      partPath: (partKey) => this.detachedDex2jar.partPath(partKey),
+      sizeOf: (partPath) => {
+        try { return existsSync(partPath) ? statSync(partPath).size : 0; } catch { return 0; }
+      },
+      isUsable: (partPath) => isUsableConvertedJar(partPath),
+      mergeRawResources: (source, partPath) => copyJarResources(source, partPath, this.host?.logger),
+      repairDexConstructors: (source, partPath) => this.repairDexConstructors(source, partPath),
+      repairSelfSuperCalls: (partPath) => fixSelfSuperCallsInJarFile(
+        partPath,
+        [join(this.jvmDir, 'stubs', 'stubs.jar'), ...this.libJars()],
+        { i: (message) => this.host?.logger.i(message), w: (message) => this.host?.logger.w(message) },
+      ),
+      patchSpiderProxy: (partPath) => patchSpiderProxyInJarFile(partPath, {
+        i: (message) => this.host?.logger.i(message),
+        w: (message) => this.host?.logger.w(message),
+      }),
+      promote: (partPath, destination) => {
+        // Same-volume rename is the publication boundary; remove stale output first.
+        try { rmSync(destination, { force: true }); } catch { /* best effort */ }
+        try { renameSync(partPath, destination); } catch { /* best effort */ }
+        return this.artifactOk(destination);
+      },
     });
-    // ★ 2026-10-14：补全 jar 自带的极简 `com.github.catvod.spider.Proxy`（补 `getProxyUrlDo`）——
-    //   安卓端靠 App dex 的同名完整类兜住，桌面端没有 ⇒ 该类调用必 NoSuchMethodError（见 appProxyStub.ts）。
-    //   同样属于增强步骤：失败只记日志，不让「能用的产物」变成失败。
-    patchSpiderProxyInJarFile(part, {
-      i: (m) => this.host?.logger.i(m),
-      w: (m) => this.host?.logger.w(m),
-    });
-    // 原子改名：先清掉同名旧产物（可能正是「已失效」那位），再 rename（同盘 rename 不会留半个文件）
-    try { rmSync(target, { force: true }); } catch { /* ignore */ }
-    try { renameSync(part, target); } catch { /* ignore */ }
-    if (this.artifactOk(target)) return true;
-    if (strict) throw new Error('dex2jar 转换产物不可用（改名失败）');
-    return false;
   }
-
   /**
    * ★ 2026-09-27：某 jar 的转换进度（上层在「等待期」显示「已等 X」）。
    * @returns null = 当前没有转换在跑；attached = 正在接管上次会话遗留的后台转换
