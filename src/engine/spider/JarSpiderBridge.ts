@@ -38,7 +38,6 @@ import { extractBridgeNotes } from './spiderDiagnostics';
 import { spiderCallFailed, spiderCallSucceeded, type SpiderCallResult } from './spiderCallResult';
 import type { PythonSpiderRuntimePort } from './PythonSpiderRuntimePort';
 import { PythonSpiderRuntimeAdapter } from './PythonSpiderRuntimeAdapter';
-import { LOCAL_PROXY_BASE } from '../../shared/constants';
 import {
   NATIVE_CALL_MIN_TIMEOUT_MS as nativeCallMinimumTimeout,
   d2jHeapMb as estimateD2jHeapMb,
@@ -46,6 +45,12 @@ import {
   spiderProxyPort as deterministicSpiderProxyPort,
   totalDexBytes as estimateTotalDexBytes,
 } from './jarBridgePolicy';
+import {
+  buildJarCallArgv,
+  buildJarJvmPrefix,
+  buildJarServeArgv,
+  jarPoolFailureAction,
+} from './jarExecutionPolicy';
 import { isUsableConvertedJar as isUsableConvertedJarFile } from './convertedJarArtifact';
 import { ConversionInFlightError, JarConversionRegistry } from './JarConversionRegistry';
 import { JarClasspathResolver } from './JarClasspathResolver';
@@ -910,14 +915,12 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     const cpParts = [...jarPaths];
     if (shimClasses && existsSync(shimJar)) cpParts.unshift(shimJar);
     const loadCp = cpParts.join(';');
-    const serveArgv = [
-      ...this.jvmPrefix(runtimeCp, true, loadCp),
-      ...(shimClasses ? [`-Dtvbox.shellShimClasses=${shimClasses}`] : []),
-      ...this.nativeProps(nativeJars),
-      'SpiderRunner',
-      '--serve',
-      loadCp,
-    ];
+    const serveArgv = buildJarServeArgv({
+      jvmPrefix: this.jvmPrefix(runtimeCp, true, loadCp),
+      loaderClasspath: loadCp,
+      shimClasses,
+      nativeArguments: this.nativeProps(nativeJars),
+    });
     const key = servePoolKey(this.javaExe(), serveArgv);
     return this.pool.warm(key, { exe: this.javaExe(), serveArgv, key }, count, { className, method: WARM_METHOD, args: [ext] });
   }
@@ -1082,21 +1085,26 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     //   端口，预登记的猜测值会把播放地址改写到**别的 JVM**（旧 stubs / 无状态），白等预检超时
     //   （最长 20s）才落原生通道。一次性回退路径无信封 → 拿不到端口 → playInner 诚实落原生兜底。
     const nativeArgs = this.nativeProps(nativeJars);
-    const argv = [
-      ...this.jvmPrefix(runtimeCp, false, loadCp),
-      // ★ shell-shim 启用时，把"真实实现路径"透传给子进程（Java 影子类
-      //   DexNative 优先读系统属性 tvbox.shellShimClasses，其次环境变量）。
-      //   仅在 shimClasses 非空时追加，默认关闭下 argv 形态与历史完全一致。
-      ...(shimClasses ? [`-Dtvbox.shellShimClasses=${shimClasses}`] : []),
-      ...nativeArgs,
-      'SpiderRunner', loadCp, className, method, ...args,
-    ];
+    const argv = buildJarCallArgv({
+      jvmPrefix: this.jvmPrefix(runtimeCp, false, loadCp),
+      loaderClasspath: loadCp,
+      shimClasses,
+      nativeArguments: nativeArgs,
+      className,
+      method,
+      args,
+    });
     // ★ 进程池：常驻 JVM（--serve）跨请求复用 → 二次调用跳过冷启动。
     //   serve argv = javaPrefix + [SpiderRunner, --serve, loadCp]（loadCp 已含 shim jar + 蜘蛛 jar）。
     //   ★ 仅**传输层失败**（进程崩溃/超时/写入失败）才回退一次性保底；
     //     蜘蛛合法返回空串（空搜索）不再误判失败去多打一次冷启动。
     if (this.pool) {
-      const serveArgv = [...this.jvmPrefix(runtimeCp, true, loadCp), ...(shimClasses ? [`-Dtvbox.shellShimClasses=${shimClasses}`] : []), ...nativeArgs, 'SpiderRunner', '--serve', loadCp];
+      const serveArgv = buildJarServeArgv({
+        jvmPrefix: this.jvmPrefix(runtimeCp, true, loadCp),
+        loaderClasspath: loadCp,
+        shimClasses,
+        nativeArguments: nativeArgs,
+      });
       const key = servePoolKey(this.javaExe(), serveArgv);
       // 本地代理端口 → 池 key：/proxy/<port> 被访问时据此把该 JVM 钉住（播放期间不回收）
       this.proxyPortKeys.set(spiderProxyPort(loadCp), key);
@@ -1104,6 +1112,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
       //   实测 App88：home ~54s、detail ~295s（首调还要付 ~10s 模拟器启动）；20s 默认预算下
       //   「守卫已通」也会被超时判死。只对这类 jar 抬底，普通源行为不变。
       const tmo = nativeJars.length ? Math.max(timeoutMs ?? this.callTimeoutMs, NATIVE_CALL_MIN_TIMEOUT_MS) : timeoutMs ?? this.callTimeoutMs;
+      let cancellationError: Error | undefined;
       try {
         const preferredPort = tag && method === 'playerContent' ? this.detailProxyPortByTag.get(tag) : undefined;
         const r = await this.poolSubmit(this.javaExe(), key, serveArgv, className, method, args, this.proxyProvider?.().env ?? {}, tmo, preferredPort, signal);
@@ -1140,26 +1149,37 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
             ? spiderCallFailed(r.data, reason, runtimeFailure.failureKind, runtimeFailure.problemCode)
             : spiderCallSucceeded(r.data);
         }
-        // ★ 2026-09-23：**执行超时不回退一次性** —— 超时说明蜘蛛/源站卡住，
-        //   立刻再跑一遍一次性只会再等一个满超时（实测死源从 15s 变 30s，全源搜索因此翻倍慢）。
-        const timeoutResult = spiderPoolTimeoutResult(r.reason, tmo);
-        // ★ 2026-09-23 三轮：**排队超时也不回退一次性** —— 排队长说明「同时查询的源太多」，
-        //   再 spawn 一个冷启动 JVM 只会让队列更长（用户侧表现为「越搜越慢」）。
-        //   直接按「本源本次未取到」返回，并记下可读原因（健康调度会把该源排序到队尾+短预算）。
-        if (timeoutResult) {
-          if (r.reason === 'queue-timeout') this.host?.logger.w(`jvm-bridge ${className}.${method}: ${timeoutResult.reason}`);
-          else this.host?.logger.i(`jvm-bridge ${className}.${method} 失败原因: ${timeoutResult.reason}`);
-          return timeoutResult;
+        switch (jarPoolFailureAction(r.reason)) {
+          case 'return-timeout': {
+            const timeoutResult = spiderPoolTimeoutResult(r.reason, tmo);
+            if (timeoutResult) {
+              if (r.reason === 'queue-timeout') this.host?.logger.w(`jvm-bridge ${className}.${method}: ${timeoutResult.reason}`);
+              else this.host?.logger.i(`jvm-bridge ${className}.${method} 失败原因: ${timeoutResult.reason}`);
+              return timeoutResult;
+            }
+            break;
+          }
+          case 'return-capacity': {
+            const result = spiderPoolCapacityResult(r.reason);
+            if (result) return result;
+            break;
+          }
+          case 'return-output-limit': {
+            const result = spiderPoolOutputLimitResult(r.reason);
+            if (result) return result;
+            break;
+          }
+          case 'throw-cancelled':
+            cancellationError = signal ? abortError(signal) : new Error('搜索已取消');
+            break;
+          case 'fallback-one-shot':
+            break;
         }
-        const capacityResult = spiderPoolCapacityResult(r.reason);
-        if (capacityResult) return capacityResult;
-        const outputLimitResult = spiderPoolOutputLimitResult(r.reason);
-        if (outputLimitResult) return outputLimitResult;
-        if (r.reason === 'cancelled') throw signal ? abortError(signal) : new Error('搜索已取消');
       } catch {
         if (signal?.aborted) throw abortError(signal);
         /* 池异常 → 回退一次性 */
       }
+      if (cancellationError) throw cancellationError;
     }
     throwIfAborted(signal);
     return this.runSubprocessWithinProcessBudget(this.javaExe(), argv, className, method, timeoutMs, undefined, signal);
@@ -1270,89 +1290,22 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
 
   /** 生成 JVM 子进程的公共前置参数（旗标 + classpath），jar/python 模式共用。 */
   private jvmPrefix(cp: string, serve = false, portKey = cp): string[] {
-    // ★ 蜘蛛 JVM 内的「宿主代理」端口与对外入口（见 spiderProxyPort / 资源侧 com.github.catvod.Proxy）：
-    //   端口按 **加载器参数**（= 这只 jar / 这批 jar）确定性分配；入口 = 本机 9978 的 /proxy/<port>
-    //   （TS 侧收到后转发回该 JVM，并在每次转发时把该 JVM 钉住，避免播放中段被回收 → 断流）。
-    const proxyPort = spiderProxyPort(portKey);
-    const proxyProps = [
-      `-Dtvbox.proxy.port=${proxyPort}`,
-      `-Dtvbox.proxy.entry=${LOCAL_PROXY_BASE}/proxy/${proxyPort}`,
-    ];
-    // ★ 蜘蛛数据沙箱：与 converted 同级的兄弟目录。
-    //   蜘蛛的清理/写临时文件都限制在这里，绝不会碰到 converted 里的转换产物。
-    const sandboxDir = join(this.cacheDir, '..', 'sandbox');
+    const sandboxDir = join(this.cacheDir, "..", "sandbox");
     try {
       if (!existsSync(sandboxDir)) mkdirSync(sandboxDir, { recursive: true });
     } catch {
-      /* 建不了就交给 runner 用默认目录 */
+      /* Let the runner use its default directory if the sandbox cannot be created. */
     }
-    // ★★ 2026-10-14（用户指令：**不允许给用户系统建盘符**）★★
-    //   此前这里用 `subst` 建过「蜘蛛沙箱盘」（V:\ → <数据目录>\spider-jail），目的是让第三方 jar
-    //   写的**安卓绝对路径**（`/data/data/…`、`/data/user/0/<pkg>/…`）别落到盘根目录。
-    //   但那会在用户机器上凭空多出一个盘符（资源管理器/其它程序都可见）= 改人家系统，用户明确拒绝。
-    //   ⇒ **该机制已整条删除**（含 util/jailDrive.ts）。现在蜘蛛对 /data/… 的写入按 Windows 原语义
-    //   解析到「当前盘根」；我们只保留**不碰系统**的收容手段：`-Dtvbox.spiderCacheDir=<沙箱目录>`
-    //   （把 Android Context 的 getCacheDir/getFilesDir 收进数据目录，见下方参数）。
-    return [
-      // ★ 关闭字节码校验（-noverify）。原因：jar(dex) 经 dex2jar 转换后，
-      //   分支处的 StackMapTable 帧往往不完整；Android 的 ART 不依赖这些帧，
-      //   但桌面 HotSpot 在 Java7+ 会做类型校验并抛
-      //   `VerifyError: Expecting a stackmap frame at branch target N`，
-      //   表现为蜘蛛整体不可用。桌面桥只做「可信配置下的反射调用」，
-      //   关闭校验的收益（可用性）远大于风险。JDK13+ 会打印一条 deprecation
-      //   warning，属预期噪声（下面在 stderr 处理里过滤）。
-      '-noverify',
-      // ★ 限定堆上限，理由同 doConvert()：JRE17 默认 G1 会按物理内存推导堆，
-      //   在低可用内存机器上直接 mmap 失败 → JVM 崩溃（hs_err_pid*.log）、
-      //   蜘蛛表现为「空结果」。蜘蛛本身是轻量反射调用（实测单次约 590ms，
-      //   常驻内存 <100MB），256m 足够且远离崩溃边界。
-      //   ★ 三轮：常驻 serve 进程现在要**并发承接整轮搜索（24 线程）**，堆给到 384m
-      //   （后出现的 -Xmx 覆盖前者）；一次性路径仍是 256m。
-      serve ? '-Xmx384m' : '-Xmx256m',
-      '-XX:+UseSerialGC',
-      // ★ 指定蜘蛛数据沙箱（见上方 sandboxDir 说明）：把蜘蛛可见的
-      //   getCacheDir/getFilesDir 全部收进这个目录，避免其清理逻辑误伤
-      //   converted 下的 jar 转换产物。
-      `-Dtvbox.spiderCacheDir=${sandboxDir}`,
-      // ★★ JDK 模块封装放行（--add-opens，2026-09-26 壳类取证新增，勿删）★★
-      //   现象：加固壳的混淆 VM 用**反射**做对象深拷贝 / 取类内部状态，目标包括
-      //   `java.lang.Object.clone()`（protected native）等 JDK 内部成员。
-      //   Android(ART)/Java8 无模块封装 → 反射成功；JDK17 默认 `java.base` 不 open，
-      //   实测日志：`InaccessibleObjectException: Unable to make protected native
-      //   java.lang.Object java.lang.Object.clone() accessible: module java.base does not
-      //   "opens java.lang" to unnamed module` + `IllegalAccessException ... "protected native"`，
-      //   壳内准备/加密链路因此走到降级分支（详情有、剧集空；SO 装载 `prepare failed`）。
-      //   桌面桥只做「可信配置下的反射调用」，放行这些包与 Android 侧行为对齐，风险可控。
-      '--add-opens=java.base/java.lang=ALL-UNNAMED',
-      '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
-      '--add-opens=java.base/java.lang.invoke=ALL-UNNAMED',
-      '--add-opens=java.base/java.util=ALL-UNNAMED',
-      '--add-opens=java.base/java.util.concurrent=ALL-UNNAMED',
-      '--add-opens=java.base/java.io=ALL-UNNAMED',
-      '--add-opens=java.base/java.net=ALL-UNNAMED',
-      '--add-opens=java.base/java.nio=ALL-UNNAMED',
-      '--add-opens=java.base/java.security=ALL-UNNAMED',
-      '--add-opens=java.base/java.text=ALL-UNNAMED',
-      //   ★ 2026-09-27 壳通解新增：壳的 native 会 `close()` 那个 `ClassLoader.getResourceAsStream`
-      //   返回的 JarURLInputStream（JDK 内部类），unidbg 的反射代理对它 setAccessible →
-      //   必须放行 `sun.net.www.protocol.jar`，否则 `InaccessibleObjectException` 把守卫握手带崩
-      //   （wex 实测：getResourceAsStream 读 assets/xxx.guard 后 close 处失败）。
-      '--add-opens=java.base/sun.net.www.protocol.jar=ALL-UNNAMED',
-      '-Dfile.encoding=UTF-8',
-      '-Dsun.stdout.encoding=UTF-8',
-      '-Dsun.stderr.encoding=UTF-8',
-      // ★ 网络代理（用户设置；空则不追加，argv 与历史完全一致）
-      ...(this.proxyProvider?.().jvmArgs ?? []),
-      // ★ 宿主代理端口/入口（见方法头注释）：壳与蜘蛛的 `<entry>?do=proxy&key=…` 播放地址靠它
-      ...proxyProps,
-      // ★★ 2026-09-27「壳通解」：dex 加载器 stub（dalvik.system.DexClassLoader）在**运行时**把
-      //   壳 native 解密出来的裸 dex 转成 jar 再加载 —— 这里把 dex2jar 工具链与缓存目录透传给子进程。
-      //   缺任一项 → stub 退回「可解释失败」（不静默）。
-      `-Dtvbox.d2j.java=${this.javaExe()}`,
-      `-Dtvbox.d2j.cp=${this.dirJars(join(this.jvmDir, 'd2j')).join(';')}`,
-      `-Dtvbox.d2j.cache=${join(this.cacheDir, 'runtime-dex')}`,
-      '-cp', cp,
-    ];
+    return buildJarJvmPrefix({
+      runtimeClasspath: cp,
+      loaderClasspath: portKey,
+      serve,
+      sandboxDirectory: sandboxDir,
+      javaExecutable: this.javaExe(),
+      dex2jarClasspath: this.dirJars(join(this.jvmDir, "d2j")).join(";"),
+      dex2jarCacheDirectory: join(this.cacheDir, "runtime-dex"),
+      proxyJvmArgs: this.proxyProvider?.().jvmArgs ?? [],
+    });
   }
 
   /**
