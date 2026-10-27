@@ -533,10 +533,28 @@ public final class NativeBridge {
     }
 
     /** 统一的分发（壳与载荷共用）：描述符 → DVM 调用 → Java 值 */
+    static char requireSupportedReturnType(String desc) {
+        char ret = desc.charAt(desc.indexOf(')') + 1);
+        switch (ret) {
+            case 'V':
+            case 'Z':
+            case 'I':
+            case 'S':
+            case 'B':
+            case 'C':
+            case 'J':
+            case 'L':
+            case '[':
+                return ret;
+            default:
+                throw new UnsupportedOperationException("原生桥暂不支持返回类型: " + desc);
+        }
+    }
+
     private static Object call(String className, DvmClass c, AndroidEmulator emu, String method, String desc, Object[] args, VM target) {
         String sig = method + desc;
         Object[] a = args == null || args.length == 0 ? NO_ARGS : marshal(args, target);
-        char ret = desc.charAt(desc.indexOf(')') + 1);
+        char ret = requireSupportedReturnType(desc);
         long t0 = PROFILE ? System.nanoTime() : 0L;
         Object r;
         switch (ret) {

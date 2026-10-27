@@ -8,6 +8,8 @@ import com.sun.jna.Pointer;
 import com.github.unidbg.pointer.UnidbgPointer;
 import unicorn.ArmConst;
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.List;
 
 public final class NativeBridgeSmoke {
@@ -22,9 +24,73 @@ public final class NativeBridgeSmoke {
         for (int i = 0; i < args.length; i++) registers[i] = args[i].intValue();
         return emulator.eFunc(UnidbgPointer.nativeValue(code), registers).intValue();
     }
+    private static void nativeReturnTypeContract() throws Exception {
+        Method requireSupportedReturnType = NativeBridge.class.getDeclaredMethod("requireSupportedReturnType", String.class);
+        requireSupportedReturnType.setAccessible(true);
+        String[] descriptors = {
+                "()V", "()Z", "()I", "()S", "()B", "()C", "()J", "()Ljava/lang/String;", "()[B"
+        };
+        char[] expected = {'V', 'Z', 'I', 'S', 'B', 'C', 'J', 'L', '['};
+        for (int i = 0; i < descriptors.length; i++) {
+            char actual = (Character) requireSupportedReturnType.invoke(null, descriptors[i]);
+            equal(actual, expected[i], "supported JNI return descriptor " + descriptors[i]);
+        }
+        for (String descriptor : new String[] {"()F", "()D"}) {
+            try {
+                requireSupportedReturnType.invoke(null, descriptor);
+                throw new AssertionError("unsupported JNI return descriptor accepted: " + descriptor);
+            } catch (InvocationTargetException wrapped) {
+                Throwable cause = wrapped.getCause();
+                if (!(cause instanceof UnsupportedOperationException) || !cause.getMessage().contains(descriptor)) {
+                    throw new AssertionError("missing unsupported return diagnostic for " + descriptor, cause);
+                }
+                assertions++;
+            }
+        }
+    }
+    private static byte[] elfHeader(int elfClass, int machine) {
+        byte[] header = new byte[20];
+        header[0] = 0x7f;
+        header[1] = 'E';
+        header[2] = 'L';
+        header[3] = 'F';
+        header[4] = (byte) elfClass;
+        header[5] = 1;
+        header[18] = (byte) machine;
+        header[19] = (byte) (machine >>> 8);
+        return header;
+    }
+    private static void nativeArchitectureContract(File root) throws Exception {
+        Method elfBits = NativeBridge.class.getDeclaredMethod("elfBits", byte[].class);
+        elfBits.setAccessible(true);
+        equal((Integer) elfBits.invoke(null, (Object) elfHeader(1, 0x28)), 32, "ARM32 ELF recognition");
+        equal((Integer) elfBits.invoke(null, (Object) elfHeader(2, 0xb7)), 64, "AArch64 ELF recognition");
+        equal((Integer) elfBits.invoke(null, (Object) elfHeader(2, 0x3e)), 0, "x86_64 ELF rejection");
+        equal((Integer) elfBits.invoke(null, (Object) new byte[8]), 0, "truncated ELF rejection");
+        equal((Integer) elfBits.invoke(null, (Object) new byte[20]), 0, "non-ELF rejection");
+
+        Method detectArchBits = NativeBridge.class.getDeclaredMethod("detectArchBits", File.class);
+        detectArchBits.setAccessible(true);
+        File unsupportedSo = new File(root, "unsupported-x86_64.so");
+        java.nio.file.Files.write(unsupportedSo.toPath(), elfHeader(2, 0x3e));
+        try {
+            detectArchBits.invoke(null, unsupportedSo);
+            throw new AssertionError("unsupported native architecture accepted");
+        } catch (InvocationTargetException wrapped) {
+            Throwable cause = wrapped.getCause();
+            if (!(cause instanceof IllegalStateException)
+                    || !cause.getMessage().contains("架构不受支持")
+                    || !cause.getMessage().contains(unsupportedSo.getName())) {
+                throw new AssertionError("missing unsupported native architecture diagnostic", cause);
+            }
+            assertions++;
+        }
+    }
     public static void main(String[] args) throws Exception {
         if (!NativeBridge.available()) throw new AssertionError("Native bridge unavailable");
         File root = new File(args[0]);
+        nativeReturnTypeContract();
+        nativeArchitectureContract(root);
         try (BridgeARM32Emulator emulator = new BridgeARM32Emulator("winbox-native-check", new File(root, "arm32"), List.of(new Unicorn2Factory(true)))) {
             Pointer memory = emulator.getMemory().mmap(4096, 7);
             memory.write(0, new byte[] {42, 0, (byte)0xa0, (byte)0xe3, 30, (byte)0xff, 47, (byte)0xe1}, 0, 8);

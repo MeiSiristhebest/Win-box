@@ -31,7 +31,7 @@ test('Java 17 bridge executes ARM32/AArch64 and eventfd/epoll using real native 
     await command(javac, ['--release', '17', '-encoding', 'UTF-8', '-cp', classpath, '-d', temp, join(root, 'tests/fixtures/NativeBridgeSmoke.java')]);
     const java = join(root, 'resources/jvm/jre/bin', process.platform === 'win32' ? 'java.exe' : 'java');
     const output = await command(java, ['-cp', temp + (process.platform === 'win32' ? ';' : ':') + classpath, 'NativeBridgeSmoke', temp]);
-    assert.match(output, /Native bridge runtime passed: 22 assertions/);
+    assert.match(output, /Native bridge runtime passed: 39 assertions/);
     console.log(output.trim());
     const cached = await generateNativeBridge({ jdkHome: join(temp, 'missing-jdk') });
     assert.equal(cached.cached, true);
