@@ -64,6 +64,8 @@ import { Dex2jarConversion } from './Dex2jarConversion';
 import { JarArchiveDownloader } from './JarArchiveDownloader';
 import { mergeJarResourceEntries } from './jarResourceMerge';
 import { SpiderSubprocessRunner } from './SpiderSubprocessRunner';
+import { JarSpiderRuntimeSession } from './JarSpiderRuntimeSession';
+import { decideJarCallFallback } from './jarCallFallbackPolicy';
 
 /**
  * ★ 转换产物格式版本（导出：单测与诊断用；**改变了「产物内容」就必须 +1**）。
@@ -253,22 +255,13 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
   private globalJar = '';
   /** 已上屏过的原生桥消息（stderr 跨请求累积，去重防刷屏；见 noteBridgeLog） */
   private bridgeNotesSeen = new Set<string>();
-  /** ★ 2026-09-29：已切到 shell-shim 真实实现路线的壳 jar（守卫空 NPE 兜底后记住，后续调用/预热同口径） */
-  private readonly shimPreferred = new Set<string>();
+  /** Owns per-source proxy identity, pool pinning identity, and shell-shim preference. */
+  private readonly runtimeSession = new JarSpiderRuntimeSession();
   /** One-shot child-process I/O and shutdown cleanup live at a dedicated adapter boundary. */
   private readonly subprocessRunner: SpiderSubprocessRunner;
-  /** ★ 本地代理端口 → 池 key（/proxy/<port> 被访问时据此钉住对应 JVM，见 spiderProxyPort） */
-  private readonly proxyPortKeys = new Map<number, string>();
-
-  /** ★ 2026-10-09：源 key → 宿主代理端口（call(tag) 时登记；`proxyPortForTag` 供 jar 自解链改写） */
-  private readonly proxyPortByTag = new Map<string, number>();
-  /** 详情阶段保存分享会话的 JVM；首页/搜索完成不能改写它。 */
-  private readonly detailProxyPortByTag = new Map<string, number>();
-
   /** ★ 2026-10-09：按源 key 查宿主代理端口（未调用过 → null） */
   proxyPortForTag(tag: string): number | null {
-    const p = this.proxyPortByTag.get(tag);
-    return Number.isInteger(p) ? (p as number) : null;
+    return this.runtimeSession.proxyPortForSource(tag);
   }
   /** ★ 子进程常驻复用池（--serve/-serve；进程复用加速首页/搜索；单测与显式关闭时禁用） */
   private readonly pool: SpiderProcPool | null;
@@ -413,9 +406,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
    */
   resetPool(): void {
     this.pool?.dispose();
-    this.proxyPortByTag.clear();
-    this.detailProxyPortByTag.clear();
-    this.proxyPortKeys.clear();
+    this.runtimeSession.resetProxyRouting();
   }
 
   /** 导入配置后由宿主设置全局 spider jar URL */
@@ -851,7 +842,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     );
     const shimJar = this.shellCompatibility.shimJarPath();
     // ★ 2026-09-29（守卫空 NPE 兜底）：已切 shell-shim 路线的 jar 预热同样不启用原生桥（见 callImpl 注释）
-    const preferShim = shimClasses !== '' && this.shimPreferred.has(jarPaths.join(';'));
+    const preferShim = shimClasses !== '' && this.runtimeSession.prefersShellShim(jarPaths.join(';'));
     const needsNative = !preferShim && this.nativeNeeded(jarPaths);
     const nativeJars = needsNative ? (this.nativeRuntime.readyJars ?? []) : [];
     if (needsNative && nativeJars.length === 0) return 0;
@@ -943,8 +934,6 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     }
     const firstAttempt = await this.callImpl(jarPaths, className, method, args, timeoutMs, tag, signal);
     throwIfAborted(signal);
-    const out = firstAttempt.output;
-    if (out.trim() && !firstAttempt.reason) return firstAttempt;
     // ★★ 2026-09-29（设备实证「切换部分源 NPE」的兜底，勿删）★★
     //   现象：加固壳的守卫类（csp_DouDouGuard / csp_T4Guard …）报
     //   `NullPointerException: Cannot invoke "com.github.catvod.crawler.Spider.init(android.content.Context, String)"`
@@ -954,31 +943,43 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     //   重试一次，并记住该 jar（后续 home/detail/play 与预热都走同一条路线，见 callImpl/prewarmJar 的 preferShim）。
     //   为什么可行：shell-shim 影子 DexNative 用真实实现 jar 直接回答 getLoader/getSpider，完全不依赖
     //   ARM 模拟/运行时 dex 转换（探针实测：DouDouGuard home 1.9s 拿到 10658B 数据）。
-    if (firstAttempt.failureKind === 'guard-inner-spider-null') {
-      const jarKey = jarPaths.join(';');
-      const shim = this.shellCompatibility.classesPath() || this.shellCompatibility.resolveForJars(jarPaths);
-      // 影子 jar 不在就白试（callImpl 会打「未找到 shell-shim.jar」警告）→ 直接按原失败返回
-      if (shim && existsSync(this.shellCompatibility.shimJarPath()) && !this.shimPreferred.has(jarKey)) {
-        this.shimPreferred.add(jarKey);
-        this.host?.logger.w(
-          `jvm-bridge ${className}: 守卫内层蜘蛛为空（原生解密未产出加载器）→ 改用 shell-shim 真实实现重试：${shim}`,
-        );
-        return this.callImpl(jarPaths, className, method, args, timeoutMs, tag, signal);
-      }
+    const jarKey = jarPaths.join(';');
+    let shim = '';
+    let shellShimRetryAvailable = false;
+    if (firstAttempt.failureKind === 'guard-inner-spider-null' && !this.runtimeSession.prefersShellShim(jarKey)) {
+      shim = this.shellCompatibility.classesPath() || this.shellCompatibility.resolveForJars(jarPaths);
+      shellShimRetryAvailable = Boolean(shim && existsSync(this.shellCompatibility.shimJarPath()));
     }
-    if (firstAttempt.failureKind !== 'spider-class-missing') return firstAttempt;
-    // 入口类本来存在：缺失的是内部依赖，混进其它版本并不能修复它。
-    if (this.classpathResolver.containsClass(jarPaths, entry)) return firstAttempt;
-    const candidates = this.classpathResolver.uniqueCandidates(jarPaths, entry);
-    if (candidates.length !== 1) {
-      return candidates.length > 1
-        ? { ...firstAttempt, reason: `蜘蛛类未找到；缓存中有 ${candidates.length} 个不同构建包含 ${className}，无法安全选择，请修正源 jar 配置` }
-        : firstAttempt;
+
+    let declaredEntryPresent = false;
+    let candidates: string[] = [];
+    if (firstAttempt.failureKind === 'spider-class-missing') {
+      // 入口类本来存在：缺失的是内部依赖，混进其它版本并不能修复它。
+      declaredEntryPresent = this.classpathResolver.containsClass(jarPaths, entry);
+      if (!declaredEntryPresent) candidates = this.classpathResolver.uniqueCandidates(jarPaths, entry);
     }
-    this.host?.logger.i(`jvm-bridge ${className}: 入口类只在一个缓存构建中存在 → 独立加载 ${basename(candidates[0])}（不混载其它订阅）`);
-    const result = await this.callImpl(candidates, className, method, args, timeoutMs, tag, signal);
+
+    const decision = decideJarCallFallback({
+      firstAttempt,
+      className,
+      shellShimRetryAvailable,
+      declaredEntryPresent,
+      uniqueCandidates: candidates,
+    });
+    if (decision.type === 'return') return decision.result;
+    if (decision.type === 'retry-shell-shim') {
+      // Store the preference for later home/detail/play calls and prewarm so all paths use one implementation.
+      this.runtimeSession.rememberShellShimPreference(jarKey);
+      this.host?.logger.w(
+        `jvm-bridge ${className}: 守卫内层蜘蛛为空（原生解密未产出加载器）→ 改用 shell-shim 真实实现重试：${shim}`,
+      );
+      return this.callImpl(jarPaths, className, method, args, timeoutMs, tag, signal);
+    }
+
+    this.host?.logger.i(`jvm-bridge ${className}: 入口类只在一个缓存构建中存在 → 独立加载 ${basename(decision.candidate)}（不混载其它订阅）`);
+    const result = await this.callImpl([decision.candidate], className, method, args, timeoutMs, tag, signal);
     throwIfAborted(signal);
-    if (result.output.trim() && !result.reason) this.classpathResolver.remember(fallbackKey, candidates[0]);
+    if (result.output.trim() && !result.reason) this.classpathResolver.remember(fallbackKey, decision.candidate);
     return result;
   }
 
@@ -1007,7 +1008,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     //   DexNative 来自 *.jar.patched/），shell-shim.jar 里的影子 DexNative 永远抢不到 → 「有真实实现
     //   却仍走原生解密」。跳过原生桥（不传 -Dtvbox.native.*）后加载顺序回到 [shell-shim.jar, 蜘蛛 jar]，
     //   影子生效、无需 ARM 模拟，启动更快也更稳。
-    const preferShim = shimClasses !== '' && this.shimPreferred.has(jarPaths.join(';'));
+    const preferShim = shimClasses !== '' && this.runtimeSession.prefersShellShim(jarPaths.join(';'));
     // ★ 2026-09-26 原生桥（ARM .so）：jar 内含 .so 时按需准备 unidbg 运行时，
     //   并把桥 jar + 运行时 jar 拼进 classpath；工作/改写目录经 -Dtvbox.native.* 透传给运行器。
     //   普通源 nativeJars 为空 → classpath/argv 与历史完全一致。
@@ -1060,14 +1061,14 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
       );
       const key = servePoolKey(this.javaExe(), serveArgv);
       // 本地代理端口 → 池 key：/proxy/<port> 被访问时据此把该 JVM 钉住（播放期间不回收）
-      this.proxyPortKeys.set(spiderProxyPort(launchPlan.loaderClasspath), key);
+      this.runtimeSession.rememberExpectedProxyPort(spiderProxyPort(launchPlan.loaderClasspath), key);
       // ★ 2026-09-26：**含 .so 的加固壳源要更长的预算** —— 守卫/加密走 unidbg 模拟（全局串行），
       //   实测 App88：home ~54s、detail ~295s（首调还要付 ~10s 模拟器启动）；20s 默认预算下
       //   「守卫已通」也会被超时判死。只对这类 jar 抬底，普通源行为不变。
       const tmo = executionTimeoutMs;
       let cancellationError: Error | undefined;
       try {
-        const preferredPort = tag && method === 'playerContent' ? this.detailProxyPortByTag.get(tag) : undefined;
+        const preferredPort = this.runtimeSession.preferredPlaybackPort(tag, method);
         const r = await this.poolSubmit(this.javaExe(), key, serveArgv, className, method, args, this.proxyProvider?.().env ?? {}, tmo, preferredPort, signal);
         throwIfAborted(signal);
         // ★ 2026-09-28：信封 ok=false（蜘蛛自己抛）→ 传输层成功、不回退一次性，但必须
@@ -1080,15 +1081,15 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
           //   ★ 孤儿端口场景补：实际端口（含退化临时端口）也登记进 port→key 表 ——
           //     /proxy/<临时端口> 被访问时的「钉住防回收」此前查不到 key 而失效（播放中
           //     可能被池额度压力 LRU 回收 → 断流）。
-          if (tag && r.proxyPort) {
-            if (method === 'detailContent' && !r.error) {
-              this.detailProxyPortByTag.set(tag, r.proxyPort);
-              this.pool?.pin(key, 2 * 60_000); // 给用户选集留出时间，避免详情会话被 LRU 回收。
-            }
-            if (method === 'playerContent' || method === 'detailContent' || !this.proxyPortByTag.has(tag)) {
-              this.proxyPortByTag.set(tag, r.proxyPort);
-            }
-            this.proxyPortKeys.set(r.proxyPort, key);
+          const proxyIdentity = this.runtimeSession.rememberProxyResult({
+            tag,
+            method,
+            proxyPort: r.proxyPort,
+            poolKey: key,
+            error: r.error,
+          });
+          if (proxyIdentity.pinForDetailSelection) {
+            this.pool?.pin(key, 2 * 60_000); // 给用户选集留出时间，避免详情会话被 LRU 回收。
           }
           const rawError = r.error ? String(r.error) : '';
           const runtimeFailure = rawError ? normalizeSpiderRuntimeFailure(rawError) : null;
@@ -1266,7 +1267,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
    * 避免播放中段被池回收（回收器跳过钉住的进程；到期自动失效）。
    */
   pinSpiderProxy(port: number, ttlMs = 10 * 60_000): void {
-    const key = this.proxyPortKeys.get(port);
+    const key = this.runtimeSession.poolKeyForProxyPort(port);
     if (key) this.pool?.pin(key, ttlMs);
   }
 

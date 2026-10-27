@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { LOCAL_PROXY_BASE } from '../src/shared/constants';
 import { JarSpiderBridge, NATIVE_CALL_MIN_TIMEOUT_MS } from '../src/engine/spider/JarSpiderBridge';
 import { spiderProxyPort } from '../src/engine/spider/jarBridgePolicy';
+import { JarSpiderRuntimeSession } from '../src/engine/spider/JarSpiderRuntimeSession';
 import type { SpiderProcPool } from '../src/engine/spider/SpiderProcPool';
 import {
   buildJarCallArgv,
@@ -170,7 +171,7 @@ describe('JAR execution policy', () => {
         includeFoniImplementation: () => string;
         shimJarPath: () => string;
       };
-      shimPreferred: Set<string>;
+      runtimeSession: JarSpiderRuntimeSession;
       nativeNeeded: () => boolean;
       classpathJars: () => string;
       nativeProps: () => string[];
@@ -179,9 +180,6 @@ describe('JAR execution policy', () => {
       callTimeoutMs: number;
       pool: SpiderProcPool;
       poolSubmit: () => Promise<{ ok: false; data: string; reason: 'cancelled' }>;
-      proxyPortKeys: Map<number, string>;
-      detailProxyPortByTag: Map<string, number>;
-      proxyPortByTag: Map<string, number>;
       subprocessRunner: { run: typeof oneShotRun };
     };
     Object.assign(bridge, {
@@ -191,7 +189,7 @@ describe('JAR execution policy', () => {
         includeFoniImplementation: () => '',
         shimJarPath: () => 'shim.jar',
       },
-      shimPreferred: new Set<string>(),
+      runtimeSession: new JarSpiderRuntimeSession(),
       nativeNeeded: () => false,
       classpathJars: () => 'runtime.jar',
       nativeProps: () => [],
@@ -200,9 +198,6 @@ describe('JAR execution policy', () => {
       callTimeoutMs: 1000,
       pool: { pin: vi.fn() } as unknown as SpiderProcPool,
       poolSubmit: async () => ({ ok: false, data: '', reason: 'cancelled' as const }),
-      proxyPortKeys: new Map<number, string>(),
-      detailProxyPortByTag: new Map<string, number>(),
-      proxyPortByTag: new Map<string, number>(),
       subprocessRunner: { run: oneShotRun },
     });
 
@@ -225,7 +220,7 @@ describe('JAR execution policy', () => {
         includeFoniImplementation: () => string;
         shimJarPath: () => string;
       };
-      shimPreferred: Set<string>;
+      runtimeSession: JarSpiderRuntimeSession;
       nativeNeeded: () => boolean;
       classpathJars: () => string;
       nativeProps: () => string[];
@@ -243,7 +238,7 @@ describe('JAR execution policy', () => {
         includeFoniImplementation: () => '',
         shimJarPath: () => 'shim.jar',
       },
-      shimPreferred: new Set<string>(),
+      runtimeSession: new JarSpiderRuntimeSession(),
       nativeNeeded: () => false,
       classpathJars: () => 'runtime.jar',
       nativeProps: () => [],
@@ -279,7 +274,7 @@ describe('JAR execution policy', () => {
         includeFoniImplementation: () => string;
         shimJarPath: () => string;
       };
-      shimPreferred: Set<string>;
+      runtimeSession: JarSpiderRuntimeSession;
       nativeNeeded: () => boolean;
       ensureNativeRuntime: () => Promise<string[]>;
       nativeProps: () => string[];
@@ -290,9 +285,6 @@ describe('JAR execution policy', () => {
       pool: SpiderProcPool;
       poolSubmit: (...args: unknown[]) => Promise<{ ok: false; data: string; reason: 'exit' }>;
       processAdmission: { tryAcquireFallbackProcessSlot: () => () => void };
-      proxyPortKeys: Map<number, string>;
-      detailProxyPortByTag: Map<string, number>;
-      proxyPortByTag: Map<string, number>;
       runSubprocessWithinProcessBudget: (...args: unknown[]) => Promise<unknown>;
     };
     const poolSubmit = vi.fn(async (..._args: unknown[]) => ({ ok: false as const, data: '', reason: 'exit' as const }));
@@ -304,7 +296,7 @@ describe('JAR execution policy', () => {
         includeFoniImplementation: () => '',
         shimJarPath: () => 'shim.jar',
       },
-      shimPreferred: new Set<string>(),
+      runtimeSession: new JarSpiderRuntimeSession(),
       nativeNeeded: () => true,
       ensureNativeRuntime: async () => ['native-bridge.jar'],
       nativeProps: () => [],
@@ -315,9 +307,6 @@ describe('JAR execution policy', () => {
       pool: { pin: vi.fn() } as unknown as SpiderProcPool,
       poolSubmit,
       processAdmission: { tryAcquireFallbackProcessSlot: () => () => undefined },
-      proxyPortKeys: new Map<number, string>(),
-      detailProxyPortByTag: new Map<string, number>(),
-      proxyPortByTag: new Map<string, number>(),
       runSubprocessWithinProcessBudget,
     });
 
