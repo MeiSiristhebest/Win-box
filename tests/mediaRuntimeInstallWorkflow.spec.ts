@@ -56,7 +56,13 @@ function createPorts(options: {
       size: 3,
       downloadUrl: 'https://github.com/example/mpv-new.7z',
     })),
-    activeStatus: vi.fn(() => ({ installed: true, path: 'data/mpv/versions/old/mpv.exe', sha256: oldManifest.sha256, version: 'old', assetName: 'mpv-old.7z' })),
+    activeStatus: vi.fn(() => ({
+      installed: true,
+      path: activeManifest.relativeExecutable ? 'data/mpv/' + activeManifest.relativeExecutable : undefined,
+      sha256: activeManifest.sha256,
+      version: activeManifest.version,
+      assetName: activeManifest.assetName,
+    })),
     createWorkspace: vi.fn(async () => workspace),
     download: vi.fn(async (_plan, _destination, signal, onProgress) => {
       if (options.failDownload) throw new Error(options.failDownload);
@@ -94,7 +100,7 @@ function createPorts(options: {
     status: vi.fn((): MediaRuntimeStatus => ({
       mpv: {
         installed: true,
-        path: activeManifest.relativeExecutable?.replace('versions/new', 'data/mpv/versions/new'),
+        path: activeManifest.relativeExecutable ? 'data/mpv/' + activeManifest.relativeExecutable : undefined,
         version: activeManifest.version,
         sha256: activeManifest.sha256,
         assetName: activeManifest.assetName,
@@ -131,6 +137,46 @@ describe('MediaRuntimeInstallWorkflow', () => {
     expect(getActiveManifest()).toBe(oldManifest);
     expect(removed).toEqual(['data/mpv/versions/new', workspace.root]);
     expect(ports.cleanupOldVersions).not.toHaveBeenCalled();
+  });
+
+  it('keeps the already active version after a repeated upgrade cannot commit its manifest', async () => {
+    const { ports, removed, getActiveManifest, workspace } = createPorts();
+    const workflow = new MediaRuntimeInstallWorkflow(ports);
+    await workflow.install('mpv', new AbortController().signal);
+    expect(getActiveManifest()).toBe(newManifest);
+
+    const nextManifest: MediaRuntimeInstallManifest = {
+      ...newManifest,
+      version: 'newer',
+      assetName: 'mpv-newer.7z',
+      sha256: 'c'.repeat(64),
+      relativeExecutable: 'versions/newer/mpv.exe',
+    };
+    vi.mocked(ports.resolvePlan).mockResolvedValueOnce({
+      version: nextManifest.version,
+      assetName: nextManifest.assetName,
+      source: nextManifest.source,
+      sha256: nextManifest.sha256,
+      size: 4,
+      downloadUrl: 'https://github.com/example/mpv-newer.7z',
+    });
+    vi.mocked(ports.prepareVersion).mockResolvedValueOnce({
+      directory: 'data/mpv/versions/newer',
+      executablePath: 'data/mpv/versions/newer/mpv.exe',
+      manifest: nextManifest,
+    });
+    vi.mocked(ports.commitActive).mockRejectedValueOnce(new Error('manifest write failed'));
+
+    await expect(workflow.install('mpv', new AbortController().signal)).rejects.toThrow('manifest write failed');
+
+    expect(getActiveManifest()).toBe(newManifest);
+    expect(ports.activeStatus).toHaveBeenLastCalledWith('mpv');
+    expect(ports.cleanupOldVersions).toHaveBeenCalledOnce();
+    expect(removed).toEqual([
+      workspace.root,
+      'data/mpv/versions/newer',
+      workspace.root,
+    ]);
   });
 
   it.each([

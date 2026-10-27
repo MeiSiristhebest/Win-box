@@ -59,4 +59,17 @@ describe('runMediaRuntimeArchiveWorker', () => {
     expect(worker.sent).toEqual([]);
     expect(worker.terminate).toHaveBeenCalledOnce();
   });
+
+  it('reports extraction errors from the worker and terminates the worker', async () => {
+    const worker = new FakeArchiveWorker();
+    const completion = runMediaRuntimeArchiveWorker(worker, new AbortController().signal, () => undefined);
+
+    worker.emitMessage({ phase: 'listing', listing: 'safe listing' });
+    expect(worker.sent).toEqual([{ type: 'extract' }]);
+    worker.emitMessage({ ok: false, error: 'archive extraction failed' });
+
+    await expect(completion).rejects.toThrow('archive extraction failed');
+    expect(worker.terminate).toHaveBeenCalledOnce();
+    expect(worker.messages).toHaveLength(0);
+  });
 });
