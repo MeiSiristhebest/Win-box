@@ -224,6 +224,17 @@ describe('native option popup readability', () => {
 });
 
 describe('disabled control readability', () => {
+  it('gives the runtime-sync retry button a token-based disabled surface without dimming', async () => {
+    const css = await readFile(new URL('global-components.css', stylesDirectory), 'utf8');
+    const rule = css.match(/\.config-runtime-sync-notice > button:disabled\s*\{([^}]*)\}/);
+
+    expect(rule, 'runtime-sync retry disabled style').not.toBeNull();
+    expect(rule![1]).toMatch(/opacity:\s*1\b/);
+    expect(rule![1]).toMatch(/color:\s*var\(--text-disabled\)/);
+    expect(rule![1]).toMatch(/background:\s*var\(--surface-3\)/);
+    expect(rule![1]).toMatch(/border:\s*1px\s+solid\s+var\(--border\)/);
+  });
+
   it('does not dim disabled controls with element opacity', async () => {
     const files = (await readdir(stylesDirectory)).filter((file) => file.endsWith('.css'));
     const dimmedRules: string[] = [];

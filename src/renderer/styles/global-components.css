@@ -116,7 +116,13 @@
     background: var(--color-accent, #4778ee); color: var(--on-accent, #fff); font: inherit; font-weight: 600;
     white-space: nowrap; cursor: pointer;
   }
-  .config-runtime-sync-notice > button:disabled { cursor: wait; opacity: .7; }
+  .config-runtime-sync-notice > button:disabled {
+    cursor: wait;
+    opacity: 1;
+    color: var(--text-disabled);
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+  }
 
   button.card-media-button, button.card-media-button:hover, button.card-media-button:active {
     appearance: none; display: block; width: 100%; padding: 0; border: 0; border-radius: 0;
