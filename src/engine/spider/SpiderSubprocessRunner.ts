@@ -76,8 +76,8 @@ export class SpiderSubprocessRunner {
       signal?.addEventListener('abort', abortChild, { once: true });
       if (signal?.aborted) abortChild();
       this.track(child);
-      child.stdout?.setEncoding('utf8');
-      child.stderr?.setEncoding('utf8');
+      child.stdout?.setEncoding?.('utf8');
+      child.stderr?.setEncoding?.('utf8');
       const capture = (stream: 'stdout' | 'stderr', chunk: string | Buffer): void => {
         if (settled || outputLimitStream) return;
         const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');

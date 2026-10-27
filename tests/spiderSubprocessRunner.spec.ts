@@ -57,6 +57,23 @@ describe('SpiderSubprocessRunner', () => {
     expect(child.kill).not.toHaveBeenCalled();
   });
 
+  it('accepts structural output streams without the optional setEncoding helper', async () => {
+    const stdout = new EventEmitter();
+    const stderr = new EventEmitter();
+    const child = Object.assign(new EventEmitter(), {
+      stdout,
+      stderr,
+      kill: vi.fn(() => true),
+    }) as unknown as ChildProcess;
+    const { runner } = makeRunner(child);
+    const result = runner.run('java.exe', [], 'Spider', 'search');
+
+    stdout.emit('data', Buffer.from('{"list":[]}'));
+    child.emit('close', 0, null);
+
+    await expect(result).resolves.toMatchObject({ ok: true, output: '{"list":[]}' });
+  });
+
   it('kills a running child and rejects with the caller cancellation when aborted', async () => {
     const child = Object.assign(new EventEmitter(), {
       stdout: new PassThrough(),
