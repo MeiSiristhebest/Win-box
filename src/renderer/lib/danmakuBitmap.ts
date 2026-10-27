@@ -4,7 +4,7 @@
 //   绕开每帧对每条在屏弹幕的 strokeText + fillText（两次文字栅格化）。
 //
 // 本模块**只做策略**（键 / LRU / 字节预算 / 统计），栅格化与释放由调用方注入
-// ⇒ 不碰 DOM、可在纯 Node 环境单测；DOM 实现在 `renderer/components/DanmakuOverlay`。
+// ⇒ 不碰 DOM、可在纯 Node 环境单测；DOM 实现在 `renderer/components/useDanmakuCanvasRenderer`。
 
 /** 栅格化产物：位图本体 + CSS px 下的尺寸/内边距（描边外扩），以及占用字节数（含 DPR 放大）。 */
 export interface BitmapEntry<T> {
