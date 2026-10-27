@@ -12,6 +12,7 @@ import type {
 import type { DriveIpcPort } from './driveIpc';
 import type { LiveIpcServicePort } from './liveIpc';
 import type { VodIpcPort } from './vodIpc';
+import type { LocalImportApplicationPort } from '../configuration/LocalImportApplicationService';
 
 export interface SubscriptionImportConfigurationPort {
   importConfig(source: { url?: string; json?: string; name?: string }): Promise<ConfigImportResult>;
@@ -46,6 +47,7 @@ export interface DriveFileCleanupIpcPort {
  * Keep this port map narrower than the full SpiderHost service graph.
  */
 export interface MainIpcApplicationPorts {
+  localImports: LocalImportApplicationPort;
   sourceConfiguration: SourceConfigurationIpcPort;
   sourceReads: SourceConfigurationReadPort;
   configRuntimeSync: ConfigRuntimeSyncIpcPort;

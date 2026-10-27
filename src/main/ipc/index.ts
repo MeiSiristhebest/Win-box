@@ -1,13 +1,11 @@
 // src/main/ipc/index.ts — 主进程 IPC 组合根
 import { app, BrowserWindow, clipboard, dialog } from 'electron';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { registerHandler } from '../util/ipcGuard';
 import { fileLogger } from '../util/logger';
 import { setUiScalePref, uiScaleState } from '../ui/uiScale';
 import { resourcesDir, userDataDir, spiderCacheDir } from '../util/paths';
-import type { LocalPkgStore } from '../store/LocalPkgStore';
 import type { UiPreferencesService } from '../store/UiPreferencesService';
-import { pkgSubUrl } from '../../engine/config/localPkg';
 import {
   openWebHomeWindow,
   webHomeReq,
@@ -20,11 +18,7 @@ import { clearAppCache } from '../util/cacheClean';
 import { nameFromLocalFile } from '../util/importNaming';
 import { join, basename } from 'node:path';
 import { IPC } from '../../shared/ipc-channels';
-import { LOCAL_PROXY_BASE } from '../../shared/constants';
-import { parseLive } from '../../engine/config/LiveConfigParser';
-import { localLiveUrl } from '../../engine/live/localLive';
 import { dataDirReport } from '../util/dataDirBootstrap';
-import { LocalLiveFileImporter } from '../live/LocalLiveFileImporter';
 import { proxySettingsView, setProxySettings, type ProxySettings } from '../net/proxy';
 import { registerBackupIpc } from '../settings/backupIpc';
 import type { SettingsBackupService } from '../settings/SettingsBackupService';
@@ -48,6 +42,7 @@ import { registerPlayerWindowIpc } from './playerWindowIpc';
 import { registerVodIpc } from './vodIpc';
 import { registerLiveIpc } from './liveIpc';
 import type { MainIpcApplicationPorts } from './MainIpcApplicationPorts';
+import { registerLocalImportIpc } from './localImportIpc';
 import type { DavServer } from '../../shared/webdav';
 import type { DavService } from '../webdav/DavService';
 import type { DlnaCastTarget, DlnaDevice } from '../../shared/dlna';
@@ -73,7 +68,7 @@ import { detectPlayers, launchPlayer, resolvePlayer, seekArgs } from '../torrent
 import { ExternalPlayback } from '../torrent/ExternalPlayback';
 import { normalizePlayerExecutablePath } from '../../shared/player';
 import type { IpcMainInvokeEvent } from 'electron';
-import type { BossKeySettings, ImportReport, LiveBean, MultiConfigEntry, SiteConfig, SourceBean } from '../../shared/types';
+import type { BossKeySettings, ImportReport, MultiConfigEntry, SiteConfig } from '../../shared/types';
 import type { PlayerSettings } from '../../shared/player';
 
 function winOf(e: IpcMainInvokeEvent): BrowserWindow | null {
@@ -94,7 +89,6 @@ export function registerIpc(
   dav: DavService,
   dlna: DlnaService,
   updater: UpdateService,
-  pkgs: LocalPkgStore,
   uiPreferences: UiPreferencesService,
   plugins: PluginHost,
   engines: PlayerEngineController,
@@ -102,14 +96,6 @@ export function registerIpc(
   backup: Pick<SettingsBackupService, 'snapshot' | 'restore'>,
 ): void {
   const log = fileLogger;
-  const localLiveImporter = new LocalLiveFileImporter({
-    read: (path) => readFileSync(path),
-    writeUtf8: (fileName, text) => {
-      const directory = join(userDataDir(), 'local-live');
-      mkdirSync(directory, { recursive: true });
-      writeFileSync(join(directory, fileName), Buffer.from(text, 'utf-8'));
-    },
-  });
   /** ★ 2026-10-08 MPV 播放内核（单会话；播放器窗口关闭/退出应用会 dispose） */
   const mpv = new MpvController(fileLogger);
   const mediaRuntimes = new MediaRuntimeProvisioner(fileLogger, event => {
@@ -200,6 +186,11 @@ export function registerIpc(
   registerSubscriptionImportIpc(services.subscriptionImports, services.subscriptionGroups, log);
   registerProfileIpc(services.profileConfiguration, log);
   registerLiveChannelConfigurationIpc(services.liveChannelConfiguration, log);
+  registerLocalImportIpc({
+    application: services.localImports,
+    dialog: { showOpenDialog: (owner, options) => dialog.showOpenDialog(owner ?? undefined!, options) },
+    windowForEvent: event => winOf(event),
+  }, log);
   // 清理缓存：只删可重建的纯缓存（Chromium 缓存 / jar 转换缓存），绝不动配置/历史/绑定
   //   ★ 2026-09-24：清完立刻在后台重建蜘蛛运行时（重新转换 jar + 重启热进程），
   //     否则用户下一次进源要在请求里现付 30~40s 的「下载 + dex2jar」并被超时打断。
@@ -282,136 +273,6 @@ export function registerIpc(
   //   ★ 2026-09-27（用户要求）：源名/源 key 用**原始文件名**（去扩展名）——与本地 .json 同一命名口径
   //   ★ 2026-10-16（用户要求）：文件选择器支持**按住 Ctrl 多选**——所选 .py 一并导入；
   //     逐个文件独立成败（单个失败只丢弃该文件副本、不影响其余），最后汇总回执。
-  registerHandler(IPC.CFG_IMPORT_PY_LOCAL, async (e: any): Promise<{
-    ok: boolean; key?: string; keys?: string[]; imported?: number; failed?: { name: string; error: string }[]; error?: string;
-  }> => {
-    const win = winOf(e);
-    const picked = await dialog.showOpenDialog(win ?? undefined!, {
-      properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Python 蜘蛛脚本', extensions: ['py'] }],
-    });
-    if (picked.canceled || !picked.filePaths?.length) return { ok: false }; // 用户取消，不视为错误
-    const keys: string[] = [];
-    const failed: { name: string; error: string }[] = [];
-    for (const srcPath of picked.filePaths) {
-      let importedApi = '';
-      try {
-        const name = nameFromLocalFile(srcPath);
-        const api = importedApi = pkgs.importPython(srcPath);
-    const bean = services.sourceConfiguration.addSource({ key: name, name, type: 3, api, ext: '', jar: '' } as SourceBean);
-        keys.push(bean.key);
-      } catch (err) {
-        if (importedApi) {
-    try { pkgs.discardImport(importedApi, services.sourceConfiguration.getSnapshot()); }
-          catch (cleanup) { log.w(`导入失败副本清理失败：${String(cleanup)}`); }
-        }
-        failed.push({ name: nameFromLocalFile(srcPath), error: err instanceof Error ? err.message : String(err) });
-      }
-    }
-    const failSummary = failed.length
-      ? `${failed.length} 个文件导入失败：${failed.map((f) => `${f.name}（${f.error}）`).join('；')}`
-      : undefined;
-    if (!keys.length) return { ok: false, failed, error: failSummary };
-    return { ok: true, key: keys[0], keys, imported: keys.length, failed: failed.length ? failed : undefined, error: failSummary };
-  }, log);
-
-  /**
-   * ★ 2026-09-29（用户要求）：导入**本地包**（影视壳/影视仓 目录包）。
-   *
-   * 链路：选目录 → 在顶层找订阅 JSON → 复制到安装目录 imports/packages 并登记副本
-   *   → rewritePkgPaths 展开副本内相对引用（`./py/x.py` → file://；其余 → /pkg/<i>/…）
-   *   → 走**正常订阅导入**（apiUrl 记 `pkg://<i>/<rel>`：重新导入/刷新同一条链路，见 SpiderHost.fetchConfigText）。
-   *
-   * 包内 html（homePage 网页源）由 /pkg 路由提供，点播页「网页」入口在独立窗口打开（fm 桥，见 WebHomeWindow）。
-   */
-  registerHandler(IPC.CFG_IMPORT_PACKAGE, async (e: any, args?: { name?: string; root?: string }): Promise<{
-    ok: boolean; root?: string; rel?: string; sites?: number; name?: string; needsName?: boolean; error?: string;
-    warnings?: string[];
-    result?: { config: SiteConfig; report: ImportReport; warnings: string[]; urls?: MultiConfigEntry[] };
-  }> => {
-    const win = winOf(e);
-    let root = args?.root || '';
-    if (!root) {
-      const picked = await dialog.showOpenDialog(win ?? undefined!, {
-        properties: ['openDirectory'],
-        title: '选择本地包目录（支持仅含 .py 文件的文件夹，自动生成订阅 JSON）',
-      });
-      if (picked.canceled || !picked.filePaths?.[0]) return { ok: false }; // 用户取消，不视为错误
-      root = picked.filePaths[0];
-    }
-    let importedUrl = '';
-    try {
-      const inspected = pkgs.inspectSubscription(root);
-      // 纯 Python 文件夹每次都需要用户确认/输入生成文件名；第一次调用只
-      // 返回待命名信息，不创建副本，第二次带 root + name 才真正导入。
-      if (inspected?.generated && (!args?.root || !args?.name?.trim())) {
-        return { ok: false, needsName: true, root, sites: inspected.sites };
-      }
-      const found = pkgs.importSubscription(root, args?.name);
-      if (!found) {
-        return {
-          ok: false,
-          error: '该目录下没找到订阅 JSON 或可导入的 .py 文件：请选择含 影视.json（或含 sites 的 .json）的本地包，或包含 Python 源脚本的文件夹',
-        };
-      }
-      const name = nameFromLocalFile(root, args?.name); // 默认取包目录名
-      const url = importedUrl = pkgSubUrl(found.index, found.rel);
-    const r = await services.subscriptionImports.importConfig({ url, name });
-      return {
-        ok: true,
-        root: pkgs.rootOf(found.index) || root,
-        rel: found.rel,
-        sites: found.sites,
-        name,
-        warnings: found.warnings,
-        result: { config: r.config, report: r.report, warnings: r.warnings, urls: r.urls },
-      };
-    } catch (err) {
-      if (importedUrl) {
-    try { pkgs.discardImport(importedUrl, services.sourceConfiguration.getSnapshot()); }
-        catch (cleanup) { log.w(`导入失败副本清理失败：${String(cleanup)}`); }
-      }
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  }, log);
-
-  /**
-   * ★ 2026-09-30（用户要求）：导入**本地 TXT / M3U 直播源**（配置页按钮）。
-   * ★ 2026-10-14（用户要求）：改为**两步导入**（对齐本地包命名流程）——
-   *   首次（不带 path）：选文件 → 形态校验（#EXTM3U / #genre# / 「频道,http…」至少其一）→
-   *     原始字节归一化为 UTF-8 落 `<userData>/local-live/<文件名>`（就地更新，同名覆盖）→
-   *     返回 `{ needsName:true, path, name:<原文件名> }`，由渲染层弹框命名；
-   *   二次（带 path + name）：以用户命名登记/更新一条 lives 线路
-   *   （url = `http://127.0.0.1:9978/file/local-live/<文件名>`，走既有 /file 路由 + 直播页加载链）。
-   */
-  registerHandler(IPC.CFG_IMPORT_LIVE_LOCAL, async (e: any, args?: { name?: string; path?: string }): Promise<{
-    ok: boolean; needsName?: boolean; path?: string; name?: string; index?: number; replaced?: boolean; total?: number; error?: string;
-  }> => {
-    const win = winOf(e);
-    const arg = args || {};
-    let srcPath = String(arg.path || '').trim();
-    // ---- 第一步：选文件 + 校验 + 归一化落盘（未带 name → 返回 needsName，由渲染层弹框命名） ----
-    if (!srcPath) {
-      const picked = await dialog.showOpenDialog(win ?? undefined!, {
-        properties: ['openFile'],
-        filters: [{ name: '直播源（TXT / M3U）', extensions: ['txt', 'm3u', 'm3u8'] }],
-      });
-      if (picked.canceled || !picked.filePaths?.[0]) return { ok: false }; // 用户取消，不视为错误
-      srcPath = picked.filePaths[0];
-    }
-    try {
-      const r = localLiveImporter.import(srcPath, String(arg.name || '').trim());
-      // 首次导入且用户未命名 → 交由渲染层「单独弹框命名」（对齐本地包流程）
-      if (r.needsName) return { ok: true, needsName: true, path: srcPath, name: r.name };
-      const bean: LiveBean = parseLive({ name: r.name, api: '', type: '0', url: localLiveUrl(LOCAL_PROXY_BASE, r.fileName) }, 0);
-    const added = services.liveChannelConfiguration.add(bean);
-    return { ok: true, name: r.name, index: added.index, replaced: added.replaced, total: services.livePlayback.lives.length };
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  }, log);
-
-  // ★ 2026-09-29（用户要求）本地包「网页源」：点播页「网页」入口 → 独立窗口打开 homePage（preload 注入 window.fm）
   registerHandler(IPC.WEBHOME_OPEN, (_e: any, init: WebHomeOpenInit) => openWebHomeWindow(init || { url: '' }), log);
   // 以下三条是**网页窗口 preload → 主进程**的桥（渲染层不直接调用；见 WebHomeWindow / webhomePreload.ts）
   registerHandler(IPC.WEBHOME_FM_REQ, (_e: any, payload: FmReqPayload) => webHomeReq(payload || { url: '' }), log);

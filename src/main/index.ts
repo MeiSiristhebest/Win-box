@@ -7,7 +7,7 @@ import { registerAppQuitCleanup } from './util/appQuit';
 import { createConnection } from 'node:net';
 import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, Notification, shell, webContents } from 'electron';
 import { join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { registerIpc } from './ipc';
 import type { MainIpcApplicationPorts } from './ipc/MainIpcApplicationPorts';
 import { createSpiderHostServices } from './spider/createSpiderHostServices';
@@ -31,6 +31,8 @@ import { DavStore } from './store/DavStore';
 import { JsonStore } from './store/JsonStore';
 import { LocalPkgStore } from './store/LocalPkgStore';
 import { createConfigurationApplicationServices } from './configuration/createConfigurationApplicationServices';
+import { LocalImportApplicationService } from './configuration/LocalImportApplicationService';
+import { LocalLiveFileImporter } from './live/LocalLiveFileImporter';
 import { createSubscriptionAssembly } from './subscriptions/createSubscriptionAssembly';
 import { createSubtitleServiceAssembly } from './subtitle/createSubtitleServiceAssembly';
 import { createDanmakuServiceAssembly } from './danmaku/createDanmakuServiceAssembly';
@@ -47,6 +49,9 @@ import { PluginKv } from './plugin/PluginKv';
 import { createPluginSandboxApi } from './plugin/pluginHostApi';
 import { HttpClient } from './net/HttpClient';
 import { LOCAL_PROXY_BASE } from '../shared/constants';
+import { pkgSubUrl } from '../engine/config/localPkg';
+import { parseLive } from '../engine/config/LiveConfigParser';
+import { localLiveUrl } from '../engine/live/localLive';
 import { IPC } from '../shared/ipc-channels';
 import { builtinPluginsDir, cacheDir, distDir, legacyLocalImportsDir, localImportsDir, pluginsDir, userDataDir } from './util/paths';
 import { safeStorageDriveCodec } from './util/driveCodec';
@@ -232,6 +237,40 @@ const resetSpidersAfterDriveChange = (): void => {
   hostServices.spiderRuntime.resetAfterDriveCredentialChange();
 };
 const ipcServices: MainIpcApplicationPorts = {
+  localImports: new LocalImportApplicationService({
+    pythonFiles: {
+      copyPython: sourcePath => localPkgs.importPython(sourcePath),
+      discard: (reference, currentConfig) => localPkgs.discardImport(reference, currentConfig),
+    },
+    sources: hostServices.sourceConfiguration,
+    packages: {
+      inspect: root => localPkgs.inspectSubscription(root),
+      copyAndRegister: (root, name) => localPkgs.importSubscription(root, name),
+      rootOf: index => localPkgs.rootOf(index),
+      discard: (reference, currentConfig) => localPkgs.discardImport(reference, currentConfig),
+    },
+    subscriptions: hostServices.subscriptionImports,
+    liveFiles: new LocalLiveFileImporter({
+      read: path => readFileSync(path),
+      writeUtf8: (fileName, text) => {
+        const directory = join(userDataDir(), 'local-live');
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(join(directory, fileName), Buffer.from(text, 'utf-8'));
+      },
+    }),
+    liveChannels: {
+      add: channel => hostServices.liveChannelConfiguration.add(channel),
+      count: () => hostServices.livePlayback.lives.length,
+    },
+    packageUrl: pkgSubUrl,
+    liveChannel: (name, fileName) => parseLive({
+      name,
+      api: '',
+      type: '0',
+      url: localLiveUrl(LOCAL_PROXY_BASE, fileName),
+    }, 0),
+    logger: { warn: message => fileLogger.w(message) },
+  }),
   sourceConfiguration: hostServices.sourceConfiguration,
   configRuntimeSync: {
     status: () => {
@@ -681,7 +720,7 @@ app.whenReady().then(async () => {
   } catch (e) {
     fileLogger.w('插件初始化失败：' + (e instanceof Error ? e.message : String(e)));
   }
-  registerIpc(ipcServices, dav, dlna, updater, localPkgs, uiPreferences, plugins, playerEngines, {
+  registerIpc(ipcServices, dav, dlna, updater, uiPreferences, plugins, playerEngines, {
     subtitles: subtitleService,
     danmaku: danmakuServices.service,
     metadata: metadataService,
