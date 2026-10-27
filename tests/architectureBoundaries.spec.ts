@@ -1107,4 +1107,48 @@ describe('architecture dependency rules', () => {
     expect(result.stderr).toContain('passive renderer views must not own React state/effects or access browser globals directly');
   });
 
+  it.each([
+    "export { request } from '../../other/adapters/sourceAdapter';",
+    "export * from '@/features/other/adapters/sourceAdapter';",
+    "void import('@/features/other/adapters/sourceAdapter');",
+  ])('applies application-role boundaries to renamed modules and re-export/dynamic-import edges: %s', (source) => {
+    const result = inspect('renderer/features/example/application/renamedUseCase.ts', source);
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('feature application use cases may not depend on UI, IPC clients, or feature adapters');
+  });
+
+  it('applies the shared primitive-role boundary to newly named UI atoms', () => {
+    const result = inspect('renderer/components/ui/NewActionAtom.tsx', "export { action } from '@/features/example/application/action';");
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('UI primitives may not depend on feature or page modules');
+  });
+
+  it('applies domain-role rules while permitting shared renderer utilities', () => {
+    const framework = inspect('renderer/features/example/domain/titlePolicy.ts', "import { useMemo } from 'react';");
+    expect(framework.error).toBeUndefined();
+    expect(framework.status).toBe(1);
+    expect(framework.stderr).toContain('feature domain modules must stay independent of Node.js and UI frameworks');
+
+    const adapter = inspect('renderer/features/example/domain/titlePolicy.ts', "export { findTitle } from '../adapters/titleAdapter';");
+    expect(adapter.error).toBeUndefined();
+    expect(adapter.status).toBe(1);
+    expect(adapter.stderr).toContain('feature domain modules may not depend on UI, IPC clients, or feature adapters');
+
+    const utility = inspect('renderer/features/example/domain/titlePolicy.ts', "import { normalizeTitle } from '../../../lib/title';");
+    expect(utility.error).toBeUndefined();
+    expect(utility.status).toBe(0);
+  });
+
+  it('allows feature composition roots to wire adapters and keeps IPC access in DOM adapters', () => {
+    const composition = inspect('renderer/features/example/composition/createExample.ts', "import { exampleAdapter } from '../adapters/exampleAdapter';");
+    expect(composition.error).toBeUndefined();
+    expect(composition.status).toBe(0);
+
+    const adapter = inspect('renderer/features/example/adapters/exampleAdapter.ts', "import { client } from '../../../api/client'; window.api?.config.listSites();");
+    expect(adapter.error).toBeUndefined();
+    expect(adapter.status).toBe(0);
+  });
+
 });

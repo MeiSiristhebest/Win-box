@@ -736,10 +736,43 @@ function targetLayer(importerPath, specifier) {
 }
 
 function rendererArea(importerPath, specifier) {
-  if (!specifier.startsWith('.')) return null;
-  const resolved = path.resolve(path.dirname(importerPath), specifier);
-  const relative = path.relative(rendererRoot, resolved).split(path.sep);
+  const resolved = resolveRendererModule(importerPath, specifier);
+  if (!resolved) return null;
+  const relative = resolved.split('/');
   return { feature: relative[0] === 'features', page: relative[0] === 'pages' };
+}
+
+/** Resolves the renderer's relative and source-root imports without requiring target files to exist. */
+function resolveRendererModule(importerPath, specifier) {
+  const normalized = specifier.replace(/\\/g, '/');
+  let resolved;
+  if (normalized.startsWith('.')) {
+    resolved = path.resolve(path.dirname(importerPath), normalized);
+  } else if (normalized.startsWith('@/')) {
+    resolved = path.resolve(rendererRoot, normalized.slice(2));
+  } else {
+    return null;
+  }
+  const relative = path.relative(rendererRoot, resolved).split(path.sep).join('/');
+  if (relative === '..' || relative.startsWith('../') || path.isAbsolute(relative)) return null;
+  return relative;
+}
+
+/** Module roles are derived from stable directory boundaries, not individual filenames. */
+function rendererModuleRole(relativePath) {
+  if (rendererIpcCompositionRoots.has(`renderer/${relativePath}`)) return 'composition';
+  const segments = relativePath.split('/');
+  if (segments[0] === 'components' && segments[1] === 'ui') return 'ui-primitive';
+  if (segments[0] === 'features') {
+    if (segments[2] === 'application') return 'application';
+    if (segments[2] === 'domain') return 'domain';
+    if (segments[2] === 'adapters') return 'adapter';
+    if (segments[2] === 'composition' || segments.includes('composition')) return 'composition';
+  }
+  if (segments[0] === 'pages') return 'page';
+  if (segments[0] === 'layouts') return 'layout';
+  if (/(?:^|\/)[^/]+View\.(?:tsx|jsx)$/.test(relativePath)) return 'view';
+  return 'unclassified';
 }
 
 function isNodeBuiltin(specifier) {
@@ -1180,13 +1213,16 @@ for (const filePath of await sourceFiles(sourceRoot)) {
 
     if (layer === 'renderer') {
       const rendererPath = path.relative(rendererRoot, filePath).split(path.sep);
-      const importerIsUiPrimitive = rendererPath[0] === 'components' && rendererPath[1] === 'ui';
+      const normalizedRendererPath = rendererPath.join('/');
+      const importerRole = rendererModuleRole(normalizedRendererPath);
+      const importerIsUiPrimitive = importerRole === 'ui-primitive';
       const importerIsFeature = rendererPath[0] === 'features';
-      const importerIsUseCase = importerIsFeature && rendererPath[2] === 'application';
+      const importerIsUseCase = importerRole === 'application';
       const importerIsPassiveView = /(?:^|\/)[^/]+View\.(?:tsx|jsx)$/.test(normalizedFile);
       const normalizedSpecifier = specifier.replace(/\\/g, '/');
       if (rendererIpcClientSpecifier.test(normalizedSpecifier)
         && !normalizedFile.split('/').includes('adapters')
+        && importerRole !== 'composition'
         && !rendererIpcCompositionRoots.has(normalizedFile)) {
         violations.push(`${relativeFile} → ${specifier}: renderer IPC client imports belong in adapters or the renderer composition roots`);
       }
@@ -1201,16 +1237,21 @@ for (const filePath of await sourceFiles(sourceRoot)) {
       )) {
         violations.push(`${relativeFile} → ${specifier}: renderer views must receive infrastructure through a presenter or view model, not import IPC clients or adapters`);
       }
-      if (importerIsUseCase) {
+      if (importerIsUseCase || importerRole === 'domain') {
         if (isNodeBuiltin(specifier) || /^(?:react|react-dom)(?:\/|$)/.test(specifier)) {
-          violations.push(`${relativeFile} → ${specifier}: feature application use cases must stay independent of Node.js and UI frameworks`);
+          const roleName = importerIsUseCase ? 'feature application use cases' : 'feature domain modules';
+          violations.push(`${relativeFile} → ${specifier}: ${roleName} must stay independent of Node.js and UI frameworks`);
         }
-        if (specifier.startsWith('.')) {
-          const relativeTarget = path.relative(rendererRoot, path.resolve(path.dirname(filePath), specifier)).split(path.sep);
-          const targetsOuterLayer = ['api', 'components', 'pages', 'layouts'].includes(relativeTarget[0]);
-          const targetsFeatureAdapter = relativeTarget[0] === 'features' && relativeTarget[2] !== 'application';
-          if (targetsOuterLayer || targetsFeatureAdapter) {
-            violations.push(`${relativeFile} → ${specifier}: feature application use cases may not depend on UI, IPC clients, or feature adapters`);
+        const targetPath = resolveRendererModule(filePath, specifier);
+        if (targetPath) {
+          const targetSegments = targetPath.split('/');
+          const targetRole = rendererModuleRole(targetPath);
+          const targetsOuterLayer = ['api', 'components', 'pages', 'layouts'].includes(targetSegments[0]);
+          const targetsFeatureOutsideApplication = targetSegments[0] === 'features' && targetRole !== 'application';
+          const targetsDomainOutsideDomain = importerRole === 'domain' && targetSegments[0] === 'features' && targetRole !== 'domain';
+          if (targetsOuterLayer || targetsFeatureOutsideApplication || targetRole === 'adapter' || targetsDomainOutsideDomain) {
+            const roleName = importerIsUseCase ? 'feature application use cases' : 'feature domain modules';
+            violations.push(`${relativeFile} → ${specifier}: ${roleName} may not depend on UI, IPC clients, or feature adapters`);
           }
         }
       }
