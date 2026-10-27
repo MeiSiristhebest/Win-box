@@ -3,54 +3,12 @@ import { danmakuArea, eachScrollDraw, layoutDanmaku, scrollDrawStart, type TextM
 import type { DanmakuItem, DanmakuRegion } from '../../shared/danmaku';
 import { DanmakuBitmapCache, type BitmapEntry } from '../lib/danmakuBitmap';
 import { clearDanmakuCanvas, prepareDanmakuCanvas } from '../lib/danmakuCanvas';
+import { createCanvasTextMeasurement } from './danmakuCanvasMeasurement';
 
 const DRAW_BUDGET_MS = 12;
-const MEASURE_CACHE_MAX = 2000;
 const BITMAP_PAD = 4;
 const danmakuLineH = (fontSize: number) => Math.round(fontSize * 1.4);
 const danmakuFont = (fontSize: number) => `${fontSize}px 'Microsoft YaHei', 'PingFang SC', sans-serif`;
-
-interface CanvasTextMeasurement {
-  measure: TextMeasurer;
-  dispose: () => void;
-}
-
-function createCanvasTextMeasurement(): CanvasTextMeasurement {
-  const measureCache = new Map<string, number>();
-  let measureCtx: CanvasRenderingContext2D | null = null;
-  const measure = (text: string, fontSize: number): number => {
-    const key = `${fontSize}\u0000${text}`;
-    const hit = measureCache.get(key);
-    if (hit !== undefined) {
-      measureCache.delete(key);
-      measureCache.set(key, hit);
-      return hit;
-    }
-    if (!measureCtx) {
-      measureCtx = document.createElement('canvas').getContext('2d');
-      if (!measureCtx) return -1;
-    }
-    measureCtx.font = danmakuFont(fontSize);
-    const width = measureCtx.measureText(text).width;
-    if (measureCache.size >= MEASURE_CACHE_MAX) {
-      const oldest = measureCache.keys().next().value;
-      if (oldest !== undefined) measureCache.delete(oldest);
-    }
-    measureCache.set(key, width);
-    return width;
-  };
-  return {
-    measure,
-    dispose: () => {
-      measureCache.clear();
-      if (measureCtx) {
-        measureCtx.canvas.width = 0;
-        measureCtx.canvas.height = 0;
-        measureCtx = null;
-      }
-    },
-  };
-}
 
 function rasterizeText(
   text: string,

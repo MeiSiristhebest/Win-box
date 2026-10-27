@@ -1,12 +1,8 @@
 import type { PlayerProgressBarModel } from './presentation/PlayerControlModels';
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { progressHoverOffset, progressTimeAtPointer, projectProgressPercentages } from './application/playerProgressGeometry';
+import { useEffect, useRef, type PointerEvent } from 'react';
+import { usePlayerProgressBarPresenter } from './usePlayerProgressBarPresenter';
 
 type PlayerProgressBarProps = PlayerProgressBarModel;
-interface ProgressHover {
-  x: number;
-  time: number;
-}
 
 export function PlayerProgressBar({
   currentTime,
@@ -19,71 +15,36 @@ export function PlayerProgressBar({
   onContextMenu,
 }: PlayerProgressBarProps) {
   const progressRef = useRef<HTMLDivElement>(null);
-  const seekDragRef = useRef(false);
-  const [hover, setHover] = useState<ProgressHover | null>(null);
-  const latestRef = useRef({ currentTime, duration, buffered, canSeek, getCurrentTime, seekTo, formatTime, onContextMenu });
-
-  useEffect(() => {
-    latestRef.current = { currentTime, duration, buffered, canSeek, getCurrentTime, seekTo, formatTime, onContextMenu };
-  });
-  const progress = projectProgressPercentages(currentTime, buffered, duration);
-
-  const timeAtX = (clientX: number): number | null => {
-    const element = progressRef.current;
-    const state = latestRef.current;
-    if (!element) return null;
+  const presenter = usePlayerProgressBarPresenter({ currentTime, duration, buffered, canSeek, getCurrentTime, seekTo, formatTime, onContextMenu });
+  const onWheelSeek = presenter.onWheel;
+  const readBounds = (element: HTMLDivElement) => {
     const rect = element.getBoundingClientRect();
-    return progressTimeAtPointer(clientX, rect, state.duration);
-  };
-
-  const seekAtX = (clientX: number) => {
-    const time = timeAtX(clientX);
-    const state = latestRef.current;
-    if (time == null || !state.canSeek()) return;
-    state.seekTo(time);
-  };
-
-  const hoverAt = (clientX: number) => {
-    const element = progressRef.current;
-    if (!element) {
-      setHover(null);
-      return;
-    }
-    const rect = element.getBoundingClientRect();
-    const time = progressTimeAtPointer(clientX, rect, latestRef.current.duration);
-    const x = progressHoverOffset(clientX, rect);
-    setHover(x == null || time == null ? null : { x, time });
+    return { left: rect.left, width: rect.width };
   };
 
   useEffect(() => {
     const element = progressRef.current;
     if (!element) return;
-    const onWheel = (event: WheelEvent) => {
+    const handleWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const state = latestRef.current;
-      if (!state.duration || !state.canSeek()) return;
-      const next = Math.round(state.getCurrentTime()) + (event.deltaY < 0 ? 1 : -1);
-      state.seekTo(Math.min(state.duration, Math.max(0, next)));
+      onWheelSeek(event.deltaY);
     };
-    element.addEventListener('wheel', onWheel, { passive: false });
-    return () => element.removeEventListener('wheel', onWheel);
-  }, []);
+    element.addEventListener('wheel', handleWheel, { passive: false });
+    return () => element.removeEventListener('wheel', handleWheel);
+  }, [onWheelSeek]);
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    seekDragRef.current = true;
+    const started = presenter.onPointerDown({ button: event.button, clientX: event.clientX, bounds: readBounds(event.currentTarget) });
+    if (!started) return;
     try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Ignore unavailable pointer capture. */ }
-    hoverAt(event.clientX);
-    seekAtX(event.clientX);
   };
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    hoverAt(event.clientX);
-    if (seekDragRef.current) seekAtX(event.clientX);
+    presenter.onPointerMove({ clientX: event.clientX, bounds: readBounds(event.currentTarget) });
   };
 
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
-    seekDragRef.current = false;
+    if (!presenter.onPointerUp()) return;
     try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* Ignore unavailable pointer capture. */ }
   };
 
@@ -95,23 +56,26 @@ export function PlayerProgressBar({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={() => { seekDragRef.current = false; }}
-      onPointerLeave={() => { if (!seekDragRef.current) setHover(null); }}
+      onPointerCancel={presenter.onPointerCancel}
+      onPointerLeave={presenter.onPointerLeave}
       onContextMenu={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        if (latestRef.current.onContextMenu({ clientX: event.clientX, clientY: event.clientY }, timeAtX(event.clientX))) setHover(null);
+        presenter.onContextMenu(
+          { clientX: event.clientX, clientY: event.clientY },
+          { clientX: event.clientX, bounds: readBounds(event.currentTarget) },
+        );
       }}
     >
-      <div className="vp-buffer" style={{ width: `${progress.buffered}%` }} />
-      <div className="vp-played" style={{ width: `${progress.played}%` }} />
-      {hover && (
+      <div className="vp-buffer" style={{ width: `${presenter.progress.buffered}%` }} />
+      <div className="vp-played" style={{ width: `${presenter.progress.played}%` }} />
+      {presenter.hover && (
         <>
-          <div className="vp-hline" style={{ left: hover.x }} />
-          <div className="vp-htip" style={{ left: hover.x }}>{formatTime(hover.time)}</div>
+          <div className="vp-hline" style={{ left: presenter.hover.x }} />
+          <div className="vp-htip" style={{ left: presenter.hover.x }}>{presenter.hover.label}</div>
         </>
       )}
-      <div className="vp-thumb" style={{ left: `${progress.played}%` }} />
+      <div className="vp-thumb" style={{ left: `${presenter.progress.played}%` }} />
     </div>
   );
 }

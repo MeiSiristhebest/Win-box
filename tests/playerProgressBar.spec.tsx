@@ -79,4 +79,18 @@ describe('PlayerProgressBar', () => {
     expect(props.onContextMenu).toHaveBeenCalledOnce();
     expect(props.onContextMenu).toHaveBeenLastCalledWith({ clientX: 110, clientY: 20 }, 60);
   });
+
+  it('uses the latest presenter model after the player switches media', () => {
+    const first = makeProps();
+    const { container, rerender } = render(<PlayerProgressBar {...first} />);
+    const progress = container.querySelector('.vp-progress') as HTMLDivElement;
+    setProgressBounds(progress);
+    const next = { ...makeProps(), duration: 40, seekTo: vi.fn() };
+
+    rerender(<PlayerProgressBar {...next} />);
+    fireEvent.pointerDown(progress, { button: 0, clientX: 60, pointerId: 2 });
+
+    expect(first.seekTo).not.toHaveBeenCalled();
+    expect(next.seekTo).toHaveBeenCalledWith(20);
+  });
 });

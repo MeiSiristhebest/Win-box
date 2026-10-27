@@ -5,11 +5,11 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { usePlayerKeyboardShortcuts } from '../src/renderer/features/playback/usePlayerKeyboardShortcuts';
 import { playerKeyboardShortcutsAdapter } from '../src/renderer/features/playback/adapters/playerKeyboardShortcutsAdapter';
 
-function Harness({ isMpv = false, actions }: { isMpv?: boolean; actions: { play: () => void; pause: () => void; seek: (seconds: number) => void; volume: (value: number) => void; showVolume: () => void; reveal: () => void; exitFullscreen: () => void; stepSubtitleOffset?: (delta: -0.5 | 0.5) => void; toggleDanmaku?: () => void; toggleMini?: () => void; cycleFit?: () => void; toggleFullscreen?: () => void } }) {
+function Harness({ isMpv = false, time = 0, duration = 60, actions }: { isMpv?: boolean; time?: number; duration?: number; actions: { play: () => void; pause: () => void; seek: (seconds: number) => void; volume: (value: number) => void; showVolume: () => void; reveal: () => void; exitFullscreen: () => void; stepSubtitleOffset?: (delta: -0.5 | 0.5) => void; toggleDanmaku?: () => void; toggleMini?: () => void; cycleFit?: () => void; toggleFullscreen?: () => void } }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   usePlayerKeyboardShortcuts({
     videoRef, isMpv: () => isMpv, isPaused: () => true, play: actions.play, pause: actions.pause,
-    getTime: () => 0, getDuration: () => 60, seek: actions.seek, getVolume: () => 0.5, setVolume: actions.volume,
+    getTime: () => time, getDuration: () => duration, seek: actions.seek, getVolume: () => 0.5, setVolume: actions.volume,
     showVolume: actions.showVolume, revealControls: actions.reveal, exitMpvFullscreen: actions.exitFullscreen,
     onStepSubtitleOffset: actions.stepSubtitleOffset, onToggleDanmaku: actions.toggleDanmaku,
     onToggleMini: actions.toggleMini, onCycleFit: actions.cycleFit, onToggleFullscreen: actions.toggleFullscreen,
@@ -51,6 +51,18 @@ describe('usePlayerKeyboardShortcuts', () => {
     expect(handlers.volume).toHaveBeenCalledWith(0.55);
     expect(handlers.showVolume).toHaveBeenCalledOnce();
     expect(handlers.reveal).toHaveBeenCalledOnce();
+  });
+
+  it('clamps keyboard seeks to the current media bounds', () => {
+    const handlers = actions();
+    const view = render(<Harness time={2} actions={handlers} />);
+
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    view.rerender(<Harness time={59} actions={handlers} />);
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+
+    expect(handlers.seek).toHaveBeenNthCalledWith(1, 0);
+    expect(handlers.seek).toHaveBeenNthCalledWith(2, 60);
   });
 
   it('exits mpv fullscreen with Escape', () => {

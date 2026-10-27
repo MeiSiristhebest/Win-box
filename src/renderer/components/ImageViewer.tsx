@@ -6,8 +6,7 @@
 //   · 上一张/下一张（联动外层剧集回调，键盘 ←/→ 同步）；
 //   · 页码指示、加载中/失败提示（失败可重试）；
 //   · 鼠标静止 2.5s 淡出工具条（鼠标一动即回）。
-import { useState } from 'react';
-import { imageViewerRetryUrl } from './imageViewerPolicy';
+import { useImageViewerRetryPresenter } from './useImageViewerRetryPresenter';
 import { useImageViewerSession } from './useImageViewerSession';
 
 export interface ImageViewerProps {
@@ -26,14 +25,13 @@ export interface ImageViewerProps {
 }
 
 export default function ImageViewer(props: ImageViewerProps) {
-  const [reload, setReload] = useState(0);
-  const src = imageViewerRetryUrl(props.url, reload);
+  const { src, onRetry } = useImageViewerRetryPresenter(props.url);
   return (
     <ImageViewerContent
       key={src}
       {...props}
       src={src}
-      onRetry={() => setReload((value) => value + 1)}
+      onRetry={onRetry}
     />
   );
 }

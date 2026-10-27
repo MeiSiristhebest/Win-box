@@ -108,4 +108,20 @@ describe('useImageViewerSession', () => {
     unmount();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('removes global key and local wheel listeners when the viewer unmounts', () => {
+    const onNext = vi.fn();
+    const addListener = vi.spyOn(Element.prototype, 'addEventListener');
+    const removeListener = vi.spyOn(Element.prototype, 'removeEventListener');
+    const view = render(<Harness onNext={onNext} />);
+    const surface = screen.getByTestId('surface');
+    Object.defineProperty(surface, 'getClientRects', { value: () => [{ width: 500, height: 300 }] });
+
+    expect(addListener).toHaveBeenCalledWith('wheel', expect.any(Function), { passive: false });
+    view.unmount();
+    expect(removeListener).toHaveBeenCalledWith('wheel', expect.any(Function));
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(onNext).not.toHaveBeenCalled();
+  });
 });
