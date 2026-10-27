@@ -60,9 +60,21 @@ export interface MediaRuntimeInstallPorts {
 
 /** Coordinates the install transaction; infrastructure remains behind the supplied ports. */
 export class MediaRuntimeInstallWorkflow {
+  private installing = false;
+
   constructor(private readonly ports: MediaRuntimeInstallPorts) {}
 
   async install(runtime: MediaRuntimeId, signal: AbortSignal): Promise<MediaRuntimeStatus> {
+    if (this.installing) throw new Error('另一个媒体组件正在安装');
+    this.installing = true;
+    try {
+      return await this.installOne(runtime, signal);
+    } finally {
+      this.installing = false;
+    }
+  }
+
+  private async installOne(runtime: MediaRuntimeId, signal: AbortSignal): Promise<MediaRuntimeStatus> {
     let workspace: MediaRuntimeInstallWorkspace | null = null;
     let prepared: PreparedMediaRuntimeVersion | null = null;
     let activeCommitted = false;

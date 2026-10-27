@@ -139,6 +139,18 @@ describe('downloadVerifiedMediaRuntime', () => {
     await expect(downloadVerifiedMediaRuntime(input({ timeoutMs: 10 }), port)).rejects.toThrow('超过总时限');
   });
 
+  it('aborts a stalled response body when its total deadline expires', async () => {
+    const port: MediaRuntimeDownloadPort = {
+      request: vi.fn(async () => response(bytes([]))),
+      writeResponseBody: (_body, _destination, signal) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('body deadline aborted')), { once: true });
+      }),
+    };
+
+    await expect(downloadVerifiedMediaRuntime(input({ timeoutMs: 10 }), port)).rejects.toThrow('超过总时限');
+    expect(port.request).toHaveBeenCalledOnce();
+  });
+
   it('aborts a stalled body when the user cancels the installation', async () => {
     const controller = new AbortController();
     const port: MediaRuntimeDownloadPort = {

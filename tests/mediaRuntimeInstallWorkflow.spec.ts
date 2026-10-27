@@ -3,6 +3,7 @@ import type { MediaRuntimeProgress, MediaRuntimeStatus } from '../src/shared/pla
 import {
   MediaRuntimeInstallWorkflow,
   type MediaRuntimeInstallManifest,
+  type MediaRuntimeInstallPlan,
   type MediaRuntimeInstallPorts,
 } from '../src/main/player/mediaRuntimeInstallWorkflow';
 
@@ -24,6 +25,7 @@ const newManifest: MediaRuntimeInstallManifest = {
 
 function createPorts(options: {
   failCommit?: boolean;
+  failDownload?: string;
   failExtract?: boolean;
   failSetting?: boolean;
   sameDigest?: boolean;
@@ -31,6 +33,7 @@ function createPorts(options: {
   oldVersionCleanupWarnings?: string[];
   failOldVersionCleanup?: boolean;
   cancelDuringExtract?: AbortController;
+  cancelDuringDownload?: AbortController;
   progress?: MediaRuntimeProgress[];
 } = {}) {
   let activeManifest = oldManifest;
@@ -54,7 +57,14 @@ function createPorts(options: {
     })),
     activeStatus: vi.fn(() => ({ installed: true, path: 'data/mpv/versions/old/mpv.exe', sha256: oldManifest.sha256, version: 'old', assetName: 'mpv-old.7z' })),
     createWorkspace: vi.fn(async () => workspace),
-    download: vi.fn(async (_plan, _destination, _signal, onProgress) => { onProgress(3, 3); }),
+    download: vi.fn(async (_plan, _destination, signal, onProgress) => {
+      if (options.failDownload) throw new Error(options.failDownload);
+      if (options.cancelDuringDownload) {
+        options.cancelDuringDownload.abort();
+        if (signal.aborted) throw new Error('download aborted');
+      }
+      onProgress(3, 3);
+    }),
     extract: vi.fn(async (_workspace, signal) => {
       if (options.cancelDuringExtract) options.cancelDuringExtract.abort();
       if (signal.aborted) return;
@@ -122,6 +132,21 @@ describe('MediaRuntimeInstallWorkflow', () => {
     expect(ports.cleanupOldVersions).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['a stalled download deadline', '下载超过总时限，已停止并清理临时文件'],
+    ['an oversized response', '下载响应超过官方记录的文件大小'],
+  ])('preserves the old active runtime after %s', async (_scenario, failure) => {
+    const { ports, removed, getActiveManifest, workspace } = createPorts({ failDownload: failure });
+    const workflow = new MediaRuntimeInstallWorkflow(ports);
+
+    await expect(workflow.install('mpv', new AbortController().signal)).rejects.toThrow(failure);
+
+    expect(getActiveManifest()).toBe(oldManifest);
+    expect(ports.extract).not.toHaveBeenCalled();
+    expect(ports.commitActive).not.toHaveBeenCalled();
+    expect(removed).toEqual([workspace.root]);
+  });
+
   it('cleans the temporary workspace and leaves the old version active when extraction fails', async () => {
     const { ports, removed, getActiveManifest, workspace } = createPorts({ failExtract: true });
     const workflow = new MediaRuntimeInstallWorkflow(ports);
@@ -144,6 +169,43 @@ describe('MediaRuntimeInstallWorkflow', () => {
     expect(removed).toEqual([workspace.root]);
     expect(ports.prepareVersion).not.toHaveBeenCalled();
     expect(ports.commitActive).not.toHaveBeenCalled();
+  });
+
+  it('cancels an in-flight download and cleans its workspace without replacing the old runtime', async () => {
+    const controller = new AbortController();
+    const { ports, removed, getActiveManifest, workspace } = createPorts({ cancelDuringDownload: controller });
+    const workflow = new MediaRuntimeInstallWorkflow(ports);
+
+    await expect(workflow.install('mpv', controller.signal)).rejects.toThrow('已取消下载');
+
+    expect(getActiveManifest()).toBe(oldManifest);
+    expect(ports.extract).not.toHaveBeenCalled();
+    expect(ports.commitActive).not.toHaveBeenCalled();
+    expect(removed).toEqual([workspace.root]);
+  });
+
+  it('rejects a second install while the first transaction is resolving its release plan', async () => {
+    const { ports, getActiveManifest } = createPorts();
+    let signalPlanStarted!: () => void;
+    let resolvePlan!: (plan: MediaRuntimeInstallPlan) => void;
+    const planStarted = new Promise<void>((resolve) => { signalPlanStarted = resolve; });
+    vi.mocked(ports.resolvePlan).mockImplementation(() => new Promise((resolve) => {
+      resolvePlan = resolve;
+      signalPlanStarted();
+    }));
+    const workflow = new MediaRuntimeInstallWorkflow(ports);
+    const first = workflow.install('mpv', new AbortController().signal);
+
+    await planStarted;
+    await expect(workflow.install('ffmpeg', new AbortController().signal)).rejects.toThrow('另一个媒体组件正在安装');
+    expect(ports.resolvePlan).toHaveBeenCalledOnce();
+
+    resolvePlan({
+      version: 'new', assetName: 'mpv-new.7z', source: 'https://github.com/example/new',
+      sha256: newManifest.sha256, size: 3, downloadUrl: 'https://github.com/example/mpv-new.7z',
+    });
+    await expect(first).resolves.toBeDefined();
+    expect(getActiveManifest()).toBe(newManifest);
   });
 
   it('treats player preference persistence as a warning after runtime activation', async () => {
