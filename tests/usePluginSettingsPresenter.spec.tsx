@@ -60,6 +60,21 @@ describe('usePluginSettingsPresenter', () => {
     expect(dependencies.events.notifyChanged).not.toHaveBeenCalled();
   });
 
+  it('does not install or publish when the native package picker is canceled', async () => {
+    const dependencies = createDependencies();
+    vi.mocked(dependencies.catalog.inspectInstallSource).mockResolvedValue({ canceled: true, ok: false });
+    const { result } = renderHook(() => usePluginSettingsPresenter(dependencies, vi.fn(), true));
+    await waitFor(() => expect(result.current.pluginsStatus).toBe('ready'));
+
+    await act(async () => { await result.current.installPlugin(); });
+
+    expect(dependencies.catalog.inspectInstallSource).toHaveBeenCalledOnce();
+    expect(dependencies.lifecycle.install).not.toHaveBeenCalled();
+    expect(dependencies.events.notifyChanged).not.toHaveBeenCalled();
+    expect(result.current.pluginMessage).toBeNull();
+    expect(result.current.pluginBusy).toBe(false);
+  });
+
   it('reports lifecycle failure and does not announce or reload a mutation that did not succeed', async () => {
     const dependencies = createDependencies();
     vi.mocked(dependencies.catalog.inspectInstallSource).mockResolvedValue({ canceled: false, ok: true, path: 'sample.winbox', kind: 'asset' });
