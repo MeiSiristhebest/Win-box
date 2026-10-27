@@ -6,8 +6,9 @@
 //   · 上一张/下一张（联动外层剧集回调，键盘 ←/→ 同步）；
 //   · 页码指示、加载中/失败提示（失败可重试）；
 //   · 鼠标静止 2.5s 淡出工具条（鼠标一动即回）。
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { isNativeModalOpen } from '../lib/modalScope';
+import { useState } from 'react';
+import { imageViewerRetryUrl } from './imageViewerPolicy';
+import { useImageViewerSession } from './useImageViewerSession';
 
 export interface ImageViewerProps {
   url: string;
@@ -24,13 +25,9 @@ export interface ImageViewerProps {
   mini?: boolean;
 }
 
-const MIN_SCALE = 0.25;
-const MAX_SCALE = 5;
-const VIEWER_CONTROL = 'button, input, select, textarea, a, [role="button"]';
-
 export default function ImageViewer(props: ImageViewerProps) {
   const [reload, setReload] = useState(0);
-  const src = reload > 0 ? `${props.url}${props.url.includes('?') ? '&' : '?'}_r=${reload}` : props.url;
+  const src = imageViewerRetryUrl(props.url, reload);
   return (
     <ImageViewerContent
       key={src}
@@ -44,123 +41,53 @@ export default function ImageViewer(props: ImageViewerProps) {
 type ImageViewerContentProps = Omit<ImageViewerProps, 'url'> & { src: string; onRetry: () => void };
 
 function ImageViewerContent({ src, name, index, total, canPrev, canNext, onPrev, onNext, mini = false, onRetry }: ImageViewerContentProps) {
-  const [scale, setScale] = useState(1);
-  const [off, setOff] = useState({ x: 0, y: 0 });
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
-  const [ui, setUi] = useState(true);
-  const [dragging, setDragging] = useState(false);
-  const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
-  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const viewerRef = useRef<HTMLDivElement>(null);
-
-  const poke = useCallback(() => {
-    setUi(true);
-    if (idleTimer.current) clearTimeout(idleTimer.current);
-    idleTimer.current = setTimeout(() => setUi(false), 2500);
-  }, []);
-  useEffect(() => {
-    idleTimer.current = setTimeout(() => setUi(false), 2500);
-    return () => {
-      if (idleTimer.current) clearTimeout(idleTimer.current);
-    };
-  }, []);
-
-  const zoom = useCallback((next: number) => {
-    setScale(Math.min(MAX_SCALE, Math.max(MIN_SCALE, Number(next.toFixed(2)))));
-  }, []);
-
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer) return;
-    const onWheel = (event: WheelEvent) => {
-      if (event.target instanceof Element && event.target.closest(VIEWER_CONTROL)) return;
-      event.preventDefault();
-      zoom(scale + (event.deltaY < 0 ? 0.15 : -0.15));
-      poke();
-    };
-    viewer.addEventListener('wheel', onWheel, { passive: false });
-    return () => viewer.removeEventListener('wheel', onWheel);
-  }, [scale, zoom, poke]);
-
-  // 键盘：←/→ 换图、+/- 缩放、0 复位
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const target = e.target instanceof Element ? e.target : null;
-      if (isNativeModalOpen() || e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey
-        || !viewerRef.current?.getClientRects().length || target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      if (e.key === 'ArrowLeft' && canPrev) onPrev?.();
-      else if (e.key === 'ArrowRight' && canNext) onNext?.();
-      else if (e.key === '+' || e.key === '=') zoom(scale + 0.25);
-      else if (e.key === '-') zoom(scale - 0.25);
-      else if (e.key === '0') { zoom(1); setOff({ x: 0, y: 0 }); }
-      else return;
-      e.preventDefault();
-      poke();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [canPrev, canNext, onPrev, onNext, scale, zoom, poke]);
+  const { viewerRef, imageTransform, scale, loading, error, controlsVisible, dragging, onMouseMove, onFocusCapture, onDoubleClick, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onImageLoad, onImageError, onRetry: retry, zoomIn, zoomOut, resetView } = useImageViewerSession({ canPrev, canNext, onPrev, onNext, onRetry });
 
   return (
     <div
       ref={viewerRef}
       className="vplayer ivi"
-      onMouseMove={poke}
-      onFocusCapture={poke}
-      onDoubleClick={(e) => {
-        if (e.target instanceof Element && e.target.closest(VIEWER_CONTROL)) return;
-        e.stopPropagation();
-        zoom(1);
-        setOff({ x: 0, y: 0 });
-      }}
-      onPointerDown={(e) => {
-        if (e.button !== 0 || (e.target instanceof Element && e.target.closest(VIEWER_CONTROL))) return;
-        dragRef.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y };
-        setDragging(true);
-        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-      }}
-      onPointerMove={(e) => {
-        const d = dragRef.current;
-        if (!d) return;
-        setOff({ x: d.ox + (e.clientX - d.x), y: d.oy + (e.clientY - d.y) });
-      }}
-      onPointerUp={() => { dragRef.current = null; setDragging(false); }}
-      onPointerCancel={() => { dragRef.current = null; setDragging(false); }}
+      onMouseMove={onMouseMove}
+      onFocusCapture={onFocusCapture}
+      onDoubleClick={onDoubleClick}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       style={{ cursor: dragging ? 'grabbing' : 'grab' }}
     >
-      {!err && (
+      {!error && (
         <img
           className="ivi-img"
           src={src}
           alt={name || ''}
           draggable={false}
-          style={{ transform: `translate(${off.x}px, ${off.y}px) scale(${scale})` }}
-          onLoad={() => setLoading(false)}
-          onError={() => { setLoading(false); setErr('图片加载失败（图床可能需 Referer 或已失效）'); }}
+          style={{ transform: imageTransform }}
+          onLoad={onImageLoad}
+          onError={onImageError}
         />
       )}
-      {loading && !err && (
+      {loading && !error && (
         <div className="vp-loading">
           <span className="vp-spin" />
           <span className="vp-load-text">图片加载中</span>
         </div>
       )}
-      {err && (
+      {error && (
         <div className="vp-err" onDoubleClick={(e) => e.stopPropagation()}>
-          <div>{err}</div>
+          <div>{error}</div>
           <div className="row" style={{ gap: 8, justifyContent: 'center' }}>
-            <button className="primary" onClick={onRetry}>重试</button>
+            <button className="primary" onClick={retry}>重试</button>
           </div>
         </div>
       )}
-      <div className={`ivi-bar${ui && !mini ? '' : ' ivi-hide'}`}>
+      <div className={`ivi-bar${controlsVisible && !mini ? '' : ' ivi-hide'}`}>
         <span className="ivi-title" title={name}>{name || '图片'}</span>
         <span className="ivi-page">{index && total ? `${index} / ${total}` : ''}</span>
         <span className="ivi-zoom">{Math.round(scale * 100)}%</span>
-        <button className="vp-ctl" aria-label="缩小" title="缩小" onClick={() => zoom(scale - 0.25)}>−</button>
-        <button className="vp-ctl" aria-label="放大" title="放大" onClick={() => zoom(scale + 0.25)}>+</button>
-        <button className="vp-ctl" aria-label="复位缩放和位置" title="复位（双击画面同效）" onClick={() => { zoom(1); setOff({ x: 0, y: 0 }); }}>
+        <button className="vp-ctl" aria-label="缩小" title="缩小" onClick={zoomOut}>−</button>
+        <button className="vp-ctl" aria-label="放大" title="放大" onClick={zoomIn}>+</button>
+        <button className="vp-ctl" aria-label="复位缩放和位置" title="复位（双击画面同效）" onClick={resetView}>
           <svg width="15" height="15" viewBox="0 0 24 24"><path d="M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z" fill="currentColor" /></svg>
         </button>
         <button className="vp-ctl vp-nav" aria-label="上一张" title="上一张" disabled={!canPrev} onClick={onPrev}>
@@ -171,14 +98,14 @@ function ImageViewerContent({ src, name, index, total, canPrev, canNext, onPrev,
         </button>
       </div>
       {!mini && (
-        <div className={`ivi-nav ivi-left${ui ? '' : ' ivi-hide'}`}>
+        <div className={`ivi-nav ivi-left${controlsVisible ? '' : ' ivi-hide'}`}>
           <button className="ivi-nav-btn" aria-label="上一张" disabled={!canPrev} title="上一张（←）" onClick={onPrev}>
             <svg width="26" height="26" viewBox="0 0 24 24"><path d="M15 5.5v13l-11-6.5z" fill="currentColor" /></svg>
           </button>
         </div>
       )}
       {!mini && (
-        <div className={`ivi-nav ivi-right${ui ? '' : ' ivi-hide'}`}>
+        <div className={`ivi-nav ivi-right${controlsVisible ? '' : ' ivi-hide'}`}>
           <button className="ivi-nav-btn" aria-label="下一张" disabled={!canNext} title="下一张（→）" onClick={onNext}>
             <svg width="26" height="26" viewBox="0 0 24 24"><path d="M9 5.5v13l11-6.5z" fill="currentColor" /></svg>
           </button>
