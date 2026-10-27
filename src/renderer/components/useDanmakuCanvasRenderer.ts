@@ -78,6 +78,10 @@ export function useDanmakuCanvasRenderer({
   offset,
   fit = 'contain',
 }: DanmakuOverlayProps) {
+  // The player may recreate this wrapper object on every render. Its refs are
+  // stable, so key browser lifecycles to those refs instead of wrapper identity.
+  const mpvTimeRef = mpv?.time ?? null;
+  const mpvSizeRef = mpv?.size ?? null;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textMeasurement = useMemo(() => createCanvasTextMeasurement(), []);
   const bitmapCache = useMemo(() => createDanmakuBitmapCache(textMeasurement.measure), [textMeasurement]);
@@ -93,8 +97,8 @@ export function useDanmakuCanvasRenderer({
       const width = parent.clientWidth;
       const height = parent.clientHeight;
       setSize((current) => current.w === width && current.h === height ? current : { w: width, h: height });
-      const videoWidth = mpv ? mpv.size.current.w : video?.videoWidth || 0;
-      const videoHeight = mpv ? mpv.size.current.h || parent.clientHeight : video?.videoHeight || 0;
+      const videoWidth = mpvSizeRef ? mpvSizeRef.current.w : video?.videoWidth || 0;
+      const videoHeight = mpvSizeRef ? mpvSizeRef.current.h || parent.clientHeight : video?.videoHeight || 0;
       const nextArea = danmakuArea({ fit, canvasW: width, canvasH: height, videoW: videoWidth, videoH: videoHeight });
       setArea((current) => current.top === nextArea.top && current.height === nextArea.height ? current : nextArea);
     };
@@ -103,14 +107,14 @@ export function useDanmakuCanvasRenderer({
     observer.observe(parent);
     video?.addEventListener('loadedmetadata', update);
     video?.addEventListener('resize', update);
-    const timer = mpv ? setInterval(update, 800) : null;
+    const timer = mpvTimeRef && mpvSizeRef ? setInterval(update, 800) : null;
     return () => {
       observer.disconnect();
       video?.removeEventListener('loadedmetadata', update);
       video?.removeEventListener('resize', update);
-      if (timer) clearInterval(timer);
+      if (timer !== null) clearInterval(timer);
     };
-  }, [videoRef, mpv, fit]);
+  }, [videoRef, mpvTimeRef, mpvSizeRef, fit]);
 
   useEffect(() => () => {
     bitmapCache.clear();
@@ -139,7 +143,7 @@ export function useDanmakuCanvasRenderer({
       clearDanmakuCanvas(context, canvas);
       return;
     }
-    if (!video && !mpv) return;
+    if (!video && !mpvTimeRef) return;
 
     let animationFrame = 0;
     let lastTime = -1;
@@ -147,7 +151,7 @@ export function useDanmakuCanvasRenderer({
     const seekJump = 0.3;
     const draw = () => {
       animationFrame = requestAnimationFrame(draw);
-      const time = mpv ? mpv.time.current : (video as HTMLVideoElement).currentTime;
+      const time = mpvTimeRef ? mpvTimeRef.current : (video as HTMLVideoElement).currentTime;
       if (time < lastTime || Math.abs(time - lastTime) > seekJump) scrollStart = 0;
       lastTime = time;
 
@@ -192,7 +196,7 @@ export function useDanmakuCanvasRenderer({
     };
     draw();
     return () => cancelAnimationFrame(animationFrame);
-  }, [enabled, layout, fontSize, opacity, region, area.top, videoRef, speed, mpv, bitmapCache]);
+  }, [enabled, layout, fontSize, opacity, region, area.top, videoRef, speed, mpvTimeRef, bitmapCache]);
 
   return canvasRef;
 }

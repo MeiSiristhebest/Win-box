@@ -25,6 +25,7 @@ class ResizeObserverFixture {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   ResizeObserverFixture.instances = [];
@@ -98,5 +99,70 @@ describe('DanmakuOverlay canvas adapter', () => {
 
     expect(canvasContext.clearRect).toHaveBeenCalled();
     expect(requestFrame).not.toHaveBeenCalled();
+  });
+
+  it('clears mpv size polling when the overlay unmounts', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('ResizeObserver', ResizeObserverFixture);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => canvasContext as never);
+    const clearInterval = vi.spyOn(globalThis, 'clearInterval');
+    const videoRef = createRef<HTMLVideoElement>();
+
+    const view = render(
+      <div>
+        <DanmakuOverlay
+          videoRef={videoRef}
+          mpv={{ time: { current: 0 }, size: { current: { w: 1920, h: 1080 } } }}
+          items={[]}
+          enabled={false}
+          region="full"
+          fontSize={24}
+          opacity={1}
+          density={1}
+          speed={110}
+          offset={0}
+        />
+      </div>,
+    );
+
+    expect(vi.getTimerCount()).toBe(1);
+    view.unmount();
+    expect(clearInterval).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps the MPV size observer and polling stable when its wrapper object is recreated', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('ResizeObserver', ResizeObserverFixture);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => canvasContext as never);
+    const setInterval = vi.spyOn(globalThis, 'setInterval');
+    const time = { current: 0 };
+    const size = { current: { w: 1920, h: 1080 } };
+    const videoRef = createRef<HTMLVideoElement>();
+    const renderOverlay = () => (
+      <div>
+        <DanmakuOverlay
+          videoRef={videoRef}
+          mpv={{ time, size }}
+          items={[]}
+          enabled={false}
+          region="full"
+          fontSize={24}
+          opacity={1}
+          density={1}
+          speed={110}
+          offset={0}
+        />
+      </div>
+    );
+    const view = render(renderOverlay());
+
+    expect(ResizeObserverFixture.instances).toHaveLength(1);
+    expect(setInterval).toHaveBeenCalledOnce();
+    view.rerender(renderOverlay());
+
+    expect(ResizeObserverFixture.instances).toHaveLength(1);
+    expect(setInterval).toHaveBeenCalledOnce();
+    view.unmount();
   });
 });
