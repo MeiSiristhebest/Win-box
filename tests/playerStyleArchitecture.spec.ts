@@ -102,6 +102,29 @@ describe('player control style architecture', () => {
     expect(contrast, 'status text must meet WCAG AA on a bright frame').toBeGreaterThanOrEqual(4.5);
   });
 
+  it('keeps technical badges readable over the brightest video frame', async () => {
+    const { css } = await readGlobalStyleComposition();
+    const row = readRule(css, '.vp-tech');
+    const badge = readRule(css, '.vp-tech-chip');
+    const background = badge.match(/background:\s*rgba\(9,\s*11,\s*15,\s*([\d.]+)\)/i);
+    const opacity = Number(background?.[1]);
+
+    expect(row).toMatch(/color:\s*var\(--on-media/);
+    expect(background, 'technical badges need a dark media-safe surface').not.toBeNull();
+    expect(opacity).toBeGreaterThan(0);
+    expect(opacity).toBeLessThanOrEqual(1);
+
+    // Worst case: the badge is over a pure-white video frame and uses opaque white text.
+    const backdrop = [9, 11, 15].map((channel) => channel * opacity + 255 * (1 - opacity));
+    const linearBackground = backdrop.map((channel) => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    const backgroundLuminance = 0.2126 * linearBackground[0] + 0.7152 * linearBackground[1] + 0.0722 * linearBackground[2];
+    const contrast = 1.05 / (backgroundLuminance + 0.05);
+    expect(contrast, 'badge text must meet WCAG AA on a bright frame').toBeGreaterThanOrEqual(4.5);
+  });
+
   it('keeps mini-player title and controls readable without dimming the whole strip', async () => {
     const { css } = await readGlobalStyleComposition();
     const strip = readRule(css, '.mini-strip');
@@ -143,6 +166,16 @@ describe('player control style architecture', () => {
     expect(thumbOffset).toBe(-((thumbHeight - trackHeight) / 2));
   });
 
+  it('uses the theme contrast boundary for the unfilled volume rail in both engines', async () => {
+    const { css } = await readGlobalStyleComposition();
+    const webkitTrack = readRule(css, '.vp-vtrack::-webkit-slider-runnable-track');
+    const firefoxTrack = readRule(css, '.vp-vtrack::-moz-range-track');
+
+    expect(webkitTrack).toMatch(/var\(--border\)/);
+    expect(firefoxTrack).toMatch(/background:\s*var\(--border\)/);
+    expect(`${webkitTrack}${firefoxTrack}`).not.toMatch(/rgba\(255,\s*255,\s*255,\s*0?\.48\)/i);
+  });
+
   it('uses one readable semantic disabled style across player shells', async () => {
     const { css } = await readGlobalStyleComposition();
     const rules = css.match(/(?:^|\n)\.vp-ctl:disabled\s*\{/g) ?? [];
@@ -169,6 +202,16 @@ describe('player control style architecture', () => {
     expect(count).toMatch(/color:\s*var\(--text-secondary/);
     expect(item).toMatch(/color:\s*var\(--text-primary/);
     expect(index).toMatch(/color:\s*var\(--text-secondary/);
+  });
+
+  it('pairs the selected episode range tab with the theme accent foreground', async () => {
+    const { css } = await readGlobalStyleComposition();
+    const selected = readRule(css, ':root[data-theme] .vp-ep-range-tab.active');
+
+    expect(selected).toMatch(/background:\s*var\(--color-accent,\s*var\(--accent/);
+    expect(selected).toMatch(/color:\s*var\(--on-accent/);
+    expect(selected).not.toMatch(/background:\s*var\(--text-accent/);
+    expect(selected).not.toMatch(/color:\s*#fff/i);
   });
 
   it('keeps global drive provider tabs readable and visibly selected', async () => {

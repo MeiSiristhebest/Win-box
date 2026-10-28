@@ -80,9 +80,9 @@
      故这里带 `:root[data-theme]` 前缀（(0,4,0)）压过它们 —— 否则默认皮肤下置顶态仍是白色，看不出开没开。 */
 /* ★ 2026-10-17（阶段3）：**MPV 内核专属**技术信息条 —— 位于控制条内部、进度条之上，随 `.vui` 一起显隐。
    （只在非小窗分支渲染；皮肤若要覆盖，按 §C54 用 `:root[data-theme]` 前缀压特异度。） */
-.vp-tech { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; color: rgba(255,255,255,.82); }
+.vp-tech { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; color: var(--on-media, #fff); }
 .vp-tech-chip { font-size: 12px; line-height: 1; padding: 3px 6px; border-radius: 4px;
-  background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.08); white-space: nowrap; }
+  background: rgba(9, 11, 15, .82); border: 1px solid rgba(255,255,255,.22); white-space: nowrap; }
 /* ★ 2026-10-17（阶段3）：**MPV 内核专属**起播格式标签（画面右上角，加载后短暂显示 4s） */
 .vp-fmtbadges { position: absolute; top: 14px; right: 14px; z-index: 6; display: flex; gap: 6px;
   pointer-events: none; animation: vpBadgeIn .28s ease-out both; }
@@ -153,8 +153,8 @@
   color: var(--text-primary, var(--text));
 }
 :root[data-theme] .vp-ep-range-tab.active {
-  background: var(--text-accent, var(--accent, #3b82f6));
-  color: #fff;
+  background: var(--color-accent, var(--accent, #3b82f6));
+  color: var(--on-accent, #fff);
   font-weight: 600;
 }
 :root[data-theme] .vp-eplist { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain;
@@ -320,14 +320,14 @@
 .vp-vtrack:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
 .vp-vtrack::-webkit-slider-runnable-track {
   width: 100%; height: 6px; margin: 0; border-radius: 999px;
-  background: linear-gradient(to right, var(--accent) 0, var(--accent) var(--volume), rgba(255,255,255,.48) var(--volume), rgba(255,255,255,.48) 100%);
+  background: linear-gradient(to right, var(--accent) 0, var(--accent) var(--volume), var(--border) var(--volume), var(--border) 100%);
 }
 .vp-vtrack::-webkit-slider-thumb {
   appearance: none; width: 14px; height: 14px; margin-top: -4px; border: 0; border-radius: 50%;
   background: #fff; box-shadow: 0 0 0 1px rgba(13, 16, 22, .72), 0 1px 4px rgba(0, 0, 0, .55);
 }
 .vp-vtrack::-moz-range-track { width: 100%; height: 6px; margin: 0; border-radius: 999px;
-  background: rgba(255,255,255,.48); }
+  background: var(--border); }
 .vp-vtrack::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--accent); }
 .vp-vtrack::-moz-range-thumb {
   width: 14px; height: 14px; margin: 0; border: 0; border-radius: 50%;
