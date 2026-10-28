@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "taskId": "V04",
   "recordedAt": "2026-10-28",
+  "implementationCommit": "2ac5a0d6fc1f098501f3a3135f006d273aafd51f",
   "finding": "System.IntPtr zero converts to true in the PowerShell predicate used for MainWindowHandle, so a headless process was incorrectly treated as having a window. CloseMainWindow returning false was also ignored, causing an unnecessary 10-second wait before force termination.",
   "change": "Convert MainWindowHandle to Int64 before testing for zero; if any target process lacks a window or CloseMainWindow returns false, immediately select the existing force-stop path.",
   "verification": {

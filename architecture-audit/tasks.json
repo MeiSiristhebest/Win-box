@@ -1772,6 +1772,7 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "3e3bd13",
+        "latestImplementationCommit": "2ac5a0d6fc1f098501f3a3135f006d273aafd51f",
         "verification": "最终候选包的 505 文件隔离安装/覆盖/卸载/数据保留记录见 installation-acceptance-2026-10-28.json。最新 installer-script.check.mjs 为 7/7 PASS；无窗口进程实测 4549ms 停止。该合成 fixture 不等于真实播放/隐藏窗口和取消保护验收，因此 V04 仍为 open。"
       }
     },
