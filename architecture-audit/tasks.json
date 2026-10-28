@@ -1632,7 +1632,7 @@
           "symbol": "Range and HLS failure diagnostics"
         }
       ],
-      "gap": "已补充 Range/重定向错误分类、HLS 响应体诊断和外部播放器启动语义；定向验收参数、源探测与 WebM 夹具通过。仍未运行真实第三方线路矩阵，也没有 PotPlayer 实际解码/进度验收；全量测试不等于来源可播。",
+      "gap": "已补充 Range/重定向错误分类、HLS 响应体诊断和外部播放器启动语义；定向验收参数、源探测与 WebM 夹具通过。PotPlayer 配置路径已被应用检测并拉取了本地 video/webm 字节，但验收脚本未完成收尾；仍缺真实解码、时间推进、暂停续播及第三方线路矩阵。",
       "direction": "先可控夹具验证 MP4/HLS/TS、401/403/HTML 假媒体、Range/跳转；再按获准的代表来源测完整播放。单独验证已配置 PotPlayer 直接启动和失败反馈；超分按内核能力如实展示。",
       "acceptance": "保存至少 HTML5、托管 MPV、PotPlayer 的实际启动/时间推进/暂停续播证据；源失效与播放器回归分开；账号切子仓可复用；明确托管 shader 不自动影响任意外部播放器。",
       "estimateEngineerHours": {
@@ -1652,10 +1652,10 @@
         "evidence": "architecture-audit/evidence/playback-acceptance-2026-10-28.json",
         "notRun": [
           "Live third-party source playback matrix",
-          "PotPlayer: configured executable was absent"
+          "PotPlayer decode/time progression/pause-resume (local video bytes fetched only; harness cleanup incomplete)"
         ],
         "latestImplementationCommit": "848c876adc4312e44b619b64281e57bab4d6dfae",
-        "latestVerification": "全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过）；三套 typecheck、全量 lint/架构边界、主进程与 renderer build 通过；播放参数/源验收/WebM 夹具 14/14。真实第三方线路、PotPlayer 实际解码及新安装包仍未验收。",
+        "latestVerification": "全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过）；三套 typecheck、全量 lint/架构边界、主进程与 renderer build 通过；播放参数/源验收/WebM 夹具 14/14。PotPlayer 路径选择与本地媒体字节请求通过，但脚本清理阶段未完成，未证明解码或播放进度；真实第三方线路和新安装包仍未验收。",
         "latestEvidence": "architecture-audit/evidence/playback-diagnostics-2026-10-28.json"
       }
     },

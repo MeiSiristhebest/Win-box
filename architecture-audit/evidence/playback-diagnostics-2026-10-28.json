@@ -16,12 +16,15 @@
     "fullVitest": "PASS: 505 files and 4148 tests passed; 3 files and 5 tests skipped.",
     "typecheck": "PASS: main, renderer, and test TypeScript projects.",
     "lint": "PASS: oxlint source/scripts/tests, architecture boundaries, and UI lint.",
-    "productionBuild": "PASS: main and renderer build. Renderer emitted the existing >500 kB chunk warning; hls chunk was 574.41 kB raw / 178.97 kB gzip."
+    "productionBuild": "PASS: main and renderer build. Renderer emitted the existing >500 kB chunk warning; hls chunk was 574.41 kB raw / 178.97 kB gzip.",
+    "potPlayerAttempt": "PARTIAL: D:\\PotPlayer\\PotPlayerMini64.exe was detected and selected by the app; the local fixture returned a completed video/webm media request with bytes. Decode, time progression, and pause/resume were not measured. The source-mode acceptance harness produced no final result during cleanup and was interrupted; no Electron or PotPlayer process remains, its new temp directory was removed, and the previous report was restored.",
+    "temporaryElectronAcl": "A temporary AppContainer read/execute ACE was added only on node_modules/electron/dist to launch the acceptance fixture, then removed; the current ACL has no S-1-15-2-1 ACE."
   },
   "limitations": [
     "No live third-party source matrix was run in this turn; successful parsing and a local fixture do not prove a provider is playable.",
-    "PotPlayer was not installed/configured for a real decode and playback-progress check.",
+    "PotPlayer local media fetch was confirmed, but its real decoder, playback-time progression, and pause/resume were not verified.",
     "This work does not make the managed shader pipeline affect arbitrary external player windows.",
+    "The PotPlayer source-mode acceptance did not finish its cleanup/report phase, so its fixture run is partial evidence rather than a full acceptance pass.",
     "No new packaged installer was produced or installed in this turn."
   ]
 }
