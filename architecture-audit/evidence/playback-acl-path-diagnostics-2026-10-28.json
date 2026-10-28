@@ -1,0 +1,140 @@
+{
+  "recordedAt": "2026-10-28T11:06:27.324Z",
+  "taskId": "V02",
+  "candidate": {
+    "version": "1.27.1",
+    "path": "release1.27.1/win-unpacked/Win-Box.exe",
+    "bytes": 247366656,
+    "modifiedAt": "2026-10-28T10:46:32.303Z"
+  },
+  "directWorkspaceLaunch": {
+    "path": "D:/developWorkPlaces/win-box/release1.27.1/win-unpacked",
+    "status": "BLOCKED_BEFORE_WINDOW",
+    "pid": 38616,
+    "processExited": true,
+    "exitCode": 2147483651,
+    "fixtureRequests": 0,
+    "windowCreated": false,
+    "log": "[FATAL:electron\\shell\\browser\\win\\install_dir_access.cc:52] Sandboxed processes cannot read D:\\developWorkPlaces\\win-box\\release1.27.1\\win-unpacked: its ACL has an entry for an AppContainer package SID but none for ALL APPLICATION PACKAGES, so Windows denies the sandbox token access.",
+    "aclModified": false
+  },
+  "isolatedCopyLaunch": {
+    "copyPath": "C:/Users/Mei/.codex/visualizations/2026/10/20/01a1598a-41cb-7003-abd2-b5dd494aa0ab/v02-winbox-candidate-20261028-1112",
+    "junctionPath": "D:/developWorkPlaces/win-box/.tmp/v02-winbox-candidate-link-20261028-1112",
+    "reportPath": "D:/developWorkPlaces/win-box/.tmp/v02-winbox-playback-20261028-1112",
+    "copiedFiles": 456,
+    "copiedBytes": 534354352,
+    "acl": "Inherited from authorized visualization root; CodexSandboxUsers RX, SYSTEM/Admins/Mei full control; no AppContainer package SID ACE.",
+    "command": "pnpm --dir D:/developWorkPlaces/win-box run acceptance:playback -- --packaged-app D:/developWorkPlaces/win-box/.tmp/v02-winbox-candidate-link-20261028-1112 --playback-only --artifact-dir .tmp/v02-winbox-playback-20261028-1112",
+    "status": "PASS",
+    "electronPid": 5488,
+    "processExited": true,
+    "rendererErrors": [],
+    "fixture": {
+      "kind": "generated-local-video",
+      "container": "WebM",
+      "codec": "VP8",
+      "width": 320,
+      "height": 180,
+      "durationMs": 14003.9,
+      "bytes": 74663
+    },
+    "checks": [
+      {
+        "name": "generated-local-video",
+        "status": "PASS"
+      },
+      {
+        "name": "html5-real-decode-time-progress-pause-resume",
+        "status": "PASS",
+        "resumedFrom": 0.614503,
+        "time": 1.136104,
+        "width": 320,
+        "height": 180,
+        "paused": true
+      },
+      {
+        "name": "mpv-real-decode-seek-time-progress-pause-resume",
+        "status": "PASS",
+        "mpvVersion": "0.41.0",
+        "seekTo": 2,
+        "resumedFrom": 3.016,
+        "time": 3.589,
+        "width": 320,
+        "height": 180,
+        "paused": true
+      },
+      {
+        "name": "restore-auto-and-preserve-paused-position",
+        "status": "PASS",
+        "time": 3.589,
+        "paused": true
+      }
+    ],
+    "fixtureRequests": [
+      {
+        "method": "GET",
+        "path": "/repos.json",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/a.json",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/b.json",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "/clip.webm",
+        "range": "bytes=0-",
+        "status": 206,
+        "contentType": "video/webm",
+        "responseBytes": 74663,
+        "completed": true
+      },
+      {
+        "method": "GET",
+        "path": "/clip.webm",
+        "range": "bytes=0-",
+        "status": 206,
+        "contentType": "video/webm",
+        "responseBytes": 74663,
+        "completed": true
+      }
+    ],
+    "screenshotObservation": "MPV screenshot video surface appeared black while 320x180/VP8 metadata and 3-second paused controls were visible; frame visibility/content remains unconfirmed."
+  },
+  "notRun": {
+    "liveThirdPartySources": true,
+    "potPlayerDecodeTimeProgressionPauseResume": true,
+    "hls403InThisPlaybackOnlyRun": true
+  },
+  "cleanup": {
+    "electronClose": "PASS",
+    "waitElectronExit": "PASS",
+    "fixtureServerClose": "PASS",
+    "mpvRuntimeRemoval": "PASS",
+    "sessionDirectoryRemoval": "PASS",
+    "noWinBoxOrMpvProcessAfterRun": true,
+    "copiedPackageRemoved": true,
+    "junctionRemoved": true,
+    "reportRemoved": true
+  },
+  "sideEffects": {
+    "aclChanged": false,
+    "registryChanged": false,
+    "systemSettingsChanged": false,
+    "sourceCodeChanged": false,
+    "committed": false
+  },
+  "mpvRuntime": {
+    "version": "0.41.0",
+    "archiveSha256": "4e197f729f5071c6772f35fffd96e0f36e3e8a044bd9479b136bb09b7c6a80ff",
+    "cachedHashVerifiedBeforeRun": true
+  },
+  "conclusion": "Direct launch from the workspace package is blocked before a window by install_dir_access.cc:52. The same latest packaged candidate passes local HTML5 and MPV decode/time/pause-resume when copied into the authorized ACL-safe path and launched through a temporary workspace junction. V02 remains open because PotPlayer, live sources, and visible frame content are unverified."
+}

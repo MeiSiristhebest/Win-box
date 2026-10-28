@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T12:00:17Z",
+  "application": "Win-Box 1.27.1 packaged candidate",
+  "units": "MiB unless noted",
+  "idle": {
+    "durationMs": 30905,
+    "sampleIntervalMs": 2000,
+    "sampleCount": 15,
+    "peakWorkingSet": 535.3,
+    "peakPrivateBytes": 497.1,
+    "steadyStateWorkingSet": 513.1,
+    "steadyStatePrivateBytes": 484.5,
+    "steadyStateCpuPercent": 0,
+    "steadyStateProcessCount": 4,
+    "startupCpuP95Percent": 74.5,
+    "completion": "expected-window-stop",
+    "samplerErrors": 0,
+    "budgetStatus": "NOT_CONFIGURED"
+  },
+  "localFixturePlayback": {
+    "durationMs": 22943,
+    "sampleIntervalMs": 1000,
+    "sampleCount": 20,
+    "peakProcessCount": 8,
+    "treePeakWorkingSet": 1266.8,
+    "treePeakPrivateBytes": 1112.7,
+    "processBreakdownAtPeak": [
+      { "executable": "node.exe", "role": "Playwright test driver", "workingSet": 445.9, "privateBytes": 445.6 },
+      { "executable": "cmd.exe", "role": "test launcher", "workingSet": 7.4, "privateBytes": 6.7 },
+      { "executable": "Win-Box.exe", "role": "application process tree, role of child processes unknown", "workingSet": 708.1, "privateBytes": 522.5 },
+      { "executable": "mpv.exe", "role": "managed playback child", "workingSet": 105.4, "privateBytes": 137.8 }
+    ],
+    "peakCpuPercent": 190.5,
+    "completion": "completed",
+    "samplerErrors": 0,
+    "budgetStatus": "NOT_CONFIGURED"
+  },
+  "limitations": [
+    "One idle and one playback run are insufficient to define a performance or memory budget or prove a leak.",
+    "The sampler records executable names and process relationships, not Chromium --type arguments; renderer/GPU/utility process roles cannot be attributed reliably.",
+    "The playback sample includes the Playwright driver and local acceptance fixture; these must not be reported as application-only memory.",
+    "Search across a large source catalog, 1080p playback, dense danmaku, and repeated source/window cycles were not measured."
+  ]
+}

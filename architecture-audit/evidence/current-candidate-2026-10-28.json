@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T12:25:14Z",
+  "source": {
+    "branch": "codex/architecture-cleanup-20261025",
+    "applicationBuildCommit": "ad4bbe092248e982d37791aff4b0ce28b74cc764",
+    "version": "1.27.1",
+    "published": false,
+    "pushed": false,
+    "packageBuiltAt": "2026-10-28T12:11:00.218Z",
+    "acceptanceHarnessCommitAfterBuild": {
+      "commit": "85b806103c5fb16a4b581cfb6f7e0ff9ada3416d",
+      "changeId": "qpy",
+      "scope": "acceptance script only; packaged application runtime is unchanged"
+    }
+  },
+  "build": {
+    "command": "pnpm run dist",
+    "status": "PASS",
+    "installer": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "installerBytes": 228694839,
+    "installerSha256": "74004bb13219dafab819084e642332298e77ad33b4e29f5f2b5430464e4afdcb",
+    "unpackedAppBytes": 533312020,
+    "unpackedAppFiles": 451,
+    "appAsarBytes": 24879880,
+    "jvmBytes": 163387623,
+    "releaseDirectoryCount": 1,
+    "optionalExternalPlayerBinariesBundled": false,
+    "chromiumFfmpegDllBundled": true
+  },
+  "verification": {
+    "vitest": {
+      "status": "PASS",
+      "filesPassed": 507,
+      "filesSkipped": 3,
+      "testsPassed": 4162,
+      "testsSkipped": 5
+    },
+    "typecheck": "PASS: main, renderer, and test projects",
+    "lintAndArchitectureBoundaries": "PASS",
+    "focusedPlayerStyles": {
+      "status": "PASS",
+      "files": 2,
+      "tests": 15
+    },
+    "acceptanceTools": {
+      "status": "PASS",
+      "tests": 20
+    },
+    "installerScript": {
+      "status": "PASS",
+      "tests": 9,
+      "targetProcessStoppedMs": 3748,
+      "oldUninstallerFailurePreservedOldInstallAndSixUserDataDomains": true
+    },
+    "runtimeClosure": "PASS",
+    "packagedJava": {
+      "status": "PASS",
+      "version": "OpenJDK 17.0.20.1 Temurin"
+    },
+    "packagedPlayback": {
+      "status": "PASS",
+      "fixture": "Generated local VP8 WebM, 320x180, approximately 14 seconds",
+      "html5DecodeProgressPauseResume": "PASS",
+      "managedMpvDecodeSeekProgressPauseResume": "PASS, MPV 0.41.0",
+      "restoreAutoAndPausedPosition": "PASS",
+      "rendererErrors": 0,
+      "processExitedAndOwnedArtifactsCleaned": true,
+      "externalSourcesAndPotPlayer": "NOT_RUN"
+    },
+    "pauseFeedbackVisual": {
+      "status": "PASS",
+      "widthPx": 28,
+      "heightPx": 28,
+      "iconWidthPx": 14,
+      "iconHeightPx": 14,
+      "centerOffsetPx": {
+        "x": 0,
+        "y": 0
+      },
+      "backdropFilter": "none",
+      "boxShadow": "none",
+      "screenshot": "architecture-audit/evidence/player-pause-feedback-packaged-2026-10-28.png"
+    },
+    "idleMemorySample": {
+      "source": "architecture-audit/evidence/memory-sample-packaged-2026-10-28.json",
+      "durationSeconds": 30.9,
+      "samples": 15,
+      "peakWorkingSetMiB": 535.3,
+      "peakPrivateMiB": 497.1,
+      "stableWorkingSetMiB": 513.1,
+      "stablePrivateMiB": 484.5,
+      "note": "Single idle sample; stable-sample median CPU was 0%; startup p95 was 74.5%; no budget configured.",
+      "steadyStateCpuMedianPercent": 0,
+      "startupCpuP95Percent": 74.5
+    },
+    "playbackMemorySample": {
+      "source": "architecture-audit/evidence/memory-sample-packaged-2026-10-28.json",
+      "treePeakWorkingSetMiB": 1266.8,
+      "treePeakPrivateMiB": 1112.7,
+      "appTreePeakWorkingSetMiB": 708.1,
+      "appTreePeakPrivateMiB": 522.5,
+      "mpvPeakWorkingSetMiB": 105.4,
+      "mpvPeakPrivateMiB": 137.8,
+      "playwrightDriverPeakWorkingSetMiB": 445.9,
+      "playwrightDriverPeakPrivateMiB": 445.6,
+      "note": "One local-fixture run; driver memory must be separated from application memory. Does not prove a leak or establish a budget."
+    }
+  },
+  "remaining": [
+    "A21: test real packaged spider JAR, Python runtime download/extraction, and runtime use from an isolated installed profile.",
+    "V02: test representative live sources, PotPlayer decode/progress, and MPV visible frame output; captured MPV native child surface is not visible in Chromium screenshots.",
+    "V03: full routes/themes/focus/DPI/narrow-layout contrast and danmaku-trail visual matrix remains unverified; packaged pause feedback itself now passes size/center/no-blur assertion and screenshot.",
+    "V04: actual GUI stop/continue, interactive cancel preserving the old install, playing/hidden-window scenarios, and real upgrade data migration remain unverified.",
+    "V05: repeat search, 1080p, danmaku, and 10-cycle workload samples with stable process-role attribution and then define memory/performance budgets.",
+    "V06: candidate installer binary was built but not run interactively or installed over the user's app; remote CI was not run because the user requested no publish/push."
+  ],
+  "localChangesPreserved": [
+    "libnc.so",
+    "src/renderer/components/SourcePicker.tsx"
+  ]
+}
