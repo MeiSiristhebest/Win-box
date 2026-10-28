@@ -820,6 +820,13 @@
         "B09"
       ],
       "probes": [],
+      "partialEvidence": [
+        {
+          "commit": "76fd92f326c2ce049d251f90b95ef46c2a60994c",
+          "summary": "Extract pooled JVM response classification and retry decisions into a pure execution policy",
+          "verification": "jarExecutionPolicy.spec.ts 26/26; main and test TypeScript checks passed; focused oxlint and architecture-boundary checks passed"
+        }
+      ],
       "reviewEvidence": {
         "commit": "6942172",
         "verification": "抽出转换缓存版本策略；convertedJarCacheVersion、jarExecutionPolicy、jarSpiderRuntimeSession 共 27 项通过。只完成 cache/classpath 小切片，产物准备与运行会话仍耦合。"
