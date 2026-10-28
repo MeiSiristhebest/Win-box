@@ -1858,7 +1858,7 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "0119e76",
-        "verification": "verification-2026-10-28.json 记录 502 文件通过/3 跳过、4118 测试通过/5 跳过；main/renderer/test typecheck、base/React/JSX-a11y lint、architecture:check 通过；新包 240808747 B，安装生命周期验收通过。Electron 工作区启动被 AppContainer ACL 拦截，未发布 Release，未完成 CI/播放验收，故保持 open。"
+        "verification": "verification-2026-10-28.json 记录 502 文件通过/3 跳过、4118 测试通过/5 跳过；main/renderer/test typecheck、base/React/JSX-a11y lint、architecture:check 通过；新包 240808747 B。隔离 NSIS 生命周期测试使用最终候选应用目录和同一 installer-script 生成逻辑；最终 Setup.exe 已构建但未直接运行。Electron 工作区启动被 AppContainer ACL 拦截，未发布 Release，未完成 CI/播放验收，故保持 open。"
       }
     },
     {
@@ -1991,7 +1991,8 @@
       "viteLargeChunkAdvisory": true
     },
     "desktopAcceptance": {
-      "installerLifecycle": "PASS",
+    "installerScriptLifecycle": "PASS_ISOLATED_GENERATED_NSIS",
+    "candidateSetupBinary": "BUILT_NOT_EXECUTED_DIRECTLY",
       "verifiedFiles": 505,
       "runningProcessStopped": "PASS",
       "dataPreserved": true,

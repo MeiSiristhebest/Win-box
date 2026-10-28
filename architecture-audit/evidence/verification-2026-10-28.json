@@ -107,6 +107,8 @@
   },
   "installationAcceptance": {
     "recordedAt": "2026-10-28T06:36:04.270Z",
+    "method": "Isolated generated NSIS installer using the final candidate app directory and the same installer-script builder; the final Setup.exe was built but not executed directly.",
+    "finalSetupBinaryExecutedDirectly": false,
     "install": "PASS",
     "overwrite": "PASS",
     "runningProcessStopped": "PASS",
