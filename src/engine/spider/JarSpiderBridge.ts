@@ -252,8 +252,6 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
   private readonly classpathResolver: JarClasspathResolver;
   /** Owns the size/mtime validation cache for converted archives. */
   private readonly convertedJarArtifactInspector: ConvertedJarArtifactInspector;
-  /** 多个源共用一只 jar 时，后台预热只挂一条完成/失败日志。 */
-  private warmupLocks = new Map<string, Promise<void>>();
   /** 全局 spider jar（配置顶层 spider 字段），site.jar 优先 */
   private globalJar = '';
   /** 已上屏过的原生桥消息（stderr 跨请求累积，去重防刷屏；见 noteBridgeLog） */
@@ -1236,13 +1234,14 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
   /** 预热：下载+转换（导入配置后后台跑，避免首次点开卡住） */
   warmup(jarUrl: string): Promise<void> {
     const url = normalizeJarUrl(jarUrl);
-    const pending = this.warmupLocks.get(url);
-    if (pending) return pending;
+    const pending = this.conversionRegistry.pending(url);
+    // The registry is the canonical single-flight owner for this URL. Joining
+    // it here avoids a second warmup map and lets only the initiating warmup log failure.
+    if (pending) return pending.then(() => undefined, () => undefined);
     if (this.conversionFailure(url)) return Promise.resolve();
     const task = this.ensureConverted(url).then(() => undefined).catch((e) => {
       this.host?.logger.w(`jvm-bridge warmup 失败 ${url}: ${(e as Error).message}`);
-    }).finally(() => this.warmupLocks.delete(url));
-    this.warmupLocks.set(url, task);
+    });
     return task;
   }
 
