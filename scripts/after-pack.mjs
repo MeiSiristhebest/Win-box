@@ -1,10 +1,13 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { pruneUnusedChromiumLocalePacks } from './package-locales.mjs';
 import { sanitizeSqliteJar } from './sanitize-sqlite-jar.mjs';
 
 /** Electron Packager afterComplete hook: sanitize only the staged Windows app. */
 export async function sanitizePackagedApp({ buildPath, platform }) {
   if (platform !== 'win32') return;
+  const localeResult = await pruneUnusedChromiumLocalePacks(buildPath);
+  console.log(`Chromium locale packs pruned: kept ${localeResult.retained.join(', ')}, removed ${localeResult.removed.length} packs (${localeResult.bytesSaved} bytes saved)`);
   const candidates = [
     join(buildPath, 'resources/app.asar.unpacked/resources/jvm/libs/sqlite-jdbc-3.53.4.0.jar'),
     join(buildPath, 'resources/resources/jvm/libs/sqlite-jdbc-3.53.4.0.jar'),

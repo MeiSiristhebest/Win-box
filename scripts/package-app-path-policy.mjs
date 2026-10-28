@@ -48,7 +48,7 @@ export function shouldIgnorePackagedAppPath(candidate, root, { danglingNodeModul
   if (rel === 'node_modules/.bin' || rel.startsWith('node_modules/.bin/')) return true;
   if (rel === 'node_modules/.modules.yaml' || rel === 'node_modules/.pnpm' || rel.startsWith('node_modules/.pnpm/')) return true;
   if (/^node_modules\/(?:\.vite|\.vitest|\.vitest-cache)(?:\/|$)/.test(rel)) return true;
-  if (/^node_modules\/\.ignored\/@fluentui\/react-icons_tmp_[^/]+(?:\/|$)/.test(rel)) return true;
+  if (rel === 'node_modules/.ignored' || rel.startsWith('node_modules/.ignored/')) return true;
   const bundledNames = new Set(runtimeClosure ? bundledPackageNames(runtimeClosure) : []);
   if (packageNamesInPath(rel).some((name) => bundledNames.has(name))) return true;
 

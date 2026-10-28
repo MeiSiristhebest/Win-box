@@ -14,7 +14,7 @@ const policy = (path, options = {}) => shouldIgnorePackagedAppPath(packagedPath(
   ...options,
 });
 
-test('omits build and test caches, source maps, and stale Fluent icon temp copies', () => {
+test('omits build caches, source maps, and ignored temporary dependency copies', () => {
   assert.equal(policy('node_modules/.modules.yaml'), true);
   assert.equal(policy('node_modules/.pnpm/fast-xml-parser@5.0.0/node_modules/fast-xml-parser/package.json'), true);
   assert.equal(policy('node_modules/fast-xml-parser/package.json'), false);
@@ -26,13 +26,15 @@ test('omits build and test caches, source maps, and stale Fluent icon temp copie
     'dist/main.cjs.map',
     'dist/renderer/assets/player.js.map',
     'node_modules/.ignored/@fluentui/react-icons_tmp_27384_2/package.json',
+    'node_modules/.ignored/happy-dom_tmp_31512_9/lib/index.js',
+    'node_modules/.ignored/rxjs_tmp_31512_12/package.json',
   ]) {
     assert.equal(policy(path), true, path);
   }
 
   assert.equal(policy('dist/main.cjs'), false);
   assert.equal(policy('dist/renderer/assets/player.js'), false);
-  assert.equal(policy('node_modules/.ignored/@fluentui/react-icons/package.json'), false);
+  assert.equal(policy('node_modules/.ignored/@fluentui/react-icons/package.json'), true);
 });
 
 test('omits packages bundled in main or renderer output and keeps runtime externals', () => {

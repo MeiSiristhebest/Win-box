@@ -20,7 +20,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:release-assets": "node --test --test-isolation=none scripts/verify-release-assets.check.mjs",
-    "test:package-app-policy": "node --test --test-isolation=none scripts/package-app-path-policy.check.mjs scripts/package-app-runtime-closure.check.mjs scripts/package-app-size-report.check.mjs",
+    "test:package-app-policy": "node --test --test-isolation=none scripts/package-app-path-policy.check.mjs scripts/package-app-runtime-closure.check.mjs scripts/package-app-size-report.check.mjs scripts/package-locales.check.mjs",
     "check:package-app-runtime-closure": "node scripts/check-package-app-runtime-closure.mjs",
     "test:subscription-import": "node --experimental-strip-types --test --test-isolation=none scripts/verify-subscription-import.check.mjs",
     "lint": "oxlint --deny-warnings src scripts tests && node scripts/architecture-boundaries.mjs && pnpm run lint:ui",
