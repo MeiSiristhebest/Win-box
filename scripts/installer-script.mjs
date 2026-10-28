@@ -84,7 +84,11 @@ ${runPowerShell('force')}
   Return
   check_remaining_files:
 ${existingFileChecks}
-  done:
+  ${prefix ? '' : `StrCmp $R3 "1" 0 done
+  Call UninstallExisting
+  StrCmp $R4 "0" done
+  Return
+  `}done:
 FunctionEnd`;
 }
 
@@ -110,20 +114,8 @@ function closeRunningApp(prefix, labelPrefix) {
   const choice = prefix
     ? `  MessageBox MB_YESNO|MB_ICONQUESTION "检测到此安装目录中的 Win-Box 正在运行。选择“是”让安装程序请求正常退出并继续卸载；选择“否”取消卸载。" IDYES ${labelPrefix}_graceful IDNO ${labelPrefix}_cancel`
     : `  Goto ${labelPrefix}_graceful`;
-  const afterClose = prefix
-    ? `  Goto ${labelPrefix}_done`
-    : `  StrCmp $R3 "1" ${labelPrefix}_uninstall_first_closed
-  Goto ${labelPrefix}_done
-  ${labelPrefix}_uninstall_first_closed:
-  Call UninstallExisting
-  Goto ${labelPrefix}_done`;
-  const noProcess = prefix
-    ? `  Goto ${labelPrefix}_done`
-    : `  StrCmp $R3 "1" ${labelPrefix}_uninstall_first_not_running
-  Goto ${labelPrefix}_done
-  ${labelPrefix}_uninstall_first_not_running:
-  Call UninstallExisting
-  Goto ${labelPrefix}_done`;
+  const afterClose = `  Goto ${labelPrefix}_done`;
+  const noProcess = `  Goto ${labelPrefix}_done`;
   return `Function ${prefix}CloseRunningWinBox
   System::Call 'kernel32::SetEnvironmentVariableW(w "WINBOX_INSTALL_EXE", w "$INSTDIR\\Win-Box.exe") i .r0'
   ${labelPrefix}_check:

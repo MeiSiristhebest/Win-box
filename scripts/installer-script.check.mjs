@@ -98,6 +98,25 @@ test('preflights every existing packaged file before overwrite and avoids retry 
   } finally { await rm(path, { recursive: true, force: true }); }
 });
 
+test('uninstall-first stops the app and preflights files before invoking the old uninstaller', async () => {
+  const path = await fixture();
+  try {
+    const script = await buildInstallerScript(options(path));
+    const start = script.indexOf('Function CheckInstallFiles\n');
+    const end = script.indexOf('\nFunctionEnd', start);
+    assert.ok(start >= 0 && end > start, 'installer preflight function is present');
+    const check = script.slice(start, end);
+    const closeApp = check.indexOf('Call CloseRunningWinBox');
+    const fileOpens = [...check.matchAll(/FileOpen \$0 "[^"]+" a/g)].map(match => match.index);
+    const uninstallOld = check.indexOf('Call UninstallExisting');
+
+    assert.ok(closeApp >= 0 && closeApp < fileOpens[0], 'stop the same-directory app before checking files');
+    assert.ok(fileOpens.length > 1, 'check the app executable and every existing packaged file');
+    assert.ok(uninstallOld > Math.max(...fileOpens), 'do not invoke an older uninstaller until the new installer has checked every file for locks');
+    assert.ok(check.includes('StrCmp $R3 "1"'), 'run uninstall-first only when the user selected that mode');
+  } finally { await rm(path, { recursive: true, force: true }); }
+});
+
 test('isolated acceptance has no desktop shortcut or registry writes', async () => {
   const path = await fixture();
   try {
