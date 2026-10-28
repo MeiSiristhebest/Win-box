@@ -27,6 +27,9 @@ function lockCheck(prefix) {
   return `Function ${prefix}CheckInstallFiles
   IfFileExists "$INSTDIR\\Win-Box.exe" 0 done
   Call ${prefix}CloseRunningWinBox
+  StrCmp $R4 "0" continue_after_close
+  Return
+  continue_after_close:
   StrCpy $1 0
   StrCpy $3 0
   retry:
@@ -54,12 +57,14 @@ ${runPowerShell('force')}
   Goto retry
   still_busy:
   MessageBox MB_OK|MB_ICONSTOP "程序文件仍被占用，可能有其他程序正在使用。${verb}已取消；关闭占用程序后再运行安装器。"
-  Abort
+  StrCpy $R4 "1"
+  Return
   cancel:
-  Abort
+  StrCpy $R4 "1"
+  Return
   silent:
-  SetErrorLevel 20
-  Abort
+  StrCpy $R4 "1"
+  Return
   done:
 FunctionEnd`;
 }
@@ -106,8 +111,7 @@ function closeRunningApp(prefix, labelPrefix) {
 ${runPowerShell('check')}
   StrCmp $2 "0" ${labelPrefix}_not_running
   StrCmp $2 "1" ${labelPrefix}_found
-  IfSilent ${labelPrefix}_done
-  ${prefix ? `Goto ${labelPrefix}_manual` : `Goto ${labelPrefix}_done`}
+  Goto ${labelPrefix}_manual
   ${labelPrefix}_not_running:
 ${noProcess}
   ${labelPrefix}_found:
@@ -129,11 +133,14 @@ ${runPowerShell('force')}
   ${labelPrefix}_closed:
 ${afterClose}
   ${labelPrefix}_manual:
-  IfSilent ${labelPrefix}_done
+  IfSilent ${labelPrefix}_manual_silent
   MessageBox MB_OK|MB_ICONSTOP "${unableToStop}"
-  Abort
+  ${labelPrefix}_manual_silent:
+  StrCpy $R4 "1"
+  Goto ${labelPrefix}_done
   ${labelPrefix}_cancel:
-  Abort
+  StrCpy $R4 "1"
+  Goto ${labelPrefix}_done
   ${labelPrefix}_done:
   Return
 FunctionEnd`;
@@ -229,15 +236,16 @@ function uninstallExisting(prefix, labelPrefix) {
   ${labelPrefix}_show_failure:
   IfSilent ${labelPrefix}_silent
   MessageBox MB_OK|MB_ICONSTOP "卸载旧版未能安全完成，安装已停止。已保护现有 data 数据；请重新运行安装器。"
-  Abort
+  StrCpy $R4 "1"
+  Return
   ${labelPrefix}_restore_failed:
   IfSilent ${labelPrefix}_silent
   MessageBox MB_OK|MB_ICONSTOP "无法恢复 data 用户数据。备份仍位于：$R1\\data。请勿删除该目录。"
-  SetErrorLevel 22
-  Abort
+  StrCpy $R4 "1"
+  Return
   ${labelPrefix}_silent:
-  SetErrorLevel 22
-  Abort
+  StrCpy $R4 "1"
+  Return
   ${labelPrefix}_done:
   Return
 FunctionEnd`;
@@ -322,8 +330,10 @@ ${closeRunningApp('un.', 'uninstall_close')}
 ${uninstallExisting('', 'install_uninstall')}
 ${uninstallExisting('un.', 'uninstaller_uninstall')}
 Section "Win-Box"
+  StrCpy $R4 "0"
   Call CheckInstallFiles
-  ${acceptanceUninstallFirst ? 'Call UninstallExisting' : ''}
+  StrCmp $R4 "0" 0 install_section_abort
+  ${acceptanceUninstallFirst ? 'Call UninstallExisting\n  StrCmp $R4 "0" 0 install_section_abort' : ''}
   SetOutPath "$INSTDIR"
   ClearErrors
   File /r "${quote(appDir)}\\*"
@@ -332,13 +342,26 @@ Section "Win-Box"
   Abort
   files_installed:
   WriteUninstaller "$INSTDIR\\Uninstall.exe"${setupIntegration}
+  Goto install_section_complete
+  install_section_abort:
+  SetErrorLevel 22
+  Abort
+  install_section_complete:
 SectionEnd
 Section "Uninstall"
-  Call un.CheckInstallFiles${uninstallIntegration}
+  StrCpy $R4 "0"
+  Call un.CheckInstallFiles
+  StrCmp $R4 "0" 0 uninstall_section_abort
+${uninstallIntegration}
 ${deletes}
 ${removeDirectories}
   Delete "$INSTDIR\\Uninstall.exe"
   RMDir "$INSTDIR"
+  Goto uninstall_section_complete
+  uninstall_section_abort:
+  SetErrorLevel 23
+  Abort
+  uninstall_section_complete:
 SectionEnd
 `;
 }

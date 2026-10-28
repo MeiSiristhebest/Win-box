@@ -41,6 +41,8 @@ test('running app offers update-in-place or data-preserving uninstall and reinst
   try {
     const script = await buildInstallerScript(options(path));
     assert.ok(script.includes('Page custom InstallModePage InstallModeLeave'));
+    assert.ok(script.indexOf('!insertmacro MUI_PAGE_DIRECTORY') < script.indexOf('Page custom InstallModePage InstallModeLeave'));
+    assert.ok(script.indexOf('Page custom InstallModePage InstallModeLeave') < script.indexOf('!insertmacro MUI_PAGE_INSTFILES'));
     assert.ok(script.includes('!include "nsDialogs.nsh"'));
     assert.ok(script.includes('install_mode_skip:\n  StrCpy $R3 "0"\n  Abort'));
     assert.ok(script.includes('停止 Win-Box 并一键覆盖安装（推荐）'));
@@ -138,5 +140,18 @@ test('real NSIS overwrite stops a running same-directory app process first', { s
     assert.equal(result.dataPreserved, true);
     assert.equal(result.registryAndShortcuts, 'PASS');
     assert.equal(result.cleaned, true);
+  } finally { await rm(path, { recursive: true, force: true }); }
+});
+
+test('real NSIS uninstall-first failure preserves the old install and every user-data domain', { skip: process.platform !== 'win32', timeout: 120_000 }, async t => {
+  const path = await fixture();
+  try {
+    const result = await verifyInstallation(path, { simulateExistingUninstallerFailure: true });
+    assert.equal(result.failedUninstallerRollback, 'PASS');
+    assert.equal(result.userDataFilesPreserved, 6);
+    assert.equal(result.dataPreserved, true);
+    assert.equal(result.uninstallFirst, 'PASS');
+    assert.equal(result.cleaned, true);
+    t.diagnostic('old install and settings/subscriptions/cloud accounts/history/favorites restored after old uninstaller failure');
   } finally { await rm(path, { recursive: true, force: true }); }
 });

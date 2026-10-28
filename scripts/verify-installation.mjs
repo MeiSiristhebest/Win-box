@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -68,7 +68,7 @@ function shortcutTarget(path) {
 }
 
 /** Executes real NSIS install/overwrite/uninstall file operations in a fresh workspace directory. */
-export async function verifyInstallation(appDir, { stopRunningProcess = false } = {}) {
+export async function verifyInstallation(appDir, { stopRunningProcess = false, simulateExistingUninstallerFailure = false } = {}) {
   if (process.platform !== 'win32') throw new Error('Installer acceptance requires Windows.');
   appDir = await realpath(resolve(appDir));
   const workspace = await realpath(ROOT);
@@ -81,6 +81,9 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
   const installer = join(work, 'Setup.exe');
   const uninstallFirstScript = join(work, 'installer-uninstall-first.nsi');
   const uninstallFirstInstaller = join(work, 'Setup-uninstall-first.exe');
+  const failedUninstallScript = join(work, 'installer-uninstall-failure.nsi');
+  const failedUninstallInstaller = join(work, 'Setup-uninstall-failure.exe');
+  const savedUninstaller = join(work, 'Original-Uninstall.exe');
   const integrationInstall = join(work, 'integration install');
   const integrationDesktop = join(work, 'integration desktop');
   const integrationScript = join(work, 'installer-integration.nsi');
@@ -105,11 +108,29 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
   try {
     execute(installer);
     await verifyCopies();
-    await mkdir(join(installed, 'data'), { recursive: true });
-    const userData = JSON.stringify({ acceptance: true, watchedSeconds: 23 });
-    await writeFile(join(installed, 'data', 'user-config.json'), userData);
+    const userDataFiles = new Map([
+      ['user-config.json', JSON.stringify({ acceptance: true, watchedSeconds: 23 })],
+      ['settings/app.json', JSON.stringify({ acceptance: true, theme: 'dark' })],
+      ['subscriptions/sources.json', JSON.stringify({ sources: ['fixture-source'] })],
+      ['drive-accounts/global.json', JSON.stringify({ provider: 'fixture-cloud', token: 'preserve-me' })],
+      ['history/watch-history.json', JSON.stringify({ watchedSeconds: 23 })],
+      ['favorites/collections.json', JSON.stringify({ titles: ['fixture-title'] })],
+    ]);
+    const writeUserData = async () => {
+      for (const [path, content] of userDataFiles) {
+        const destination = join(installed, 'data', path);
+        await mkdir(dirname(destination), { recursive: true });
+        await writeFile(destination, content);
+      }
+    };
+    const verifyUserData = async phase => {
+      for (const [path, content] of userDataFiles) {
+        if (await readFile(join(installed, 'data', path), 'utf8') !== content) throw new Error(`${phase} changed user data: ${path}`);
+      }
+    };
+    await writeUserData();
     await writeFile(join(installed, 'personal-note.txt'), 'keep this file');
-    await writeFile(join(installed, sourceFiles.find(path => path !== 'Win-Box.exe') ?? sourceFiles[0]), 'old installed content');
+    const replacedPackageFile = sourceFiles.find(path => path !== 'Win-Box.exe') ?? sourceFiles[0];
     if (stopRunningProcess) {
       runningStartedAt = Date.now();
       running = spawn(join(installed, 'Win-Box.exe'), ['-e', 'setTimeout(() => {}, 60000)'], { windowsHide: true, stdio: 'ignore' });
@@ -129,18 +150,34 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
       execute(installer);
     }
     await verifyCopies();
-    if (await readFile(join(installed, 'data/user-config.json'), 'utf8') !== userData) throw new Error('Overwrite changed user data.');
+    await verifyUserData('Overwrite');
+    await writeFile(join(installed, replacedPackageFile), 'old installed content');
+    if (simulateExistingUninstallerFailure) {
+      await copyFile(join(installed, 'Uninstall.exe'), savedUninstaller);
+      await copyFile(process.execPath, join(installed, 'Uninstall.exe'));
+      await writeFile(failedUninstallScript, '\uFEFF' + await buildInstallerScript({ ...installerOptions, outFile: failedUninstallInstaller, acceptanceUninstallFirst: true }));
+      await compileNsis(failedUninstallScript);
+      const failedRun = spawnSync(failedUninstallInstaller, ['/S'], { windowsHide: true, timeout: 120_000, encoding: 'utf8' });
+      if (failedRun.error) throw failedRun.error;
+      if (failedRun.status === 0) throw new Error('Uninstall-first acceptance unexpectedly succeeded with a failing old uninstaller.');
+      await verifyUserData('Failed uninstall-first attempt');
+      if (await readFile(join(installed, 'personal-note.txt'), 'utf8') !== 'keep this file') throw new Error('Failed uninstall-first attempt changed user-owned files.');
+      const oldPayloadAfterFailure = await readFile(join(installed, replacedPackageFile), 'utf8');
+      if (oldPayloadAfterFailure !== 'old installed content') throw new Error(`Failed uninstall-first attempt removed or replaced the old installation (exit=${failedRun.status}, file=${replacedPackageFile}, content=${JSON.stringify(oldPayloadAfterFailure)}, stdout=${failedRun.stdout}, stderr=${failedRun.stderr}).`);
+      await copyFile(savedUninstaller, join(installed, 'Uninstall.exe'));
+    }
     await writeFile(uninstallFirstScript, '\uFEFF' + await buildInstallerScript({ ...installerOptions, outFile: uninstallFirstInstaller, acceptanceUninstallFirst: true }));
     await compileNsis(uninstallFirstScript);
     execute(uninstallFirstInstaller);
     await verifyCopies();
-    if (await readFile(join(installed, 'data/user-config.json'), 'utf8') !== userData) throw new Error('Uninstall-first reinstall changed user data.');
+    await verifyUserData('Uninstall-first reinstall');
     if (await readFile(join(installed, 'personal-note.txt'), 'utf8') !== 'keep this file') throw new Error('Uninstall-first reinstall changed user-owned files.');
     execute(join(installed, 'Uninstall.exe'));
     const deadline = Date.now() + 20_000;
     while (await exists(join(installed, 'Uninstall.exe')) && Date.now() < deadline) await delay(50);
     for (const path of sourceFiles) if (await exists(join(installed, path))) throw new Error(`Uninstall retained a packaged file: ${path}`);
-    if (await readFile(join(installed, 'data/user-config.json'), 'utf8') !== userData || await readFile(join(installed, 'personal-note.txt'), 'utf8') !== 'keep this file') throw new Error('Uninstall changed user-owned files.');
+    await verifyUserData('Uninstall');
+    if (await readFile(join(installed, 'personal-note.txt'), 'utf8') !== 'keep this file') throw new Error('Uninstall changed user-owned files.');
     if (await exists(join(installed, 'Uninstall.exe'))) throw new Error('Uninstaller has not exited.');
     await delay(100);
     await mkdir(integrationDesktop, { recursive: true });
@@ -183,8 +220,10 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
       runningProcessStopped: stopRunningProcess ? 'PASS' : 'NOT_RUN',
       runningProcessStopDurationMs: runningStartedAt && runningStoppedAt ? runningStoppedAt - runningStartedAt : null,
       uninstallFirst: 'PASS',
+      failedUninstallerRollback: simulateExistingUninstallerFailure ? 'PASS' : 'NOT_RUN',
       uninstall: 'PASS',
       dataPreserved: true,
+      userDataFilesPreserved: userDataFiles.size,
       verifiedFiles: sourceFiles.length,
       isolated: true,
       registryAndShortcuts: 'PASS',
