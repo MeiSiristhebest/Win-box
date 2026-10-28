@@ -1629,10 +1629,23 @@
         "A08",
         "A09"
       ],
-      "probes": []
+      "probes": [],
+      "reviewEvidence": {
+        "verification": "Packaged local acceptance passed HTML5 decode/pause, managed MPV decode/seek/play/pause, restore mode/position, and fixture HLS 403 reporting. Profile deletion isolation, global block restore, plugin dialog, and backup restore also passed; zero renderer errors and process cleanup passed.",
+        "evidence": "architecture-audit/evidence/playback-acceptance-2026-10-28.json",
+        "notRun": [
+          "Live third-party source playback matrix",
+          "PotPlayer: configured executable was absent"
+        ]
+      }
     },
     {
       "id": "V03",
+      "visualSpotCheckEvidence": {
+        "path": "architecture-audit/evidence/ui-spot-check-2026-10-28.json",
+        "result": "Packaged window spot-checked at 100% in dark discovery and light credentials. Provider selection was legible after selection; the app was restored to dark discovery at 100%.",
+        "remaining": "Full per-component contrast ratios, pause blur, danmaku trails, history/live/storage, keyboard focus, narrow widths, and 175%/200% remain open."
+      },
       "kind": "validation",
       "priority": "P1",
       "title": "全窗口可读性、交互状态、DPI 与功能保留验收",
@@ -2014,7 +2027,9 @@
       "runningProcessStopped": "PASS",
       "dataPreserved": true,
       "registryAndShortcuts": "PASS",
-      "windowLaunchAndPlayback": "BLOCKED_BY_WORKSPACE_ACL"
+      "windowLaunchAndPlayback": "PASS_PACKAGED_LOCAL_FIXTURE_HTML5_MPV",
+      "playbackAcceptanceEvidence": "architecture-audit/evidence/playback-acceptance-2026-10-28.json",
+      "liveSourcesAndPotPlayer": "NOT_RUN"
     },
     "localPackage": {
       "path": ".tmp/local-package-candidate-3/Win-Box.Setup.1.27.1.exe",

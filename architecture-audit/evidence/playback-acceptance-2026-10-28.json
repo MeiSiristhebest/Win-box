@@ -1,0 +1,32 @@
+{
+  "recordedAt": "2026-10-28T07:20:46.771Z",
+  "candidate": "release1.27.1/win-unpacked",
+  "executionMode": "packaged",
+  "status": "PASS",
+  "fixture": {
+    "kind": "generated-local-video",
+    "container": "WebM",
+    "videoCodec": "VP8",
+    "width": 320,
+    "height": 180,
+    "durationMs": 14000
+  },
+  "checks": [
+    { "name": "profile-scoped-source-deletion-isolation", "status": "PASS" },
+    { "name": "global-block-settings-and-restore", "status": "PASS" },
+    { "name": "html5-real-decode-and-pause", "status": "PASS" },
+    { "name": "managed-mpv-decode-seek-play-pause", "status": "PASS", "mpvVersion": "0.41.0" },
+    { "name": "restore-auto-mode-and-paused-position", "status": "PASS" },
+    { "name": "hls-http-403-reported-as-source-error", "status": "PASS", "httpStatus": 403 },
+    { "name": "plugin-confirm-and-answer", "status": "PASS" },
+    { "name": "backup-restores-history-progress-and-settings", "status": "PASS" },
+    { "name": "renderer-errors", "status": "PASS", "count": 0 }
+  ],
+  "processExited": true,
+  "temporaryDataCleaned": true,
+  "notRun": {
+    "thirdPartySources": "No live third-party source matrix was executed; this run used a controlled local fixture.",
+    "potplayer": "The configured path D:\\PotPlayer\\PotPlayerMini64.exe was absent and no executable was found on PATH."
+  },
+  "scope": "Confirms packaged local HTML5 and managed MPV playback. It does not prove live subscription sources or PotPlayer playback."
+}

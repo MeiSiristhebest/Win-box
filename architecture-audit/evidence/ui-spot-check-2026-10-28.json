@@ -1,0 +1,32 @@
+{
+  "recordedAt": "2026-10-28",
+  "candidate": "release1.27.1/win-unpacked",
+  "window": "Win-Box packaged application",
+  "result": "SPOT_CHECK_PASS_WITH_OPEN_GAPS",
+  "checks": [
+    {
+      "area": "discover",
+      "theme": "dark",
+      "scale": "100%",
+      "result": "Poster cards and titles were legible in the rendered window."
+    },
+    {
+      "area": "settings/global-drive-account-dialog",
+      "theme": "light",
+      "scale": "100%",
+      "result": "Selected provider showed a blue fill with white text; unselected providers used dark text on light cards. No account data was entered or saved."
+    },
+    {
+      "area": "appearance-settings",
+      "theme": "dark",
+      "scaleSamples": ["100%", "125%", "150%"],
+      "result": "Theme and scale controls remained distinguishable; the app was restored to dark theme at 100%."
+    }
+  ],
+  "openGaps": [
+    "No computed contrast-ratio sweep across every rendered component.",
+    "Pause overlay blur, danmaku trails, player controls, history, live, storage, and keyboard focus were not re-signed in this spot check.",
+    "No narrow-window or 175%/200% layout pass was recorded here."
+  ],
+  "scope": "This is a targeted visual spot check, not completion of V03's full viewport-by-state matrix."
+}
