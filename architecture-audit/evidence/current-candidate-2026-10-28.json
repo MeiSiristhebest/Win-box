@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T14:05:52Z",
+  "recordedAt": "2026-10-28T15:13:51Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
@@ -33,11 +33,38 @@
   },
   "verification": {
     "vitest": {
-      "status": "PASS",
-      "filesPassed": 507,
-      "filesSkipped": 3,
-      "testsPassed": 4169,
-      "testsSkipped": 5
+        "status": "PASS_WITH_LIMITS",
+        "previousCandidateRecordedSummary": {
+          "status": "PASS",
+          "filesPassed": 507,
+          "filesSkipped": 3,
+          "testsPassed": 4169,
+          "testsSkipped": 5,
+          "note": "Retained from the prior candidate record as historical data; its exact command and run time were not recorded there."
+        },
+        "latestRun": {
+          "command": "D:\\develop\\nodejs\\node.exe node_modules\\vitest\\vitest.mjs run --maxWorkers=4",
+          "exitCode": 0,
+          "filesPassed": 508,
+          "filesSkipped": 4,
+          "filesFailed": 0,
+          "testsPassed": 4171,
+          "testsSkipped": 6,
+          "testsFailed": 0
+        },
+        "defaultParallelRun": {
+          "command": "D:\\develop\\nodejs\\node.exe node_modules\\vitest\\vitest.mjs run",
+          "exitCode": 1,
+          "filesPassed": 507,
+          "filesSkipped": 4,
+          "filesFailed": 0,
+          "testsPassed": 4168,
+          "testsSkipped": 6,
+          "testsFailed": 0,
+          "unhandledErrors": 1,
+          "workerError": "[vitest-pool]: Worker forks emitted error; a worker exited unexpectedly with exit code 1 while starting."
+        },
+        "notes": "The V05 synthetic workload spec is skipped by default; V05_SEARCH_RUN=1 is required to execute it. The dedicated V05 benchmark uses only a loopback fixture."
     },
     "typecheck": "PASS: main, renderer, and test projects",
     "lintAndArchitectureBoundaries": "PASS",
@@ -63,17 +90,18 @@
       "version": "OpenJDK 17.0.20.1 Temurin"
     },
     "packagedPlayback": {
-      "status": "PASS",
-      "evidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json",
+        "status": "PASS_WITH_LIMITS",
+        "evidence": "architecture-audit/evidence/playback-acceptance-ui-2026-10-28.json",
+        "priorEvidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json",
       "fixture": "Generated local VP8 WebM, 320x180, approximately 14 seconds",
       "html5DecodeProgressPauseResume": "PASS",
       "managedMpvDecodeSeekTimeProgressPauseResume": "PASS, MPV 0.41.0",
       "restoreAutoAndPausedPosition": "PASS",
       "rendererErrors": 0,
       "processExitedAndOwnedArtifactsCleaned": true,
-      "externalSourcesAndPotPlayer": "PotPlayer launch+fetch partially verified; decode/time/pause not verified; live third-party sources not run.",
+        "externalSourcesAndPotPlayer": "PotPlayer visible decode of the local fixture was observed; time progression was unstable and pause/resume was not verified. Live third-party sources were not run.",
       "mpvVisibleFrame": "UNCONFIRMED; strong inference that Playwright screenshot omits native child HWND; desktop pixels not captured.",
-      "potplayer": "Configured PotPlayer launch and full local fixture fetch PASS (HTTP 200, 73,964 bytes); decode/time/pause NOT_VERIFIED",
+        "potplayer": "Process launch and local-fixture fetch PASS (HTTP 200, 73,964 bytes); visible VP8 decode observed in the desktop window; time progression unstable/not verified; pause/resume not verified.",
       "tenCycleEvidence": "architecture-audit/evidence/repeated-playback-10cycle-2026-10-28.json"
     },
     "pauseFeedbackVisual": {
@@ -133,6 +161,15 @@
       "status": "PASS",
       "tests": 3
     },
+      "v05AggregateSearch": {
+        "status": "PARTIAL",
+        "evidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-28.json",
+        "benchmark": "1,000 synthetic sources across 10 cycles and 10,000 loopback HTTP requests; observed peak concurrency 48; synthetic benchmark passed.",
+        "limitations": [
+          "Synthetic loopback workload only; no real third-party source matrix, user profiles, or spider/JAR/Python runtime coverage.",
+          "No performance budgets are configured; 1080p/4K playback and dense danmaku were not tested."
+        ]
+      },
       "staticGates": {
         "recordedAt": "2026-10-28T15:11:17Z",
         "lint": {
@@ -185,10 +222,10 @@
     }
   },
   "remaining": [
-    "V02: Local HTML5/MPV decode, progress, seek and pause/resume pass in one and ten-cycle packaged runs. PotPlayer launches and receives fixture bytes; decode/time/pause not verified. MPV desktop-visible pixels and live third-party sources unconfirmed.",
+      "V02: Packaged HTML5 and managed MPV local-fixture playback passed; HTML5 seek was not exercised. PotPlayer visible decode was observed, but time progression was unstable and pause/resume was not verified. Live third-party sources remain untested. See architecture-audit/evidence/playback-acceptance-ui-2026-10-28.json.",
     "V03: Keyboard/ARIA episode tabs, compact pause feedback, and six-theme disabled/selected control contrast regression pass; full route/theme/DPI/narrow-layout matrix and live danmaku trails remain unverified.",
     "V04: Locked legacy-only file preflight, same-directory process stop, and rollback/data preservation pass in isolated NSIS tests; interactive Cancel/Back/elevation and playing/hidden-window GUI cases remain unverified.",
-    "V05: Ten local 320x180 playback lifecycle cycles pass with role-attributed resource samples; no configured budgets, real aggregate-search workload, 1080p/4K, dense danmaku, or same-process switching.",
+      "V05: The synthetic 1,000-source/10-cycle aggregate-search benchmark passed against loopback only. Real source behavior, spider/JAR/Python runtimes, user profiles, UI responsiveness, configured performance budgets, 1080p/4K, dense danmaku, and same-process switching remain unverified.",
     "V06: Local package gates and ten-cycle run pass; final interactive installer/upgrade over the user install, remote CI and live third-party playback remain unrun; not published or pushed.",
     "O01 (optional): third-party Spider runtime install/disable/unload lifecycle is not implemented.",
     "O02 (optional): measured cross-player enhancement PoC for quality, latency, CPU/GPU/memory is not implemented."
