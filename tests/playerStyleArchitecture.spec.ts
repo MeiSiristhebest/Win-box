@@ -20,22 +20,27 @@ function readRule(css: string, selector: string): string {
 }
 
 describe('player control style architecture', () => {
-  it('keeps the paused center-play action compact without shell overrides', async () => {
-    const { css } = await readGlobalStyleComposition();
-    const selector = '.vplayer > .vp-big';
+  it('keeps paused play feedback compact and immune to global shell button styles', async () => {
+    const { imports, css } = await readGlobalStyleComposition();
+    const selector = ':root[data-theme] .vplayer > .vp-big';
     const rule = readRule(css, selector);
+    const feedbackStyle = await readFile(new URL('../src/renderer/styles/player-feedback.css', import.meta.url), 'utf8');
     const statusOverlay = await readFile(new URL('../src/renderer/features/playback/PlayerStatusOverlays.tsx', import.meta.url), 'utf8');
 
-    expect(css.match(/\.vplayer > \.vp-big\s*\{/g) ?? []).toHaveLength(1);
-    expect(css.match(/\.vplayer > \.vp-big:active\s*\{/g) ?? []).toHaveLength(1);
+    expect(imports.at(-1)).toBe('player-feedback.css');
+    expect(feedbackStyle.replace(/\/\*[\s\S]*?\*\//g, '').trimStart()).not.toMatch(/^@layer\b/);
+    expect(css.match(/:root\[data-theme\] \.vplayer > \.vp-big\s*\{/g) ?? []).toHaveLength(1);
+    expect(css).not.toMatch(/(?:^|\n)\s*\.vplayer > \.vp-big\s*\{/);
     expect(statusOverlay).toMatch(/paused\s*&&\s*!mini\s*&&\s*!episodePanelOpen/);
     expect(statusOverlay).toContain('className="vp-big"');
     expect(statusOverlay).toContain('d="M8 5.5v13l11-6.5z"');
-    expect(rule).toMatch(/\bwidth\s*:\s*40px\s*;/);
-    expect(rule).toMatch(/\bheight\s*:\s*40px\s*;/);
+    expect(rule).toMatch(/\bwidth\s*:\s*28px\s*;/);
+    expect(rule).toMatch(/\bheight\s*:\s*28px\s*;/);
     expect(rule).toMatch(/\bborder-radius\s*:\s*50%\s*;/);
     expect(rule).toMatch(/\bbox-shadow\s*:\s*none\s*;/);
+    expect(rule).toMatch(/\bbackground\s*:\s*#14171d\s*;/);
     expect(rule).toMatch(/\bbackdrop-filter\s*:\s*none\s*;/);
+    expect(rule).toMatch(/-webkit-backdrop-filter\s*:\s*none\s*;/);
 
     for (const shell of ['topbar', 'dualbar', 'sidebar', 'pillbar']) {
       expect(css).not.toContain(`:root[data-shell='${shell}'] .vp-big {`);
@@ -44,14 +49,15 @@ describe('player control style architecture', () => {
     expect(css).not.toMatch(/大号中央播放键|中央大播放键|80px 大键/);
   });
 
-  it('does not let the desktop shell enlarge or blur the paused center-play action', async () => {
+  it('keeps unlayered player feedback rules after shell-specific button rules', async () => {
     const css = await readFile(DESKTOP_STYLES, 'utf8');
     expect(css).not.toMatch(/:root\[data-ui='desktop'\]\s+\.vplayer\s+\.vp-big\s*\{/);
     const { css: sharedCss } = await readGlobalStyleComposition();
-    const rule = readRule(sharedCss, '.vplayer > .vp-big');
+    const rule = readRule(sharedCss, ':root[data-theme] .vplayer > .vp-big');
 
-    expect(rule).toMatch(/\bwidth\s*:\s*40px\s*;/);
-    expect(rule).toMatch(/\bheight\s*:\s*40px\s*;/);
+    expect(sharedCss.lastIndexOf(":root[data-shell='pillbar'] button {")).toBeLessThan(sharedCss.lastIndexOf(':root[data-theme] .vplayer > .vp-big {'));
+    expect(rule).toMatch(/\bwidth\s*:\s*28px\s*;/);
+    expect(rule).toMatch(/\bheight\s*:\s*28px\s*;/);
     expect(rule).toMatch(/\bbackdrop-filter\s*:\s*none\s*;/);
   });
 

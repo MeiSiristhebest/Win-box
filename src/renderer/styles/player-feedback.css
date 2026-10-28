@@ -1,0 +1,66 @@
+/* This file intentionally stays unlayered: shell-wide button rules are unlayered too,
+   and would otherwise override the paused play feedback inside `@layer components`. */
+:root[data-theme] .vplayer > .vp-big {
+  all: unset;
+  appearance: none;
+  position: absolute;
+  z-index: 4;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  flex: none;
+  overflow: hidden;
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  max-height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .58);
+  border-radius: 50%;
+  color: #fff;
+  background: #14171d;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  font: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: opacity .2s ease, background .15s ease;
+}
+
+:root[data-theme] .vplayer:focus-within > .vp-big,
+:root[data-theme] .vplayer.vui > .vp-big {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+:root[data-theme] .vplayer > .vp-big svg {
+  display: block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+:root[data-theme] .vplayer > .vp-big:hover {
+  color: #fff;
+  background: #1d222b;
+  box-shadow: none;
+  transform: translate(-50%, -50%);
+}
+
+:root[data-theme] .vplayer > .vp-big:active {
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+
+:root[data-theme] .vplayer > .vp-big:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+  box-shadow: none;
+}
