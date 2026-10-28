@@ -262,6 +262,10 @@ export class PlaybackRelayService {
       ck: ck || undefined,
       range: range ? String(range).slice(0, 32) : undefined,
       url: redactUrl(target),
+      finalUrl: redactUrl(resp.finalUrl || target),
+      contentType: safeResponseHeader('content-type', resp.headers['content-type'])?.slice(0, 120),
+      contentLength: parseContentLength(resp.headers['content-length']),
+      contentRange: safeResponseHeader('content-range', resp.headers['content-range'])?.slice(0, 80),
     });
     res.setHeader('Access-Control-Allow-Origin', '*');
     const ct = safeResponseHeader('content-type', resp.headers['content-type']) || 'application/octet-stream';

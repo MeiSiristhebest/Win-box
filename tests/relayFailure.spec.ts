@@ -3,8 +3,13 @@ import { Readable } from 'node:stream';
 import type { Server } from 'node:http';
 
 const request = vi.hoisted(() => vi.fn());
+const playDiag = vi.hoisted(() => ({ log: vi.fn() }));
 vi.mock('undici', async (original) => ({ ...await original<typeof import('undici')>(), request }));
 vi.mock('electron', () => ({ app: { getPath: () => process.env.TEMP || '.', isPackaged: false } }));
+vi.mock('../src/main/util/playDiag', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../src/main/util/playDiag')>(),
+  logPlayDiag: playDiag.log,
+}));
 import { LocalProxyServer } from '../src/main/server/LocalProxyServer';
 let proxy: LocalProxyServer, base: string;
 const logger = { i: vi.fn(), w: vi.fn(), e: vi.fn() };
@@ -28,6 +33,7 @@ beforeAll(async () => {
 });
 beforeEach(() => {
   request.mockReset(); logger.e.mockClear(); logger.w.mockClear();
+  playDiag.log.mockClear();
   (proxy as unknown as { playback: { stop(): void } }).playback.stop();
 });
 afterAll(() => proxy.stop());
@@ -128,6 +134,38 @@ describe('媒体中继异步失败与 DNS 备用通道', () => {
     const response = await fetch(base + '/play?url=https%3A%2F%2Fcdn.example%2Fmovie');
     expect(response.status).toBe(403); expect(await response.text()).toBe('denied');
     expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('播放中继记录脱敏后的最终地址和媒体响应头，便于区分源格式错误', async () => {
+    request.mockResolvedValueOnce({
+      statusCode: 302,
+      headers: { location: 'https://media.example/episode/clip.mp4?token=PRIVATE' },
+      body: Readable.from([]),
+    });
+    request.mockResolvedValueOnce({
+      statusCode: 206,
+      headers: {
+        'content-type': 'video/mp4',
+        'content-length': '4',
+        'content-range': 'bytes 4-7/8',
+      },
+      body: Readable.from([Buffer.from('DATA')]),
+    });
+    const target = 'https://origin.example/play?token=PRIVATE';
+    const response = await fetch(base + '/play?url=' + encodeURIComponent(target), {
+      headers: { Range: 'bytes=4-7' }, signal: AbortSignal.timeout(2000),
+    });
+    expect(response.status).toBe(206);
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(Buffer.from('DATA'));
+    expect(playDiag.log).toHaveBeenCalledWith(expect.objectContaining({
+      kind: 'relay',
+      stage: 'upstream',
+      finalUrl: 'media.example/clip.mp4',
+      contentType: 'video/mp4',
+      contentLength: 4,
+      contentRange: 'bytes 4-7/8',
+    }));
+    expect(JSON.stringify(playDiag.log.mock.calls)).not.toContain('PRIVATE');
   });
 
   it('百度 dlink 403 保留错误正文并记录上游错误码', async () => {
