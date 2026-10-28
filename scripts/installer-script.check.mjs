@@ -84,6 +84,27 @@ test('isolated acceptance has no desktop shortcut or registry writes', async () 
   } finally { await rm(path, { recursive: true, force: true }); }
 });
 
+test('isolated integration acceptance redirects registry and shortcut writes to its temporary targets', async () => {
+  const path = await fixture();
+  const desktop = join(root, '.tmp', 'acceptance-desktop');
+  try {
+    const registryKey = 'Software\\WinBoxAcceptance\\test-acceptance';
+    const script = await buildInstallerScript({
+      ...options(path),
+      isolatedInstallDir: join(root, '.tmp', 'test-integrated-install'),
+      acceptanceIntegration: true,
+      acceptanceRegistryKey: registryKey,
+      acceptanceDesktopDirectory: desktop,
+    });
+    assert.ok(script.includes(`WriteRegStr HKCU "${registryKey}" "DisplayName"`));
+    assert.ok(script.includes(`ReadRegStr $0 HKCU "${registryKey}" "InstallLocation"`));
+    assert.ok(script.includes(`DeleteRegKey HKCU "${registryKey}"`));
+    assert.ok(script.includes(`CreateShortcut "${desktop}\\Win-Box.lnk"`));
+    assert.ok(script.includes(`Delete "${desktop}\\Win-Box.lnk"`));
+    assert.ok(!script.includes('"$DESKTOP\\Win-Box.lnk"'));
+  } finally { await rm(path, { recursive: true, force: true }); }
+});
+
 test('packaging refuses to overwrite a user data directory', async () => {
   const path = await fixture();
   try {
@@ -100,6 +121,7 @@ test('real NSIS installation, overwrite and uninstall preserve user files', { sk
     assert.equal(result.overwrite, 'PASS');
     assert.equal(result.uninstall, 'PASS');
     assert.equal(result.dataPreserved, true);
+    assert.equal(result.registryAndShortcuts, 'PASS');
     assert.equal(result.cleaned, true);
   } finally { await rm(path, { recursive: true, force: true }); }
 });
@@ -111,6 +133,7 @@ test('real NSIS overwrite stops a running same-directory app process first', { s
     assert.equal(result.runningProcessStopped, 'PASS');
     assert.equal(result.overwrite, 'PASS');
     assert.equal(result.dataPreserved, true);
+    assert.equal(result.registryAndShortcuts, 'PASS');
     assert.equal(result.cleaned, true);
   } finally { await rm(path, { recursive: true, force: true }); }
 });

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -35,6 +35,26 @@ function execute(path) {
   if (child.status !== 0) throw new Error(`Installer acceptance failed (${child.status}): ${child.stderr}`);
 }
 
+function registryCommand(args) {
+  const executable = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'reg.exe');
+  return spawnSync(executable, args, { windowsHide: true, timeout: 15_000, encoding: 'utf8' });
+}
+
+function shortcutTarget(path) {
+  const executable = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const escapedPath = path.replaceAll("'", "''");
+  const command = `$link = (New-Object -ComObject WScript.Shell).CreateShortcut('${escapedPath}'); [Console]::Write($link.TargetPath)`;
+  const encoded = Buffer.from(command, 'utf16le').toString('base64');
+  const child = spawnSync(executable, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded], {
+    windowsHide: true,
+    timeout: 15_000,
+    encoding: 'utf8',
+  });
+  if (child.error) throw child.error;
+  if (child.status !== 0) throw new Error(`Could not read the acceptance shortcut target: ${child.stderr || child.stdout}`);
+  return child.stdout.trim();
+}
+
 /** Executes real NSIS install/overwrite/uninstall file operations in a fresh workspace directory. */
 export async function verifyInstallation(appDir, { stopRunningProcess = false } = {}) {
   if (process.platform !== 'win32') throw new Error('Installer acceptance requires Windows.');
@@ -49,6 +69,11 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
   const installer = join(work, 'Setup.exe');
   const uninstallFirstScript = join(work, 'installer-uninstall-first.nsi');
   const uninstallFirstInstaller = join(work, 'Setup-uninstall-first.exe');
+  const integrationInstall = join(work, 'integration install');
+  const integrationDesktop = join(work, 'integration desktop');
+  const integrationScript = join(work, 'installer-integration.nsi');
+  const integrationInstaller = join(work, 'Setup-integration.exe');
+  const integrationRegistryKey = `Software\\WinBoxAcceptance\\${randomUUID()}`;
   const version = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')).version;
   const sourceFiles = await files(appDir);
   if (!sourceFiles.includes('Win-Box.exe')) throw new Error('Acceptance input is missing Win-Box.exe.');
@@ -95,9 +120,58 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
     if (await readFile(join(installed, 'data/user-config.json'), 'utf8') !== userData || await readFile(join(installed, 'personal-note.txt'), 'utf8') !== 'keep this file') throw new Error('Uninstall changed user-owned files.');
     if (await exists(join(installed, 'Uninstall.exe'))) throw new Error('Uninstaller has not exited.');
     await delay(100);
-    result = { install: 'PASS', overwrite: 'PASS', runningProcessStopped: stopRunningProcess ? 'PASS' : 'NOT_RUN', uninstallFirst: 'PASS', uninstall: 'PASS', dataPreserved: true, verifiedFiles: sourceFiles.length, isolated: true, registryAndShortcuts: 'NOT_RUN' };
+    await mkdir(integrationDesktop, { recursive: true });
+    await writeFile(integrationScript, '\uFEFF' + await buildInstallerScript({
+      ...installerOptions,
+      outFile: integrationInstaller,
+      isolatedInstallDir: integrationInstall,
+      acceptanceIntegration: true,
+      acceptanceRegistryKey: integrationRegistryKey,
+      acceptanceDesktopDirectory: integrationDesktop,
+    }));
+    await compileNsis(integrationScript);
+    execute(integrationInstaller);
+    const registry = registryCommand(['query', `HKCU\\${integrationRegistryKey}`]);
+    if (registry.status !== 0) throw new Error(`Acceptance installer did not create its isolated registry entries: ${registry.stderr || registry.stdout}`);
+    for (const value of ['DisplayName', 'DisplayVersion', 'InstallLocation', 'DisplayIcon', 'UninstallString']) {
+      if (!registry.stdout.includes(value)) throw new Error(`Acceptance installer omitted registry value ${value}.`);
+    }
+    if (!registry.stdout.includes(integrationInstall)) throw new Error('Acceptance InstallLocation does not match the isolated install directory.');
+    const shortcut = join(integrationDesktop, 'Win-Box.lnk');
+    if (!await exists(shortcut)) throw new Error('Acceptance installer did not create its isolated desktop shortcut.');
+    if (resolve(shortcutTarget(shortcut)) !== resolve(join(integrationInstall, 'Win-Box.exe'))) {
+      throw new Error('Acceptance desktop shortcut targets the wrong executable.');
+    }
+    execute(join(integrationInstall, 'Uninstall.exe'));
+    const integrationUninstallDeadline = Date.now() + 20_000;
+    while (await exists(join(integrationInstall, 'Uninstall.exe')) && Date.now() < integrationUninstallDeadline) await delay(50);
+    if (await exists(join(integrationInstall, 'Uninstall.exe'))) throw new Error('Integration uninstaller has not exited.');
+    const registryAfterUninstall = registryCommand(['query', `HKCU\\${integrationRegistryKey}`]);
+    if (await exists(shortcut) || registryAfterUninstall.status === 0) {
+      const shortcutStillExists = await exists(shortcut);
+      const target = shortcutStillExists ? shortcutTarget(shortcut) : '';
+      const retainedFiles = [];
+      for (const path of sourceFiles) if (await exists(join(integrationInstall, path))) retainedFiles.push(path);
+      throw new Error(`Acceptance uninstaller did not remove all isolated integration entries (shortcut=${shortcutStillExists}, target=${target}, retainedFiles=${JSON.stringify(retainedFiles)}, registry=${registryAfterUninstall.stdout || registryAfterUninstall.stderr}).`);
+    }
+    result = {
+      install: 'PASS',
+      overwrite: 'PASS',
+      runningProcessStopped: stopRunningProcess ? 'PASS' : 'NOT_RUN',
+      uninstallFirst: 'PASS',
+      uninstall: 'PASS',
+      dataPreserved: true,
+      verifiedFiles: sourceFiles.length,
+      isolated: true,
+      registryAndShortcuts: 'PASS',
+    };
   } finally {
     if (running && running.exitCode === null) running.kill();
+    const registryPath = `HKCU\\${integrationRegistryKey}`;
+    if (registryCommand(['query', registryPath]).status === 0) {
+      const removal = registryCommand(['delete', registryPath, '/f']);
+      if (removal.status !== 0) throw new Error(`Could not remove temporary installer acceptance registry entries: ${removal.stderr || removal.stdout}`);
+    }
     await rm(work, { recursive: true, force: true });
   }
   return { ...result, cleaned: !await exists(work) };

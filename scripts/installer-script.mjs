@@ -244,25 +244,47 @@ FunctionEnd`;
 }
 
 /** Isolated installers execute the same file operations and omit desktop/registry integration. */
-export async function buildInstallerScript({ appDir, outFile, icon, license, version, isolatedInstallDir, acceptanceUninstallFirst = false }) {
+export async function buildInstallerScript({
+  appDir,
+  outFile,
+  icon,
+  license,
+  version,
+  isolatedInstallDir,
+  acceptanceUninstallFirst = false,
+  acceptanceIntegration = false,
+  acceptanceRegistryKey,
+  acceptanceDesktopDirectory,
+}) {
   const parts = version.split('-')[0].split('.').map(Number);
   if (parts.length > 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 65535)) throw new Error(`Invalid Windows version: ${version}`);
   while (parts.length < 4) parts.push(0);
+  if (acceptanceIntegration) {
+    if (!isolatedInstallDir || !acceptanceDesktopDirectory) throw new Error('Acceptance integration requires an isolated install and desktop directory.');
+    if (!/^Software\\WinBoxAcceptance\\[A-Za-z0-9_-]+$/.test(acceptanceRegistryKey || '')) throw new Error('Acceptance integration requires a unique WinBoxAcceptance registry key.');
+  }
   const manifest = await packagedFiles(appDir);
-  const registry = 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Win-Box';
-  const setupIntegration = isolatedInstallDir ? '' : `
-  CreateShortcut "$DESKTOP\\Win-Box.lnk" "$INSTDIR\\Win-Box.exe"
+  const registry = acceptanceIntegration
+    ? acceptanceRegistryKey
+    : 'Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Win-Box';
+  const setupIntegrationEnabled = !isolatedInstallDir || acceptanceIntegration;
+  const desktopShortcut = acceptanceIntegration
+    ? `"${quote(join(acceptanceDesktopDirectory, 'Win-Box.lnk'))}"`
+    : '"$DESKTOP\\Win-Box.lnk"';
+  const uninstallString = String.raw`'$\"$INSTDIR\Uninstall.exe$\"'`;
+  const setupIntegration = setupIntegrationEnabled ? `
+  CreateShortcut ${desktopShortcut} "$INSTDIR\\Win-Box.exe"
   WriteRegStr HKCU "${registry}" "DisplayName" "Win-Box"
   WriteRegStr HKCU "${registry}" "DisplayVersion" "${quote(version)}"
   WriteRegStr HKCU "${registry}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${registry}" "DisplayIcon" "$INSTDIR\\Win-Box.exe"
-  WriteRegStr HKCU "${registry}" "UninstallString" '$\\"$INSTDIR\\Uninstall.exe$\\"'`;
-  const uninstallIntegration = isolatedInstallDir ? '' : `
+  WriteRegStr HKCU "${registry}" "UninstallString" ${uninstallString}` : '';
+  const uninstallIntegration = setupIntegrationEnabled ? `
   ReadRegStr $0 HKCU "${registry}" "InstallLocation"
   StrCmp $0 "$INSTDIR" 0 keep_other_installation
-  Delete "$DESKTOP\\Win-Box.lnk"
+  Delete ${desktopShortcut}
   DeleteRegKey HKCU "${registry}"
-  keep_other_installation:`;
+  keep_other_installation:` : '';
   const deletes = manifest.files.map(path => `  Delete "$INSTDIR\\${quote(path.replaceAll('/', '\\'))}"`).join('\n');
   const removeDirectories = manifest.directories.map(path => `  RMDir "$INSTDIR\\${quote(path.replaceAll('/', '\\'))}"`).join('\n');
   const installDir = isolatedInstallDir ? quote(isolatedInstallDir) : '$LOCALAPPDATA\\Programs\\Win-Box';
