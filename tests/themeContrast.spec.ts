@@ -290,6 +290,38 @@ describe('disabled control state contrast', () => {
   }
 });
 
+describe('failure-state text contrast', () => {
+  it('keeps desktop error alerts readable on the danger-tinted surface in dark and light themes', async () => {
+    const css = await readFile(new URL('desktop.css', stylesDirectory), 'utf8');
+    const alertRule = css.match(/:root\[data-ui='desktop'\] \.desktop-main :is\(\[role='alert'\], div\.err\)\s*\{([^}]*)\}/);
+    expect(alertRule, 'desktop failure alert style').not.toBeNull();
+    expect(alertRule![1]).toMatch(/color:\s*var\(--text-danger\)/);
+    expect(alertRule![1]).toMatch(/background:\s*color-mix\(in srgb, var\(--color-danger\) 10%, var\(--surface-raised\)\)/);
+
+    const palettes = [
+      { name: 'Desktop dark', selector: ":root[data-ui='desktop']" },
+      { name: 'Desktop light', selector: ":root[data-ui='desktop'][data-theme='light']" },
+    ] as const;
+
+    for (const palette of palettes) {
+      const tokens = readRootTokens(css, palette.selector);
+      const baseSurface = parseColor(tokens['--surface-0']);
+      const raisedSurface = parseColor(tokens['--surface-2']);
+      const danger = parseColor(tokens['--danger']);
+      const dangerText = parseColor(tokens['--text-danger']);
+      expect(baseSurface, `${palette.name} needs a base surface`).not.toBeNull();
+      expect(raisedSurface, `${palette.name} needs an alert surface`).not.toBeNull();
+      expect(danger, `${palette.name} needs a danger color`).not.toBeNull();
+      expect(dangerText, `${palette.name} needs danger text`).not.toBeNull();
+
+      const surface = composite(raisedSurface!, baseSurface!);
+      const failureSurface = mixSrgb(danger!, surface, 0.1);
+      const ratio = contrastRatio(composite(dangerText!, failureSurface), failureSurface);
+      expect(ratio, `${palette.name}: error text on danger alert is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+});
+
 describe('global focus ring token', () => {
   it('provides a theme-aware focus color when a theme does not override it', async () => {
     const css = await readFile(new URL('global-tokens.css', stylesDirectory), 'utf8');
