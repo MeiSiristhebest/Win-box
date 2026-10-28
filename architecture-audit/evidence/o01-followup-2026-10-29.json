@@ -1,0 +1,76 @@
+{
+  "task": "O01",
+  "recordedDate": "2026-10-29",
+  "status": "IMPLEMENTED_PARTIAL_ACCEPTANCE",
+  "scopeReviewed": {
+    "pluginInstallLifecycle": [
+      "src/main/plugin/PluginInstaller.ts",
+      "src/main/plugin/PluginRegistry.ts",
+      "src/main/plugin/PluginHost.ts",
+      "src/main/plugin/sandbox/PluginSandboxLifecycle.ts"
+    ],
+    "spiderRuntime": [
+      "src/engine/spider/SpiderRuntimeProvider.ts",
+      "src/engine/spider/SpiderFactory.ts",
+      "src/engine/spider/createBuiltinSpiderRuntimeProviders.ts",
+      "src/main/spider/createSpiderRuntimeAssembly.ts",
+      "src/main/plugin/PluginSpiderRuntimeProvider.ts"
+    ],
+    "sandboxRpc": [
+      "src/main/plugin/sandbox/protocol.ts",
+      "src/main/plugin/sandbox/pluginWorkerEntry.ts",
+      "src/main/plugin/sandbox/PluginSandbox.ts"
+    ]
+  },
+  "confirmed": [
+    "Code plugins can declare a validated spider.runtime contribution only with the explicit spider.runtime permission; the API prefix and operation names are validated against an allowlist.",
+    "PluginHost exposes only installed, enabled, permissioned contributors. The main-process provider adapts those contributors into SpiderFactory and checks current plugin state for each operation, so cached Spider instances stop dispatching after disable or uninstall and can use a replacement plugin generation.",
+    "The host-initiated invoke/reply/cancel protocol bounds JSON payloads, limits in-flight calls, caps timeouts, and cancels pending work on caller abort, timeout, worker failure, disposal, disable, replace, and uninstall.",
+    "The fixture plugin runs locally in tests; no third-party runtime code was fetched from the network."
+  ],
+  "trustBoundary": {
+    "currentImplementation": "Third-party plugin code uses the existing Worker thread plus node:vm execution model.",
+    "consentModel": "The spider.runtime permission is explicit in the manifest/permission flow. The install confirmation warns that Worker/node:vm is not a security boundary and says to install code only from trusted sources.",
+    "limitation": "Worker threads and node:vm do not isolate arbitrary untrusted code. The implemented choice is trusted-code consent, not OS-process isolation. Plugins must be treated as trusted executable code; this work does not claim protection from malicious code or synchronous infinite loops.",
+    "source": "https://nodejs.org/api/vm.html",
+    "requiredFollowUp": "If arbitrary or untrusted plugins must be supported, move execution to an OS subprocess with an enforced sandbox and a narrow RPC protocol before advertising that security property."
+  },
+  "changes": [
+    "Added Spider runtime contribution schema and strict manifest validation, including explicit permission and operation allowlist.",
+    "Added provider composition into SpiderFactory through PluginHost, with active-generation lookup and JSON-only request/reply/cancel handling.",
+    "Added bounded, cancellable host-initiated RPC and deterministic worker/request disposal on plugin lifecycle changes.",
+    "Added a local fixture plugin and tests covering installation, SpiderFactory dispatch, operation failure, abort, timeout, payload bounds, replacement, disable, uninstall, and provider retirement.",
+    "Committed implementation and fixture separately from evidence as GitButler commit lrn on codex/architecture-cleanup-20261025."
+  ],
+  "tests": [
+    {
+      "command": "pnpm exec vitest run tests/pluginSpiderRuntime.spec.ts tests/pluginSandbox.spec.ts tests/pluginSandboxLifecycle.spec.ts tests/pluginContract.spec.ts tests/spiderFactoryProviders.spec.ts",
+      "result": "PASS: 5 files, 146 tests."
+    },
+    {
+      "command": "pnpm exec tsc --noEmit -p tsconfig.json",
+      "result": "PASS."
+    },
+    {
+      "command": "pnpm exec tsc --noEmit -p tsconfig.test.json",
+      "result": "PASS."
+    },
+    {
+      "command": "pnpm run architecture:check",
+      "result": "PASS: Architecture boundaries passed."
+    },
+    {
+      "command": "pnpm exec oxlint <O01 implementation and test files>",
+      "result": "PASS: no lint diagnostics."
+    }
+  ],
+  "acceptance": {
+    "manifestAndPermission": "PASS: valid local fixture accepted only with spider.runtime permission; invalid prefix rejected.",
+    "providerDispatch": "PASS IN TESTS: installed fixture is dispatched through PluginHost's provider adapter and SpiderFactory.",
+    "hostInitiatedRpc": "PASS IN TESTS: reply, failure, cancellation, timeout, and request/response size limits covered.",
+    "installDisableReplaceUninstall": "PASS IN TESTS: local package install, replacement, disable, and uninstall retire active fixtures and pending calls deterministically.",
+    "packagedDesktopAcceptance": "NOT RUN: no packaged-app installation/interaction was performed in this scoped change.",
+    "securityAcceptance": "TRUSTED_CODE_CONSENT_ONLY: node:vm and Worker are not a strong isolation boundary.",
+    "fullO01": "PARTIAL: functional code slice and focused automated lifecycle acceptance pass; packaged desktop acceptance and OS-process isolation for untrusted code are not established."
+  }
+}
