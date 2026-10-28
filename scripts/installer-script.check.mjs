@@ -67,7 +67,8 @@ test('running app offers update-in-place or data-preserving uninstall and reinst
     assert.ok(check.includes('$_.ExecutablePath -eq $env:WINBOX_INSTALL_EXE'));
     assert.ok(check.includes('gps -Id $_.ProcessId'));
     assert.ok(graceful.includes('CloseMainWindow'));
-    assert.ok(graceful.includes('$_.MainWindowHandle'));
+    assert.ok(graceful.includes('$_.MainWindowHandle.ToInt64()'));
+    assert.ok(graceful.includes('!$x.CloseMainWindow() -or !$x.WaitForExit(10000)'));
     assert.ok(graceful.includes('WaitForExit(10000)'));
     assert.ok(force.includes('kill -Id $x.Id -Force'));
     assert.ok(force.includes('$_.ExecutablePath -eq $env:WINBOX_INSTALL_EXE'));
@@ -126,11 +127,13 @@ test('real NSIS installation, overwrite and uninstall preserve user files', { sk
   } finally { await rm(path, { recursive: true, force: true }); }
 });
 
-test('real NSIS overwrite stops a running same-directory app process first', { skip: process.platform !== 'win32', timeout: 120_000 }, async () => {
+test('real NSIS overwrite stops a running same-directory app process first', { skip: process.platform !== 'win32', timeout: 120_000 }, async t => {
   const path = await fixture({ runnable: true });
   try {
     const result = await verifyInstallation(path, { stopRunningProcess: true });
     assert.equal(result.runningProcessStopped, 'PASS');
+    assert.ok(result.runningProcessStopDurationMs < 12_000, `installer waited ${result.runningProcessStopDurationMs} ms instead of stopping the running process`);
+    t.diagnostic(`target process stopped in ${result.runningProcessStopDurationMs} ms`);
     assert.equal(result.overwrite, 'PASS');
     assert.equal(result.dataPreserved, true);
     assert.equal(result.registryAndShortcuts, 'PASS');

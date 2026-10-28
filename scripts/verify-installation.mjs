@@ -35,6 +35,18 @@ function execute(path) {
   if (child.status !== 0) throw new Error(`Installer acceptance failed (${child.status}): ${child.stderr}`);
 }
 
+function startInstaller(path) {
+  const child = spawn(path, ['/S'], { windowsHide: true, stdio: 'ignore' });
+  const completed = new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('exit', (status, signal) => {
+      if (status !== 0) reject(new Error(`Installer acceptance failed (${status ?? signal}).`));
+      else resolve();
+    });
+  });
+  return { child, completed };
+}
+
 function registryCommand(args) {
   const executable = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'reg.exe');
   return spawnSync(executable, args, { windowsHide: true, timeout: 15_000, encoding: 'utf8' });
@@ -84,6 +96,9 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
     for (const path of sourceFiles) if (await digest(join(appDir, path)) !== await digest(join(installed, path))) throw new Error(`Installed file mismatch: ${path}`);
   };
   let running;
+  let runningStartedAt;
+  let runningStoppedAt;
+  let installerRun;
   let result;
   let operationError;
   const cleanupErrors = [];
@@ -96,16 +111,22 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
     await writeFile(join(installed, 'personal-note.txt'), 'keep this file');
     await writeFile(join(installed, sourceFiles.find(path => path !== 'Win-Box.exe') ?? sourceFiles[0]), 'old installed content');
     if (stopRunningProcess) {
+      runningStartedAt = Date.now();
       running = spawn(join(installed, 'Win-Box.exe'), ['-e', 'setTimeout(() => {}, 60000)'], { windowsHide: true, stdio: 'ignore' });
       await delay(500);
       if (running.exitCode !== null) throw new Error('Running-process fixture exited before overwrite.');
-    }
-    execute(installer);
-    if (running) {
-      const deadline = Date.now() + 5_000;
-      while (running.exitCode === null && Date.now() < deadline) await delay(50);
-      if (running.exitCode === null) throw new Error('Installer did not stop the running Win-Box process.');
+      runningStartedAt = Date.now();
+      running.once('exit', () => { runningStoppedAt = Date.now(); });
+      installerRun = startInstaller(installer);
+      const stopDeadline = Date.now() + 15_000;
+      while (running.exitCode === null && Date.now() < stopDeadline) await delay(50);
+      if (running.exitCode === null) throw new Error('Installer did not stop the running Win-Box process within 15 seconds.');
+      runningStoppedAt ??= Date.now();
+      await installerRun.completed;
+      installerRun = undefined;
       running = undefined;
+    } else {
+      execute(installer);
     }
     await verifyCopies();
     if (await readFile(join(installed, 'data/user-config.json'), 'utf8') !== userData) throw new Error('Overwrite changed user data.');
@@ -160,6 +181,7 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
       install: 'PASS',
       overwrite: 'PASS',
       runningProcessStopped: stopRunningProcess ? 'PASS' : 'NOT_RUN',
+      runningProcessStopDurationMs: runningStartedAt && runningStoppedAt ? runningStoppedAt - runningStartedAt : null,
       uninstallFirst: 'PASS',
       uninstall: 'PASS',
       dataPreserved: true,
@@ -170,6 +192,11 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
   } catch (error) {
     operationError = error;
   } finally {
+    try {
+      if (installerRun?.child.exitCode === null) installerRun.child.kill();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
     try {
       if (running && running.exitCode === null) running.kill();
     } catch (error) {

@@ -69,7 +69,7 @@ const psCommand = command => Buffer.from(command, 'utf16le').toString('base64');
 const targetProcess = `gwmi Win32_Process -Filter "Name='Win-Box.exe'"|?{$_.ExecutablePath -eq $env:WINBOX_INSTALL_EXE}|%{gps -Id $_.ProcessId -EA 0}`;
 const closeAppCommands = {
   check: psCommand(`if((${targetProcess})){exit 1};exit 0`),
-  graceful: psCommand(`$p=@(${targetProcess});if(!$p.Count){exit 3};$w=@($p|?{$_.MainWindowHandle});if(!$w.Count){exit 2};$w|%{[void]$_.CloseMainWindow()};foreach($x in $p){if(!$x.WaitForExit(10000)){exit 2}};exit 0`),
+  graceful: psCommand(`$p=@(${targetProcess});$w=@($p|?{$_.MainWindowHandle.ToInt64()});if($w.Count -ne $p.Count){exit 2};foreach($x in $w){if(!$x.CloseMainWindow() -or !$x.WaitForExit(10000)){exit 2}};exit 0`),
   force: psCommand(`$p=@(${targetProcess});if(!$p.Count){exit 3};foreach($x in $p){kill -Id $x.Id -Force -EA 0;try{Wait-Process -Id $x.Id -Timeout 2 -EA Stop}catch{exit 4}};exit 0`),
 };
 
