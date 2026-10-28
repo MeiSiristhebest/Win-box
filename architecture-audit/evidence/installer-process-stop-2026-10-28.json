@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V04",
+  "recordedAt": "2026-10-28",
+  "finding": "System.IntPtr zero converts to true in the PowerShell predicate used for MainWindowHandle, so a headless process was incorrectly treated as having a window. CloseMainWindow returning false was also ignored, causing an unnecessary 10-second wait before force termination.",
+  "change": "Convert MainWindowHandle to Int64 before testing for zero; if any target process lacks a window or CloseMainWindow returns false, immediately select the existing force-stop path.",
+  "verification": {
+    "command": "node --test --test-isolation=none scripts/installer-script.check.mjs",
+    "result": "PASS: 7 tests, 0 failures",
+    "fixture": "A disposable copied Node executable named Win-Box.exe with a 60-second timer, installed in an isolated temporary directory.",
+    "targetProcessStopDurationMs": 4549,
+    "overwriteAndUserDataPreservation": "PASS",
+    "uninstallReinstallRegistryAndShortcuts": "PASS"
+  },
+  "limitations": [
+    "The running process is a headless fixture, not the full Win-Box desktop app while playing video or hidden by boss-key.",
+    "Cancellation preserving the existing installation and migration of each user data domain still need acceptance.",
+    "V04 remains open until those desktop and data migration scenarios are verified."
+  ]
+}

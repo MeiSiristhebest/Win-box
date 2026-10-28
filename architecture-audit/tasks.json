@@ -1750,10 +1750,14 @@
           "path": "scripts/verify-installation.mjs",
           "line": 99,
           "symbol": "CLI invocation"
+        },
+        {
+          "path": "architecture-audit/evidence/installer-process-stop-2026-10-28.json",
+          "symbol": "targetProcessStopDurationMs"
         }
       ],
-      "gap": "隔离候选包现在验证了运行进程停止、覆盖、先卸载再安装、数据保留、注册表和快捷方式。仍未覆盖正在播放、老板键隐藏/无主窗口的真实桌面进程、取消安装保护旧版本，以及配置/订阅/网盘账号/历史/收藏各数据域的迁移。",
-      "direction": "将运行中安装场景接入可显式运行的验收入口；在隔离数据目录测试正常退出/强退/无关锁定、覆盖及卸载再装，再核对真实安装集成。",
+      "gap": "隔离 NSIS 套件已验证无窗口进程在 4549ms 内停止、覆盖、先卸载再安装、数据保留、注册表和快捷方式。仍未覆盖正在播放或老板键隐藏的真实桌面进程、取消安装保护旧版本，以及配置/订阅/网盘账号/历史/收藏各数据域的迁移。",
+      "direction": "将安装验收扩展到完整候选包的播放中和老板键隐藏场景，再核对取消安装保护及每个用户数据域迁移。",
       "acceptance": "正在播放/老板键隐藏/后台无主窗口时可一键停止继续；其它安装目录不受影响；配置、订阅、账号、历史、收藏重启后保留；取消不破坏旧版；注册表/快捷方式正确。",
       "estimateEngineerHours": {
         "min": 3,
@@ -1768,7 +1772,7 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "3e3bd13",
-        "verification": "2026-10-28 最终候选 NSIS 隔离验收 PASS：install、overwrite、runningProcessStopped、uninstallFirst、uninstall、dataPreserved、registryAndShortcuts；505 个文件校验一致，数据/用户文件保留，清理 PASS。此 fixture 不等于真实播放/隐藏窗口和取消保护验收，因此保留 open。"
+        "verification": "最终候选包的 505 文件隔离安装/覆盖/卸载/数据保留记录见 installation-acceptance-2026-10-28.json。最新 installer-script.check.mjs 为 7/7 PASS；无窗口进程实测 4549ms 停止。该合成 fixture 不等于真实播放/隐藏窗口和取消保护验收，因此 V04 仍为 open。"
       }
     },
     {
