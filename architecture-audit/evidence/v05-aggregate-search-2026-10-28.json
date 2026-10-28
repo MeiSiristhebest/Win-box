@@ -392,7 +392,7 @@
   "benchmarkResult": "PASS_SYNTHETIC_ONLY",
   "v05Completion": "PARTIAL",
   "completionNote": "The 1,000-source synthetic coordinator/CMS benchmark passed. V05 remains partial because spider/JAR/Python runtimes, real third-party sources, application UI, and real user profiles were not tested, and performance budgets are not configured.",
-  "runArtifactsLocation": ".tmp/v05-search-20261028-final1000 (temporary source measurements; scheduled for cleanup after this evidence commit)",
+  "runArtifactsLocation": ".tmp/v05-search-20261028-final1000 (temporary source measurements; cleaned after the evidence commit)",
   "testedProductionPaths": [
     "src/main/spider/AggregateSearchCoordinator.ts",
     "src/engine/vod/searchAcrossProfiles.ts",
