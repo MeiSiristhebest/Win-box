@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T13:04:54.102Z",
+  "recordedAt": "2026-10-28T13:38:14Z",
   "taskId": "V02",
   "candidate": {
     "version": "1.27.1",
@@ -32,7 +32,7 @@
     "launchPath": "temporary junction under repository .tmp pointing to isolated copy under the authorized visualization root",
     "directReleaseFolderLaunch": "BLOCKED before window by Electron AppContainer ACL (install_dir_access.cc:52); no ACL was changed",
     "externalThirdPartySources": "NOT_RUN",
-    "potPlayer": "NOT_RUN"
+    "potPlayer": "Configured PotPlayer executable launch and full local fixture fetch PASS; decode/time progression/pause-resume NOT_VERIFIED"
   },
   "checks": [
     {
@@ -82,6 +82,18 @@
       "status": "PASS",
       "time": 3.587,
       "paused": true
+    },
+    {
+      "name": "potplayer-launch-and-local-media-fetch",
+      "status": "PARTIAL",
+      "player": "PotPlayer",
+      "processStart": "PROCESS_LIST_CONFIRMED",
+      "httpStatus": 200,
+      "contentType": "video/webm",
+      "bytes": 73964,
+      "decode": "NOT_VERIFIED",
+      "timeProgress": "NOT_VERIFIED",
+      "pauseResume": "NOT_VERIFIED"
     }
   ],
   "mpv": {
@@ -138,7 +150,7 @@
       "completed": true
     }
   ],
-  "mpvVisibleFrame": "UNCONFIRMED: MPV time/seek/pause telemetry advances, but its native video child surface is black in the captured Chromium screenshot; confirm actual desktop-visible frame separately.",
+  "mpvVisibleFrame": "UNCONFIRMED. Strong inference: the black image is a screenshot-boundary false negative because MPV renders through --wid=HWND into a native child window, while Playwright screenshot captures Chromium WebContents; source references: MpvController.ts:4, mpvCore.ts:6, PlayerWindow.ts:293. Playback/seek/pause telemetry passes, but that does not establish that desktop-composited pixels were visible. A computer-use desktop screenshot attempt timed out before yielding an image.",
   "cleanup": {
     "processExited": true,
     "cleaned": true,
@@ -172,5 +184,46 @@
   "evidenceImages": {
     "html5": "architecture-audit/evidence/packaged-playback-final-html5-2026-10-28.png",
     "mpv": "architecture-audit/evidence/packaged-playback-final-mpv-2026-10-28.png"
+  },
+  "mpvFrameDiagnostic": {
+    "reviewedAt": "2026-10-28T13:21:52Z",
+    "finding": "likely Chromium screenshot boundary false negative",
+    "confidence": "strong inference, not confirmed fact",
+    "basis": [
+      "MPV is embedded through native child HWND (--wid=HWND).",
+      "Playwright page screenshot captures Chromium WebContents and omits the MPV child surface.",
+      "MPV time/seek/pause telemetry progresses on the same fixture."
+    ],
+    "actualDesktopPixels": "NOT_CONFIRMED",
+    "computerUseCapture": "approval timed out; no screenshot received",
+    "codeReferences": [
+      "src/main/player/MpvController.ts:4",
+      "src/main/player/mpvCore.ts:6",
+      "src/main/player/PlayerWindow.ts:293"
+    ]
+  },
+  "potplayerAcceptance": {
+    "status": "PARTIAL",
+    "player": "PotPlayer",
+    "executable": "D:\\PotPlayer\\PotPlayerMini64.exe",
+    "fixture": "generated local 320x180 VP8 WebM, 14.0 seconds",
+    "processStart": "PROCESS_LIST_CONFIRMED",
+    "processIds": [
+      36452
+    ],
+    "mediaResponse": {
+      "method": "GET",
+      "path": "/clip.webm",
+      "range": "",
+      "status": 200,
+      "contentType": "video/webm",
+      "responseBytes": 73964,
+      "completed": true
+    },
+    "decode": "NOT_VERIFIED",
+    "timeProgress": "NOT_VERIFIED",
+    "pauseResume": "NOT_VERIFIED",
+    "cleanup": "PASS; only newly started PotPlayer PID and packaged app were closed",
+    "evidenceSource": "isolated local acceptance run; transient raw report intentionally omitted after copying normalized evidence"
   }
 }

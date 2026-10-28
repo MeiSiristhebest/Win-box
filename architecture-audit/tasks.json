@@ -1496,7 +1496,7 @@
       "kind": "debt",
       "priority": "P2",
       "title": "按实际运行依赖闭包收敛包体，避免重复携带已打包库",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         6,
@@ -1519,7 +1519,7 @@
           "symbol": "explicit external packages"
         }
       ],
-      "gap": "Release now rebuilds generated SpiderRunner stubs from current source; the final packaged Temurin JRE executes a local spider JAR with quick=true,page=7 preserved. Python runtime download/extraction and actual call in an isolated installed profile remain unverified; keep open.",
+      "gap": "Package runtime closure was trimmed with recorded size attribution; final packaged Temurin JRE/SpiderRunner JAR passes an actual local invocation with quick=true,page=7. CPython 3.15.0 archive and all required wheels were fetched through the production HttpClient, extracted into an isolated profile, and the package runner successfully invoked a real local Python spider. This validates the runtime/runner path, not Electron UI installation or optional wheels.",
       "direction": "生成 dist 与动态 require/worker 共同需要的运行依赖闭包，按实际字节找重复；发布副本裁剪测试/源码/无用平台资源，保留许可证与所有运行时 external。",
       "acceptance": "输出安装包/ASAR/资源分项大小及前后对照；隔离干净目录能启动 JS/JVM/Python、解压和下载能力；A/B 不减少 React Compiler 的 hooks 覆盖，不预承诺压缩比例。",
       "estimateEngineerHours": {
@@ -1529,16 +1529,22 @@
       "dependsOn": [],
       "probes": [],
       "reviewEvidence": {
-        "commit": "6c9b0b6",
-        "verification": "包体定向检查 12/12 通过；候选 app 534,252,979 B、installer 228,831,102 B。与此前报告相比 app 少 46,506,080 B（约 8.0%）、installer 少 11,977,645 B（约 5.0%；该跨构建差值不全归因于本改动）。locale pack 直接减少 48,880,941 B；同构建排除 node_modules/.ignored 后 ASAR 减少 15,030,737 B。隔离安装/覆盖/卸载重装和用户数据保留通过，Java 17 运行通过；运行中停止进程与应用完整运行时冒烟未执行，状态仍 open。",
-        "evidence": "architecture-audit/evidence/spider-jre-protocol-smoke-2026-10-28.json",
-        "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-        "latestVerification": "Final package SpiderRunner/JAR protocol smoke passes after release builder regenerated 268 classes; exact before/after output and hashes are in spider-jre-protocol-smoke-2026-10-28.json. Python runtime install/use remains open.",
-        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
+        "commit": "88fd7c666c6fb62bd70747883aab53d323d30250",
+        "verification": "Python runtime acceptance PASS: fixed CPython archive SHA-256 verified, required wheels downloaded/extracted in an isolated profile, packaged runner.py invoked through JarSpiderBridge + production HttpClient, and local spider returned quick=true,page=7; temporary runtime/spec cleaned. Packaged Java JAR invocation also passes. UI installation path and optional wheels remain outside A21 scope.",
+        "evidence": "architecture-audit/evidence/python-runtime-acceptance-2026-10-28.json"
       },
       "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-      "latestVerification": "Final package SpiderRunner/JAR protocol smoke passes after release builder regenerated 268 classes; exact before/after output and hashes are in spider-jre-protocol-smoke-2026-10-28.json. Python runtime install/use remains open.",
-      "latestEvidence": "architecture-audit/evidence/spider-jre-protocol-smoke-2026-10-28.json"
+      "latestVerification": "Python runtime acceptance PASS: fixed CPython archive SHA-256 verified, required wheels downloaded/extracted in an isolated profile, packaged runner.py invoked through JarSpiderBridge + production HttpClient, and local spider returned quick=true,page=7; temporary runtime/spec cleaned. Packaged Java JAR invocation also passes. UI installation path and optional wheels remain outside A21 scope.",
+      "latestEvidence": "architecture-audit/evidence/python-runtime-acceptance-2026-10-28.json",
+      "completionEvidence": {
+        "commit": "88fd7c666c6fb62bd70747883aab53d323d30250",
+        "verification": "Package runtime closure/size report plus real packaged Java JAR smoke and isolated CPython 3.15.0 download/extract/invocation; required wheels fetched and verified, local spider output preserves quick=true,page=7; Vitest 1/1; cleanup confirmed. UI install and optional wheels not claimed.",
+        "evidence": [
+          "architecture-audit/evidence/package-optimization-2026-10-28.json",
+          "architecture-audit/evidence/spider-jre-protocol-smoke-2026-10-28.json",
+          "architecture-audit/evidence/python-runtime-acceptance-2026-10-28.json"
+        ]
+      }
     },
     {
       "id": "V01",
@@ -1642,7 +1648,7 @@
           "symbol": "install_dir_access ACL diagnosis and isolated packaged playback"
         }
       ],
-      "gap": "Final local package playback-only acceptance through ACL-safe isolated copy passed generated VP8 WebM decode, progress, seek, pause/resume in HTML5 and managed MPV; renderer errors 0. MPV visible video frame remains unconfirmed. PotPlayer and representative live sources were not run; keep open.",
+      "gap": "Final local package HTML5/MPV decode, progress, seek, pause/resume pass. Configured PotPlayer launches and receives the entire local fixture (HTTP 200, 73,964 bytes), but the harness does not verify decode, time progression, or pause/resume. The Playwright MPV image likely omits native child HWND; actual desktop pixels remain unconfirmed. Representative live sources were not run.",
       "direction": "先可控夹具验证 MP4/HLS/TS、401/403/HTML 假媒体、Range/跳转；再按获准的代表来源测完整播放。单独验证已配置 PotPlayer 直接启动和失败反馈；超分按内核能力如实展示。",
       "acceptance": "保存至少 HTML5、托管 MPV、PotPlayer 的实际启动/时间推进/暂停续播证据；源失效与播放器回归分开；账号切子仓可复用；明确托管 shader 不自动影响任意外部播放器。",
       "estimateEngineerHours": {
@@ -1658,19 +1664,19 @@
       ],
       "probes": [],
       "reviewEvidence": {
-        "verification": "Final rebuilt package passes local HTML5/MPV playback and compact pause-feedback visual assertions; the MPV native surface is black in the captured Chromium screenshot, so visible frame remains unconfirmed. PotPlayer/live sources remain NOT_RUN.",
+        "verification": "Final package local HTML5/MPV decode and controls pass. PotPlayer launcher and complete local media fetch pass, while decode/time/pause remain NOT_VERIFIED. Actual desktop-visible MPV frame and live sources remain unconfirmed.",
         "evidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json",
         "notRun": [
           "Live third-party source playback matrix",
           "PotPlayer decode/time progression/pause-resume",
-          "MPV visible native frame content"
+          "Actual desktop-visible MPV native frame"
         ],
         "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-        "latestVerification": "Final rebuilt package passes local HTML5/MPV playback and compact pause-feedback visual assertions; the MPV native surface is black in the captured Chromium screenshot, so visible frame remains unconfirmed. PotPlayer/live sources remain NOT_RUN.",
+        "latestVerification": "Final package passes local HTML5/MPV playback and compact pause-feedback visual assertions. MPV HWND rendering explains why the Chromium screenshot can be black (strong inference only); actual desktop-visible pixels remain unconfirmed. PotPlayer/live sources remain NOT_RUN.",
         "latestEvidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json"
       },
       "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-      "latestVerification": "Final rebuilt package passes local HTML5/MPV playback and compact pause-feedback visual assertions; the MPV native surface is black in the captured Chromium screenshot, so visible frame remains unconfirmed. PotPlayer/live sources remain NOT_RUN.",
+      "latestVerification": "Final package local HTML5/MPV decode and controls pass. PotPlayer launcher and complete local media fetch pass, while decode/time/pause remain NOT_VERIFIED. Actual desktop-visible MPV frame and live sources remain unconfirmed.",
       "latestEvidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json"
     },
     {
@@ -1725,7 +1731,7 @@
           "symbol": "measured player overlay contrast regressions"
         }
       ],
-      "gap": "Episode panel now implements tab keyboard navigation and ARIA tab-panel association; final packaged HTML5 screenshot confirms compact 28x28 centered pause feedback without blur/shadow. Full route/theme/focus/DPI/narrow-layout contrast matrix and live danmaku-trail validation remain incomplete; keep open.",
+      "gap": "Episode panel keyboard navigation and ARIA association pass; packaged pause feedback is 28x28, centered, sharp and unblurred. Theme regression tests cover six themes and the global-account provider tabs/disabled form states; 59 focused style tests pass. Full route/theme/focus/DPI/narrow-layout contrast matrix and live danmaku-trail validation remain incomplete.",
       "direction": "按窗口×组件状态×主题/外壳×DPI 建立检查矩阵；复用已有 showcase，计算最终样式并用真实 Electron 窗口复核；业务功能清单作回归对照。",
       "acceptance": "主/详情/搜索/播放器/全局账号/设置/历史/直播/存储均有记录；100/125/150% DPI 与窄宽布局；沿用仓库普通文本4.5:1/功能边界3:1口径；键盘焦点、selected 语义、弹幕拖影和暂停无模糊逐项关闭。",
       "estimateEngineerHours": {
@@ -1747,13 +1753,13 @@
         "commit": "9d5a958",
         "verification": "播放器样式 9/9 测试和音量滑块 6 项静态几何检查通过；全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过），三套 typecheck、lint/架构边界和生产 build 通过。仍缺最终 Electron 截图复核。",
         "evidence": "architecture-audit/evidence/player-controls-followup-2026-10-28.json",
-        "latestImplementationCommit": "75c28a22b9fc128faf0779912e00be3e91ced3da",
-        "latestVerification": "完整 Vitest 包含播放器样式与主题回归；新增 packaged HTML5 视觉验收通过，28x28 px、14x14 px、中心偏差 0 px、无模糊/阴影。弹幕拖影和全界面状态矩阵仍无动态验收。",
-        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
+        "latestImplementationCommit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
+        "latestVerification": "Theme and player style regression tests: 59/59 pass; Oxlint passes. Six themes cover the relevant selected/unselected provider tab and disabled states; no live full-window route/theme/DPI matrix or danmaku trail capture.",
+        "latestEvidence": "tests/themeContrast.spec.ts"
       },
-      "latestImplementationCommit": "129f566a65d07c3c3f7b5a0849226eef141aec16",
-      "latestVerification": "Final package playback acceptance asserts centered 28x28 pause control with 14x14 icon, no blur/shadow; episode-panel navigation tests passed 57/57. Full visual matrix and live danmaku trail remain unverified.",
-      "latestEvidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json"
+      "latestImplementationCommit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
+      "latestVerification": "Theme and player style regression tests: 59/59 pass; Oxlint passes. Six themes cover the relevant selected/unselected provider tab and disabled states; no live full-window route/theme/DPI matrix or danmaku trail capture.",
+      "latestEvidence": "tests/themeContrast.spec.ts"
     },
     {
       "id": "V04",
@@ -1795,7 +1801,7 @@
           "symbol": "old uninstaller failure rollback and six user-data files"
         }
       ],
-      "gap": "Latest installer script regression is 10/10; running same-directory Win-Box process stopped in 4,335 ms and old-uninstaller failure preserved the old install plus six user-data domains. Actual interactive stop/continue, cancellation, playing/hidden-window cases, and real upgrade migration remain unverified; keep open.",
+      "gap": "Installer preflight now checks every existing file under the prior install directory except data before invoking a legacy uninstaller; a locked legacy-only file, permissions/scanning failures abort safely. Isolated NSIS regression is 10/10 and preserves prior install plus six data domains. Real interactive Cancel/Back/elevation and playing/hidden-window upgrade remain unverified.",
       "direction": "将安装验收扩展到完整候选包的播放中和老板键隐藏场景，再核对取消安装保护及每个用户数据域迁移。",
       "acceptance": "正在播放/老板键隐藏/后台无主窗口时可一键停止继续；其它安装目录不受影响；配置、订阅、账号、历史、收藏重启后保留；取消不破坏旧版；注册表/快捷方式正确。",
       "estimateEngineerHours": {
@@ -1811,14 +1817,14 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "3e3bd13",
-        "latestImplementationCommit": "48105537",
+        "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
         "verification": "最终候选包的 505 文件隔离安装/覆盖/卸载/数据保留记录见 installation-acceptance-2026-10-28.json。最新 installer-script.check.mjs 为 7/7 PASS；无窗口进程实测 4549ms 停止。该合成 fixture 不等于真实播放/隐藏窗口和取消保护验收，因此 V04 仍为 open。",
-        "latestVerification": "Latest installer-script check: 10/10 PASS; real NSIS same-directory process stopped in 4,335 ms; old-uninstaller failure preserves settings/subscriptions/cloud accounts/history/favorites. No interactive GUI or user-directory install.",
-        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
+        "latestVerification": "Isolated NSIS installer checks 10/10; locked legacy-only file rejects before old uninstaller and preserves prior files plus six user-data domains; Oxlint passes. GUI Cancel/Back/elevation and playing/hidden-window upgrade are not verified.",
+        "latestEvidence": "scripts/installer-script.check.mjs"
       },
-      "latestImplementationCommit": "48105537",
-      "latestVerification": "Latest installer-script check: 10/10 PASS; real NSIS same-directory process stopped in 4,335 ms; old-uninstaller failure preserves settings/subscriptions/cloud accounts/history/favorites. No interactive GUI or user-directory install.",
-      "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
+      "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
+      "latestVerification": "Isolated NSIS installer checks 10/10; locked legacy-only file rejects before old uninstaller and preserves prior files plus six user-data domains; Oxlint passes. GUI Cancel/Back/elevation and playing/hidden-window upgrade are not verified.",
+      "latestEvidence": "scripts/installer-script.check.mjs"
     },
     {
       "id": "V05",
@@ -1918,7 +1924,7 @@
           "symbol": "current test, typecheck, lint, build gates"
         }
       ],
-      "gap": "Latest source commit 88fd7c666c6fb62bd70747883aab53d323d30250; full Vitest 507 files/4,163 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17 and installer 10/10 pass. Local installer 228695186 bytes SHA-256 2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a; packaged local HTML5/MPV and SpiderRunner JAR probes pass. Interactive installation over the user app, Python runtime workflow, live sources/PotPlayer, and remote CI remain unrun; not published/pushed.",
+      "gap": "Latest source commit 88fd7c666c6fb62bd70747883aab53d323d30250; full Vitest 507 files/4,163 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17 and installer 10/10 pass. Local installer 228695186 bytes SHA-256 2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a; packaged local HTML5/MPV and SpiderRunner JAR probes pass. Configured PotPlayer launch+fixture fetch pass but decode/time/pause remain unverified. Interactive installation over the user app, Python runtime workflow, live sources, and remote CI remain unrun; not published/pushed.",
       "direction": "修复后在同一候选提交运行类型/lint/架构/正式测试/构建和上述验收，隔离目录制作唯一的本地安装包，记录 hash/尺寸/版本/提交。遵守用户不发布小版本、不创建多工作区的要求。",
       "acceptance": "所有必需任务有实现与验收链接；旧绿灯不代替当前结果；本地 Setup 在干净目录安装运行通过；保留数据及产物来源可查；不发布 Release，审计/修复改动分步提交，临时目录清理。",
       "estimateEngineerHours": {
@@ -1980,7 +1986,7 @@
         "129f566a65d07c3c3f7b5a0849226eef141aec16",
         "88fd7c666c6fb62bd70747883aab53d323d30250"
       ],
-      "latestVerification": "Latest source commit 88fd7c666c6fb62bd70747883aab53d323d30250; full Vitest 507 files/4,163 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17 and installer 10/10 pass. Local installer 228695186 bytes SHA-256 2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a; packaged local HTML5/MPV and SpiderRunner JAR probes pass. Interactive installation over the user app, Python runtime workflow, live sources/PotPlayer, and remote CI remain unrun; not published/pushed.",
+      "latestVerification": "Latest source commit 88fd7c666c6fb62bd70747883aab53d323d30250; full Vitest 507 files/4,163 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17 and installer 10/10 pass. Local installer 228695186 bytes SHA-256 2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a; packaged local HTML5/MPV and SpiderRunner JAR probes pass. Configured PotPlayer launch+fixture fetch pass but decode/time/pause remain unverified. Interactive installation over the user app, Python runtime workflow, live sources, and remote CI remain unrun; not published/pushed.",
       "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
     },
     {
@@ -2160,7 +2166,7 @@
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
   "latestProgress": {
-    "recordedAt": "2026-10-28T13:10:10Z",
+    "recordedAt": "2026-10-28T13:45:30Z",
     "requiredTaskCount": 36,
     "completedTaskIds": [
       "B01",
@@ -2192,10 +2198,10 @@
       "A18",
       "A19",
       "A20",
-      "V01"
+      "V01",
+      "A21"
     ],
     "openTaskIds": [
-      "A21",
       "V02",
       "V03",
       "V04",
@@ -2203,8 +2209,8 @@
       "V06"
     ],
     "remainingEngineerHours": {
-      "min": 24,
-      "max": 42
+      "min": 21,
+      "max": 36
     },
     "branch": "codex/architecture-cleanup-20261025",
     "localCommitsThisTurn": [
@@ -2221,7 +2227,9 @@
       "pxr",
       "mkt",
       "wto",
-      "oor"
+      "oor",
+      "vnp",
+      "xwy"
     ],
     "localInstallerPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
     "installerSha256": "2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a",
@@ -2241,18 +2249,19 @@
     "applicationBuildCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
     "applicationBuildAt": "2026-10-28T12:48:44.800Z",
     "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json",
-    "requiredCompletedCount": 30,
+    "requiredCompletedCount": 31,
     "optionalOpenTaskIds": [
       "O01",
       "O02"
     ],
     "latestSpiderEvidence": "architecture-audit/evidence/spider-jre-protocol-smoke-2026-10-28.json",
     "partialVerificationTasks": [
-      "A21",
       "V02",
       "V03",
       "V04",
       "V06"
-    ]
+    ],
+    "mpvFrameDiagnostic": "Strong inference: Chromium screenshot omits native MPV child HWND; desktop pixels not confirmed.",
+    "latestPythonEvidence": "architecture-audit/evidence/python-runtime-acceptance-2026-10-28.json"
   }
 }

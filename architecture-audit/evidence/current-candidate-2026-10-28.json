@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T13:10:10Z",
+  "recordedAt": "2026-10-28T13:45:30Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
@@ -12,7 +12,19 @@
       "commit": "85b806103c5fb16a4b581cfb6f7e0ff9ada3416d",
       "changeId": "qpy",
       "scope": "acceptance script only; packaged application runtime is unchanged"
-    }
+    },
+    "postBuildSourceCommits": [
+      {
+        "changeId": "vnp",
+        "commit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
+        "scope": "theme disabled-state contrast fix; pending final package rebuild"
+      },
+      {
+        "changeId": "xwy",
+        "commit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
+        "scope": "legacy installer locked-file preflight; pending final package rebuild"
+      }
+    ]
   },
   "build": {
     "command": "pnpm run dist",
@@ -69,8 +81,8 @@
       "restoreAutoAndPausedPosition": "PASS",
       "rendererErrors": 0,
       "processExitedAndOwnedArtifactsCleaned": true,
-      "externalSourcesAndPotPlayer": "NOT_RUN",
-      "mpvVisibleFrame": "UNCONFIRMED; captured native video surface remains black"
+      "externalSourcesAndPotPlayer": "Configured PotPlayer path launch and full local fixture bytes fetch PASS; decode/time/pause NOT_VERIFIED; live third-party sources NOT_RUN.",
+      "mpvVisibleFrame": "UNCONFIRMED; strong inference that the black Playwright screenshot omits MPV native child HWND pixels; no desktop screenshot was obtained. Playback/time/seek/pause pass but do not prove visible frame."
     },
     "pauseFeedbackVisual": {
       "status": "PASS",
@@ -118,12 +130,12 @@
       "status": "PASS",
       "evidence": "architecture-audit/evidence/spider-jre-protocol-smoke-2026-10-28.json",
       "observed": "quick=true,page=7 preserved in actual packaged JRE SpiderRunner call",
-      "pythonRuntime": "NOT_RUN"
+      "pythonRuntime": "PASS: CPython 3.15.0 runtime and required wheels downloaded/extracted into an isolated profile; package runner invoked a local Python spider preserving quick=true,page=7.",
+      "pythonRuntimeEvidence": "architecture-audit/evidence/python-runtime-acceptance-2026-10-28.json"
     }
   },
   "remaining": [
-    "A21: actual bundled SpiderRunner/JAR invocation now passes after release build refresh; Python runtime download/extraction and invocation from an isolated installed profile remain unverified.",
-    "V02: local packaged HTML5/MPV decode, time, seek, pause/resume pass; MPV visible frame is unconfirmed; live third-party sources and PotPlayer remain untested.",
+    "V02: local packaged HTML5/MPV decode, time, seek, pause/resume pass; PotPlayer configured executable starts and receives full local fixture bytes (HTTP 200), but actual decode/time/pause is NOT_VERIFIED; actual desktop-visible MPV pixels and live third-party sources remain unconfirmed.",
     "V03: all-route/theme/focus/DPI/narrow-layout contrast matrix and live danmaku-trail check remain incomplete; episode tab keyboard navigation and packaged pause feedback are fixed and verified.",
     "V04: scripted NSIS stop/preflight and rollback/data preservation pass; interactive stop/continue, cancellation, playing/hidden-window cases, and real upgrade migration remain unverified.",
     "V05: repeat search, 1080p, dense danmaku, and 10-cycle workload samples with stable role attribution and performance budgets remain incomplete.",

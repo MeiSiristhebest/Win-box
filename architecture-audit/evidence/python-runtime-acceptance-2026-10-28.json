@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T13:45:30Z",
+  "taskId": "A21",
+  "status": "PASS",
+  "verificationKind": "real isolated runtime smoke; no network/process mocks",
+  "package": {
+    "version": "1.27.1",
+    "applicationBuildCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
+    "runnerPath": "release1.27.1/win-unpacked/resources/app.asar.unpacked/resources/jvm/python-runner/runner.py"
+  },
+  "runtime": {
+    "implementation": "CPython embedded",
+    "version": "3.15.0",
+    "archiveSha256": "a6999bcbcbe56f937159ef79c2630260eca99f65f7860bc5cd20430324079a44",
+    "download": "production HttpClient downloaded runtime archive and required wheels",
+    "installation": "isolated profile at .tmp/a21-python-runtime-acceptance-20261028/python/3.15.0",
+    "requiredWheels": "all required wheels downloaded and extracted; optional wheels intentionally skipped"
+  },
+  "invocation": {
+    "path": "JarSpiderBridge + production HttpClient + packaged runner.py",
+    "spider": "local Python spider fixture",
+    "method": "searchContent",
+    "arguments": {
+      "query": "needle",
+      "quick": true,
+      "page": "7"
+    },
+    "result": {
+      "list": [],
+      "page": 7,
+      "query": "needle",
+      "quick": true
+    },
+    "status": "PASS"
+  },
+  "test": {
+    "vitest": "1/1 PASS",
+    "durationSeconds": 4.2
+  },
+  "cleanup": {
+    "runtimeDirectoryRemoved": true,
+    "temporarySpecRemoved": true,
+    "poolClosed": true
+  },
+  "limits": [
+    "This proves the isolated Python runtime/packaged runner invocation, not the entire Electron UI installation flow.",
+    "Optional wheels and live third-party spiders were not tested."
+  ]
+}

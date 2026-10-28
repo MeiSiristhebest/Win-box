@@ -44,5 +44,12 @@
   "remaining": {
     "pythonRuntimeDownloadExtractAndActualSpiderInvocation": "NOT_RUN",
     "isolatedInstalledProfile": "NOT_RUN"
+  },
+  "reproducedAt": "2026-10-28T13:17:00Z",
+  "reproduction": {
+    "status": "PASS",
+    "commandTemplate": "<packaged-jre> -cp <packaged-stubs.jar;packaged-libs/*> SpiderRunner <local-runtime-probe.jar> com.github.catvod.spider.RuntimeProbe searchContent probe-ext needle true 7",
+    "observedOutput": "packaged-jre-spider-ok:probe-ext:needle:true:7",
+    "networkUsed": false
   }
 }
