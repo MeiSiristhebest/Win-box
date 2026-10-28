@@ -1801,7 +1801,7 @@
           "symbol": "old uninstaller failure rollback and six user-data files"
         }
       ],
-      "gap": "Installer preflight now checks every existing file under the prior install directory except data before invoking a legacy uninstaller; a locked legacy-only file, permissions/scanning failures abort safely. Isolated NSIS regression is 10/10 and preserves prior install plus six data domains. Real interactive Cancel/Back/elevation and playing/hidden-window upgrade remain unverified.",
+      "gap": "Latest pnpm test:installer run passes 11/11 isolated NSIS regressions, including update/uninstall choice, file preflight, data preservation, rollback, and process stop in about 5.3 seconds. The process-stop scenario still uses node.exe renamed Win-Box.exe, not the packaged application; the shipping Setup.exe over a real existing install, playing/hidden app upgrade, and interactive Cancel/Back/elevation remain unverified.",
       "direction": "将安装验收扩展到完整候选包的播放中和老板键隐藏场景，再核对取消安装保护及每个用户数据域迁移。",
       "acceptance": "正在播放/老板键隐藏/后台无主窗口时可一键停止继续；其它安装目录不受影响；配置、订阅、账号、历史、收藏重启后保留；取消不破坏旧版；注册表/快捷方式正确。",
       "estimateEngineerHours": {
@@ -2178,7 +2178,7 @@
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
   "latestProgress": {
-    "recordedAt": "2026-10-28T17:32:41.862Z",
+    "recordedAt": "2026-10-28T17:45:52.502Z",
     "requiredTaskCount": 36,
     "completedTaskIds": [
       "B01",
@@ -2249,7 +2249,8 @@
       "15fb29f2",
       "863c41f6",
       "83d438e2",
-      "9dcaf166"
+      "9dcaf166",
+      "c61e741a"
     ],
     "localInstallerPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
     "installerSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
@@ -2287,6 +2288,7 @@
     "latestPerformanceEvidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
     "latestNativeUiEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
     "temporaryAcceptanceArtifactsCleaned": true,
-    "temporaryAcceptanceCleanup": "PASS for this run: the isolated candidate and transient playback artifacts were removed after evidence was preserved; pre-existing unrelated .tmp entries were left untouched."
+    "temporaryAcceptanceCleanup": "PASS for this run: the isolated candidate and transient playback artifacts were removed after evidence was preserved; pre-existing unrelated .tmp entries were left untouched.",
+    "latestInstallerEvidence": "architecture-audit/evidence/installer-regression-2026-10-29.json"
   }
 }

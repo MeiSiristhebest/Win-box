@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T17:32:41.862Z",
+  "recordedAt": "2026-10-28T17:45:52.502Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
@@ -61,15 +61,19 @@
       "status": "PARTIAL",
       "evidence": "architecture-audit/evidence/installation-acceptance-partial-2026-10-28.json",
       "installerRegression": {
+        "evidence": "architecture-audit/evidence/installer-regression-2026-10-29.json",
+        "tests": 11,
         "passed": 11,
-        "failed": 0
+        "failed": 0,
+        "skipped": 0,
+        "durationMs": 93801,
+        "processStopFixtureMs": 5279
       },
       "isolatedPayloadLifecycle": "install, overwrite, uninstall-first, rollback, uninstall, 451 packaged files, and six synthetic data categories passed.",
       "notVerified": [
-        "Actual packaged Win-Box process-stop",
-        "interactive Cancel/Back/elevation",
-        "upgrade over a real existing install",
-        "playing/hidden-window upgrade"
+        "Actual packaged Win-Box process-stop during playback or hidden mode",
+        "Shipping Setup.exe upgrade over a real existing installation",
+        "Interactive Cancel/Back/elevation"
       ]
     },
     "V05": {
@@ -140,5 +144,6 @@
     "temporaryAcceptanceCleanup": "PASS for the current run: isolated candidate and transient playback artifacts removed; report/screenshots retained under architecture-audit/evidence. Other pre-existing .tmp items were not classified or touched."
   },
   "releasePublished": false,
-  "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-packaged-recheck-2026-10-29.json"
+  "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-packaged-recheck-2026-10-29.json",
+  "latestInstallerEvidence": "architecture-audit/evidence/installer-regression-2026-10-29.json"
 }
