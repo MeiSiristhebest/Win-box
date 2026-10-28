@@ -2041,7 +2041,9 @@
       "architecture-audit/evidence/verification-2026-10-28.json",
       "architecture-audit/evidence/installation-acceptance-2026-10-28.json",
       "architecture-audit/evidence/package-size-report-2026-10-28.json",
-      "architecture-audit/evidence/runtime-sampler-self-test-2026-10-28.json"
+      "architecture-audit/evidence/runtime-sampler-self-test-2026-10-28.json",
+      "architecture-audit/evidence/playback-acceptance-2026-10-28.json",
+      "architecture-audit/evidence/ui-spot-check-2026-10-28.json"
     ],
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
@@ -2064,6 +2066,7 @@
       "A04",
       "A05",
       "A06",
+      "A07",
       "A08",
       "A09",
       "A10",
@@ -2079,7 +2082,6 @@
       "V01"
     ],
     "openTaskIds": [
-      "A07",
       "A17",
       "A21",
       "V02",
@@ -2089,8 +2091,8 @@
       "V06"
     ],
     "remainingEngineerHours": {
-      "min": 33,
-      "max": 58
+      "min": 28,
+      "max": 49
     },
     "branch": "codex/architecture-cleanup-20261025",
     "implementationTipBeforeEvidence": "0119e76",
