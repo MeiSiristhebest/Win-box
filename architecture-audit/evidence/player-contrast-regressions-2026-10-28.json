@@ -32,6 +32,92 @@
   "limitations": [
     "Static theme calculation and style-composition regression do not replace a screenshot of the rendered app.",
     "Danmaku text and shadows depend on comment color plus arbitrary video frames; trail/ghosting and bright-frame readability still need live playback review.",
-    "Pause overlay blur, keyboard focus, full page/state coverage, and narrow/DPI layout matrix remain open."
-  ]
+    "Pause overlay blur, keyboard focus, full page/state coverage, and narrow/DPI layout matrix remain open.",
+    "Current follow-up contrast numbers are token-level calculations and need the focused Vitest suite rerun in a working project runtime.",
+    "The large temporary pause-feedback screenshot has no matching implementation in the inspected source and remains open; no claim of fix is made.",
+    "Danmaku full-canvas clearing is present and regression-covered in source, but the reported visible trail has not been dynamically reproduced or accepted."
+  ],
+  "followUpReview": {
+    "recordedAt": "2026-10-28",
+    "scope": "Interactive contrast and player evidence recheck",
+    "interactiveStateCalculations": {
+      "criterion": "WCAG 2.2 AA: ordinary text 4.5:1; graphical controls 3:1",
+      "method": "Parsed the six checked theme token blocks, composited translucent surfaces, then calculated sRGB contrast for the CSS state combinations. These are token calculations, not browser computed styles.",
+      "minimumRatios": {
+        "playbackRateMenuHover": {
+          "ratio": 9.656,
+          "theme": "Desktop dark",
+          "threshold": 4.5,
+          "pass": true
+        },
+        "historyDetailAction": {
+          "ratio": 5.238,
+          "theme": "Apple light",
+          "threshold": 4.5,
+          "pass": true
+        },
+        "historyRemoveResting": {
+          "ratio": 6.838,
+          "theme": "Desktop light",
+          "threshold": 4.5,
+          "pass": true
+        },
+        "historyRemoveHover": {
+          "ratio": 6.171,
+          "theme": "Desktop light",
+          "threshold": 4.5,
+          "pass": true
+        },
+        "driveProviderUnselectedText": {
+          "ratio": 7.122,
+          "theme": "Desktop light",
+          "threshold": 4.5,
+          "pass": true
+        },
+        "driveProviderUnboundIcon": {
+          "ratio": 5.786,
+          "theme": "Bilibili light",
+          "threshold": 3,
+          "pass": true
+        },
+        "driveProviderBoundIcon": {
+          "ratio": 6.846,
+          "theme": "Bilibili light",
+          "threshold": 3,
+          "pass": true
+        },
+        "driveProviderSelectedText": {
+          "ratio": 4.663,
+          "theme": "Apple light",
+          "threshold": 4.5,
+          "pass": true
+        }
+      }
+    },
+    "driveProviderAvailability": {
+      "providers": [
+        "quark",
+        "uc",
+        "baidu",
+        "ali",
+        "115",
+        "bili"
+      ],
+      "finding": "All six are rendered as selectable FluentTab entries with no disabled prop. “未绑定” is account state, not an unsupported/disabled service state."
+    },
+    "danmakuEvidence": {
+      "finding": "The production RAF path calls prepareDanmakuCanvas each frame; it resets the transform, clears the full backing canvas, then restores DPR scaling before drawing.",
+      "regression": "tests/danmakuOverlay.spec.tsx asserts full backing-store clear for successive active frames.",
+      "limitation": "No live playback was run, so the screenshot’s visible trail artifact root cause and fix are not dynamically verified."
+    },
+    "playerPauseFeedback": {
+      "finding": "The 40×40 .vp-big is a play action shown while paused. Source search found no matching large temporary pause-feedback control from the screenshot.",
+      "status": "Open; do not count the screenshot’s large blurred pause feedback as fixed.",
+      "limitation": "No live app visual acceptance was performed."
+    },
+    "currentTurnVerification": {
+      "staticSyntax": "PASS: Babel parser accepted tests/themeContrast.spec.ts, tests/playerStyleArchitecture.spec.ts, and tests/danmakuOverlay.spec.tsx.",
+      "vitest": "NOT RUN in this agent runtime: shell launcher cannot resolve; node_repl child process returned ENOENT; workspace lacks @rolldown/binding-wasm32-wasi. Root runner still needs to execute the focused Vitest files."
+    }
+  }
 }

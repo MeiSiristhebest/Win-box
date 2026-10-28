@@ -222,6 +222,7 @@ describe('player control style architecture', () => {
 
   it('keeps global drive provider tabs readable and visibly selected', async () => {
     const { css } = await readGlobalStyleComposition();
+    const dialog = await readFile(new URL('../src/renderer/components/DriveBindModal.tsx', import.meta.url), 'utf8');
     const providerTab = readRule(css, ":root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab']");
     const selectedTab = readRule(css, ":root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab'][aria-selected='true'],\n:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab'][data-selected='true']");
     const focusTab = readRule(css, ":root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab']:focus-visible");
@@ -230,6 +231,9 @@ describe('player control style architecture', () => {
     expect(providerTab).toMatch(/background:\s*var\(--surface-2/);
     expect(providerTab).toMatch(/opacity:\s*1\s*;/);
     expect(providerTab).toMatch(/min-height:\s*48px/);
+    expect(dialog).toContain('PROVIDERS.map((p) => (');
+    expect(dialog).toContain('未绑定');
+    expect(dialog).not.toMatch(/<FluentTab\b[^>]*\bdisabled(?:\s|=|>)/s);
     expect(selectedTab).toMatch(/color:\s*var\(--on-accent\)/);
     expect(selectedTab).toMatch(/background:\s*var\(--color-accent/);
     expect(focusTab).toMatch(/outline:\s*2px solid var\(--focus-ring-color\)/);

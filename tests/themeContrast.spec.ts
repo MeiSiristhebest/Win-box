@@ -102,6 +102,15 @@ function contrastRatio(first: Color, second: Color): number {
   return (Math.max(firstLuminance, secondLuminance) + 0.05) / (Math.min(firstLuminance, secondLuminance) + 0.05);
 }
 
+function mixSrgb(first: Color, second: Color, firstWeight: number): Color {
+  return {
+    red: first.red * firstWeight + second.red * (1 - firstWeight),
+    green: first.green * firstWeight + second.green * (1 - firstWeight),
+    blue: first.blue * firstWeight + second.blue * (1 - firstWeight),
+    alpha: 1,
+  };
+}
+
 function lastRuleForSelector(css: string, selector: string, property?: string): string {
   const normalizedTarget = selector.replace(/\s+/g, ' ').trim();
   const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)];
@@ -178,6 +187,65 @@ describe('theme text contrast tokens', () => {
         const ratio = contrastRatio(visibleFocusRing, surface);
         expect(ratio, `${theme.name}: focus ring on ${surfaceToken} is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
       }
+    });
+  }
+});
+
+describe('interactive state contrast combinations', () => {
+  for (const theme of themes) {
+    it(`${theme.name} keeps player menus, history actions, and drive provider tabs readable`, async () => {
+      const css = await readFile(new URL(theme.file, stylesDirectory), 'utf8');
+      const tokens = readRootTokens(css, theme.selector);
+      const baseSurface = parseColor(tokens['--surface-0']);
+      const raisedSurface = parseColor(tokens['--surface-2']);
+      const elevatedSurface = parseColor(tokens['--surface-3']);
+      const text = parseColor(tokens['--text']);
+      const textDim = parseColor(tokens['--text-dim']);
+      const textSuccess = parseColor(tokens['--text-success']);
+      const accent = parseColor(tokens['--accent']);
+      const onAccent = parseColor(tokens['--on-accent']);
+
+      expect(baseSurface, `${theme.name} needs an opaque base surface`).not.toBeNull();
+      expect(raisedSurface, `${theme.name} needs a raised surface`).not.toBeNull();
+      expect(elevatedSurface, `${theme.name} needs an elevated surface`).not.toBeNull();
+      expect(text, `${theme.name} needs primary text`).not.toBeNull();
+      expect(textDim, `${theme.name} needs secondary text`).not.toBeNull();
+      expect(textSuccess, `${theme.name} needs success text`).not.toBeNull();
+      expect(accent, `${theme.name} needs an accent`).not.toBeNull();
+      expect(onAccent, `${theme.name} needs an accent foreground`).not.toBeNull();
+
+      const raised = composite(raisedSurface!, baseSurface!);
+      const elevated = composite(elevatedSurface!, baseSurface!);
+      const primaryText = composite(text!, raised);
+      const menuHover = mixSrgb(accent!, elevated, 0.16);
+      expect(contrastRatio(primaryText, menuHover), `${theme.name}: playback-rate hover`).toBeGreaterThanOrEqual(4.5);
+
+      const accentSoft = parseColor(tokens['--accent-soft']);
+      const accentText = parseColor(tokens['--text-accent']);
+      expect(accentSoft, `${theme.name} needs an accent-soft surface`).not.toBeNull();
+      expect(accentText, `${theme.name} needs accent text`).not.toBeNull();
+      const detailBackground = composite(accentSoft!, raised);
+      expect(contrastRatio(composite(accentText!, detailBackground), detailBackground), `${theme.name}: history detail action`).toBeGreaterThanOrEqual(4.5);
+
+      const danger = parseColor(tokens['--color-danger'] ?? tokens['--danger']);
+      const dangerText = parseColor(tokens['--text-danger']);
+      expect(danger, `${theme.name} needs a danger color`).not.toBeNull();
+      expect(dangerText, `${theme.name} needs danger text`).not.toBeNull();
+      for (const [state, weight] of [['resting', 0.08], ['hover', 0.14]] as const) {
+        const removeBackground = mixSrgb(danger!, raised, weight);
+        expect(
+          contrastRatio(composite(dangerText!, removeBackground), removeBackground),
+          `${theme.name}: history remove ${state}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+
+      // Desktop tabs use the secondary-text token; other themes inherit primary text.
+      const providerText = theme.name.startsWith('Desktop') ? parseColor(tokens['--text-dim']) : text;
+      expect(providerText, `${theme.name} needs readable provider-tab text`).not.toBeNull();
+      expect(contrastRatio(composite(providerText!, raised), raised), `${theme.name}: unselected drive provider tab`).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(composite(textDim!, raised), raised), `${theme.name}: unbound drive provider icon`).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(composite(textSuccess!, raised), raised), `${theme.name}: bound drive provider icon`).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(onAccent!, accent!), `${theme.name}: selected drive provider tab`).toBeGreaterThanOrEqual(4.5);
     });
   }
 });
