@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V03",
+  "recordedAt": "2026-10-28",
+  "implementationCommit": "75c28a22b9fc128faf0779912e00be3e91ced3da",
+  "changes": [
+    {
+      "state": "Selected episode-range tab",
+      "change": "Use theme accent background with semantic on-accent foreground.",
+      "oldMeasuredContrast": {
+        "netflixDark": 2.34,
+        "desktopDark": 1.7
+      },
+      "newMinimumAcrossThemes": 4.66
+    },
+    {
+      "state": "MPV technical badge over video",
+      "change": "Use dark semi-opaque media-safe chip with white foreground.",
+      "oldWorstCaseOnWhiteFrame": 1,
+      "newWorstCaseOnWhiteFrame": 11.94
+    },
+    {
+      "state": "Volume unfilled rail",
+      "change": "Use shared border token for both WebKit and Firefox range rails.",
+      "newMinimumAcrossSixThemeSurfaces": 3.1
+    }
+  ],
+  "verification": {
+    "command": "pnpm exec vitest run tests/playerStyleArchitecture.spec.ts tests/themeContrast.spec.ts",
+    "result": "PASS: 47 tests, 0 failures (12 player style, 35 theme contrast)"
+  },
+  "limitations": [
+    "Static theme calculation and style-composition regression do not replace a screenshot of the rendered app.",
+    "Danmaku text and shadows depend on comment color plus arbitrary video frames; trail/ghosting and bright-frame readability still need live playback review.",
+    "Pause overlay blur, keyboard focus, full page/state coverage, and narrow/DPI layout matrix remain open."
+  ]
+}

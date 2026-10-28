@@ -1708,9 +1708,13 @@
         {
           "path": "architecture-audit/evidence/player-controls-followup-2026-10-28.json",
           "symbol": "pause and volume geometry regression"
+        },
+        {
+          "path": "architecture-audit/evidence/player-contrast-regressions-2026-10-28.json",
+          "symbol": "measured player overlay contrast regressions"
         }
       ],
-      "gap": "暂停控件改用共享 40x40 不模糊样式，移除桌面壳层重复规则；音量滑块采用 92x16 水平 range 旋转，并用轨道/圆点几何断言。全量测试、lint、typecheck、build 通过，但本轮没有最终截图或 Electron 实际渲染复核；全软件对比度、选中态、原生菜单、DPI/窄屏和其它页面仍需逐项检查。",
+      "gap": "本轮补了三个可测低对比组合：选集选中态跨 6 主题最低 4.66:1，MPV 技术标签压在纯白帧上 11.94:1，音量未填充轨在主题浮层表面最低 3.10:1；样式与主题定向测试 47/47 通过。仍未做当前构建的实际截图复核，弹幕动态可读性/拖影、暂停无模糊、键盘焦点及全页面×DPI×窄屏矩阵仍开放。",
       "direction": "按窗口×组件状态×主题/外壳×DPI 建立检查矩阵；复用已有 showcase，计算最终样式并用真实 Electron 窗口复核；业务功能清单作回归对照。",
       "acceptance": "主/详情/搜索/播放器/全局账号/设置/历史/直播/存储均有记录；100/125/150% DPI 与窄宽布局；沿用仓库普通文本4.5:1/功能边界3:1口径；键盘焦点、selected 语义、弹幕拖影和暂停无模糊逐项关闭。",
       "estimateEngineerHours": {
@@ -1732,9 +1736,9 @@
         "commit": "9d5a958",
         "verification": "播放器样式 9/9 测试和音量滑块 6 项静态几何检查通过；全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过），三套 typecheck、lint/架构边界和生产 build 通过。仍缺最终 Electron 截图复核。",
         "evidence": "architecture-audit/evidence/player-controls-followup-2026-10-28.json",
-        "latestImplementationCommit": "e785a42e14cfc44d43b1162f43f658f754fece04",
-        "latestVerification": "播放器样式 9/9 测试和音量滑块 6 项静态几何检查通过；全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过），三套 typecheck、lint/架构边界和生产 build 通过。仍缺最终 Electron 截图复核。",
-        "latestEvidence": "architecture-audit/evidence/player-controls-followup-2026-10-28.json"
+        "latestImplementationCommit": "75c28a22b9fc128faf0779912e00be3e91ced3da",
+        "latestVerification": "播放器选集/技术标签/音量轨对比度补丁通过定向 Vitest 47/47；新取值分别 4.66:1、11.94:1、3.10:1 最低。实际 Electron 截图、弹幕拖影和暂停无模糊仍待验收。",
+        "latestEvidence": "architecture-audit/evidence/player-contrast-regressions-2026-10-28.json"
       }
     },
     {
