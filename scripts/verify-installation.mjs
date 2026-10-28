@@ -99,6 +99,7 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false, s
     for (const path of sourceFiles) if (await digest(join(appDir, path)) !== await digest(join(installed, path))) throw new Error(`Installed file mismatch: ${path}`);
   };
   let running;
+  let lockHolder;
   let runningStartedAt;
   let runningStoppedAt;
   let installerRun;
@@ -165,6 +166,61 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false, s
       const oldPayloadAfterFailure = await readFile(join(installed, replacedPackageFile), 'utf8');
       if (oldPayloadAfterFailure !== 'old installed content') throw new Error(`Failed uninstall-first attempt removed or replaced the old installation (exit=${failedRun.status}, file=${replacedPackageFile}, content=${JSON.stringify(oldPayloadAfterFailure)}, stdout=${failedRun.stdout}, stderr=${failedRun.stderr}).`);
       await copyFile(savedUninstaller, join(installed, 'Uninstall.exe'));
+
+      const legacyLockedFile = join(installed, 'legacy-only.locked');
+      const legacyUninstallerMarker = join(installed, 'legacy-uninstaller-ran.marker');
+      const legacySetupScript = join(work, 'legacy-fixture.nsi');
+      const legacySetup = join(work, 'legacy-fixture.exe');
+      const lockScript = join(work, 'hold-legacy-file.ps1');
+      const lockReady = join(work, 'legacy-file-lock-ready.txt');
+      await writeFile(legacyLockedFile, 'legacy package file');
+      await writeFile(legacySetupScript, `Unicode true
+Name "Legacy installer acceptance fixture"
+OutFile "${legacySetup}"
+InstallDir "${installed}"
+RequestExecutionLevel user
+Section
+  SetOutPath "$INSTDIR"
+  WriteUninstaller "$INSTDIR\\Uninstall.exe"
+SectionEnd
+Section "Uninstall"
+  Delete "$INSTDIR\\${replacedPackageFile.replaceAll('/', '\\')}"
+  FileOpen $0 "$INSTDIR\\legacy-uninstaller-ran.marker" w
+  FileWrite $0 "called"
+  FileClose $0
+  SetErrorLevel 44
+  Abort
+SectionEnd
+`);
+      await compileNsis(legacySetupScript);
+      execute(legacySetup);
+      await writeFile(lockScript, '$s=[IO.File]::Open($args[0],"OpenOrCreate","ReadWrite","None");[IO.File]::WriteAllText($args[1],"ready");try{Start-Sleep -Seconds 120}finally{$s.Dispose()}');
+      const powershell = join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+      lockHolder = spawn(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', lockScript, legacyLockedFile, lockReady], { windowsHide: true, stdio: 'ignore' });
+      let lockHolderError;
+      lockHolder.once('error', error => { lockHolderError = error; });
+      const readyDeadline = Date.now() + 10_000;
+      while (!await exists(lockReady) && lockHolder.exitCode === null && Date.now() < readyDeadline) await delay(50);
+      if (lockHolderError) throw lockHolderError;
+      if (!await exists(lockReady)) throw new Error('Legacy-file lock fixture did not acquire its exclusive handle.');
+      const blockedRun = spawnSync(failedUninstallInstaller, ['/S'], { windowsHide: true, timeout: 120_000, encoding: 'utf8' });
+      if (blockedRun.error) throw blockedRun.error;
+      if (blockedRun.status === 0) throw new Error('Uninstall-first unexpectedly continued while an old-only package file was locked.');
+      if (await exists(legacyUninstallerMarker)) throw new Error('The old uninstaller ran despite the locked legacy-only file.');
+      await verifyUserData('Blocked legacy-file uninstall-first attempt');
+      if (await readFile(join(installed, 'personal-note.txt'), 'utf8') !== 'keep this file') throw new Error('Blocked legacy-file uninstall-first attempt changed user-owned files.');
+      const legacyLockPackageAfter = await readFile(join(installed, replacedPackageFile), 'utf8');
+      if (legacyLockPackageAfter !== 'old installed content') throw new Error(`Blocked legacy-file uninstall-first attempt changed the old package (exit=${blockedRun.status}, content=${JSON.stringify(legacyLockPackageAfter)}, stdout=${blockedRun.stdout}, stderr=${blockedRun.stderr}).`);
+      lockHolder.kill();
+      await new Promise(resolveExit => {
+        if (lockHolder.exitCode !== null) return resolveExit();
+        const timeout = setTimeout(resolveExit, 5_000);
+        lockHolder.once('exit', () => { clearTimeout(timeout); resolveExit(); });
+      });
+      lockHolder = undefined;
+      if (await exists(legacyUninstallerMarker)) throw new Error('The old uninstaller ran while the legacy file was locked.');
+      await copyFile(savedUninstaller, join(installed, 'Uninstall.exe'));
+      await rm(legacyLockedFile, { force: true });
     }
     await writeFile(uninstallFirstScript, '\uFEFF' + await buildInstallerScript({ ...installerOptions, outFile: uninstallFirstInstaller, acceptanceUninstallFirst: true }));
     await compileNsis(uninstallFirstScript);
@@ -221,6 +277,7 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false, s
       runningProcessStopDurationMs: runningStartedAt && runningStoppedAt ? runningStoppedAt - runningStartedAt : null,
       uninstallFirst: 'PASS',
       failedUninstallerRollback: simulateExistingUninstallerFailure ? 'PASS' : 'NOT_RUN',
+      legacyOnlyFileLockRejected: simulateExistingUninstallerFailure ? 'PASS' : 'NOT_RUN',
       uninstall: 'PASS',
       dataPreserved: true,
       userDataFilesPreserved: userDataFiles.size,
@@ -238,6 +295,18 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false, s
     }
     try {
       if (running && running.exitCode === null) running.kill();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    try {
+      if (lockHolder && lockHolder.exitCode === null) {
+        lockHolder.kill();
+        await new Promise(resolveExit => {
+          if (lockHolder.exitCode !== null) return resolveExit();
+          const timeout = setTimeout(resolveExit, 5_000);
+          lockHolder.once('exit', () => { clearTimeout(timeout); resolveExit(); });
+        });
+      }
     } catch (error) {
       cleanupErrors.push(error);
     }

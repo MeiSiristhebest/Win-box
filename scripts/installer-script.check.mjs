@@ -59,8 +59,16 @@ test('running app offers update-in-place or data-preserving uninstall and reinst
     assert.ok(script.includes('Rename "$INSTDIR\\data" "$R1\\data"'));
     assert.ok(script.includes('Rename "$R1\\data" "$INSTDIR\\data"'));
     assert.ok(script.includes('WindowsPowerShell\\v1.0\\powershell.exe'));
+    const modePageStart = script.indexOf('Function InstallModePage\n');
+    const modePageEnd = script.indexOf('\nFunctionEnd', modePageStart);
+    const modeLeaveStart = script.indexOf('Function InstallModeLeave\n');
+    const modeLeaveEnd = script.indexOf('\nFunctionEnd', modeLeaveStart);
+    assert.ok(modePageStart >= 0 && modePageEnd > modePageStart && modeLeaveEnd > modeLeaveStart);
+    assert.ok(!script.slice(modePageStart, modePageEnd).includes('CloseRunningWinBox'), 'opening the install-mode page must not stop the app');
+    assert.ok(!script.slice(modeLeaveStart, modeLeaveEnd).includes('UninstallExisting'), 'leaving the install-mode page must not uninstall before the install section');
+    assert.ok(!script.slice(modeLeaveStart, modeLeaveEnd).includes('File /r '), 'canceling before the install section must not extract package files');
     const encoded = [...script.matchAll(/-EncodedCommand ([A-Za-z0-9+/=]+)/g)].map(match => match[1]);
-    assert.equal(encoded.length, 9, 'expected install-page, file-lock, installer and uninstaller process commands');
+    assert.equal(encoded.length, 10, 'expected install-page, file-lock, installer, uninstaller and legacy-file preflight commands');
     assert.ok(encoded.every(command => command.length < 900), `PowerShell commands must fit NSIS plugin command length limits: ${encoded.map(command => command.length).join(', ')}`);
     const [installLockForce, uninstallerLockForce, pageCheck, check, graceful, force] = encoded.slice(0, 6).map(command => Buffer.from(command, 'base64').toString('utf16le'));
     assert.ok(installLockForce.includes('kill -Id $x.Id -Force'));
@@ -74,6 +82,10 @@ test('running app offers update-in-place or data-preserving uninstall and reinst
     assert.ok(graceful.includes('WaitForExit(10000)'));
     assert.ok(force.includes('kill -Id $x.Id -Force'));
     assert.ok(force.includes('$_.ExecutablePath -eq $env:WINBOX_INSTALL_EXE'));
+    const legacyFileCheck = Buffer.from(encoded[9], 'base64').toString('utf16le');
+    assert.ok(legacyFileCheck.includes('$env:WINBOX_INSTALL_DIR'));
+    assert.ok(legacyFileCheck.includes('gci -LiteralPath'));
+    assert.ok(legacyFileCheck.includes('FullName -notlike "$r\\data\\*"'), 'exclude user data from legacy package-file lock checks');
   } finally { await rm(path, { recursive: true, force: true }); }
 });
 
@@ -108,12 +120,15 @@ test('uninstall-first stops the app and preflights files before invoking the old
     const check = script.slice(start, end);
     const closeApp = check.indexOf('Call CloseRunningWinBox');
     const fileOpens = [...check.matchAll(/FileOpen \$0 "[^"]+" a/g)].map(match => match.index);
+    const legacyPreflight = check.indexOf('Call CheckLegacyInstallFiles');
     const uninstallOld = check.indexOf('Call UninstallExisting');
 
     assert.ok(closeApp >= 0 && closeApp < fileOpens[0], 'stop the same-directory app before checking files');
     assert.ok(fileOpens.length > 1, 'check the app executable and every existing packaged file');
+    assert.ok(legacyPreflight > Math.max(...fileOpens) && legacyPreflight < uninstallOld, 'check legacy-only install files before invoking the old uninstaller');
     assert.ok(uninstallOld > Math.max(...fileOpens), 'do not invoke an older uninstaller until the new installer has checked every file for locks');
     assert.ok(check.includes('StrCmp $R3 "1"'), 'run uninstall-first only when the user selected that mode');
+    assert.ok(script.includes('无法确认旧版程序文件都可安全卸载'), 'fail closed when a legacy file cannot be inspected');
   } finally { await rm(path, { recursive: true, force: true }); }
 });
 
@@ -183,11 +198,12 @@ test('real NSIS overwrite stops a running same-directory app process first', { s
   } finally { await rm(path, { recursive: true, force: true }); }
 });
 
-test('real NSIS uninstall-first failure preserves the old install and every user-data domain', { skip: process.platform !== 'win32', timeout: 120_000 }, async t => {
+test('real NSIS uninstall-first failure and locked legacy files preserve the old install and user data', { skip: process.platform !== 'win32', timeout: 120_000 }, async t => {
   const path = await fixture();
   try {
     const result = await verifyInstallation(path, { simulateExistingUninstallerFailure: true });
     assert.equal(result.failedUninstallerRollback, 'PASS');
+    assert.equal(result.legacyOnlyFileLockRejected, 'PASS');
     assert.equal(result.userDataFilesPreserved, 6);
     assert.equal(result.dataPreserved, true);
     assert.equal(result.uninstallFirst, 'PASS');

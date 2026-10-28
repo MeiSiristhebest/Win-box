@@ -85,6 +85,8 @@ ${runPowerShell('force')}
   check_remaining_files:
 ${existingFileChecks}
   ${prefix ? '' : `StrCmp $R3 "1" 0 done
+  Call CheckLegacyInstallFiles
+  StrCmp $R4 "0" 0 done
   Call UninstallExisting
   StrCmp $R4 "0" done
   Return
@@ -100,6 +102,7 @@ const closeAppCommands = {
   graceful: psCommand(`$p=@(${targetProcess});$w=@($p|?{$_.MainWindowHandle.ToInt64()});if($w.Count -ne $p.Count){exit 2};foreach($x in $w){if(!$x.CloseMainWindow() -or !$x.WaitForExit(10000)){exit 2}};exit 0`),
   force: psCommand(`$p=@(${targetProcess});if(!$p.Count){exit 3};foreach($x in $p){kill -Id $x.Id -Force -EA 0;try{Wait-Process -Id $x.Id -Timeout 2 -EA Stop}catch{exit 4}};exit 0`),
 };
+const legacyFilePreflight = psCommand('$r=$env:WINBOX_INSTALL_DIR;$b=$false;try{gci -LiteralPath $r -Force -File -Recurse -EA Stop|?{$_.FullName -notlike "$r\\data\\*"}|%{try{$h=[IO.File]::Open($_.FullName,"Open","ReadWrite","None");$h.Dispose()}catch{$b=$true}}}catch{$b=$true};if($b){exit 1};exit 0');
 
 function runPowerShell(mode) {
   return `  System::Call 'kernel32::SetEnvironmentVariableW(w "WINBOX_CLOSE_MODE", w "${mode}") i .r0'
@@ -197,6 +200,20 @@ Function InstallModeLeave
   Return
   install_mode_direct:
   StrCpy $R3 "0"
+FunctionEnd`;
+}
+
+function legacyInstallFilesPreflight() {
+  return `Function CheckLegacyInstallFiles
+  System::Call 'kernel32::SetEnvironmentVariableW(w "WINBOX_INSTALL_DIR", w "$INSTDIR") i .r0'
+  nsExec::Exec '"$SYSDIR\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${legacyFilePreflight}'
+  Pop $2
+  StrCmp $2 "0" done
+  IfSilent silent
+  MessageBox MB_OK|MB_ICONSTOP "无法确认旧版程序文件都可安全卸载（文件可能被占用或权限不足）。不会调用旧版卸载器；旧版文件和 data 数据未更改，安装已取消。关闭占用程序或检查目录权限后再运行安装器。"
+  silent:
+  StrCpy $R4 "1"
+  done:
 FunctionEnd`;
 }
 
@@ -340,11 +357,12 @@ ${closeRunningApp('', 'install_close')}
 ${closeRunningApp('un.', 'uninstall_close')}
 ${uninstallExisting('', 'install_uninstall')}
 ${uninstallExisting('un.', 'uninstaller_uninstall')}
+${legacyInstallFilesPreflight()}
 Section "Win-Box"
   StrCpy $R4 "0"
   Call CheckInstallFiles
   StrCmp $R4 "0" 0 install_section_abort
-  ${acceptanceUninstallFirst ? 'Call UninstallExisting\n  StrCmp $R4 "0" 0 install_section_abort' : ''}
+  ${acceptanceUninstallFirst ? 'Call CheckLegacyInstallFiles\n  StrCmp $R4 "0" 0 install_section_abort\n  Call UninstallExisting\n  StrCmp $R4 "0" 0 install_section_abort' : ''}
   SetOutPath "$INSTDIR"
   ClearErrors
   File /r "${quote(appDir)}\\*"
