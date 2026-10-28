@@ -1648,7 +1648,7 @@
           "symbol": "install_dir_access ACL diagnosis and isolated packaged playback"
         }
       ],
-      "gap": "Fresh local packaged-candidate playback recheck passes HTML5 and managed MPV decode, time progress, seek, pause/resume; pause feedback is 28x28 with a 14x14 icon, centered, sharp and unblurred. PotPlayer decode/time/pause, live representative sources, and desktop-visible MPV child-window pixels remain unverified.",
+      "gap": "Fresh local packaged-candidate playback recheck passes HTML5 and managed MPV decode, time progress, seek, pause/resume; pause feedback is 28x28 with a 14x14 icon, centered, sharp and unblurred. Two PotPlayer runs confirm configured executable launch and complete HTTP 200 fetch of the local WebM fixture; PotPlayer decode/time/pause remain unverified. Live representative sources and desktop-visible MPV child-window pixels remain unverified.",
       "direction": "先可控夹具验证 MP4/HLS/TS、401/403/HTML 假媒体、Range/跳转；再按获准的代表来源测完整播放。单独验证已配置 PotPlayer 直接启动和失败反馈；超分按内核能力如实展示。",
       "acceptance": "保存至少 HTML5、托管 MPV、PotPlayer 的实际启动/时间推进/暂停续播证据；源失效与播放器回归分开；账号切子仓可复用；明确托管 shader 不自动影响任意外部播放器。",
       "estimateEngineerHours": {
@@ -1672,12 +1672,12 @@
           "Actual desktop-visible MPV native frame"
         ],
         "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-        "latestVerification": "Prior local HTML5/managed-MPV fixture evidence remains PASS with scope limits. In the 2026-10-29 follow-up, a scoped ACL grant on a disposable candidate copy processed 616 files and opened one Win-Box window. A Windows Firewall permission dialog is now waiting for the user; playback, PotPlayer/MPV pixels, and live sources have not yet been tested.",
-        "latestEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json"
+        "latestVerification": "Latest packaged candidate passes HTML5/managed-MPV fixture decode and controls. Two PotPlayer runs confirmed configured executable launch and full local fixture fetch, but decoder output/time progression/pause-resume were not verified. Firewall prompt was handled by the user. Live sources and desktop-visible MPV frame remain unconfirmed.",
+        "latestEvidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json"
       },
       "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-      "latestVerification": "Latest packaged candidate passed ten local HTML5/MPV playback cycles. PotPlayer launch and full fixture fetch passed, decode/time/pause not verified; desktop-visible MPV frame and live sources remain unconfirmed.",
-      "latestEvidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json"
+      "latestVerification": "Latest packaged candidate passes HTML5/managed-MPV fixture decode and controls. Two PotPlayer runs confirmed configured executable launch and full local fixture fetch, but decoder output/time progression/pause-resume were not verified. Firewall prompt was handled by the user. Live sources and desktop-visible MPV frame remain unconfirmed.",
+      "latestEvidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json"
     },
     {
       "id": "V03",
@@ -2178,7 +2178,7 @@
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
   "latestProgress": {
-    "recordedAt": "2026-10-28T17:45:52.502Z",
+    "recordedAt": "2026-10-28T17:58:16Z",
     "requiredTaskCount": 36,
     "completedTaskIds": [
       "B01",
@@ -2250,7 +2250,8 @@
       "863c41f6",
       "83d438e2",
       "9dcaf166",
-      "c61e741a"
+      "c61e741a",
+      "bb12488d"
     ],
     "localInstallerPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
     "installerSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
@@ -2269,7 +2270,7 @@
     "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
     "applicationBuildAt": "2026-10-28T13:50:08.827Z",
-    "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-packaged-recheck-2026-10-29.json",
+    "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json",
     "requiredCompletedCount": 31,
     "optionalOpenTaskIds": [
       "O01",
@@ -2288,7 +2289,7 @@
     "latestPerformanceEvidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
     "latestNativeUiEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
     "temporaryAcceptanceArtifactsCleaned": true,
-    "temporaryAcceptanceCleanup": "PASS for this run: the isolated candidate and transient playback artifacts were removed after evidence was preserved; pre-existing unrelated .tmp entries were left untouched.",
+    "temporaryAcceptanceCleanup": "PASS for this PotPlayer follow-up: disposable candidate and both run artifact directories were removed after evidence was preserved; pre-existing .tmp entries were not touched.",
     "latestInstallerEvidence": "architecture-audit/evidence/installer-regression-2026-10-29.json"
   }
 }

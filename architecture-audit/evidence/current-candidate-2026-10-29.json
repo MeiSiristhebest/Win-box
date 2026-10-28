@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T17:45:52.502Z",
+  "recordedAt": "2026-10-28T17:58:16Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
@@ -34,7 +34,7 @@
     "V02": {
       "status": "PARTIAL",
       "evidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
-      "priorLocalFixture": "HTML5 and managed MPV decode/progress/pause-resume were recorded PASS; PotPlayer decode/time/pause and desktop-visible MPV pixels remain unverified.",
+      "priorLocalFixture": "HTML5 and managed MPV decode/progress/pause-resume pass. Two PotPlayer launch/process/full-fixture-fetch checks pass; PotPlayer decode/time/pause and desktop-visible MPV pixels remain unverified.",
       "latestNativeLaunch": "PASS_TO_VISIBLE_WINDOW: isolated-copy AppContainer ACL grant processed 616 files; user handled the firewall prompt; window closed normally after inspection. Fresh packaged local HTML5/managed MPV fixture playback passed; see playback recheck evidence.",
       "localPlaybackRecheck": {
         "status": "PASS",
@@ -45,9 +45,26 @@
           "compact centered sharp pause feedback"
         ],
         "limitations": [
-          "PotPlayer decode/progress/pause-resume not tested",
+          "PotPlayer decode/progress/pause-resume not verified; see externalPlayerRecheck",
           "live third-party sources not tested",
           "MPV native child-window pixels not visible in Playwright capture"
+        ]
+      },
+      "externalPlayerRecheck": {
+        "status": "PARTIAL",
+        "evidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json",
+        "checks": [
+          "Two packaged-candidate runs selected configured D:/PotPlayer/PotPlayerMini64.exe",
+          "PotPlayer process confirmed in both runs",
+          "Full local video/webm fixture fetched with HTTP 200 in both runs",
+          "newly started PotPlayer PIDs closed by harness"
+        ],
+        "notVerified": [
+          "PotPlayer decode/video-frame output",
+          "PotPlayer time progression",
+          "PotPlayer pause/resume",
+          "Live third-party source playback",
+          "PotPlayer desktop screenshot"
         ]
       }
     },
@@ -141,9 +158,9 @@
       "src/renderer/components/SourcePicker.tsx"
     ],
     "temporaryAcceptanceArtifactsCleaned": true,
-    "temporaryAcceptanceCleanup": "PASS for the current run: isolated candidate and transient playback artifacts removed; report/screenshots retained under architecture-audit/evidence. Other pre-existing .tmp items were not classified or touched."
+    "temporaryAcceptanceCleanup": "PASS for this follow-up: disposable candidate and both PotPlayer run artifact directories removed; pre-existing .tmp entries were not modified."
   },
   "releasePublished": false,
-  "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-packaged-recheck-2026-10-29.json",
+  "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json",
   "latestInstallerEvidence": "architecture-audit/evidence/installer-regression-2026-10-29.json"
 }
