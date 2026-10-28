@@ -1672,7 +1672,7 @@
           "Actual desktop-visible MPV native frame"
         ],
         "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-        "latestVerification": "Prior local HTML5/managed-MPV fixture evidence remains PASS with scope limits. The 2026-10-29 native UI follow-up could not launch the isolated candidate: AppContainer RX ACL grant was denied even on a disposable copy; no UI window, playback fixture, PotPlayer, MPV pixels, or live source was tested.",
+    "latestVerification": "Prior local HTML5/managed-MPV fixture evidence remains PASS with scope limits. In the 2026-10-29 follow-up, a scoped ACL grant on a disposable candidate copy processed 616 files and opened one Win-Box window. A Windows Firewall permission dialog is now waiting for the user; playback, PotPlayer/MPV pixels, and live sources have not yet been tested.",
         "latestEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json"
       },
       "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
@@ -1754,7 +1754,7 @@
         "verification": "播放器样式 9/9 测试和音量滑块 6 项静态几何检查通过；全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过），三套 typecheck、lint/架构边界和生产 build 通过。仍缺最终 Electron 截图复核。",
         "evidence": "architecture-audit/evidence/player-controls-followup-2026-10-28.json",
         "latestImplementationCommit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
-        "latestVerification": "Theme and player style regression tests: 59/59 pass; Oxlint passes. The latest native UI probe was blocked before launch by denied AppContainer ACL changes on a disposable copy; full-window route/theme/DPI matrix, actual-player pixels, and danmaku trail capture remain unverified.",
+    "latestVerification": "Theme and player style regression tests: 59/59 pass; Oxlint passes. The isolated Win-Box window now opens after the scoped ACL grant, but the firewall permission dialog blocks visual validation; full-window route/theme/DPI matrix, actual-player pixels, and danmaku trail capture remain unverified.",
         "latestEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json"
       },
       "latestImplementationCommit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
@@ -2178,7 +2178,7 @@
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
   "latestProgress": {
-    "recordedAt": "2026-10-28T17:13:16Z",
+    "recordedAt": "2026-10-28T17:20:26Z",
     "requiredTaskCount": 36,
     "completedTaskIds": [
       "B01",
@@ -2247,7 +2247,8 @@
       "617de7b4",
       "4a5ac726",
       "15fb29f2",
-      "863c41f6"
+      "863c41f6",
+      "83d438e2"
     ],
     "localInstallerPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
     "installerSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
@@ -2283,6 +2284,8 @@
     "mpvFrameDiagnostic": "Strong inference: Chromium screenshot omits native MPV child HWND; desktop pixels not confirmed.",
     "latestPythonEvidence": "architecture-audit/evidence/python-runtime-acceptance-2026-10-28.json",
     "latestPerformanceEvidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
-    "latestNativeUiEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json"
+    "latestNativeUiEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
+    "temporaryAcceptanceArtifactsCleaned": false,
+    "temporaryAcceptanceCleanup": "Pending firewall prompt handling and isolated Win-Box process exit."
   }
 }

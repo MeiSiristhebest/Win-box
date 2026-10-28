@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T17:00:49Z",
+  "recordedAt": "2026-10-28T17:20:26Z",
   "candidate": {
     "version": "1.27.1",
     "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
@@ -22,17 +22,29 @@
   "isolatedProbe": {
     "temporaryCopyBaseline": { "fileCount": 451, "bytes": 533313618 },
     "aclOperation": "icacls <temporary-copy> /grant *S-1-15-2-1:(OI)(CI)(RX) /T /C",
-    "aclResult": "BLOCKED_ACCESS_DENIED",
-    "aclOutput": "0 files processed, 1 failed",
-    "elevationRequested": false,
-    "appLaunchAttempted": false,
-    "windowsFound": [],
-    "temporaryCopyCleanup": "PASS"
+    "aclResult": "PASS_ON_ISOLATED_COPY",
+    "aclOutput": "616 files processed, 0 files failed",
+    "sandboxEscalationApproved": true,
+    "aclScope": "Disposable .tmp candidate copy only; release directory and user install were not changed.",
+    "appLaunchAttempted": true,
+    "appPid": 38592,
+    "windowsFound": [
+      { "app": "process:D:\\developWorkPlaces\\win-box\\.tmp\\v02-candidate-20261029-0115\\Win-Box.exe", "id": 2886704, "title": "Win-Box" }
+    ],
+    "isolatedProfile": "D:/developWorkPlaces/win-box/.tmp/v02-candidate-20261029-0115/isolated-profile",
+    "startupStatus": "WINDOW_OPEN_FIREWALL_PROMPT_BLOCKED_PLAYBACK_UI",
+    "temporaryCopyCleanup": "PENDING_USER_ACTION; candidate process is still open"
+  },
+  "permissionPrompt": {
+    "status": "PENDING_USER_HANDLING",
+    "kind": "Windows Firewall network access permission",
+    "choices": ["Allow public and private network access", "Cancel"],
+    "agentAction": "NOT_TAKEN; system security permission dialogs are not automated"
   },
   "playbackAcceptance": {
-    "status": "NOT_VERIFIED_THIS_PROBE",
-    "note": "No Win-Box, MPV, or PotPlayer window was available. No fixture playback, desktop pixel, time progression, pause/resume, route/theme/DPI matrix, or live source test was run. Prior local HTML5 and managed MPV fixture results remain in the linked candidate playback evidence."
+    "status": "NOT_RUN_PERMISSION_DIALOG_OPEN",
+    "note": "The isolated candidate reached one visible Win-Box window. A Windows Firewall network access permission dialog covers the app, so no fixture playback, desktop pixel, time progression, pause/resume, route/theme/DPI matrix, or live source test has yet been run. Prior local HTML5 and managed MPV fixture results remain in the linked candidate playback evidence."
   },
   "classification": "PARTIAL",
-  "blocker": "The current execution identity cannot add the required AppContainer read/execute ACL even on the isolated copy. No privilege escalation or security prompt was attempted."
+  "blocker": "The Windows Firewall permission dialog must be handled by the user before desktop playback validation can continue."
 }

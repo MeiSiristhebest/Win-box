@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T17:13:16Z",
+  "recordedAt": "2026-10-28T17:20:26Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
@@ -27,7 +27,7 @@
       "status": "PARTIAL",
       "evidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
       "priorLocalFixture": "HTML5 and managed MPV decode/progress/pause-resume were recorded PASS; PotPlayer decode/time/pause and desktop-visible MPV pixels remain unverified.",
-      "latestNativeLaunch": "NOT_RUN: isolated-copy AppContainer ACL grant was denied; no app window was launched."
+      "latestNativeLaunch": "PASS_TO_VISIBLE_WINDOW: isolated-copy AppContainer ACL grant processed 616 files; one Win-Box window opened. A Windows Firewall permission dialog currently blocks playback interaction; user handling is pending."
     },
     "V03": {
       "status": "PARTIAL",
@@ -70,7 +70,8 @@
   "workspace": {
     "localCommitsUnpushed": true,
     "preservedUncommittedUserChanges": ["libnc.so", "src/renderer/components/SourcePicker.tsx"],
-    "temporaryAcceptanceArtifactsCleaned": true
+    "temporaryAcceptanceArtifactsCleaned": false,
+    "temporaryAcceptanceCleanup": "Pending the user handling the firewall dialog and the isolated Win-Box process closing."
   },
   "releasePublished": false
 }
