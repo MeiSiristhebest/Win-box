@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "taskId": "V02",
   "recordedAt": "2026-10-28T14:43:59.024Z",
-  "status": "PASS_WITH_LIMITS",
+  "status": "PARTIAL_NOT_COMPLETED",
   "candidate": {
     "version": "1.27.1",
     "sourceCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
