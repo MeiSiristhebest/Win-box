@@ -1655,8 +1655,8 @@
       "id": "V03",
       "visualSpotCheckEvidence": {
         "path": "architecture-audit/evidence/ui-spot-check-2026-10-28.json",
-        "result": "Packaged window spot-checked at 100% in dark discovery and light credentials. Provider selection was legible after selection; the app was restored to dark discovery at 100%.",
-        "remaining": "Full per-component contrast ratios, pause blur, danmaku trails, history/live/storage, keyboard focus, narrow widths, and 175%/200% remain open."
+        "result": "Packaged window spot-checked at 100% in dark discovery and light credentials plus the appearance settings at 175%/200%. Theme/scale selected states and text were legible; settings remained reachable through scrolling. The app was restored to dark Discover at 100%.",
+        "remaining": "Full per-component contrast ratios, pause blur, danmaku trails, player controls, history/live/storage, keyboard focus, and narrow widths remain open."
       },
       "kind": "validation",
       "priority": "P1",

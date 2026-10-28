@@ -19,14 +19,14 @@
     {
       "area": "appearance-settings",
       "theme": "dark",
-      "scaleSamples": ["100%", "125%", "150%"],
-      "result": "Theme and scale controls remained distinguishable; the app was restored to dark theme at 100%."
+      "scaleSamples": ["100%", "125%", "150%", "175%", "200%"],
+      "result": "Theme and scale controls remained distinguishable with clear selected states. At 175%/200%, navigation and settings use scrollable panes; settings controls were reachable after scrolling. The app was restored to dark theme at 100% and Discover."
     }
   ],
   "openGaps": [
     "No computed contrast-ratio sweep across every rendered component.",
     "Pause overlay blur, danmaku trails, player controls, history, live, storage, and keyboard focus were not re-signed in this spot check.",
-    "No narrow-window or 175%/200% layout pass was recorded here."
+    "No narrow-window pass or full page-by-page layout pass was performed. The 175%/200% check was limited to the appearance settings page and shell navigation."
   ],
   "scope": "This is a targeted visual spot check, not completion of V03's full viewport-by-state matrix."
 }
