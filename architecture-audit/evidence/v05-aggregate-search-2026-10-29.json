@@ -1,0 +1,523 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T17:00:49Z",
+  "status": "PASS",
+  "benchmarkResult": "PASS_SYNTHETIC_ONLY",
+  "v05Completion": "PARTIAL",
+  "completionNote": "Ten repeated 1,000-source production coordinator/CMS loopback cycles and 1,001-source timeout, cancellation, partial-success, and recovery scenarios passed. V05 remains partial: no real third-party sources, user profiles, spider/JAR/Python runtime, UI/playback, or configured performance budgets were tested.",
+  "scope": {
+    "implementation": "AggregateSearchCoordinator + SearchSourceReadiness + SourceSearchHealth + SourceGateway + CmsSourceAdapter + CmsSource",
+    "sourcesPerCycle": 1000,
+    "cyclesRequested": 10,
+    "cyclesCompleted": 10,
+    "totalLocalHttpRequests": 12050,
+    "baselineLocalHttpRequests": 10000,
+    "resilienceLocalHttpRequests": 2050,
+    "profileCount": 3,
+    "concurrencyLimit": 48,
+    "fixture": "synthetic CMS JSON served by an ephemeral 127.0.0.1 loopback HTTP server; baseline uses deterministic 4-8 ms success responses; resilience scenarios add fixture-only HTTP 503, a declared 5-second source timeout, delayed in-flight requests canceled after first result, and a subsequent recovery search",
+    "externalSources": "NOT_ACCESSED",
+    "userConfiguration": "NOT_ACCESSED",
+    "searchWorkload": "synthetic only; this exercises production aggregate scheduling, cross-profile worker budgeting, gateway routing, CMS request parsing, and result aggregation",
+    "resilienceSourceCount": 1001,
+    "firstResultMetric": "Time to first successful source progress event with at least one item; measured independently per resilience scenario.",
+    "cancellationMetric": "Loopback HTTP responses closed because the caller aborted after first result; active response count sampled until zero.",
+    "productionDefaultsChanged": false
+  },
+  "performance": {
+    "cycleLatencyMs": {
+      "p50": 465.4,
+      "p95": 670.1,
+      "peak": 670.1
+    },
+    "requestLatencyMs": {
+      "p50": 20.3,
+      "p95": 36.4,
+      "peak": 109
+    },
+    "dispatchOffsetFromCycleStartMs": {
+      "p50": 242,
+      "p95": 530,
+      "peak": 640.5
+    },
+    "throughputSourcesPerSecond": {
+      "p50": 2120.6,
+      "p95": 3012.7,
+      "peak": 3012.7
+    },
+    "maxConcurrentLoopbackRequests": {
+      "p50": 48,
+      "p95": 48,
+      "peak": 48
+    },
+    "cycleCpuPercent": {
+      "p50": 112.6,
+      "p95": 149.8,
+      "peak": 149.8
+    },
+    "sampledProcessMemoryMiB": {
+      "rss": {
+        "p50": 223.2,
+        "p95": 250.3,
+        "peak": 258.7
+      },
+      "heapUsed": {
+        "p50": 75.9,
+        "p95": 120,
+        "peak": 135.9
+      },
+      "external": {
+        "p50": 4.7,
+        "p95": 5.8,
+        "peak": 5.9
+      },
+      "arrayBuffers": {
+        "p50": 0.8,
+        "p95": 1.8,
+        "peak": 2
+      }
+    },
+    "resilienceScenarios": [
+      {
+        "name": "mixed-success-timeout",
+        "status": "PASS",
+        "sourceCount": 1001,
+        "receivedRequests": 1001,
+        "hitSources": 988,
+        "failedSources": 13,
+        "firstResultMs": 36.7,
+        "totalDurationMs": 5549.4,
+        "peakConcurrentRequests": 48,
+        "cancelledRequests": 0,
+        "timedOutRequests": 1,
+        "explicitFixtureFailures": 12,
+        "activeRequestsAfterSettle": 0
+      },
+      {
+        "name": "cancel-after-first-result",
+        "status": "PASS",
+        "sourceCount": 1001,
+        "receivedRequests": 48,
+        "hitSources": 1,
+        "failedSources": null,
+        "firstResultMs": 27.1,
+        "totalDurationMs": 33.3,
+        "peakConcurrentRequests": 48,
+        "cancelledRequests": 45,
+        "timedOutRequests": 0,
+        "explicitFixtureFailures": 0,
+        "activeRequestsAfterSettle": 0,
+        "cancellationOutcome": "AbortError: synthetic cancellation after first result"
+      },
+      {
+        "name": "recovery-after-cancel",
+        "status": "PASS",
+        "sourceCount": 1001,
+        "receivedRequests": 1001,
+        "hitSources": 1001,
+        "failedSources": 0,
+        "firstResultMs": 13.2,
+        "totalDurationMs": 377.5,
+        "peakConcurrentRequests": 48,
+        "cancelledRequests": 0,
+        "timedOutRequests": 0,
+        "explicitFixtureFailures": 0,
+        "activeRequestsAfterSettle": 0
+      }
+    ]
+  },
+  "sampler": {
+    "intervalMs": 250,
+    "sampleCount": 25,
+    "durationMs": 11582,
+    "budgetStatus": "NOT_CONFIGURED",
+    "budgetChecks": {
+      "workingSetMB": {
+        "status": "NOT_CONFIGURED",
+        "limit": null,
+        "actual": 392.8
+      },
+      "privateBytesMB": {
+        "status": "NOT_CONFIGURED",
+        "limit": null,
+        "actual": 548.2
+      },
+      "cpuP95Percent": {
+        "status": "NOT_CONFIGURED",
+        "limit": null,
+        "actual": 139
+      }
+    },
+    "errors": [],
+    "processes": {
+      "sampleCount": 25,
+      "processTree": {
+        "workingSetMiB": {
+          "p50": 375.4,
+          "p95": 391.8,
+          "peak": 392.8
+        },
+        "privateBytesMiB": {
+          "p50": 514.4,
+          "p95": 547.2,
+          "peak": 548.2
+        },
+        "cpuPercent": {
+          "p50": 55.5,
+          "p95": 139,
+          "peak": 155.3
+        },
+        "processCountPeak": 2
+      },
+      "byExecutable": [
+        {
+          "name": "node.exe",
+          "processCountPeak": 2,
+          "workingSetMiB": {
+            "p50": 375.4,
+            "p95": 391.8,
+            "peak": 392.8
+          },
+          "privateBytesMiB": {
+            "p50": 514.4,
+            "p95": 547.2,
+            "peak": 548.2
+          },
+          "cpuPercent": {
+            "p50": 59.6,
+            "p95": 139,
+            "peak": 155.3
+          }
+        }
+      ]
+    }
+  },
+  "cycles": [
+    {
+      "index": 1,
+      "status": "PASS",
+      "durationMs": 604.9,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 1653.2,
+      "requestLatencyMs": {
+        "p50": 23,
+        "p95": 67.7,
+        "peak": 109
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 377.3,
+        "p95": 561.8,
+        "peak": 587.6
+      },
+      "cpuPercent": 149.8,
+      "memorySamples": 12
+    },
+    {
+      "index": 2,
+      "status": "PASS",
+      "durationMs": 568.2,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 1760,
+      "requestLatencyMs": {
+        "p50": 26.5,
+        "p95": 37.8,
+        "peak": 43
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 312,
+        "p95": 529.5,
+        "peak": 552.5
+      },
+      "cpuPercent": 93.6,
+      "memorySamples": 12
+    },
+    {
+      "index": 3,
+      "status": "PASS",
+      "durationMs": 670.1,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 1492.3,
+      "requestLatencyMs": {
+        "p50": 30.8,
+        "p95": 41.8,
+        "peak": 53
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 329.8,
+        "p95": 607.9,
+        "peak": 640.5
+      },
+      "cpuPercent": 93.1,
+      "memorySamples": 13
+    },
+    {
+      "index": 4,
+      "status": "PASS",
+      "durationMs": 388.7,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 2572.4,
+      "requestLatencyMs": {
+        "p50": 17.8,
+        "p95": 25.1,
+        "peak": 34.2
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 185.4,
+        "p95": 355.3,
+        "peak": 372.6
+      },
+      "cpuPercent": 116.5,
+      "memorySamples": 9
+    },
+    {
+      "index": 5,
+      "status": "PASS",
+      "durationMs": 358.4,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 2790.1,
+      "requestLatencyMs": {
+        "p50": 16,
+        "p95": 24.1,
+        "peak": 28.8
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 173.8,
+        "p95": 329.2,
+        "peak": 346.5
+      },
+      "cpuPercent": 113.3,
+      "memorySamples": 9
+    },
+    {
+      "index": 6,
+      "status": "PASS",
+      "durationMs": 471.6,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 2120.6,
+      "requestLatencyMs": {
+        "p50": 21.5,
+        "p95": 36.4,
+        "peak": 41.4
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 300.6,
+        "p95": 442.4,
+        "peak": 455.1
+      },
+      "cpuPercent": 112.6,
+      "memorySamples": 10
+    },
+    {
+      "index": 7,
+      "status": "PASS",
+      "durationMs": 350.9,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 2850.1,
+      "requestLatencyMs": {
+        "p50": 14.6,
+        "p95": 30.6,
+        "peak": 36.4
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 189.2,
+        "p95": 324,
+        "peak": 338.3
+      },
+      "cpuPercent": 133.7,
+      "memorySamples": 9
+    },
+    {
+      "index": 8,
+      "status": "PASS",
+      "durationMs": 611.6,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 1635,
+      "requestLatencyMs": {
+        "p50": 29.9,
+        "p95": 36.3,
+        "peak": 40
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 305.5,
+        "p95": 571.4,
+        "peak": 599.2
+      },
+      "cpuPercent": 53.6,
+      "memorySamples": 12
+    },
+    {
+      "index": 9,
+      "status": "PASS",
+      "durationMs": 331.9,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 3012.7,
+      "requestLatencyMs": {
+        "p50": 14.4,
+        "p95": 23.4,
+        "peak": 29.3
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 160.9,
+        "p95": 293.4,
+        "peak": 310.6
+      },
+      "cpuPercent": 117.8,
+      "memorySamples": 8
+    },
+    {
+      "index": 10,
+      "status": "PASS",
+      "durationMs": 465.4,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 2148.9,
+      "requestLatencyMs": {
+        "p50": 18.5,
+        "p95": 35.6,
+        "peak": 38.4
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 302.5,
+        "p95": 442.8,
+        "peak": 457.4
+      },
+      "cpuPercent": 77.4,
+      "memorySamples": 10
+    }
+  ],
+  "limitations": [
+    "This is an isolated synthetic CMS workload. It does not contact third-party sources, import user configuration, or measure the reliability/latency of real websites.",
+    "Spider/JAR/Python runtimes, their readiness/download work, IPC, source-specific parsers, and multi-source content variability are not exercised; the production CMS path is exercised through the loopback HTTP client.",
+    "The per-cycle process.memoryUsage values belong to the Vitest test worker and include test/runtime overhead. The Windows process tree groups by node.exe and cannot separate Vitest parent, test worker, and any Node roles by image name alone.",
+    "Queue wait has no dedicated production instrumentation. Dispatch offsets measure when each source entered the injected search port relative to its cycle start; they include scheduling and earlier work, not a pure queue-wait duration.",
+    "No performance budgets are configured. Results provide repeatable distributions and resource observations only; they do not claim a budget pass or prove absence of leaks.",
+    "A 4-8 ms loopback fixture is useful for exercising fan-out and queue behavior, but it does not model remote DNS/TLS, real server throttling, response-size variance, or user-visible search quality.",
+    "The resilience scenarios use loopback-generated delays and HTTP 503 responses; the timeout and abort outcomes confirm local cancellation propagation/cleanup only, not third-party source behavior or real user experience.",
+    "The Windows sampler uses a 250 ms interval; very short spikes between samples may be missed, and the first CPU interval has no prior process sample.",
+    "No 1080p decode or high-danmaku rendering test was run. This workload covers search scheduling only; no local deterministic media fixture is part of this harness, and no Win-Box/PotPlayer UI was launched.",
+    "The process-tree measurements are for the Node acceptance driver and Vitest worker(s), not the Win-Box application; the executable-name grouping cannot separate individual Node roles."
+  ],
+  "outputDirectory": null,
+  "runArtifactsLocation": "Temporary files from the initial and independent runs were removed after review; metrics are retained in this evidence file.",
+  "commandExitCode": 0,
+  "execution": {
+    "performanceRun": {
+      "command": "C:\\Users\\Mei\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe scripts\\v05-aggregate-search.mjs --cycles 10 --sources 1000 --output-dir .tmp/v05-search-20261029-resilience",
+      "exitCode": 0,
+      "vitestTests": {
+        "passed": 2,
+        "failed": 0
+      }
+    },
+    "regressionCheck": {
+      "command": "C:\\Users\\Mei\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe --test scripts\\v05-aggregate-search.check.mjs",
+      "exitCode": 0,
+      "tests": {
+        "passed": 4,
+        "failed": 0
+      }
+    },
+    "typeCheck": {
+      "command": "C:\\Users\\Mei\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin\\node.exe node_modules\\typescript\\bin\\tsc --noEmit -p tsconfig.test.json",
+      "exitCode": 0
+    },
+    "independentRecheck": {
+      "recordedAt": "2026-10-28T17:00:49Z",
+      "command": "D:\\develop\\nodejs\\node.exe scripts\\v05-aggregate-search.mjs --cycles 10 --sources 1000 --output-dir .tmp/v05-search-20261029-final-root",
+      "exitCode": 0,
+      "vitestTests": { "passed": 2, "failed": 0 },
+      "regressionCheck": { "command": "node --test scripts\\v05-aggregate-search.check.mjs", "passed": 4, "failed": 0 },
+      "testTypeCheckExitCode": 0,
+      "changedSourceLintExitCode": 0,
+      "cyclesCompleted": 10,
+      "totalLocalHttpRequests": 12050,
+      "peakConcurrency": 48,
+      "cycleLatencyMs": { "p50": 378.5, "p95": 615.1, "peak": 615.1 },
+      "requestLatencyMs": { "p50": 16.7, "p95": 34.1, "peak": 112.8 },
+      "throughputSourcesPerSecond": { "p50": 2441.5, "p95": 2945.9, "peak": 2945.9 },
+      "resilienceScenarios": [
+        { "name": "mixed-success-timeout", "status": "PASS", "hitSources": 988, "failedSources": 13, "firstResultMs": 35.1, "durationMs": 5386, "timedOutRequests": 1, "explicitFixtureFailures": 12, "activeRequestsAfterSettle": 0 },
+        { "name": "cancel-after-first-result", "status": "PASS", "firstResultMs": 26.7, "durationMs": 33.3, "cancelledRequests": 45, "activeRequestsAfterSettle": 0 },
+        { "name": "recovery-after-cancel", "status": "PASS", "hitSources": 1001, "failedSources": 0, "firstResultMs": 16.2, "durationMs": 508.2, "activeRequestsAfterSettle": 0 }
+      ],
+      "processSampler": {
+        "sampleCount": 24,
+        "durationMs": 10960,
+        "workingSetMiB": { "p50": 352, "p95": 355.8, "peak": 355.9 },
+        "privateBytesMiB": { "p50": 412.3, "p95": 415.9, "peak": 416.5 },
+        "cpuP95Percent": 129.9,
+        "processCountPeak": 2,
+        "executable": "node.exe",
+        "budgetStatus": "NOT_CONFIGURED"
+      },
+      "artifactsCleaned": true
+    }
+  },
+  "harnessBaseCommit": {
+    "changeId": "pyxuuuoszzvwksqtussmptplstmyonoq",
+    "sha": "b6eb82268b2e57bf43998ba8ec209aa34d10018f",
+    "message": "test-add-v05-aggregate-search-performance-harness"
+  },
+  "harnessWorkingTree": {
+    "state": "modified at run time; parent will review and commit",
+    "files": [
+      "scripts/v05-aggregate-search.mjs",
+      "scripts/v05-aggregate-search.check.mjs",
+      "tests/v05AggregateSearch.spec.ts"
+    ],
+    "sha256": {
+      "scripts/v05-aggregate-search.mjs": "9b25f06dc94383dbc7fe9d41e52e3df6d331107f1b491210a076e5f194bdd6dd",
+      "scripts/v05-aggregate-search.check.mjs": "d45c146e2c39b7e450e1cb934a6f19300cd273598ff6ead6bfc6b66708430b1d",
+      "tests/v05AggregateSearch.spec.ts": "af6cd50d018e51d482ae96783de8a03f37a6a8d0f2ea08b54ce1891ee4918f3c"
+    }
+  }
+}
