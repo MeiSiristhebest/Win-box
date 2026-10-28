@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V03",
+  "recordedAt": "2026-10-28",
+  "result": "PARTIAL_AUTOMATED_CHECKS_PASS",
+  "v03Completed": false,
+  "scope": "Automated UI component, presenter, hook, theme-source, scale-helper, and narrow-panel regression checks run during the 2026-10-28 V03 review.",
+  "testMethod": {
+    "runner": "Vitest",
+    "componentEnvironment": "Testing Library with happy-dom",
+    "limitations": [
+      "The component test environment does not render the native Electron window or capture the production UI as a screenshot.",
+      "Theme contrast checks read production CSS/theme source and calculate checked pairs; they are not a complete browser-computed-style sweep across all rendered routes.",
+      "No Playwright or Electron end-to-end UI runner/configuration was available in the repository for this pass."
+    ]
+  },
+  "specSets": [
+    {
+      "name": "routes-and-interactions",
+      "files": 24,
+      "testsPassed": 97,
+      "testsFailed": 0,
+      "command": "pnpm exec vitest run <the 24 files listed below>",
+      "filesList": [
+        "tests/HistoryPageView.spec.tsx",
+        "tests/useDriveCredentialManagement.spec.tsx",
+        "tests/useDriveWebLogin.spec.tsx",
+        "tests/driveBindSource.spec.ts",
+        "tests/aggregateSearchEntry.spec.tsx",
+        "tests/searchPanelView.spec.tsx",
+        "tests/detailEpisodeList.spec.tsx",
+        "tests/detailPagePresentation.spec.ts",
+        "tests/detailWin.spec.ts",
+        "tests/playerPageView.spec.tsx",
+        "tests/playerPauseOverlay.spec.tsx",
+        "tests/playerControlsVisibility.spec.tsx",
+        "tests/playerVolumeControl.spec.tsx",
+        "tests/playerRateMenuNavigation.spec.ts",
+        "tests/liveChannelSelection.spec.ts",
+        "tests/liveSourcesSection.spec.tsx",
+        "tests/livePageProfileSwitch.spec.tsx",
+        "tests/useLivePlayback.spec.tsx",
+        "tests/CacheMaintenanceSection.spec.tsx",
+        "tests/useMediaRuntimeManagement.spec.tsx",
+        "tests/appearanceSection.spec.tsx",
+        "tests/accountSettingsSections.spec.tsx",
+        "tests/playbackSettingsSection.spec.tsx",
+        "tests/settingsSectionPresenters.spec.tsx"
+      ],
+      "areas": [
+        "history",
+        "global drive credentials and web login",
+        "aggregate search and search panel",
+        "detail and episode list",
+        "player controls and pause overlay behavior",
+        "live channels, sources, profile switching, and playback",
+        "storage/cache maintenance",
+        "appearance, account, playback, and settings"
+      ],
+      "methodNotes": "Component, hook, presenter, and interaction assertions; not a full rendered-page theme/focus/disabled-state matrix."
+    },
+    {
+      "name": "scale-and-narrow-panel-helpers",
+      "files": 4,
+      "testsPassed": 23,
+      "testsFailed": 0,
+      "command": "pnpm exec vitest run tests/uiScale.spec.ts tests/uiScaleRuntime.spec.ts tests/playerWindowPresentation.spec.ts tests/playerPanelPosition.spec.ts",
+      "filesList": [
+        "tests/uiScale.spec.ts",
+        "tests/uiScaleRuntime.spec.ts",
+        "tests/playerWindowPresentation.spec.ts",
+        "tests/playerPanelPosition.spec.ts"
+      ],
+      "areas": [
+        "application scale normalization and runtime scale behavior",
+        "player panel positioning at narrow dimensions"
+      ],
+      "methodNotes": "Pure/runtime helper assertions; application-scale helper values are not evidence of actual Windows display DPI rendering."
+    },
+    {
+      "name": "theme-contrast-regressions",
+      "files": 1,
+      "testsPassed": 48,
+      "testsFailed": 0,
+      "command": "pnpm exec vitest run tests/themeContrast.spec.ts",
+      "filesList": [
+        "tests/themeContrast.spec.ts"
+      ],
+      "areas": [
+        "six configured light/dark theme palettes",
+        "text, accents, boundaries, focus indicators, playback-rate menu, history actions, drive tabs, disabled controls, and desktop error alerts"
+      ],
+      "methodNotes": "CSS/theme-source-backed contrast calculations for the asserted selectors and surfaces; not a screenshot or all-selectors audit.",
+      "evidenceCommit": "cfe6d92eacf7e654ba57044a22eee210aa167be4",
+      "evidenceFile": "tests/themeContrast.spec.ts"
+    },
+    {
+      "name": "global-drive-bind-modal",
+      "files": 1,
+      "testsPassed": 1,
+      "testsFailed": 0,
+      "command": "pnpm exec vitest run tests/driveBindModal.spec.tsx",
+      "filesList": [
+        "tests/driveBindModal.spec.tsx"
+      ],
+      "areas": [
+        "global account scope copy",
+        "selected provider aria semantics",
+        "save disabled while credentials are empty"
+      ],
+      "methodNotes": "Testing Library component semantics and interaction in happy-dom; does not verify rendered CSS contrast in a native window.",
+      "evidenceCommit": "cd425ade982eb54ddf5be52ae1c46bd220329014",
+      "evidenceFile": "tests/driveBindModal.spec.tsx"
+    }
+  ],
+  "additionalChecks": [
+    {
+      "command": "pnpm exec oxlint --deny-warnings tests/themeContrast.spec.ts tests/driveBindModal.spec.tsx",
+      "result": "PASS"
+    }
+  ],
+  "reproducedIssues": [
+    {
+      "issue": "A disabled primary action could retain active accent styling due to cascade order.",
+      "result": "Fixed and committed separately as `vnp` (`fix-disabled-states`); regression coverage is included in the theme contrast suite."
+    }
+  ],
+  "openGaps": [
+    "No native Win-Box window was present in the current desktop session, so no new native/Electron screenshot was captured for this pass.",
+    "Actual Windows display DPI at 100% and 150% was not visually verified; scale-helper tests are not OS DPI acceptance.",
+    "No complete native-window dark/light, selected, disabled, keyboard-focus, and narrow-window route matrix was run for history, global drive accounts, search/filter, detail, player, live, storage, and settings.",
+    "Danmaku trails/ghosting were not reproduced or validated against live video in this pass.",
+    "The existing packaged pause-feedback screenshot is not evidence of a new screenshot capture or of the full V03 viewport/state matrix."
+  ],
+  "status": "OPEN_NOT_COMPLETED"
+}
