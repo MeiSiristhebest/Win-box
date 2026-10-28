@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V02",
+  "recordedAt": "2026-10-28T14:43:59.024Z",
+  "status": "PASS_WITH_LIMITS",
+  "candidate": {
+    "version": "1.27.1",
+    "sourceCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
+    "buildTime": "2026-10-28T13:50:08.827Z",
+    "packagePath": "release1.27.1/win-unpacked",
+    "unpackedApp": {
+      "bytes": 533313618,
+      "files": 451
+    },
+    "installer": {
+      "path": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+      "bytes": 228695919,
+      "sha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a"
+    },
+    "identityReference": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json"
+  },
+  "harness": {
+    "source": "scripts/verify-playback.mjs",
+    "mode": "packaged --playback-only",
+    "runtime": "D:/develop/nodejs/node.exe v26.5.0",
+    "appDataIsolation": "Each run overrode APPDATA and LOCALAPPDATA with a fresh acceptance temp directory.",
+    "packageAccess": "For the AppContainer path restriction, the exact final win-unpacked folder was copied to the authorized visualization root and addressed through a temporary .tmp junction; release1.27.1 was not modified.",
+    "finalObservationHoldMs": 180000,
+    "finalTemporaryCopyAndJunctionRemoved": true,
+    "finalTemporaryHarnessWasUntracked": true
+  },
+  "fixture": {
+    "kind": "locally generated canvas recording",
+    "generator": "MediaRecorder VP8 WebM plus withWebmDuration from the acceptance harness",
+    "container": "WebM",
+    "videoCodec": "VP8",
+    "width": 320,
+    "height": 180,
+    "externalMediaSources": "NOT_RUN",
+    "sourceMatrix": "NOT_RUN",
+    "network": "No third-party media was fetched. The pre-existing pinned MPV acceptance archive was hash-verified locally; no download was needed."
+  },
+  "runs": [
+    {
+      "label": "packaged-baseline",
+      "recordedAt": "2026-10-28T14:32:54.435Z",
+      "fixture": {
+        "bytes": 74663,
+        "durationMs": 14002.5
+      },
+      "html5": {
+        "decode": "PASS",
+        "timeProgress": "PASS",
+        "pauseResume": "PASS",
+        "seek": "NOT_EXERCISED",
+        "resolution": "320x180",
+        "timeSeconds": 1.150483,
+        "resumedFromSeconds": 0.62821,
+        "pausedAtCapture": true
+      },
+      "managedMpv": {
+        "version": "0.41.0",
+        "decode": "PASS",
+        "seek": "PASS",
+        "timeProgress": "PASS",
+        "pauseResume": "PASS",
+        "resolution": "320x180",
+        "timeSeconds": 3.583,
+        "resumedFromSeconds": 3.025,
+        "pausedAtCapture": true
+      },
+      "potplayer": {
+        "processStart": "PASS",
+        "processId": 23704,
+        "localFixtureFetch": {
+          "status": 200,
+          "contentType": "video/webm",
+          "bytes": 74663
+        },
+        "desktopDecode": "NOT_OBSERVED",
+        "timeProgress": "NOT_VERIFIED",
+        "pauseResume": "NOT_VERIFIED",
+        "cleanup": "PASS"
+      },
+      "rendererErrors": 0,
+      "cleanup": "PASS"
+    },
+    {
+      "label": "packaged-desktop-observation",
+      "recordedAt": "2026-10-28T14:43:59.024Z",
+      "fixture": {
+        "bytes": 73964,
+        "durationMs": 14012.099999997765
+      },
+      "html5": {
+        "decode": "PASS",
+        "timeProgress": "PASS",
+        "pauseResume": "PASS",
+        "seek": "NOT_EXERCISED",
+        "resolution": "320x180",
+        "timeSeconds": 1.098781,
+        "resumedFromSeconds": 0.577466,
+        "pausedAtCapture": true
+      },
+      "managedMpv": {
+        "version": "0.41.0",
+        "decode": "PASS",
+        "seek": "PASS",
+        "timeProgress": "PASS",
+        "pauseResume": "PASS",
+        "resolution": "320x180",
+        "timeSeconds": 3.589,
+        "resumedFromSeconds": 3.03,
+        "pausedAtCapture": true
+      },
+      "potplayer": {
+        "processStart": "PASS",
+        "processId": 29436,
+        "localFixtureFetch": {
+          "status": 200,
+          "contentType": "video/webm",
+          "bytes": 73964
+        },
+        "windowTitle": "clip.webm - PotPlayer",
+        "uniqueWindowSelected": true,
+        "desktopDecode": "DECODE_OBSERVED",
+        "visibleFrames": [
+          {
+            "time": "00:00:00 / 00:00:14",
+            "frame": "red fixture frame"
+          },
+          {
+            "time": "00:00:07 / 00:00:14",
+            "frame": "magenta fixture frame"
+          }
+        ],
+        "timeProgress": "TIME_PROGRESS_UNSTABLE_NOT_VERIFIED",
+        "timeProgressNote": "The 00:00:07 sample was observed, but a later observation reset to 00:00:00; progression was not stable or reproducible in the final run.",
+        "pauseResume": "NOT_VERIFIED",
+        "pauseResumeNote": "A Space attempt to pause did not yield a stable frozen-time sample; the refreshed UI returned to 00:00:00. No successful pause-and-resume pair was captured.",
+        "cleanup": "PASS"
+      },
+      "rendererErrors": 0,
+      "externalThirdPartySources": "NOT_RUN",
+      "cleanup": "PASS"
+    }
+  ],
+  "userState": {
+    "potplayerSettingsChanged": false,
+    "potplayerInputs": "Space playback toggles only.",
+    "packagedAppPreferences": "Written only to per-run isolated app data."
+  },
+  "screenshots": {
+    "computerUseScreenshotPersisted": false,
+    "note": "Computer Use frames were inspected in-session only. The final temporary harness copy also disabled Playwright screenshot writes; all earlier run screenshots in .tmp were removed."
+  },
+  "cleanup": {
+    "acceptanceProcessesExited": true,
+    "potplayerPidsClosedByHarness": true,
+    "electronExited": true,
+    "fixtureServersClosed": true,
+    "harnessSessionDirectoriesRemoved": true,
+    "extractedMpvRuntimeDirectoriesRemoved": true,
+    "ownedTmpOutputsAndHarnessCopiesRemoved": true,
+    "packageCopyRemoved": true,
+    "packageJunctionRemoved": true
+  },
+  "untouched": {
+    "tasksJson": true,
+    "releaseDirectory": true,
+    "libncSo": true,
+    "published": false
+  }
+}
