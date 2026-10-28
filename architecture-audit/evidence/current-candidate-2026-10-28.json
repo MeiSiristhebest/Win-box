@@ -133,6 +133,29 @@
       "status": "PASS",
       "tests": 3
     },
+      "staticGates": {
+        "recordedAt": "2026-10-28T15:11:17Z",
+        "lint": {
+          "command": "pnpm run lint",
+          "status": "PASS",
+          "exitCode": 0,
+          "checks": [
+            "oxlint --deny-warnings src scripts tests",
+            "node scripts/architecture-boundaries.mjs",
+            "pnpm run lint:ui (React, React performance, and JSX accessibility lint)"
+          ]
+        },
+        "typecheck": {
+          "command": "pnpm run typecheck",
+          "status": "PASS",
+          "exitCode": 0,
+          "projects": [
+            "main (tsconfig.json)",
+            "renderer (tsconfig.web.json)",
+            "test (tsconfig.test.json)"
+          ]
+        }
+      },
     "repeatedPlayback": {
       "status": "PASS_WITH_SCOPE_LIMITS",
       "evidence": "architecture-audit/evidence/repeated-playback-10cycle-2026-10-28.json",
