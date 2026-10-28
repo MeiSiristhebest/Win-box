@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { startAcceptanceFixture } from './acceptance-fixture.mjs';
 import { parsePlaybackAcceptanceArgs } from './playback-acceptance-arguments.mjs';
+import { assertNoExistingPotPlayer, closeOwnedAcceptanceProcess, newProcessIds, withAcceptanceDeadline } from './acceptance-cleanup.mjs';
 
 test('keeps source playback acceptance as the default mode', () => {
-  assert.deepEqual(parsePlaybackAcceptanceArgs([]), { packagedAppDirectory: null, potplayerPath: null, sourceMatrixPath: null });
+  assert.deepEqual(parsePlaybackAcceptanceArgs([]), { packagedAppDirectory: null, potplayerPath: null, sourceMatrixPath: null, artifactDirectory: null, playbackOnly: false });
 });
 
 test('accepts a packaged win-unpacked directory and resolves it', () => {
@@ -35,6 +37,62 @@ test('accepts an explicit source matrix path', () => {
 test('rejects missing or duplicate source matrix arguments', () => {
   assert.throws(() => parsePlaybackAcceptanceArgs(['--source-matrix']), /requires a JSON file path/);
   assert.throws(() => parsePlaybackAcceptanceArgs(['--source-matrix', 'a.json', '--source-matrix', 'b.json']), /Use --source-matrix once/);
+});
+
+test('accepts a unique artifact directory and playback-only mode', () => {
+  const parsed = parsePlaybackAcceptanceArgs(['--artifact-dir', 'D:\\developWorkPlaces\\win-box\\.tmp\\v02-playback-run', '--playback-only']);
+  assert.equal(parsed.artifactDirectory, 'D:\\developWorkPlaces\\win-box\\.tmp\\v02-playback-run');
+  assert.equal(parsed.playbackOnly, true);
+});
+
+test('rejects missing or duplicate artifact directories and incompatible source matrices', () => {
+  assert.throws(() => parsePlaybackAcceptanceArgs(['--artifact-dir']), /requires a new output directory/);
+  assert.throws(() => parsePlaybackAcceptanceArgs(['--artifact-dir', 'a', '--artifact-dir', 'b']), /Use --artifact-dir once/);
+  assert.throws(() => parsePlaybackAcceptanceArgs(['--playback-only', '--source-matrix', 'matrix.json']), /cannot be combined/);
+});
+
+test('bounds a hung cleanup operation so acceptance reporting can continue', async () => {
+  await assert.rejects(withAcceptanceDeadline(() => new Promise(() => {}), 5, 'close-electron'), /close-electron timed out after 5ms/);
+});
+
+test('identifies only process ids absent from the pre-launch snapshot', () => {
+  assert.deepEqual(newProcessIds([101, 102], [102, 103, 103]), [103]);
+});
+
+test('refuses to launch PotPlayer when a user process already exists', () => {
+  assert.deepEqual([...assertNoExistingPotPlayer([])], []);
+  assert.throws(() => assertNoExistingPotPlayer([1234]), /PotPlayer is already running/);
+});
+
+test('terminates and confirms exit of only the owned Electron child after close timeout', async () => {
+  class AcceptanceChild extends EventEmitter {
+    pid = 4321;
+    exitCode = null;
+    signalCode = null;
+    killCalls = 0;
+    kill() {
+      this.killCalls += 1;
+      this.signalCode = 'SIGTERM';
+      this.emit('exit', null, 'SIGTERM');
+      return true;
+    }
+  }
+
+  const child = new AcceptanceChild();
+  const steps = await closeOwnedAcceptanceProcess({
+    child,
+    close: () => new Promise(() => {}),
+    terminate: () => child.kill(),
+    closeTimeoutMs: 5,
+    exitTimeoutMs: 5,
+  });
+  assert.equal(child.killCalls, 1);
+  assert.deepEqual(steps.map(({ action, status }) => [action, status]), [
+    ['close-electron', 'FAIL'],
+    ['wait-electron-exit', 'FAIL'],
+    ['terminate-electron-owned-child', 'PASS'],
+    ['wait-electron-termination', 'PASS'],
+  ]);
 });
 
 test('records completed media response status, type, range, and bytes', async () => {

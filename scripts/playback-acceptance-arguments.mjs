@@ -14,9 +14,17 @@ export function parsePlaybackAcceptanceArgs(args) {
   if (matrixIndexes.length > 1) throw new Error('Use --source-matrix once.');
   const matrixPath = matrixIndexes.length ? args[matrixIndexes[0] + 1] : null;
   if (matrixIndexes.length && (!matrixPath || matrixPath.startsWith('--'))) throw new Error('--source-matrix requires a JSON file path.');
+  const artifactIndexes = args.flatMap((argument, index) => argument === '--artifact-dir' ? [index] : []);
+  if (artifactIndexes.length > 1) throw new Error('Use --artifact-dir once.');
+  const artifactDirectory = artifactIndexes.length ? args[artifactIndexes[0] + 1] : null;
+  if (artifactIndexes.length && (!artifactDirectory || artifactDirectory.startsWith('--'))) throw new Error('--artifact-dir requires a new output directory inside .tmp.');
+  const playbackOnly = args.includes('--playback-only');
+  if (playbackOnly && matrixPath) throw new Error('--playback-only cannot be combined with --source-matrix.');
   return {
     packagedAppDirectory: directory ? resolve(directory) : null,
     potplayerPath: player ? resolve(player) : null,
     sourceMatrixPath: matrixPath ? resolve(matrixPath) : null,
+    artifactDirectory: artifactDirectory ? resolve(artifactDirectory) : null,
+    playbackOnly,
   };
 }

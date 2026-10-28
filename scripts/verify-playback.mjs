@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
+import { execFileSync } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import electronPath from 'electron';
 import { _electron } from 'playwright-core';
@@ -12,6 +13,7 @@ import { startAcceptanceFixture } from './acceptance-fixture.mjs';
 import { verifySourceMatrix } from './source-acceptance.mjs';
 import { withWebmDuration } from './webm-fixture.mjs';
 import { parsePlaybackAcceptanceArgs } from './playback-acceptance-arguments.mjs';
+import { assertNoExistingPotPlayer, closeOwnedAcceptanceProcess, newProcessIds, withAcceptanceDeadline } from './acceptance-cleanup.mjs';
 export { parsePlaybackAcceptanceArgs } from './playback-acceptance-arguments.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,6 +37,46 @@ async function selectKernel(player, label) {
   await player.locator('.vplayer').hover();
   await player.getByRole('button', { name: /^播放方式：/ }).click();
   await player.getByRole('button', { name: label, exact: true }).click();
+}
+
+function potplayerProcessIds() {
+  const output = execFileSync('tasklist.exe', ['/FI', 'IMAGENAME eq PotPlayerMini64.exe', '/FO', 'CSV', '/NH'], {
+    encoding: 'utf8', windowsHide: true, timeout: 5000,
+  });
+  return Array.from(output.matchAll(/^"PotPlayerMini64\.exe","(\d+)"/gim), match => Number(match[1]));
+}
+
+function requestPotPlayerClose(processId, force = false) {
+  execFileSync('taskkill.exe', ['/PID', String(processId), ...(force ? ['/F'] : [])], {
+    encoding: 'utf8', windowsHide: true, timeout: 5000,
+  });
+}
+
+async function waitForPotPlayerExit(processId, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!potplayerProcessIds().includes(processId)) return true;
+    await delay(250);
+  }
+  return !potplayerProcessIds().includes(processId);
+}
+
+async function closePotPlayerProcess(processId) {
+  if (!potplayerProcessIds().includes(processId)) return { processId, status: 'ALREADY_EXITED' };
+  try {
+    requestPotPlayerClose(processId);
+  } catch (error) {
+    if (!potplayerProcessIds().includes(processId)) return { processId, status: 'CLOSED', method: 'pid-exited-during-close', detail: String(error) };
+  }
+  if (await waitForPotPlayerExit(processId, 5000)) return { processId, status: 'CLOSED', method: 'pid-close' };
+  try {
+    requestPotPlayerClose(processId, true);
+  } catch (error) {
+    if (!potplayerProcessIds().includes(processId)) return { processId, status: 'CLOSED', method: 'pid-exited-during-force-close', detail: String(error) };
+    throw error;
+  }
+  if (await waitForPotPlayerExit(processId, 5000)) return { processId, status: 'CLOSED', method: 'pid-force-close' };
+  throw new Error(`PotPlayer process ${processId} remained running after targeted close.`);
 }
 
 
@@ -70,8 +112,9 @@ async function generateVideo(page) {
   });
 }
 
-export async function verifyPlayback({ packagedAppDirectory = null, potplayerPath = null, sourceMatrixPath = null } = {}) {
+export async function verifyPlayback({ packagedAppDirectory = null, potplayerPath = null, sourceMatrixPath = null, artifactDirectory = null, playbackOnly = false } = {}) {
   if (process.platform !== 'win32') throw new Error('Embedded MPV acceptance requires Windows.');
+  if (playbackOnly && sourceMatrixPath) throw new Error('Playback-only acceptance cannot use third-party source matrices.');
   if (packagedAppDirectory) {
     packagedAppDirectory = resolve(packagedAppDirectory);
     if (!inside(ROOT, packagedAppDirectory)) throw new Error('Packaged acceptance input must be inside the workspace.');
@@ -80,7 +123,16 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
     }
   }
   await assertRelayPortFree();
-  await mkdir(join(ROOT, '.tmp'), { recursive: true });
+  const artifactRoot = join(ROOT, '.tmp');
+  await mkdir(artifactRoot, { recursive: true });
+  const outputDirectory = artifactDirectory ? resolve(artifactDirectory) : artifactRoot;
+  if (!inside(artifactRoot, outputDirectory)) throw new Error('Playback acceptance artifacts must be inside the workspace .tmp directory.');
+  if (artifactDirectory) await mkdir(outputDirectory, { recursive: false });
+  const reportPath = join(outputDirectory, 'playback-acceptance.json');
+  const mpvScreenshotPath = join(outputDirectory, 'playback-acceptance-mpv.png');
+  if (!artifactDirectory && ((await stat(reportPath).catch(() => null)) || (await stat(mpvScreenshotPath).catch(() => null)))) {
+    throw new Error('Playback acceptance artifacts already exist. Use --artifact-dir with a new .tmp directory to preserve them.');
+  }
   const directory = await mkdtemp(join(ROOT, '.tmp', 'playback-acceptance-'));
   const fixture = await startAcceptanceFixture();
   const steps = [];
@@ -89,17 +141,20 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
   let runtime;
   let application;
   let applicationProcess;
+  let potplayerProcessBaseline;
+  const potplayerPidsToClose = new Set();
   let failure;
   const applicationOutput = { stdout: '', stderr: '' };
-  const report = { recordedAt: new Date().toISOString(), executionMode: packagedAppDirectory ? 'packaged' : 'source', steps, rendererErrors: errors, externalThirdPartySources: 'NOT_RUN', potplayer: 'NOT_RUN' };
+  const cleanupSteps = [];
+  const report = { recordedAt: new Date().toISOString(), executionMode: packagedAppDirectory ? 'packaged' : 'source', artifactDirectory: outputDirectory, steps, rendererErrors: errors, externalThirdPartySources: 'NOT_RUN', potplayer: 'NOT_RUN' };
   const record = (name, evidence = {}) => { steps.push({ name, status: 'PASS', ...evidence }); console.log(`PASS ${name}`); };
   try {
     runtime = await prepareMpvAcceptanceRuntime();
     report.mpv = { version: runtime.version, source: runtime.source, archiveSha256: runtime.archiveSha256, executableSha256: runtime.executableSha256 };
     const environment = { ...process.env, NODE_ENV: 'production' };
+    environment.APPDATA = join(directory, 'appdata');
+    environment.LOCALAPPDATA = join(directory, 'localappdata');
     if (packagedAppDirectory) {
-      environment.APPDATA = join(directory, 'appdata');
-      environment.LOCALAPPDATA = join(directory, 'localappdata');
       environment.PORTABLE_EXECUTABLE_DIR = join(directory, 'portable');
       delete environment.WINBOX_DEV_USER_DATA;
     } else {
@@ -142,24 +197,32 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
     const profileA = config.profiles.find(item => item.apiUrl === fixture.base + '/a.json');
     const profileB = config.profiles.find(item => item.apiUrl === fixture.base + '/b.json');
     assert.ok(profileA && profileB, 'Multi-repository import did not retain both profiles');
-    await call(main, 'config', 'activateProfile', profileA.id);
-    await call(main, 'config', 'deleteSource', 'shared-site');
-    assert.equal((await call(main, 'config', 'cfgGet')).sources.length, 0);
     await call(main, 'config', 'activateProfile', profileB.id);
     config = await call(main, 'config', 'cfgGet');
     assert.equal(config.sources.length, 1, 'Deleting A removed the same-key source from B');
     assert.equal(config.sources[0].name, '验收乙站点');
-    record('same-key-profile-deletion-isolation', { profiles: 2, deletedProfileSourceCount: 0, otherProfileSourceCount: config.sources.length });
+    if (!playbackOnly) {
+      await call(main, 'config', 'activateProfile', profileA.id);
+      await call(main, 'config', 'deleteSource', 'shared-site');
+      assert.equal((await call(main, 'config', 'cfgGet')).sources.length, 0);
+      await call(main, 'config', 'activateProfile', profileB.id);
+      config = await call(main, 'config', 'cfgGet');
+      assert.equal(config.sources.length, 1, 'Deleting A removed the same-key source from B');
+      assert.equal(config.sources[0].name, '验收乙站点');
+      record('same-key-profile-deletion-isolation', { profiles: 2, deletedProfileSourceCount: 0, otherProfileSourceCount: config.sources.length });
+    }
 
-    await main.evaluate(() => { location.hash = '#/config'; });
-    await main.getByRole('checkbox', { name: '选择源 验收乙站点', exact: true }).check();
-    await main.getByRole('button', { name: '全局屏蔽所选', exact: true }).click();
-    await main.getByRole('alertdialog', { name: '全局屏蔽所选源', exact: true }).getByRole('button', { name: '全局屏蔽', exact: true }).click();
-    await main.waitForFunction(async () => (await window.api.config.cfgGet()).data.sources.length === 0);
-    await main.getByText('全局屏蔽列表（1）', { exact: true }).click();
-    await main.getByRole('button', { name: '解除全局屏蔽 shared-site', exact: true }).click();
-    await main.waitForFunction(async () => (await window.api.config.cfgGet()).data.sources.length === 1);
-    record('global-block-and-unblock-settings-ui', { restoredSourceCount: 1, scopedDeletionRemainsIndependent: true });
+    if (!playbackOnly) {
+      await main.evaluate(() => { location.hash = '#/config'; });
+      await main.getByRole('checkbox', { name: '选择源 验收乙站点', exact: true }).check();
+      await main.getByRole('button', { name: '全局屏蔽所选', exact: true }).click();
+      await main.getByRole('alertdialog', { name: '全局屏蔽所选源', exact: true }).getByRole('button', { name: '全局屏蔽', exact: true }).click();
+      await main.waitForFunction(async () => (await window.api.config.cfgGet()).data.sources.length === 0);
+      await main.getByText('全局屏蔽列表（1）', { exact: true }).click();
+      await main.getByRole('button', { name: '解除全局屏蔽 shared-site', exact: true }).click();
+      await main.waitForFunction(async () => (await window.api.config.cfgGet()).data.sources.length === 1);
+      record('global-block-and-unblock-settings-ui', { restoredSourceCount: 1, scopedDeletionRemainsIndependent: true });
+    }
 
     const playerEvent = application.waitForEvent('window');
     await call(main, 'player', 'open', {
@@ -174,8 +237,14 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
     await player.locator('.vplayer').hover();
     await player.locator('.vp-ctl[title="暂停"]').click();
     await player.waitForFunction(() => document.querySelector('video')?.paused === true);
+    const html5PausedAt = await player.locator('video').evaluate(video => video.currentTime);
+    await player.locator('.vp-ctl[title="播放"]').click();
+    await player.waitForFunction(pausedAt => { const video = document.querySelector('video'); return video && !video.paused && video.currentTime > pausedAt + 0.5; }, html5PausedAt);
+    await player.locator('.vp-ctl[title="暂停"]').click();
+    await player.waitForFunction(() => document.querySelector('video')?.paused === true);
     const html5 = await player.locator('video').evaluate(video => ({ time: video.currentTime, width: video.videoWidth, height: video.videoHeight, paused: video.paused }));
-    record('html5-real-video-and-pause', html5);
+    assert.ok(html5.time > html5PausedAt + 0.5, 'HTML5 video did not resume and advance after pause');
+    record('html5-real-decode-time-progress-pause-resume', { ...html5, resumedFrom: html5PausedAt });
     await player.evaluate(() => { window.__acceptanceMpvEvents = []; window.api.mpv.onState(event => { window.__acceptanceMpvState = event; window.__acceptanceMpvEvents.push(event); if (window.__acceptanceMpvEvents.length > 200) window.__acceptanceMpvEvents.shift(); }); });
     await selectKernel(player, '兼容播放');
     await player.waitForFunction(() => { const state = window.__acceptanceMpvState?.state; return state?.loaded && state.videoW === 320 && state.paused; }, null, { timeout: 30_000 });
@@ -185,10 +254,16 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
     await player.waitForFunction(() => { const state = window.__acceptanceMpvState?.state; return state?.time > 3 && !state.paused; });
     await call(player, 'mpv', 'cmd', { type: 'pause' });
     await player.waitForFunction(() => window.__acceptanceMpvState?.state.paused === true);
+    const mpvPausedAt = await player.evaluate(() => window.__acceptanceMpvState.state.time);
+    await call(player, 'mpv', 'cmd', { type: 'play' });
+    await player.waitForFunction(pausedAt => { const state = window.__acceptanceMpvState?.state; return state && !state.paused && state.time > pausedAt + 0.5; }, mpvPausedAt);
+    await call(player, 'mpv', 'cmd', { type: 'pause' });
+    await player.waitForFunction(() => window.__acceptanceMpvState?.state.paused === true);
     const mpv = await player.evaluate(() => window.__acceptanceMpvState);
     assert.ok(mpv.state.videoW === 320 && mpv.state.videoH === 180 && mpv.state.time > 3);
-    await player.screenshot({ path: join(ROOT, '.tmp/playback-acceptance-mpv.png') });
-    record('mpv-real-decode-seek-play-pause', { session: mpv.session, time: mpv.state.time, width: mpv.state.videoW, height: mpv.state.videoH, paused: mpv.state.paused });
+    assert.ok(mpv.state.time > mpvPausedAt + 0.5, 'MPV did not resume and advance after pause');
+    await player.screenshot({ path: mpvScreenshotPath });
+    record('mpv-real-decode-seek-time-progress-pause-resume', { session: mpv.session, time: mpv.state.time, resumedFrom: mpvPausedAt, width: mpv.state.videoW, height: mpv.state.videoH, paused: mpv.state.paused });
     await selectKernel(player, '自动选择（推荐）');
     await player.waitForFunction(() => JSON.parse(localStorage.getItem('winbox-player-prefs') || '{}').kernel === 'auto');
     await player.waitForFunction(() => { const video = document.querySelector('video'); return video?.videoWidth === 320 && video.paused && video.currentTime > 2; });
@@ -201,6 +276,7 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
       await call(main, 'playerPrefs', 'set', { vodExternalPlayerEnabled: true, vodExternalPlayer: potplayerPath });
       const detectedPlayers = await call(main, 'vod', 'detectPlayers');
       assert.ok(detectedPlayers.some(item => item.path.toLowerCase() === potplayerPath.toLowerCase()), 'Configured PotPlayer path was not detected by the app');
+      potplayerProcessBaseline = assertNoExistingPotPlayer(potplayerProcessIds());
       const requestsBefore = fixture.requests.length;
       const launch = await call(main, 'vod', 'openExternal', { url: fixture.base + '/clip.webm', seek: 0 });
       assert.equal(launch.ok, true, launch.error || 'Win-Box did not launch PotPlayer');
@@ -208,117 +284,133 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
       const requestDeadline = Date.now() + 30_000;
       const requestsAfterLaunch = () => fixture.requests.slice(requestsBefore).filter(request => request.path === '/clip.webm');
       const fetchedResponse = () => requestsAfterLaunch().find(request => request.method === 'GET' && request.completed && [200, 206].includes(request.status) && request.contentType.startsWith('video/webm') && request.responseBytes > 0);
-      while (Date.now() < requestDeadline && !fetchedResponse()) await delay(250);
+      let processIds = [];
+      while (Date.now() < requestDeadline && (!fetchedResponse() || processIds.length === 0)) {
+        processIds = potplayerProcessIds();
+        for (const processId of newProcessIds(potplayerProcessBaseline, processIds)) potplayerPidsToClose.add(processId);
+        await delay(250);
+      }
       const potplayerRequests = requestsAfterLaunch();
       const mediaResponse = fetchedResponse();
+      processIds = potplayerProcessIds();
+      for (const processId of newProcessIds(potplayerProcessBaseline, processIds)) potplayerPidsToClose.add(processId);
       assert.ok(mediaResponse, 'PotPlayer did not complete a successful GET for local video bytes');
+      assert.ok(processIds.length > 0, 'PotPlayer executable started but no PotPlayerMini64.exe process remained active');
       report.potplayer = {
-        status: 'MEDIA_FETCH_COMPLETED',
+        status: 'PROCESS_RUNNING_AND_MEDIA_FETCHED',
         player: launch.player,
         executable: potplayerPath,
+        processStart: 'PROCESS_LIST_CONFIRMED',
+        processIds,
+        mediaBytes: 'HTTP_RESPONSE_COMPLETED',
         requestCount: potplayerRequests.length,
         mediaResponse,
-        decode: 'NOT_RUN',
-        timeProgress: 'NOT_RUN',
-        pauseResume: 'NOT_RUN',
+        decode: 'NOT_VERIFIED',
+        timeProgress: 'NOT_VERIFIED',
+        pauseResume: 'NOT_VERIFIED',
       };
-      record('potplayer-configured-path-fetched-local-video-bytes', {
+      record('potplayer-process-start-and-local-media-fetch', {
         player: launch.player,
+        processStart: 'PROCESS_LIST_CONFIRMED',
+        processIds,
         requestCount: potplayerRequests.length,
         status: mediaResponse.status,
         contentType: mediaResponse.contentType,
         bytes: mediaResponse.responseBytes,
         range: mediaResponse.range,
-        decode: 'NOT_RUN',
-        timeProgress: 'NOT_RUN',
-        pauseResume: 'NOT_RUN',
+        decode: 'NOT_VERIFIED',
+        timeProgress: 'NOT_VERIFIED',
+        pauseResume: 'NOT_VERIFIED',
       });
     }
 
     await call(main, 'playerPrefs', 'set', { kernel: 'html5' });
     await player.close();
     await main.waitForFunction(async () => !(await window.api.player.isOpen()).data.open);
-    const deniedPlayerEvent = application.waitForEvent('window');
-    await call(main, 'player', 'open', {
-      key: 'shared-site', flag: 'fixture', episodes: [{ name: '403 HLS', url: fixture.base + '/denied.m3u8' }],
-      epIndex: 0, title: '403 HLS 验收', lastUrl: fixture.base + '/denied.m3u8', lastName: '403 HLS 验收',
-      meta: { profileId: profileB.id, fromKey: 'shared-site', vodId: '403-hls', sourceName: '验收乙站点' },
-    });
-    const deniedPlayer = await deniedPlayerEvent;
-    await deniedPlayer.waitForURL(url => url.hash === '#/player');
-    await deniedPlayer.getByText(/HLS 播放失败.*HTTP 403/).waitFor({ timeout: 15_000 });
-    const hls403Message = await deniedPlayer.locator('body').innerText();
-    assert.ok(!hls403Message.includes('PipelineStatus::DEMUXER_ERROR_COULD_NOT_PARSE'));
-    const hlsRequest = fixture.requests.find(request => request.path === '/denied.m3u8');
-    assert.equal(hlsRequest?.range, '', 'Electron must request HLS manifests through hls.js instead of native media demuxing');
-    record('hls-http-403-reported-as-source-error', { httpStatus: 403, messageContainsHlsFailure: hls403Message.includes('HLS 播放失败'), requestUsedHlsLoader: hlsRequest?.range === '' });
-    await deniedPlayer.close();
-    await main.waitForFunction(async () => !(await window.api.player.isOpen()).data.open);
 
-    const pluginDir = join(directory, 'dialog-plugin');
-    await mkdir(pluginDir);
-    await writeFile(join(pluginDir, 'plugin.json'), JSON.stringify({ manifestVersion: 1, id: 'acceptance-dialog', name: '验收对话插件', version: '1.0.0', apiVersion: '1.x', kind: 'code', main: 'main.js', permissions: ['dialog'], contributes: [] }));
-    await writeFile(join(pluginDir, 'main.js'), "void winbox.dialog.confirm('验收确认内容', '验收确认').then(answer => winbox.dialog.alert('插件收到结果：' + answer, '验收返回')); ");
-    const pluginArchive = join(directory, 'acceptance-dialog.winbox');
-    const pluginZip = new ZipWriter(new Uint8ArrayWriter());
-    for (const name of ['plugin.json', 'main.js']) await pluginZip.add(name, new Uint8ArrayReader(await readFile(join(pluginDir, name))));
-    await writeFile(pluginArchive, await pluginZip.close());
-    await main.evaluate(() => {
-      window.__acceptancePluginDialogRequests = [];
-      window.api.plugins.onDialog(request => window.__acceptancePluginDialogRequests.push(request));
-    });
-    await call(main, 'plugins', 'install', { path: pluginArchive });
-    await call(main, 'plugins', 'setEnabled', { id: 'acceptance-dialog', enabled: true });
-    const pluginState = (await call(main, 'plugins', 'list')).find(item => item.id === 'acceptance-dialog');
-    report.pluginState = pluginState;
-    assert.ok(pluginState?.sandbox?.running, `Acceptance plugin sandbox did not start: ${JSON.stringify(pluginState)}`);
-    await main.waitForFunction(() => window.__acceptancePluginDialogRequests?.length > 0, null, { timeout: 15_000 });
-    report.pluginDialogRequests = await main.evaluate(() => window.__acceptancePluginDialogRequests);
-    const prompt = main.getByRole('alertdialog', { name: 'acceptance-dialog · 验收确认' });
-    await prompt.waitFor({ timeout: 15_000 });
-    await prompt.getByRole('button', { name: '确定', exact: true }).click();
-    const answer = main.getByRole('dialog', { name: 'acceptance-dialog · 验收返回' });
-    await answer.waitFor();
-    assert.ok(await answer.getByText('插件收到结果：true', { exact: true }).isVisible());
-    await answer.getByRole('button').click();
-    await call(main, 'plugins', 'setEnabled', { id: 'acceptance-dialog', enabled: false });
-    await call(main, 'plugins', 'uninstall', 'acceptance-dialog');
-    record('sandbox-plugin-in-app-confirm-and-answer');
+    if (!playbackOnly) {
+      const deniedPlayerEvent = application.waitForEvent('window');
+      await call(main, 'player', 'open', {
+        key: 'shared-site', flag: 'fixture', episodes: [{ name: '403 HLS', url: fixture.base + '/denied.m3u8' }],
+        epIndex: 0, title: '403 HLS 验收', lastUrl: fixture.base + '/denied.m3u8', lastName: '403 HLS 验收',
+        meta: { profileId: profileB.id, fromKey: 'shared-site', vodId: '403-hls', sourceName: '验收乙站点' },
+      });
+      const deniedPlayer = await deniedPlayerEvent;
+      await deniedPlayer.waitForURL(url => url.hash === '#/player');
+      await deniedPlayer.getByText(/HLS 播放失败.*HTTP 403/).waitFor({ timeout: 15_000 });
+      const hls403Message = await deniedPlayer.locator('body').innerText();
+      assert.ok(!hls403Message.includes('PipelineStatus::DEMUXER_ERROR_COULD_NOT_PARSE'));
+      const hlsRequest = fixture.requests.find(request => request.path === '/denied.m3u8');
+      assert.equal(hlsRequest?.range, '', 'Electron must request HLS manifests through hls.js instead of native media demuxing');
+      record('hls-http-403-reported-as-source-error', { httpStatus: 403, messageContainsHlsFailure: hls403Message.includes('HLS 播放失败'), requestUsedHlsLoader: hlsRequest?.range === '' });
+      await deniedPlayer.close();
+      await main.waitForFunction(async () => !(await window.api.player.isOpen()).data.open);
 
-    // Seed a distinct saved progress record, export it through the real settings UI, then load a newer in-memory view.
-    const savedUrl = fixture.base + '/saved-history.webm';
-    const historyKey = 'p:' + profileB.id + ':k:shared-site:saved-video';
-    const savedHistory = { name: '备份验收视频 - 第1集', url: savedUrl, rawUrl: savedUrl, sourceKey: 'shared-site', profileId: profileB.id, vodId: 'saved-video', time: 21, updatedAt: Date.now() - 20_000 };
-    const savedMemory = { home: { key: 'shared-site', profileId: profileB.id, tid: '', pg: 1, scrollTop: 0 }, detail: [], playTime: [[savedUrl, 21]], history: [[historyKey, savedHistory]], deleted: [] };
-    await main.evaluate(memory => { localStorage.setItem('tvboxUiMemory', JSON.stringify(memory)); localStorage.setItem('acceptance-backup-sentinel', 'saved'); }, savedMemory);
-    await main.reload();
-    await main.waitForFunction(() => !!window.api?.backup);
-    const backupPath = join(directory, 'settings backup.json');
-    await application.evaluate(({ dialog }, path) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: path }); dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] }); }, backupPath);
-    await showConfigTab(main, '备份');
-    await main.getByRole('button', { name: '导出设置备份', exact: true }).click();
-    await main.getByText('已导出到：' + backupPath, { exact: true }).waitFor();
-    const exported = JSON.parse(await readFile(backupPath, 'utf8'));
-    const exportedMemory = JSON.parse(exported.renderer.tvboxUiMemory);
-    assert.equal(exportedMemory.history.find(([key]) => key === historyKey)[1].time, 21);
-    const newerMemory = { ...savedMemory, history: [[historyKey, { ...savedHistory, time: 77, updatedAt: Date.now() }]] };
-    await main.evaluate(memory => { localStorage.setItem('tvboxUiMemory', JSON.stringify(memory)); localStorage.setItem('acceptance-unsaved-key', 'remove-on-restore'); localStorage.setItem('acceptance-backup-sentinel', 'newer'); }, newerMemory);
-    await call(main, 'playerPrefs', 'set', { m3u8Purify: true });
-    await main.reload();
-    await main.waitForFunction(() => !!window.api?.backup);
-    await showConfigTab(main, '备份');
-    const reloaded = main.waitForEvent('load');
-    await main.getByRole('button', { name: '导入设置备份', exact: true }).click();
-    await main.getByRole('alertdialog', { name: '导入设置备份' }).getByRole('button', { name: '继续导入', exact: true }).click();
-    await reloaded;
-    await main.waitForFunction(() => !!window.api?.backup);
-    await delay(6000); // Let old debounced/periodic writers attempt their next write.
-    const restored = await main.evaluate(() => ({ memory: JSON.parse(localStorage.getItem('tvboxUiMemory')), sentinel: localStorage.getItem('acceptance-backup-sentinel'), extra: localStorage.getItem('acceptance-unsaved-key') }));
-    assert.equal(restored.memory.history.find(([key]) => key === historyKey)[1].time, 21, 'Newer in-memory progress overwrote the backup');
-    assert.equal(restored.sentinel, 'saved'); assert.equal(restored.extra, null);
-    assert.equal((await call(main, 'playerPrefs', 'get')).m3u8Purify, false);
-    assert.equal((await call(main, 'player', 'isOpen')).open, false);
-    record('backup-ui-restores-older-history-progress-and-settings', { restoredTime: 21, absentKeyRemoved: true, playerClosed: player.isClosed(), staleWriterObservationMs: 6000 });
+      const pluginDir = join(directory, 'dialog-plugin');
+      await mkdir(pluginDir);
+      await writeFile(join(pluginDir, 'plugin.json'), JSON.stringify({ manifestVersion: 1, id: 'acceptance-dialog', name: '验收对话插件', version: '1.0.0', apiVersion: '1.x', kind: 'code', main: 'main.js', permissions: ['dialog'], contributes: [] }));
+      await writeFile(join(pluginDir, 'main.js'), "void winbox.dialog.confirm('验收确认内容', '验收确认').then(answer => winbox.dialog.alert('插件收到结果：' + answer, '验收返回')); ");
+      const pluginArchive = join(directory, 'acceptance-dialog.winbox');
+      const pluginZip = new ZipWriter(new Uint8ArrayWriter());
+      for (const name of ['plugin.json', 'main.js']) await pluginZip.add(name, new Uint8ArrayReader(await readFile(join(pluginDir, name))));
+      await writeFile(pluginArchive, await pluginZip.close());
+      await main.evaluate(() => {
+        window.__acceptancePluginDialogRequests = [];
+        window.api.plugins.onDialog(request => window.__acceptancePluginDialogRequests.push(request));
+      });
+      await call(main, 'plugins', 'install', { path: pluginArchive });
+      await call(main, 'plugins', 'setEnabled', { id: 'acceptance-dialog', enabled: true });
+      const pluginState = (await call(main, 'plugins', 'list')).find(item => item.id === 'acceptance-dialog');
+      report.pluginState = pluginState;
+      assert.ok(pluginState?.sandbox?.running, `Acceptance plugin sandbox did not start: ${JSON.stringify(pluginState)}`);
+      await main.waitForFunction(() => window.__acceptancePluginDialogRequests?.length > 0, null, { timeout: 15_000 });
+      report.pluginDialogRequests = await main.evaluate(() => window.__acceptancePluginDialogRequests);
+      const prompt = main.getByRole('alertdialog', { name: 'acceptance-dialog · 验收确认' });
+      await prompt.waitFor({ timeout: 15_000 });
+      await prompt.getByRole('button', { name: '确定', exact: true }).click();
+      const answer = main.getByRole('dialog', { name: 'acceptance-dialog · 验收返回' });
+      await answer.waitFor();
+      assert.ok(await answer.getByText('插件收到结果：true', { exact: true }).isVisible());
+      await answer.getByRole('button').click();
+      await call(main, 'plugins', 'setEnabled', { id: 'acceptance-dialog', enabled: false });
+      await call(main, 'plugins', 'uninstall', 'acceptance-dialog');
+      record('sandbox-plugin-in-app-confirm-and-answer');
+
+      // Seed a distinct saved progress record, export it through the real settings UI, then load a newer in-memory view.
+      const savedUrl = fixture.base + '/saved-history.webm';
+      const historyKey = 'p:' + profileB.id + ':k:shared-site:saved-video';
+      const savedHistory = { name: '备份验收视频 - 第1集', url: savedUrl, rawUrl: savedUrl, sourceKey: 'shared-site', profileId: profileB.id, vodId: 'saved-video', time: 21, updatedAt: Date.now() - 20_000 };
+      const savedMemory = { home: { key: 'shared-site', profileId: profileB.id, tid: '', pg: 1, scrollTop: 0 }, detail: [], playTime: [[savedUrl, 21]], history: [[historyKey, savedHistory]], deleted: [] };
+      await main.evaluate(memory => { localStorage.setItem('tvboxUiMemory', JSON.stringify(memory)); localStorage.setItem('acceptance-backup-sentinel', 'saved'); }, savedMemory);
+      await main.reload();
+      await main.waitForFunction(() => !!window.api?.backup);
+      const backupPath = join(directory, 'settings backup.json');
+      await application.evaluate(({ dialog }, path) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: path }); dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path] }); }, backupPath);
+      await showConfigTab(main, '备份');
+      await main.getByRole('button', { name: '导出设置备份', exact: true }).click();
+      await main.getByText('已导出到：' + backupPath, { exact: true }).waitFor();
+      const exported = JSON.parse(await readFile(backupPath, 'utf8'));
+      const exportedMemory = JSON.parse(exported.renderer.tvboxUiMemory);
+      assert.equal(exportedMemory.history.find(([key]) => key === historyKey)[1].time, 21);
+      const newerMemory = { ...savedMemory, history: [[historyKey, { ...savedHistory, time: 77, updatedAt: Date.now() }]] };
+      await main.evaluate(memory => { localStorage.setItem('tvboxUiMemory', JSON.stringify(memory)); localStorage.setItem('acceptance-unsaved-key', 'remove-on-restore'); localStorage.setItem('acceptance-backup-sentinel', 'newer'); }, newerMemory);
+      await call(main, 'playerPrefs', 'set', { m3u8Purify: true });
+      await main.reload();
+      await main.waitForFunction(() => !!window.api?.backup);
+      await showConfigTab(main, '备份');
+      const reloaded = main.waitForEvent('load');
+      await main.getByRole('button', { name: '导入设置备份', exact: true }).click();
+      await main.getByRole('alertdialog', { name: '导入设置备份' }).getByRole('button', { name: '继续导入', exact: true }).click();
+      await reloaded;
+      await main.waitForFunction(() => !!window.api?.backup);
+      await delay(6000); // Let old debounced/periodic writers attempt their next write.
+      const restored = await main.evaluate(() => ({ memory: JSON.parse(localStorage.getItem('tvboxUiMemory')), sentinel: localStorage.getItem('acceptance-backup-sentinel'), extra: localStorage.getItem('acceptance-unsaved-key') }));
+      assert.equal(restored.memory.history.find(([key]) => key === historyKey)[1].time, 21, 'Newer in-memory progress overwrote the backup');
+      assert.equal(restored.sentinel, 'saved'); assert.equal(restored.extra, null);
+      assert.equal((await call(main, 'playerPrefs', 'get')).m3u8Purify, false);
+      assert.equal((await call(main, 'player', 'isOpen')).open, false);
+      record('backup-ui-restores-older-history-progress-and-settings', { restoredTime: 21, absentKeyRemoved: true, playerClosed: player.isClosed(), staleWriterObservationMs: 6000 });
+    }
     assert.deepEqual(errors, [], 'Renderer produced an unhandled error');
     if (sourceMatrixPath) report.externalThirdPartySources = await verifySourceMatrix(main, call, sourceMatrixPath, ROOT);
     report.status = 'PASS';
@@ -332,32 +424,43 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
       cleanupErrors.push({ action: 'capture-window-state', error: String(snapshotError) });
     }
   } finally {
-    const cleanup = async (action, run) => {
+    const cleanup = async (action, run, timeoutMs = 15_000) => {
+      const started = Date.now();
       try {
-        await run();
+        const result = timeoutMs === null
+          ? await run()
+          : await withAcceptanceDeadline(run, timeoutMs, `cleanup ${action}`);
+        cleanupSteps.push({ action, status: 'PASS', durationMs: Date.now() - started });
+        return result;
       } catch (error) {
-        cleanupErrors.push({ action, error: String(error) });
+        const detail = String(error);
+        cleanupErrors.push({ action, error: detail });
+        cleanupSteps.push({ action, status: 'FAIL', durationMs: Date.now() - started, error: detail });
       }
     };
+    if (potplayerProcessBaseline) {
+      const result = await cleanup('close-new-potplayer-pids', async () => {
+        const activePids = potplayerProcessIds();
+        for (const processId of newProcessIds(potplayerProcessBaseline, activePids)) potplayerPidsToClose.add(processId);
+        const closed = [];
+        for (const processId of potplayerPidsToClose) {
+          const currentPids = potplayerProcessIds();
+          if (!newProcessIds(potplayerProcessBaseline, currentPids).includes(processId)) continue;
+          closed.push(await closePotPlayerProcess(processId));
+        }
+        return closed;
+      }, null);
+      report.potplayerCleanup = result ?? 'FAILED';
+    }
     if (application) {
-      await cleanup('close-electron', () => application.close());
-      if (applicationProcess && applicationProcess.exitCode === null && applicationProcess.signalCode === null) {
-        await cleanup('wait-electron-exit', async () => {
-          await Promise.race([new Promise(resolve => applicationProcess.once('exit', resolve)), delay(5000)]);
-        });
-      }
-      if (applicationProcess && applicationProcess.exitCode === null && applicationProcess.signalCode === null) {
-        await cleanup('terminate-electron', () => {
-          if (!applicationProcess.kill()) throw new Error(`Could not terminate acceptance Electron process ${applicationProcess.pid}.`);
-        });
-        await cleanup('wait-electron-termination', async () => {
-          if (applicationProcess.exitCode === null && applicationProcess.signalCode === null) {
-            await Promise.race([new Promise(resolve => applicationProcess.once('exit', resolve)), delay(5000)]);
-          }
-          if (applicationProcess.exitCode === null && applicationProcess.signalCode === null) {
-            throw new Error(`Acceptance Electron process ${applicationProcess.pid} is still running.`);
-          }
-        });
+      const steps = await closeOwnedAcceptanceProcess({
+        child: applicationProcess,
+        close: () => application.close(),
+        terminate: () => applicationProcess.kill(),
+      });
+      cleanupSteps.push(...steps);
+      for (const step of steps) {
+        if (step.status === 'FAIL') cleanupErrors.push({ action: step.action, error: step.error || 'Acceptance Electron cleanup failed.' });
       }
     }
     await cleanup('close-fixture-server', () => fixture.close());
@@ -379,7 +482,8 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
       report.error ??= cleanupErrors.map(item => `${item.action}: ${item.error}`).join('\n');
     }
     try {
-      await writeFile(join(ROOT, '.tmp/playback-acceptance.json'), JSON.stringify(report, null, 2));
+      report.cleanupSteps = cleanupSteps;
+      await writeFile(reportPath, JSON.stringify(report, null, 2));
     } catch (reportError) {
       cleanupErrors.push({ action: 'write-acceptance-report', error: String(reportError) });
       console.error('Could not write playback acceptance report:', reportError);
