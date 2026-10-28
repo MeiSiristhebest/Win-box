@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "taskId": "O02",
+  "recordedAt": "2026-10-28",
+  "finding": "A single transparent enhancement implementation cannot be assumed across these players. Chromium, MPV, and PotPlayer expose distinct rendering/filter boundaries; the app needs per-backend adapters and capability reporting.",
+  "supportMatrix": [
+    {
+      "backend": "Chromium / built-in HTML video",
+      "available": "WebGPU can import VideoFrame as an external texture and submit GPU processing.",
+      "source": "https://developer.chrome.com/docs/web-platform/webgpu/from-webgl-to-webgpu#video-frame-processing",
+      "limitation": "Win-Box must own the video presentation/compositing path; hardware support and zero-copy are not guaranteed."
+    },
+    {
+      "backend": "MPV / libplacebo",
+      "available": "mpv gpu-next is based on libplacebo and supports custom shader hooks; libmpv render API can embed video rendering.",
+      "sources": [
+        "https://mpv.io/manual/master/#gpu-renderer-options",
+        "https://github.com/mpv-player/mpv/blob/master/include/mpv/render.h"
+      ],
+      "limitation": "GLSL hook syntax is explicitly unstable; render API requires graphics-context ownership and careful render-thread isolation."
+    },
+    {
+      "backend": "PotPlayer",
+      "available": "Official update history documents native pixel-shader and video-filter features.",
+      "source": "https://t1.kakaocdn.net/potplayer/PotPlayer/v4/Update2/UpdateEng.html",
+      "limitation": "No public runtime API for Win-Box to inject/manage PotPlayer shader chains was identified in the official material reviewed. This is an evidence-based inference, not proof that no private/undocumented interface exists."
+    }
+  ],
+  "recommendation": "Define a common plugin manifest and capability model, then implement separate Chromium WebGPU and MPV/libplacebo adapters. Treat PotPlayer as external/native filter guidance until a documented and tested control interface exists. Label only actual model inference as super-resolution; ordinary scaling/sharpening must be named accurately.",
+  "notRun": [
+    "No image-quality, frame-latency, CPU, GPU, or VRAM PoC measurement.",
+    "No PotPlayer runtime injection experiment; there is no documented integration point to test."
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "taskId": "O01",
+  "recordedAt": "2026-10-28",
+  "finding": "SpiderFactory is provider-based internally, but production assembly wires only built-in providers and the public plugin manifest rejects spider-runtime contributions. The current plugin worker protocol is plugin-to-host, not host-to-spider open/invoke/cancel/close.",
+  "existingExtensionPoints": [
+    {
+      "path": "src/engine/spider/SpiderRuntimeProvider.ts",
+      "symbol": "SpiderRuntimeProvider.supports/create"
+    },
+    {
+      "path": "src/engine/spider/SpiderFactory.ts",
+      "symbol": "ordered provider dispatch"
+    },
+    {
+      "path": "src/engine/spider/createBuiltinSpiderRuntimeProviders.ts",
+      "symbol": "built-in JS/Python/JAR providers"
+    },
+    {
+      "path": "src/engine/spider/SpiderCache.ts",
+      "symbol": "per-runtime/source cache and active-call retirement"
+    },
+    {
+      "path": "src/main/spider/SpiderRuntimeLifecycle.ts",
+      "symbol": "prewarm, cleanup and app shutdown"
+    }
+  ],
+  "missingBoundaries": [
+    {
+      "path": "src/shared/plugin/manifest.ts",
+      "symbol": "CONTRIBUTES allowlist excludes spider runtime contributions"
+    },
+    {
+      "path": "src/main/spider/createSpiderRuntimeAssembly.ts",
+      "symbol": "production assembly does not accept provider injection"
+    },
+    {
+      "path": "src/main/plugin/sandbox/protocol.ts",
+      "symbol": "no host-originated spider call RPC"
+    },
+    {
+      "path": "src/main/plugin/PluginHost.ts",
+      "symbol": "plugin update/uninstall is not coupled to spider provider/cache lifecycle"
+    }
+  ],
+  "recommendation": [
+    "First expose internal runtimeProviders through the production composition root and define stable provider ID/version/capabilities; include provider identity in cache keys. Keep this labeled as an internal extension point.",
+    "Only then add third-party worker RPC with open/invoke/cancel/close, source-scoped session IDs, bounded CPU/memory/time, least-privilege ports, in-flight drain/cancel, cache/process cleanup, rollback-safe update/uninstall, and plugin data retention policy."
+  ],
+  "limitations": [
+    "Read-only audit only; no plugin registration, RPC, lifecycle, or sample-provider code was implemented.",
+    "Acceptance still requires install/disable/uninstall of a sample provider, safe update/reclamation, and isolation when one provider fails."
+  ]
+}

@@ -1977,9 +1977,13 @@
           "path": "src/main/spider/createSpiderRuntimeAssembly.ts",
           "line": 66,
           "symbol": "built-in assembly"
+        },
+        {
+          "path": "architecture-audit/evidence/spider-runtime-plugin-boundary-2026-10-28.json",
+          "symbol": "provider registration and plugin lifecycle gap"
         }
       ],
-      "gap": "SpiderFactory 已支持 provider 注入；生产注册目前主要是内置运行时。把任意第三方运行时做成可下载插件属于新增产品范围，不是证明当前 OCP 的必需重写。",
+      "gap": "内部 SpiderFactory provider 抽象存在，但生产组合根仅装配内置 JS/Python/JAR provider；manifest 白名单拒绝蜘蛛运行时贡献，插件 Worker 也缺宿主发起的 open/invoke/cancel/close 协议。只读审查已给出内部注入与第三方 RPC 两阶段方案；本轮没有实现可安装示例 provider、更新/卸载回收和故障隔离，O01 保持 open。",
       "direction": "若以后纳入范围，定义版本/权限/能力清单与进程预算，复用现有 provider 及插件生命周期，先做一个端到端样例。",
       "acceptance": "可安装/停用/卸载示例 provider 且不改工厂分支；运行中更新安全回收，失败不拖垮其它来源。",
       "estimateEngineerHours": {
@@ -1990,7 +1994,11 @@
         "B08",
         "V01"
       ],
-      "probes": []
+      "probes": [],
+      "reviewEvidence": {
+        "latestVerification": "只读代码路径审查完成；没有运行 provider 安装/更新/卸载样例。",
+        "evidence": "architecture-audit/evidence/spider-runtime-plugin-boundary-2026-10-28.json"
+      }
     },
     {
       "id": "O02",
@@ -2013,9 +2021,13 @@
           "path": "src/main/player/PlayerEngineController.ts",
           "line": 31,
           "symbol": "managed engine launch"
+        },
+        {
+          "path": "architecture-audit/evidence/player-enhancement-compatibility-2026-10-28.json",
+          "symbol": "backend capability support matrix"
         }
       ],
-      "gap": "当前托管播放器的 shader 链不等于对任意外部播放器通用后处理。有 GPU 并不自动提供外部进程的帧访问/插入点。",
+      "gap": "一手资料已确认 Chromium/WebGPU、MPV/libplacebo 与 PotPlayer 原生滤镜属于不同渲染边界；统一插件需按后端提供适配器。PotPlayer 官方资料记录了本机 shader/filter 功能，但未发现供 Win-Box 注入 shader 的公开运行时 API（这是基于所查资料的推断，不是证明不存在私有接口）。仍未做可测画质、帧时延、CPU/GPU/显存的 PoC，因此 O02 保持 open。",
       "direction": "仅估算研究：比较外部播放器公开插件接口、独立捕获后处理和托管引擎接入的成本，复用合适开源项目；不承诺无内核限制的通用超分。",
       "acceptance": "形成支持矩阵与一个有可测画质/帧时延/占用的 PoC，再单独评估产品化；本项工时只覆盖研究，不覆盖所有播放器的完整实现。",
       "estimateEngineerHours": {
@@ -2026,7 +2038,11 @@
         "V02",
         "V05"
       ],
-      "probes": []
+      "probes": [],
+      "reviewEvidence": {
+        "research": "architecture-audit/evidence/player-enhancement-compatibility-2026-10-28.json",
+        "latestVerification": "官方一手资料支持矩阵已复核；无性能/画质 PoC。"
+      }
     }
   ],
   "verificationThisAudit": {
