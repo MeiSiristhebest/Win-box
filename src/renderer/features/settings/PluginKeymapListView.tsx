@@ -6,7 +6,7 @@ export function PluginKeymapListView({ model, onRetry }: { model: PluginKeymapLi
   return (
     <section className="card" id="cfg-plugin-keymap">
       <h3>插件快捷键</h3>
-      {model.status === 'loading' && <span role="status" className="muted">正在加载插件快捷键…</span>}
+      {model.status === 'loading' && <output className="muted">正在加载插件快捷键…</output>}
       {model.status === 'failed' && (
         <div role="alert" className="err">
           <span>插件快捷键加载失败：{model.error || '未知错误'}</span>
