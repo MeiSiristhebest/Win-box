@@ -1,0 +1,89 @@
+{
+  "recordedAt": "2026-10-28T10:51:00.307Z",
+  "source": {
+    "branch": "codex/architecture-cleanup-20261025",
+    "commit": "6d3e6d28",
+    "version": "1.27.1"
+  },
+  "verification": {
+    "vitest": {
+      "status": "PASS",
+      "filesPassed": 506,
+      "filesSkipped": 3,
+      "testsPassed": 4153,
+      "testsSkipped": 5
+    },
+    "lint": {
+      "status": "PASS",
+      "includesArchitectureBoundaries": true
+    },
+    "architectureCheck": {
+      "status": "PASS"
+    },
+    "typecheck": {
+      "main": "PASS",
+      "renderer": "PASS",
+      "tests": "PASS"
+    },
+    "packagePromotion": {
+      "status": "PASS",
+      "testsPassed": 3
+    },
+    "installer": {
+      "status": "PASS",
+      "testsPassed": 8,
+      "targetProcessStopMs": 4932,
+      "oldUninstallerFailurePreservedOldInstallAndSixUserDataDomains": true
+    },
+    "acceptanceTools": {
+      "status": "PASS",
+      "testsPassed": 20
+    },
+    "packagePolicy": {
+      "status": "PASS",
+      "testsPassed": 12
+    },
+    "build": {
+      "status": "PASS",
+      "main": "PASS",
+      "renderer": "PASS",
+      "viteLargeChunkWarning": {
+        "asset": "hls",
+        "bytes": 574410,
+        "gzipBytes": 178970
+      },
+      "babelTransformCallbacksMs": 9100
+    }
+  },
+  "localPackage": {
+    "path": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "bytes": 228840977,
+    "sha256": "b5044f25e59f244767e6b3b439096fdce3c87f6ea297d29436834f1805aca04b",
+    "unpackedAppBytes": 534354232,
+    "previousInstallerBytes": 240874069,
+    "installerDeltaBytes": -12033092,
+    "releaseDirectoryCount": 1,
+    "releasePublished": false,
+    "optionalRuntimesNotBundled": [
+      "MPV",
+      "FFmpeg"
+    ]
+  },
+  "desktopPlayback": {
+    "status": "BLOCKED_BEFORE_WINDOW_CREATION",
+    "sourceModeAttempts": 2,
+    "packagedCandidateAttempted": true,
+    "rootCause": "Electron 44 install_dir_access fatal: the executable directory has an AppContainer package SID ACE but lacks ALL APPLICATION PACKAGES read/execute access; Windows denies Chromium sandbox access.",
+    "fixtureRequests": 0,
+    "playbackSteps": 0,
+    "processExited": true,
+    "testOwnedTempDirectoriesCleaned": true,
+    "aclChanged": false,
+    "potPlayerStarted": false
+  },
+  "uncommittedUserChangesPreserved": [
+    "libnc.so",
+    "src/renderer/components/SourcePicker.tsx"
+  ],
+  "remoteReleasePublished": false
+}
