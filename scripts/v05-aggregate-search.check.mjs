@@ -7,12 +7,18 @@ import { parseV05SearchArgs, metricSet, summarizeV05Search } from './v05-aggrega
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('V05 search CLI only accepts isolated .tmp/v05-search output and ten or more cycles', () => {
-  const parsed = parseV05SearchArgs(['--cycles', '10', '--sources', '1000', '--output-dir', '.tmp/v05-search-check']);
+  const parsed = parseV05SearchArgs([
+    '--cycles', '10', '--sources', '1000', '--output-dir', '.tmp/v05-search-check',
+    '--budget-working-set-mb', '500', '--budget-private-bytes-mb', '700', '--budget-cpu-p95-percent', '180',
+  ]);
   assert.equal(parsed.cycles, 10);
   assert.equal(parsed.sources, 1000);
   assert.equal(parsed.outputDirectory, resolve(ROOT, '.tmp', 'v05-search-check'));
+  assert.deepEqual(parsed.budgets, { workingSetMB: 500, privateBytesMB: 700, cpuP95Percent: 180 });
   assert.throws(() => parseV05SearchArgs(['--cycles', '9', '--output-dir', '.tmp/v05-search-check']), /between 10 and 50/);
   assert.throws(() => parseV05SearchArgs(['--sources', '999', '--output-dir', '.tmp/v05-search-check']), /between 1000 and 1000/);
+  assert.throws(() => parseV05SearchArgs(['--budget-working-set-mb', '0', '--output-dir', '.tmp/v05-search-check']), /positive number/);
+  assert.throws(() => parseV05SearchArgs(['--budget-cpu-p95-percent', 'NaN', '--output-dir', '.tmp/v05-search-check']), /positive number/);
   assert.throws(() => parseV05SearchArgs(['--output-dir', 'architecture-audit/evidence/v05-search-check']), /direct child/);
   assert.throws(() => parseV05SearchArgs(['--output-dir', '.tmp/../architecture-audit/v05-search-check']), /direct child/);
 });
@@ -79,5 +85,32 @@ test('V05 summary requires and reports 1,001-source timeout, cancellation cleanu
   assert.equal(summary.performance.resilienceScenarios[1].activeRequestsAfterSettle, 0);
 
   resilienceScenarios[1].cancelledRequests = 0;
+  assert.equal(summarizeV05Search(workload, resourceReport, '.tmp/v05-search-check').status, 'FAIL');
+});
+
+test('V05 search summary fails when a configured resource budget fails or lacks samples', () => {
+  const cycles = Array.from({ length: 10 }, (_value, index) => ({
+    index: index + 1, status: 'PASS', requestsReceived: 1000, reportItems: 1000, hitSources: 1000,
+    failedSources: 0, durationMs: 100, throughputSourcesPerSecond: 10000, requestLatencyMs: [4],
+    dispatchOffsetMs: [1], cpuPercent: 10, memorySamples: [],
+  }));
+  const resilienceScenarios = [
+    { name: 'mixed-success-timeout', status: 'PASS', sourceCount: 1001, receivedRequests: 1001, hitSources: 988, failedSources: 13, firstResultMs: 5, totalDurationMs: 5100, peakConcurrentRequests: 48, cancelledRequests: 0, timedOutRequests: 1, explicitFixtureFailures: 12, activeRequestsAfterSettle: 0 },
+    { name: 'cancel-after-first-result', status: 'PASS', sourceCount: 1001, receivedRequests: 48, hitSources: 1, failedSources: null, firstResultMs: 5, totalDurationMs: 8, peakConcurrentRequests: 48, cancelledRequests: 47, timedOutRequests: 0, explicitFixtureFailures: 0, activeRequestsAfterSettle: 0 },
+    { name: 'recovery-after-cancel', status: 'PASS', sourceCount: 1001, receivedRequests: 1001, hitSources: 1001, failedSources: 0, firstResultMs: 5, totalDurationMs: 100, peakConcurrentRequests: 48, cancelledRequests: 0, timedOutRequests: 0, explicitFixtureFailures: 0, activeRequestsAfterSettle: 0 },
+  ];
+  const workload = { status: 'PASS', requestedCycles: 10, sourcesPerCycle: 1000, profileCount: 3, concurrencyLimit: 48, cycles, resilienceScenarios };
+  const sample = { elapsedMs: 100, workingSetMB: 20, privateBytesMB: 10, processCount: 1, processes: [{ pid: 1, name: 'node.exe', workingSetBytes: 20 * 1048576, privateBytes: 10 * 1048576, cpuTimeMs: 10 }] };
+  const resourceReport = {
+    completion: 'completed', intervalMs: 250, sampler: { errors: [] },
+    summary: { sampleCount: 2, durationMs: 200, budgetStatus: 'FAIL', budgets: { workingSetMB: 10, privateBytesMB: null, cpuP95Percent: null }, budgetChecks: { workingSetMB: { status: 'FAIL', limit: 10, actual: 20 } }, samples: [sample, { ...sample, elapsedMs: 100 }] },
+  };
+
+  const summary = summarizeV05Search(workload, resourceReport, '.tmp/v05-search-check');
+  assert.equal(summary.status, 'FAIL');
+  assert.equal(summary.sampler.budgetStatus, 'FAIL');
+  assert.deepEqual(summary.sampler.budgets, { workingSetMB: 10, privateBytesMB: null, cpuP95Percent: null });
+
+  resourceReport.summary.budgetStatus = 'INSUFFICIENT_SAMPLES';
   assert.equal(summarizeV05Search(workload, resourceReport, '.tmp/v05-search-check').status, 'FAIL');
 });

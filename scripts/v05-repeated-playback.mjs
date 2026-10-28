@@ -20,8 +20,24 @@ function positiveInteger(value, label) {
   return number;
 }
 
+function positiveBudget(value, label) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0 || number > 100_000) throw new Error(`${label} must be a positive number no greater than 100000.`);
+  return number;
+}
+
+const RESOURCE_BUDGET_FLAGS = [
+  ['--budget-working-set-mb', 'workingSetMB'],
+  ['--budget-private-bytes-mb', 'privateBytesMB'],
+  ['--budget-cpu-p95-percent', 'cpuP95Percent'],
+];
+
+function resourceBudgetArgs(budgets) {
+  return RESOURCE_BUDGET_FLAGS.flatMap(([flag, key]) => Number.isFinite(budgets[key]) ? [flag, String(budgets[key])] : []);
+}
+
 export function parseRepeatedPlaybackArgs(args) {
-  const options = { packagedAppDirectory: '', cycles: 10, outputDirectory: '', worker: false };
+  const options = { packagedAppDirectory: '', cycles: 10, outputDirectory: '', worker: false, budgets: { workingSetMB: null, privateBytesMB: null, cpuP95Percent: null } };
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
     if (flag === '--worker') { options.worker = true; continue; }
@@ -30,6 +46,10 @@ export function parseRepeatedPlaybackArgs(args) {
     if (flag === '--packaged-app') options.packagedAppDirectory = resolve(value);
     else if (flag === '--cycles') options.cycles = positiveInteger(value, flag);
     else if (flag === '--output-dir') options.outputDirectory = resolve(value);
+    else if (RESOURCE_BUDGET_FLAGS.some(([budgetFlag]) => budgetFlag === flag)) {
+      const key = RESOURCE_BUDGET_FLAGS.find(([budgetFlag]) => budgetFlag === flag)[1];
+      options.budgets[key] = positiveBudget(value, flag);
+    }
     else throw new Error(`Unknown option: ${flag}`);
     index += 1;
   }
@@ -212,10 +232,12 @@ export function summarizeV05Run(cycleReport, resourceReport) {
       durationMsStats: metricSet(durationValues),
     };
   });
+  const budgetStatus = resourceReport.summary.budgetStatus ?? 'NOT_CONFIGURED';
+  const budgetValid = budgetStatus === 'NOT_CONFIGURED' || budgetStatus === 'PASS';
   return {
     schemaVersion: 1,
     recordedAt: new Date().toISOString(),
-    status: cycleReport.status === 'PASS' && resourceReport.completion === 'completed' && resourceReport.sampler.errors.length === 0 ? 'PASS' : 'FAIL',
+    status: cycleReport.status === 'PASS' && resourceReport.completion === 'completed' && resourceReport.sampler.errors.length === 0 && budgetValid ? 'PASS' : 'FAIL',
     workload: {
       cyclesRequested: cycleReport.requestedCycles,
       cyclesCompleted: cycleReport.cycles.filter(cycle => cycle.status === 'PASS').length,
@@ -233,6 +255,7 @@ export function summarizeV05Run(cycleReport, resourceReport) {
       errors: resourceReport.sampler.errors,
       budgetStatus: resourceReport.summary.budgetStatus,
       budgetChecks: resourceReport.summary.budgetChecks,
+      budgets: resourceReport.summary.budgets ?? { workingSetMB: null, privateBytesMB: null, cpuP95Percent: null },
     },
     resources: summarizeProcessSamples(samples),
     cycles,
@@ -240,7 +263,9 @@ export function summarizeV05Run(cycleReport, resourceReport) {
       'Deterministic 320x180 VP8 local fixture does not represent 1080p/4K decoding, dense danmaku, external network sources, or a 1,000-source search catalog.',
       'Win-Box.exe process rows combine Electron/Chromium main, renderer, GPU, and utility roles; the Windows sampler records image name and parent PID, not Chromium --type arguments.',
       'node.exe attribution includes the Playwright acceptance driver and local fixture server; do not count it as application memory.',
-      'No performance budget was configured. Ten runs show repeatability and resource ranges only; they do not establish a pass/fail budget or prove absence of leaks.',
+      budgetStatus === 'NOT_CONFIGURED'
+        ? 'No performance budget was configured. Ten runs show repeatability and resource ranges only; they do not establish a pass/fail budget or prove absence of leaks.'
+        : 'Configured budgets apply to the Win-Box.exe and mpv.exe process images sampled by this local fixture workload; they are candidate regression guardrails, not cross-device guarantees.',
       'Each cycle launches and closes a fresh isolated app process; it does not exercise same-process profile switching or persistent real user state.',
       'Per-cycle percentiles use one-second samples inside that cycle; the first CPU interval after a process appears has no prior sample and contributes zero delta.',
     ],
@@ -253,7 +278,7 @@ async function runMeasured(options) {
   await mkdir(options.outputDirectory, { recursive: false });
   const resourcesPath = join(options.outputDirectory, 'resources.json');
   const workerArgs = [SCRIPT, '--worker', '--packaged-app', options.packagedAppDirectory, '--cycles', String(options.cycles), '--output-dir', options.outputDirectory];
-  const samplerArgs = [MEASURER, '--phase', 'v05-repeat', '--output', resourcesPath, '--interval-ms', '1000', '--', process.execPath, ...workerArgs];
+  const samplerArgs = [MEASURER, '--phase', 'v05-repeat', '--output', resourcesPath, '--interval-ms', '1000', '--include-name', 'Win-Box.exe,mpv.exe', ...resourceBudgetArgs(options.budgets), '--', process.execPath, ...workerArgs];
   const child = spawn(process.execPath, samplerArgs, { cwd: ROOT, windowsHide: true, stdio: 'inherit' });
   const [exitCode] = await new Promise((resolveExit, rejectExit) => {
     child.once('error', rejectExit);

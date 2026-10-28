@@ -8,8 +8,15 @@ test('V05 run requires a packaged app, ten cycles, and a new .tmp/v05-* output d
   assert.throws(() => parseRepeatedPlaybackArgs(['--packaged-app', '.tmp/app', '--output-dir', '.tmp/v05-x', '--cycles', '9']), /between 10 and 50/);
   assert.throws(() => parseRepeatedPlaybackArgs(['--packaged-app', 'D:/outside/app', '--output-dir', '.tmp/v05-x']), /inside the workspace/);
   assert.throws(() => parseRepeatedPlaybackArgs(['--packaged-app', '.tmp/app', '--output-dir', '.tmp/other']), /direct child.*named v05/);
-  const options = parseRepeatedPlaybackArgs(['--packaged-app', '.tmp/app', '--output-dir', '.tmp/v05-run', '--cycles', '10']);
+  const options = parseRepeatedPlaybackArgs([
+    '--packaged-app', '.tmp/app', '--output-dir', '.tmp/v05-run', '--cycles', '10',
+    '--budget-working-set-mb', '900', '--budget-private-bytes-mb', '700', '--budget-cpu-p95-percent', '120',
+  ]);
   assert.equal(options.cycles, 10);
+  assert.deepEqual(options.budgets, { workingSetMB: 900, privateBytesMB: 700, cpuP95Percent: 120 });
+  assert.throws(() => parseRepeatedPlaybackArgs([
+    '--packaged-app', '.tmp/app', '--output-dir', '.tmp/v05-run', '--budget-working-set-mb', 'NaN',
+  ]), /positive number/);
 });
 
 test('V05 resource summary separates app, MPV and driver while reporting percentiles and peaks', () => {
@@ -45,4 +52,21 @@ test('V05 run summary does not mark unmeasured source search or budgets as passe
   assert.equal(summary.workload.search, 'NOT_RUN; this V05 workload measures repeated local playback lifecycle, not aggregate-search performance');
   assert.equal(summary.sampler.budgetStatus, 'NOT_CONFIGURED');
   assert.equal(summary.cycles[0].processExited, true);
+});
+
+test('V05 playback summary fails if a configured process resource budget fails or is inconclusive', () => {
+  const cycleReport = { requestedCycles: 10, status: 'PASS', cycles: [{ index: 1, status: 'PASS', startedAtMs: 1000, endedAtMs: 3000, durationMs: 2000, appPid: 20, processExited: true, cleaned: true, rendererErrorCount: 0, completedChecks: ['html5', 'mpv'] }] };
+  const resourceReport = {
+    completion: 'completed', intervalMs: 1000, sampler: { errors: [] },
+    summary: {
+      sampleCount: 2, durationMs: 1000, budgetStatus: 'FAIL',
+      budgets: { workingSetMB: 100, privateBytesMB: null, cpuP95Percent: null },
+      budgetChecks: { workingSetMB: { status: 'FAIL', limit: 100, actual: 150 } },
+      samples: [{ at: 2000, elapsedMs: 500, workingSetMB: 150, privateBytesMB: 50, processCount: 1, processes: [{ pid: 20, name: 'Win-Box.exe', workingSetBytes: 150 * 1048576, privateBytes: 50 * 1048576, cpuTimeMs: 0 }] }, { at: 2500, elapsedMs: 500, workingSetMB: 150, privateBytesMB: 50, processCount: 1, processes: [{ pid: 20, name: 'Win-Box.exe', workingSetBytes: 150 * 1048576, privateBytes: 50 * 1048576, cpuTimeMs: 0 }] }],
+    },
+  };
+
+  assert.equal(summarizeV05Run(cycleReport, resourceReport).status, 'FAIL');
+  resourceReport.summary.budgetStatus = 'INSUFFICIENT_SAMPLES';
+  assert.equal(summarizeV05Run(cycleReport, resourceReport).status, 'FAIL');
 });

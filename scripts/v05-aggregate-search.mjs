@@ -22,8 +22,26 @@ function positiveInteger(value, label, { min = 1, max = Number.MAX_SAFE_INTEGER 
   return number;
 }
 
+function positiveBudget(value, label) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0 || number > 100_000) {
+    throw new Error(`${label} must be a positive number no greater than 100000.`);
+  }
+  return number;
+}
+
+const RESOURCE_BUDGET_FLAGS = [
+  ['--budget-working-set-mb', 'workingSetMB'],
+  ['--budget-private-bytes-mb', 'privateBytesMB'],
+  ['--budget-cpu-p95-percent', 'cpuP95Percent'],
+];
+
+function resourceBudgetArgs(budgets) {
+  return RESOURCE_BUDGET_FLAGS.flatMap(([flag, key]) => Number.isFinite(budgets[key]) ? [flag, String(budgets[key])] : []);
+}
+
 export function parseV05SearchArgs(args) {
-  const options = { cycles: 10, sources: 1000, outputDirectory: '' };
+  const options = { cycles: 10, sources: 1000, outputDirectory: '', budgets: { workingSetMB: null, privateBytesMB: null, cpuP95Percent: null } };
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
     const value = args[index + 1];
@@ -31,6 +49,10 @@ export function parseV05SearchArgs(args) {
     if (flag === '--cycles') options.cycles = positiveInteger(value, flag, { min: 10, max: 50 });
     else if (flag === '--sources') options.sources = positiveInteger(value, flag, { min: 1000, max: 1000 });
     else if (flag === '--output-dir') options.outputDirectory = resolve(ROOT, value);
+    else if (RESOURCE_BUDGET_FLAGS.some(([budgetFlag]) => budgetFlag === flag)) {
+      const key = RESOURCE_BUDGET_FLAGS.find(([budgetFlag]) => budgetFlag === flag)[1];
+      options.budgets[key] = positiveBudget(value, flag);
+    }
     else throw new Error(`Unknown option: ${flag}`);
     index += 1;
   }
@@ -146,11 +168,13 @@ export function summarizeV05Search(workload, resourceReport, outputDirectory) {
   const resourceValid = resourceReport?.completion === 'completed'
     && (resourceReport?.sampler?.errors?.length ?? 1) === 0
     && (resourceReport?.summary?.sampleCount ?? 0) >= 2;
+  const budgetStatus = resourceReport?.summary?.budgetStatus ?? 'NOT_CONFIGURED';
+  const budgetValid = budgetStatus === 'NOT_CONFIGURED' || budgetStatus === 'PASS';
 
   return {
     schemaVersion: 1,
     recordedAt: new Date().toISOString(),
-    status: cycleResultsValid && scenarioResultsValid && resourceValid ? 'PASS' : 'FAIL',
+    status: cycleResultsValid && scenarioResultsValid && resourceValid && budgetValid ? 'PASS' : 'FAIL',
     scope: {
       implementation: 'AggregateSearchCoordinator + SearchSourceReadiness + SourceSearchHealth + SourceGateway + CmsSourceAdapter + CmsSource',
       sourcesPerCycle: workload.sourcesPerCycle,
@@ -203,6 +227,7 @@ export function summarizeV05Search(workload, resourceReport, outputDirectory) {
       sampleCount: resourceReport?.summary?.sampleCount ?? 0,
       durationMs: resourceReport?.summary?.durationMs ?? 0,
       budgetStatus: resourceReport?.summary?.budgetStatus ?? 'NOT_CONFIGURED',
+      budgets: resourceReport?.summary?.budgets ?? { workingSetMB: null, privateBytesMB: null, cpuP95Percent: null },
       budgetChecks: resourceReport?.summary?.budgetChecks ?? {},
       errors: resourceReport?.sampler?.errors ?? [],
       processes: summarizeProcessSamples(resourceReport?.summary?.samples ?? []),
@@ -228,7 +253,9 @@ export function summarizeV05Search(workload, resourceReport, outputDirectory) {
       'Spider/JAR/Python runtimes, their readiness/download work, IPC, source-specific parsers, and multi-source content variability are not exercised; the production CMS path is exercised through the loopback HTTP client.',
       'The per-cycle process.memoryUsage values belong to the Vitest test worker and include test/runtime overhead. The Windows process tree groups by node.exe and cannot separate Vitest parent, test worker, and any Node roles by image name alone.',
       'Queue wait has no dedicated production instrumentation. Dispatch offsets measure when each source entered the injected search port relative to its cycle start; they include scheduling and earlier work, not a pure queue-wait duration.',
-      'No performance budgets are configured. Results provide repeatable distributions and resource observations only; they do not claim a budget pass or prove absence of leaks.',
+      budgetStatus === 'NOT_CONFIGURED'
+        ? 'No performance budgets are configured. Results provide repeatable distributions and resource observations only; they do not claim a budget pass or prove absence of leaks.'
+        : 'Configured resource budgets apply to the sampled synthetic benchmark process tree, including its Vitest driver; they are regression guardrails for this harness, not application-only limits.',
       'A 4-8 ms loopback fixture is useful for exercising fan-out and queue behavior, but it does not model remote DNS/TLS, real server throttling, response-size variance, or user-visible search quality.',
       'The resilience scenarios use loopback-generated delays and HTTP 503 responses; the timeout and abort outcomes confirm local cancellation propagation/cleanup only, not third-party source behavior or real user experience.',
       'The Windows sampler uses a 250 ms interval; very short spikes between samples may be missed, and the first CPU interval has no prior process sample.',
@@ -260,6 +287,8 @@ async function run(options) {
     '--env', `V05_SEARCH_OUTPUT_DIR=${options.outputDirectory}`,
     '--env', `V05_SEARCH_CYCLES=${options.cycles}`,
     '--env', `V05_SEARCH_SOURCES=${options.sources}`,
+    '--include-name', 'node.exe',
+    ...resourceBudgetArgs(options.budgets),
     '--', process.execPath, ...vitestArgs,
   ];
   const child = spawn(process.execPath, samplerArgs, { cwd: ROOT, windowsHide: true, stdio: 'inherit' });
