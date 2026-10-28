@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T17:58:16Z",
+  "recordedAt": "2026-10-28T18:06:00Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
@@ -65,7 +65,11 @@
           "PotPlayer pause/resume",
           "Live third-party source playback",
           "PotPlayer desktop screenshot"
-        ]
+        ],
+        "computerUseFollowUp": {
+          "status": "NOT_VERIFIED",
+          "detail": "Computer-use launch request timed out; refreshed app/window inventories contained no PotPlayer or Win-Box target window, so no visible decode frame was captured."
+        }
       }
     },
     "V03": {

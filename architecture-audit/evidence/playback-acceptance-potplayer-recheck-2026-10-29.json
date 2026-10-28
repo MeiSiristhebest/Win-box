@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T17:51:42.043Z",
+  "recordedAt": "2026-10-28T18:06:00Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "version": "1.27.1",
@@ -325,5 +325,17 @@
     "releaseDirectoryModified": false,
     "userProfileUsed": false,
     "preexistingTmpEntriesModified": false
+  },
+  "computerUseFollowUp": {
+    "attemptedAt": "2026-10-28T18:06:00Z",
+    "action": "Launch configured PotPlayer via the computer-use helper for visible-window inspection",
+    "result": "TIMED_OUT",
+    "refreshedApps": "No PotPlayer or Win-Box app entry returned",
+    "refreshedWindows": {
+      "count": 4,
+      "matchingPotPlayerOrWinBox": 0
+    },
+    "visualDecode": "NOT_VERIFIED",
+    "note": "No further launch/input was attempted after the refreshed window inventory returned no target window."
   }
 }
