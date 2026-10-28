@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T17:20:26Z",
+  "recordedAt": "2026-10-28T17:32:41.862Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
@@ -8,14 +8,22 @@
     "productionChangesAfterBuild": false,
     "published": false,
     "pushed": false,
-    "localAcceptanceCommits": ["617de7b4", "4a5ac726", "15fb29f2", "863c41f6"]
+    "localAcceptanceCommits": [
+      "617de7b4",
+      "4a5ac726",
+      "15fb29f2",
+      "863c41f6"
+    ]
   },
   "package": {
     "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
     "setupBytes": 228695919,
     "setupSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
     "winBoxExeSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30",
-    "originalBuildPayload": { "fileCount": 451, "bytes": 533313618 },
+    "originalBuildPayload": {
+      "fileCount": 451,
+      "bytes": 533313618
+    },
     "currentUnpackedDirectory": {
       "observedFileCount": 454,
       "observedBytes": 533313738,
@@ -27,19 +35,42 @@
       "status": "PARTIAL",
       "evidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
       "priorLocalFixture": "HTML5 and managed MPV decode/progress/pause-resume were recorded PASS; PotPlayer decode/time/pause and desktop-visible MPV pixels remain unverified.",
-      "latestNativeLaunch": "PASS_TO_VISIBLE_WINDOW: isolated-copy AppContainer ACL grant processed 616 files; one Win-Box window opened. A Windows Firewall permission dialog currently blocks playback interaction; user handling is pending."
+      "latestNativeLaunch": "PASS_TO_VISIBLE_WINDOW: isolated-copy AppContainer ACL grant processed 616 files; user handled the firewall prompt; window closed normally after inspection. Fresh packaged local HTML5/managed MPV fixture playback passed; see playback recheck evidence.",
+      "localPlaybackRecheck": {
+        "status": "PASS",
+        "evidence": "architecture-audit/evidence/playback-acceptance-packaged-recheck-2026-10-29.json",
+        "checks": [
+          "HTML5 VP8 decode/progress/pause/resume",
+          "managed MPV VP8 decode/seek/progress/pause/resume",
+          "compact centered sharp pause feedback"
+        ],
+        "limitations": [
+          "PotPlayer decode/progress/pause-resume not tested",
+          "live third-party sources not tested",
+          "MPV native child-window pixels not visible in Playwright capture"
+        ]
+      }
     },
     "V03": {
       "status": "PARTIAL",
       "evidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
-      "priorUiRegressions": "Theme and player style regression checks passed; live full-window route/theme/DPI and danmaku-trail capture remain unverified."
+      "priorUiRegressions": "Theme and player style regression checks passed; live full-window route/theme/DPI and danmaku-trail capture remain unverified.",
+      "latestPlayerRecheck": "HTML5 visual frame and player controls are present in the packaged screenshot; MPV decode was confirmed by state and time progression, but native child-window pixels are not captured."
     },
     "V04": {
       "status": "PARTIAL",
       "evidence": "architecture-audit/evidence/installation-acceptance-partial-2026-10-28.json",
-      "installerRegression": { "passed": 11, "failed": 0 },
+      "installerRegression": {
+        "passed": 11,
+        "failed": 0
+      },
       "isolatedPayloadLifecycle": "install, overwrite, uninstall-first, rollback, uninstall, 451 packaged files, and six synthetic data categories passed.",
-      "notVerified": ["Actual packaged Win-Box process-stop", "interactive Cancel/Back/elevation", "upgrade over a real existing install", "playing/hidden-window upgrade"]
+      "notVerified": [
+        "Actual packaged Win-Box process-stop",
+        "interactive Cancel/Back/elevation",
+        "upgrade over a real existing install",
+        "playing/hidden-window upgrade"
+      ]
     },
     "V05": {
       "status": "PARTIAL_SYNTHETIC_ONLY",
@@ -49,29 +80,65 @@
         "sourcesPerCycle": 1000,
         "localHttpRequests": 12050,
         "peakConcurrency": 48,
-        "cycleLatencyMs": { "p50": 378.5, "p95": 615.1 },
-        "throughputSourcesPerSecond": { "p50": 2441.5, "p95": 2945.9 },
+        "cycleLatencyMs": {
+          "p50": 378.5,
+          "p95": 615.1
+        },
+        "throughputSourcesPerSecond": {
+          "p50": 2441.5,
+          "p95": 2945.9
+        },
         "resilience": "1,001-source partial failure/timeout, cancel-after-first-result, and recovery scenarios passed; zero active requests after each settled.",
-        "resourceSample": { "workingSetPeakMiB": 355.9, "privateBytesPeakMiB": 416.5, "cpuP95Percent": 129.9, "processes": 2, "budget": "NOT_CONFIGURED" }
+        "resourceSample": {
+          "workingSetPeakMiB": 355.9,
+          "privateBytesPeakMiB": 416.5,
+          "cpuP95Percent": 129.9,
+          "processes": 2,
+          "budget": "NOT_CONFIGURED"
+        }
       },
-      "notVerified": ["Real third-party sources", "User profiles and spider/JAR/Python workloads", "UI responsiveness", "1080p/4K and dense danmaku", "performance budgets"]
+      "notVerified": [
+        "Real third-party sources",
+        "User profiles and spider/JAR/Python workloads",
+        "UI responsiveness",
+        "1080p/4K and dense danmaku",
+        "performance budgets"
+      ]
     },
     "V06": {
       "status": "PARTIAL",
-      "notVerified": ["Remote CI", "interactive installation/upgrade over the user install", "live third-party playback", "desktop-visible MPV pixels"]
+      "notVerified": [
+        "Remote CI",
+        "interactive installation/upgrade over the user install",
+        "live third-party playback",
+        "desktop-visible MPV pixels"
+      ]
     }
   },
   "requiredTaskStatus": {
     "completed": 31,
     "total": 36,
-    "open": ["V02", "V03", "V04", "V05", "V06"]
+    "open": [
+      "V02",
+      "V03",
+      "V04",
+      "V05",
+      "V06"
+    ]
   },
-  "optionalOpen": ["O01", "O02"],
+  "optionalOpen": [
+    "O01",
+    "O02"
+  ],
   "workspace": {
     "localCommitsUnpushed": true,
-    "preservedUncommittedUserChanges": ["libnc.so", "src/renderer/components/SourcePicker.tsx"],
-    "temporaryAcceptanceArtifactsCleaned": false,
-    "temporaryAcceptanceCleanup": "Pending the user handling the firewall dialog and the isolated Win-Box process closing."
+    "preservedUncommittedUserChanges": [
+      "libnc.so",
+      "src/renderer/components/SourcePicker.tsx"
+    ],
+    "temporaryAcceptanceArtifactsCleaned": true,
+    "temporaryAcceptanceCleanup": "PASS for the current run: isolated candidate and transient playback artifacts removed; report/screenshots retained under architecture-audit/evidence. Other pre-existing .tmp items were not classified or touched."
   },
-  "releasePublished": false
+  "releasePublished": false,
+  "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-packaged-recheck-2026-10-29.json"
 }

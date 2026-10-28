@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T17:32:41.862Z",
+  "source": {
+    "branch": "codex/architecture-cleanup-20261025",
+    "version": "1.27.1",
+    "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
+    "packagePath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "setupSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
+    "winBoxExeSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30"
+  },
+  "scope": "Fresh isolated packaged-app playback verification using only a loopback-generated VP8 WebM fixture; no real third-party sources or user profile.",
+  "environment": {
+    "packagedCandidateDirectory": ".tmp/v02-candidate-20261029-0115",
+    "isolatedAppData": true,
+    "fixture": {
+      "codec": "VP8",
+      "width": 320,
+      "height": 180,
+      "durationMs": 14003.29999999702,
+      "bytes": 74663
+    },
+    "mpv": {
+      "version": "0.41.0",
+      "source": "https://github.com/mpv-player/mpv/releases/tag/v0.41.0",
+      "archiveSha256": "4e197f729f5071c6772f35fffd96e0f36e3e8a044bd9479b136bb09b7c6a80ff",
+      "executableSha256": "6145e63f026451a764077d53fd60860ec9f5c2bc76dcd6e62a88967ac375453d"
+    }
+  },
+  "status": "PASS",
+  "checks": [
+    {
+      "name": "generated-local-video",
+      "status": "PASS",
+      "bytes": 74663,
+      "codec": "VP8",
+      "width": 320,
+      "height": 180,
+      "durationMs": 14003.29999999702
+    },
+    {
+      "name": "html5-pause-feedback-compact-centered-and-sharp",
+      "status": "PASS",
+      "width": 28,
+      "height": 28,
+      "iconWidth": 14,
+      "iconHeight": 14,
+      "centerOffsetX": 0,
+      "centerOffsetY": 0,
+      "opacity": "1",
+      "background": "rgb(20, 23, 29)",
+      "backdropFilter": "none",
+      "boxShadow": "none"
+    },
+    {
+      "name": "html5-real-decode-time-progress-pause-resume",
+      "status": "PASS",
+      "time": 1.113533,
+      "width": 320,
+      "height": 180,
+      "paused": true,
+      "resumedFrom": 0.591839
+    },
+    {
+      "name": "mpv-real-decode-seek-time-progress-pause-resume",
+      "status": "PASS",
+      "session": 2,
+      "time": 3.595,
+      "resumedFrom": 3.03,
+      "width": 320,
+      "height": 180,
+      "paused": true
+    },
+    {
+      "name": "restore-auto-and-preserve-paused-position",
+      "status": "PASS",
+      "time": 3.595,
+      "paused": true
+    }
+  ],
+  "rendererErrors": [],
+  "fixtureRequests": [
+    {
+      "method": "GET",
+      "path": "/repos.json",
+      "range": "",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "responseBytes": 0,
+      "completed": true
+    },
+    {
+      "method": "GET",
+      "path": "/a.json",
+      "range": "",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "responseBytes": 0,
+      "completed": true
+    },
+    {
+      "method": "GET",
+      "path": "/b.json",
+      "range": "",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "responseBytes": 0,
+      "completed": true
+    },
+    {
+      "method": "GET",
+      "path": "/clip.webm",
+      "range": "bytes=0-",
+      "status": 206,
+      "contentType": "video/webm",
+      "responseBytes": 74663,
+      "completed": true
+    },
+    {
+      "method": "GET",
+      "path": "/clip.webm",
+      "range": "bytes=0-",
+      "status": 206,
+      "contentType": "video/webm",
+      "responseBytes": 74663,
+      "completed": true
+    }
+  ],
+  "process": {
+    "electronPid": 4928,
+    "exited": true
+  },
+  "cleanup": {
+    "scriptReportedClean": true,
+    "steps": [
+      {
+        "action": "close-electron",
+        "status": "PASS"
+      },
+      {
+        "action": "wait-electron-exit",
+        "status": "PASS"
+      },
+      {
+        "action": "close-fixture-server",
+        "status": "PASS",
+        "durationMs": 0
+      },
+      {
+        "action": "remove-mpv-runtime",
+        "status": "PASS",
+        "durationMs": 31
+      },
+      {
+        "action": "remove-session-directory",
+        "status": "PASS",
+        "durationMs": 47
+      }
+    ],
+    "manualCandidateWindowPid": 38592,
+    "manualCandidateWindowClosedNormally": true,
+    "noWinBoxProcessRowObservedAfterClose": true,
+    "isolatedCandidateDirectoryRemoved": "PASS",
+    "playbackArtifactTempDirectoryRemoved": "PASS"
+  },
+  "artifacts": {
+    "html5Screenshot": "architecture-audit/evidence/packaged-playback-recheck-html5-2026-10-29.png",
+    "mpvScreenshot": "architecture-audit/evidence/packaged-playback-recheck-mpv-2026-10-29.png"
+  },
+  "limitations": [
+    "PotPlayer decode, progress and pause/resume were not tested in this run.",
+    "No live third-party source matrix was used.",
+    "The Playwright MPV screenshot does not include the native child video HWND; desktop-visible MPV pixels remain unverified."
+  ]
+}
