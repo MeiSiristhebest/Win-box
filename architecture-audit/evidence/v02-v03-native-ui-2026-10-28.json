@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "tasks": [
+    "V02",
+    "V03"
+  ],
+  "recordedAt": "2026-10-28T15:36:21.303Z",
+  "result": "NOT_VERIFIED",
+  "candidate": {
+    "version": "1.27.1",
+    "packagePath": "release1.27.1/win-unpacked",
+    "temporaryCopy": {
+      "files": 451,
+      "bytes": 533313618,
+      "winBoxExeSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30",
+      "matchesReleaseExe": true
+    }
+  },
+  "method": {
+    "harnessCopy": "scripts/verify-playback.mjs copied to a run-specific .tmp file; screenshots disabled; independent APPDATA and LOCALAPPDATA configured by harness",
+    "fixture": "Not generated: the packaged application did not start",
+    "externalSources": "NOT_USED"
+  },
+  "attempts": [
+    {
+      "command": "D:\\develop\\nodejs\\node.exe <temporary verify-v02v03-ui harness> --packaged-app <temporary package copy> --playback-only --artifact-dir <temporary output>",
+      "result": "BLOCKED_BEFORE_APP_PROCESS",
+      "error": "Playwright _electron.launch failed while spawning C:\\WINDOWS\\system32\\cmd.exe with ENOENT; log reported pid=N/A."
+    },
+    {
+      "change": "Set ComSpec/COMSPEC to C:\\Windows\\System32\\cmd.exe only in the temporary harness process environment.",
+      "result": "SAME_BLOCK",
+      "error": "Playwright _electron.launch again returned spawn C:\\Windows\\System32\\cmd.exe ENOENT; pid=N/A."
+    }
+  ],
+  "uiObservations": {
+    "preLaunchWinBoxOrMpvWindows": 0,
+    "postFailureWinBoxOrMpvWindows": 0,
+    "visibleFixtureFrame": "NOT_VERIFIED",
+    "pauseControlAndFeedback": "NOT_VERIFIED",
+    "backgroundBlur": "NOT_VERIFIED",
+    "mpvNativeChildHwndFrame": "NOT_VERIFIED",
+    "computerUseScreenshotPersisted": false,
+    "afterDirectLaunchAttemptsWinBoxOrMpvWindows": 0
+  },
+  "safety": {
+    "userProfilesTouched": false,
+    "windowsPermissionDialogsOpened": false,
+    "playerSettingsChanged": false,
+    "thirdPartyMediaUsed": false,
+    "releaseDirectoryModified": false
+  },
+  "cleanup": {
+    "harnessCleanupPassInBothFailureReports": true,
+    "acceptanceSessionDirectoriesRemoved": true,
+    "extractedMpvRuntimeRemoved": true,
+    "ownedPackageCopyAndHarnessRemoved": true,
+    "outputDirectoriesRemoved": true,
+    "visualizationCopyRemoved": true,
+    "directPackageCopiesAndProfileDirectoriesRemoved": true,
+    "copyScriptsAndManifestsRemoved": true,
+    "noWinBoxOrMpvProcessReturnedBySky": true
+  },
+  "blockingNote": "The packaged Playwright runner failed before creating the app process (spawn cmd.exe ENOENT). Two additional direct launches from hash-verified copies with isolated APPDATA/LOCALAPPDATA also exited with code -2147483645 before exposing a window. No Win-Box or MPV window was returned by Computer Use after the attempts; pixel-level states remain NOT_VERIFIED.",
+  "directLaunchAttempts": [
+    {
+      "copyPath": "D:/developWorkPlaces/win-box/.tmp/v03-visual-acceptance-20261028 (removed after attempt)",
+      "copyFiles": 451,
+      "copyBytes": 533313618,
+      "exeSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30",
+      "environment": "APPDATA, LOCALAPPDATA, TEMP, and TMP pointed to fresh .tmp/v03-visual-data directories",
+      "command": "cmd.exe directly launched the copied Win-Box.exe",
+      "result": "PROCESS_EXITED_BEFORE_WINDOW",
+      "exitCode": -2147483645,
+      "uiWindowsReturned": 0
+    },
+    {
+      "copyPath": "C:/Users/Mei/.codex/visualizations/2026/10/20/01a1598a-41cb-7003-abd2-b5dd494aa0ab/winbox-v03-visual-20261028 (removed after attempt)",
+      "copyFiles": 451,
+      "copyBytes": 533313618,
+      "exeSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30",
+      "environment": "APPDATA, LOCALAPPDATA, TEMP, and TMP pointed to a fresh profile below the authorized visualization root",
+      "command": "cmd.exe directly launched the copied Win-Box.exe",
+      "result": "PROCESS_EXITED_BEFORE_WINDOW",
+      "exitCode": -2147483645,
+      "uiWindowsReturned": 0
+    }
+  ]
+}
