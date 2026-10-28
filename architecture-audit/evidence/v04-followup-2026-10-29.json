@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T18:42:12.687Z",
+  "area": "V04 installer acceptance",
+  "candidate": {
+    "sourceDirectory": "release1.27.1/win-unpacked",
+    "winBoxExeSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30",
+    "sourceContainsRuntimeDataDirectory": true,
+    "runtimeDataExcludedFromAcceptanceCopy": "data/ (120 bytes; migration marker, local package marker, empty logs/cache directories)",
+    "copiedAppDirectory": ".tmp/v04-clean-package-lguMpe/win-unpacked",
+    "copiedPackageSize": "508.60 MiB (Robocopy reported)"
+  },
+  "realCandidateNsisAcceptance": {
+    "command": "pnpm run acceptance:install D:\\developWorkPlaces\\win-box\\.tmp\\v04-clean-package-lguMpe\\win-unpacked",
+    "install": "PASS",
+    "overwrite": "PASS",
+    "uninstallFirst": "PASS",
+    "uninstall": "PASS",
+    "verifiedFiles": 451,
+    "dataPreserved": true,
+    "userDataFilesPreserved": 6,
+    "registryAndShortcuts": "PASS",
+    "isolated": true,
+    "temporaryInstallDirectory": "OS temp directory, unique winbox-installation-acceptance- UUID",
+    "cleaned": true,
+    "runningProcessStopped": "NOT_RUN"
+  },
+  "installerTestSuite": {
+    "command": "pnpm test:installer",
+    "tests": 11,
+    "passed": 11,
+    "failed": 0,
+    "skipped": 0,
+    "syntheticSameDirectoryProcessStop": "PASS in 3857 ms; fixture is node.exe copied as Win-Box.exe, not the packaged application",
+    "failedUninstallerRollbackAndLockedLegacyFile": "PASS; six categories of user data and personal file preserved"
+  },
+  "actualApplicationProcessProbe": {
+    "recordedAt": "2026-10-28T18:54:13Z",
+    "isolatedInstallDirectory": ".tmp/v04-real-app-xTYjPz/installation",
+    "isolatedProfile": "APPDATA, LOCALAPPDATA, USERPROFILE, HOME, TEMP and TMP were redirected to this temporary test workspace; the app's migration marker points only to the temporary APPDATA path.",
+    "attempts": [
+      {
+        "startupArguments": ["--no-sandbox", "--disable-gpu", "--disable-background-networking"],
+        "processObserved": true,
+        "result": "Packaged Win-Box exited within the five-second stability window; no upgrade was attempted."
+      },
+      {
+        "startupArguments": [],
+        "processObserved": true,
+        "result": "ACTUAL_APP_DID_NOT_REMAIN_RUNNING",
+        "durationMs": 11571,
+        "exitCode": 2147483651,
+        "exitCodeHex": "0x80000003"
+      }
+    ],
+    "windowsErrorReporting": {
+      "provider": "Application Error / Windows Error Reporting",
+      "eventIds": [1000, 1001],
+      "applicationVersion": "1.27.1.0",
+      "exceptionCode": "0x80000003",
+      "faultOffset": "0x00000000073d6749",
+      "faultingImage": "Win-Box.exe",
+      "faultingPathWasTemporaryInstallation": true
+    },
+    "upgradeAttempted": false,
+    "conclusion": "The actual packaged application did not remain running in an isolated install even after removing all startup flags. The live-process installer check was stopped as instructed; this is a candidate-app startup failure, not evidence that installer process shutdown passed or failed."
+  },
+  "notVerified": [
+    "Upgrade over the user's existing installation",
+    "Stopping the actual packaged Win-Box while playing or hidden (the isolated candidate crashed before an upgrade attempt)",
+    "Interactive Cancel/Back/UAC behavior",
+    "Preservation of a real user's profile"
+  ],
+  "cleanup": {
+    "systemTemporaryAcceptanceWorkspace": "PASS; verifyInstallation returned cleaned=true",
+    "workspaceCandidateCopy": "PASS; removed .tmp/v04-clean-package-lguMpe after evidence capture",
+    "actualApplicationTemporaryWorkspace": "PASS; read-only inspected temporary logs/Crashpad first, then removed .tmp/v04-real-app-xTYjPz and its temporary harness scripts"
+  },
+  "interpretation": "This exercises the current NSIS installer with the complete non-runtime-data file set from the packaged Win-Box candidate. It proves isolated install/overwrite/uninstall and data preservation for that candidate payload, but does not claim an in-place upgrade over the user's real installation or process stop for the actual application."
+}
