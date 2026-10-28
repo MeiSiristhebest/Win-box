@@ -236,7 +236,7 @@ describe('dualbar shell theme contrast wiring', () => {
 
     const navigation = lastRule(":root\\[data-shell='dualbar'\\] \\.bb-tab");
     expect(navigation).toMatch(/color:\s*var\(--text-dim\)/);
-    const selectedNavigation = lastRule(":root\\[data-shell='dualbar'\\] \\.bb-tab\.active");
+    const selectedNavigation = lastRule(":root\\[data-shell='dualbar'\\] \\.bb-tab\\.active");
     expect(selectedNavigation).toMatch(/background:\s*var\(--color-accent\)/);
     expect(selectedNavigation).toMatch(/color:\s*var\(--on-accent\)/);
 

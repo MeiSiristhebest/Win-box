@@ -258,7 +258,6 @@ function terminateTree(pid) {
 async function run(options) {
   assert.equal(process.platform, 'win32', 'Runtime resource sampling requires Windows.');
   const [executable, ...args] = options.command;
-  const startedAt = Date.now();
   const child = spawn(executable, args, { cwd: ROOT, env: { ...process.env, ...options.environment }, windowsHide: true, stdio: 'inherit' });
   if (!child.pid) throw new Error(`Could not start ${basename(executable)}.`);
 

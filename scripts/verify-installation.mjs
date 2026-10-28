@@ -85,6 +85,8 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
   };
   let running;
   let result;
+  let operationError;
+  const cleanupErrors = [];
   try {
     execute(installer);
     await verifyCopies();
@@ -165,15 +167,34 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false } 
       isolated: true,
       registryAndShortcuts: 'PASS',
     };
+  } catch (error) {
+    operationError = error;
   } finally {
-    if (running && running.exitCode === null) running.kill();
-    const registryPath = `HKCU\\${integrationRegistryKey}`;
-    if (registryCommand(['query', registryPath]).status === 0) {
-      const removal = registryCommand(['delete', registryPath, '/f']);
-      if (removal.status !== 0) throw new Error(`Could not remove temporary installer acceptance registry entries: ${removal.stderr || removal.stdout}`);
+    try {
+      if (running && running.exitCode === null) running.kill();
+    } catch (error) {
+      cleanupErrors.push(error);
     }
-    await rm(work, { recursive: true, force: true });
+    try {
+      const registryPath = `HKCU\\${integrationRegistryKey}`;
+      if (registryCommand(['query', registryPath]).status === 0) {
+        const removal = registryCommand(['delete', registryPath, '/f']);
+        if (removal.status !== 0) cleanupErrors.push(new Error(`Could not remove temporary installer acceptance registry entries: ${removal.stderr || removal.stdout}`));
+      }
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    try {
+      await rm(work, { recursive: true, force: true });
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
   }
+  if (operationError && cleanupErrors.length > 0) {
+    throw new AggregateError([operationError, ...cleanupErrors], 'Installer acceptance failed and cleanup also failed.');
+  }
+  if (operationError) throw operationError;
+  if (cleanupErrors.length > 0) throw new AggregateError(cleanupErrors, 'Installer acceptance cleanup failed.');
   return { ...result, cleaned: !await exists(work) };
 }
 
