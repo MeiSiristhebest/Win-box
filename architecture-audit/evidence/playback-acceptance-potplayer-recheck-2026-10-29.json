@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T18:06:00Z",
+  "recordedAt": "2026-10-28T18:17:06Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "version": "1.27.1",
@@ -336,6 +336,14 @@
       "matchingPotPlayerOrWinBox": 0
     },
     "visualDecode": "NOT_VERIFIED",
-    "note": "No further launch/input was attempted after the refreshed window inventory returned no target window."
+    "note": "No further launch/input was attempted after the refreshed window inventory returned no target window.",
+    "winBoxCandidateAttempt": {
+      "attemptedAt": "2026-10-28T18:17:06Z",
+      "executable": "release1.27.1/win-unpacked/Win-Box.exe",
+      "result": "LAUNCH_DID_NOT_EXPOSE_TARGETABLE_WINDOW",
+      "refreshedAppAndWindowMatches": 0,
+      "processAfterRefresh": "NOT_RUNNING",
+      "playback": "NOT_RUN"
+    }
   }
 }

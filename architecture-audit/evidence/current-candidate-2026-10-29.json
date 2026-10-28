@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T18:06:00Z",
+  "recordedAt": "2026-10-28T18:17:06Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
@@ -70,6 +70,10 @@
           "status": "NOT_VERIFIED",
           "detail": "Computer-use launch request timed out; refreshed app/window inventories contained no PotPlayer or Win-Box target window, so no visible decode frame was captured."
         }
+      },
+      "visibleAppFollowUp": {
+        "status": "NOT_VERIFIED",
+        "detail": "The packaged Win-Box executable launch did not expose a targetable window; refreshed app/window inventories had no Win-Box/PotPlayer window, and no process remained afterward. No live-source playback was run."
       }
     },
     "V03": {
