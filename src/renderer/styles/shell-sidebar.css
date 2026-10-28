@@ -15,7 +15,7 @@
 
 /* ---- 全局：桌面底 + SF 字体栈 ---- */
 :root[data-shell='sidebar'] body {
-  background: linear-gradient(180deg, #fbfbfd 0%, #f5f5f7 46%, #eef0f4 100%);
+  background: var(--surface-glass);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC",
     "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
   color: var(--text);
@@ -36,7 +36,7 @@
   -webkit-app-region: drag;
   flex: none; height: var(--nav-h); display: flex; align-items: center; gap: 10px;
   padding: 0 16px 0 14px; z-index: 40;
-  background: rgba(248, 248, 250, .72);
+  background: var(--surface-glass);
   backdrop-filter: blur(34px) saturate(180%);
   -webkit-backdrop-filter: blur(34px) saturate(180%);
   border-bottom: 1px solid var(--hairline);
@@ -54,7 +54,7 @@
 :root[data-shell='sidebar'] .ap-navbtn {
   all: unset; -webkit-app-region: no-drag; flex: none;
   width: 26px; height: 26px; border-radius: 7px; cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center; color: #3a3a3c;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--text);
 }
 :root[data-shell='sidebar'] .ap-navbtn:hover { background: rgba(60, 60, 67, .08); }
 :root[data-shell='sidebar'] .ap-navbtn:active { background: rgba(60, 60, 67, .14); }
@@ -86,7 +86,7 @@
 :root[data-shell='sidebar'] .ap-sidebar {
   width: var(--side-w); flex: none; padding: 8px 10px 12px;
   display: flex; flex-direction: column; gap: 1px;
-  background: rgba(240, 240, 243, .6);
+  background: var(--surface-1);
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   border-right: 1px solid var(--hairline);
@@ -107,7 +107,7 @@
 }
 :root[data-shell='sidebar'] .ap-nav {
   display: flex; align-items: center; gap: 9px; padding: 6px 9px; border-radius: 8px;
-  color: #2c2c2e; font-size: var(--fs-md); font-weight: 500;
+  color: var(--text); font-size: var(--fs-md); font-weight: 500;
   transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
     box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring);
 }
@@ -132,15 +132,15 @@
 }
 :root[data-shell='sidebar'] .topbar button { flex: 0 0 auto; white-space: nowrap; }
 :root[data-shell='sidebar'] .back-btn {
-  background: rgba(255, 255, 255, .82); border: 1px solid var(--hairline); color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
   box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
 }
-:root[data-shell='sidebar'] .back-btn:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--text-accent); }
+:root[data-shell='sidebar'] .back-btn:hover { background: var(--surface-3); border-color: var(--text-accent); color: var(--text-accent); }
 
 /* ================= 通用控件（Liquid Glass 观感） ================= */
 /* 次要按钮：灰色填充胶囊/圆角块（macOS 推拉按钮） */
 :root[data-shell='sidebar'] button {
-  background: rgba(120, 120, 128, .12); border: 1px solid transparent; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
   border-radius: 8px; font-weight: 500; padding: 6px 14px;
   transition: background var(--dur-state) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
     box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-instant) var(--ease-spring);
@@ -167,7 +167,7 @@
 :root[data-shell='sidebar'] input,
 :root[data-shell='sidebar'] select,
 :root[data-shell='sidebar'] textarea {
-  background: #fff; border: 1px solid rgba(60, 60, 67, .18); border-radius: 9px; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; color: var(--text);
   box-shadow: inset 0 .5px 0 rgba(0, 0, 0, .02);
 }
 :root[data-shell='sidebar'] input:focus,
@@ -180,7 +180,7 @@
 
 /* 工具条上的搜索/换源入口：玻璃胶囊 */
 :root[data-shell='sidebar'] .ap-toolbar .srcpick-name {
-  background: rgba(255, 255, 255, .7); border: 1px solid var(--hairline); border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px;
   color: var(--text); font-size: 13px; padding: 5px 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .04), inset 0 .5px 0 rgba(255, 255, 255, .6);
   backdrop-filter: blur(20px) saturate(160%);
@@ -190,7 +190,7 @@
 /* 弹出层（换源 / 搜索）：Liquid Glass 浮层 */
 :root[data-shell='sidebar'] .srcpick-pop,
 :root[data-shell='sidebar'] .sp-panel {
-  background: rgba(252, 252, 253, .82);
+  background: var(--surface-3);
   backdrop-filter: blur(44px) saturate(180%);
   -webkit-backdrop-filter: blur(44px) saturate(180%);
   border: 1px solid var(--hairline); border-radius: var(--radius);
@@ -207,20 +207,20 @@
 /* 侧边栏底部「当前源」：低调的玻璃行 */
 :root[data-shell='sidebar'] .srcpick-side { margin: 6px 2px 0; }
 :root[data-shell='sidebar'] .srcpick-side .srcpick-name {
-  background: rgba(255, 255, 255, .55); border: 1px solid var(--hairline); border-radius: 9px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px;
   padding: 7px 10px; font-size: 12.5px;
 }
 :root[data-shell='sidebar'] .srcpick-label { font-size: 12px; }
 
 /* 标签（分类 / 剧集类型）：白底发丝胶囊；选中 = 系统蓝实心 */
 :root[data-shell='sidebar'] .tag {
-  background: rgba(255, 255, 255, .9); border: 1px solid var(--hairline); border-radius: 999px;
-  color: #3a3a3c; padding: 4px 13px; font-weight: 500;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px;
+  color: var(--text); padding: 4px 13px; font-weight: 500;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
   transition: background var(--dur-state) var(--ease-standard), border-color var(--dur-state) var(--ease-standard),
     color var(--dur-quick) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
 }
-:root[data-shell='sidebar'] .tag:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--text-accent); }
+:root[data-shell='sidebar'] .tag:hover { background: var(--surface-3); border-color: var(--text-accent); color: var(--text-accent); }
 :root[data-shell='sidebar'] .tag.active {
   background: var(--accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
   box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 55%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .3);
@@ -304,7 +304,7 @@
 
 /* ================= 卡片（缩略图 + 标题）：悬停上浮 + 播放徽标 ================= */
 :root[data-shell='sidebar'] .card {
-  background: rgba(255, 255, 255, .95);
+  background: var(--surface-1);
   border: 1px solid var(--hairline); border-radius: 16px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 8px 24px rgba(0, 0, 0, .06);
 }
@@ -312,7 +312,7 @@
 :root[data-shell='sidebar'] .card-media { transition: transform var(--dur-state) var(--ease-spring); }
 :root[data-shell='sidebar'] .card-media:hover { transform: none; }
 :root[data-shell='sidebar'] .card-media:hover .card {
-  transform: none; border-color: rgba(60, 60, 67, .08);
+  transform: none; border-color: var(--border);
   box-shadow: none;
 }
 :root[data-shell='sidebar'] .card-media img { transition: none; }
@@ -346,15 +346,15 @@
 :root[data-shell='sidebar'] .card-media .name { font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--text); }
 :root[data-shell='sidebar'] .card-media .remarks { color: var(--text-dim); font-weight: 500; }
 :root[data-shell='sidebar'] .card-media .badge {
-  background: rgba(255, 255, 255, .86); color: var(--text); font-weight: 600; border-radius: 999px;
+  background: var(--surface-2); color: var(--text); font-weight: 600; border-radius: 999px;
   backdrop-filter: none; -webkit-backdrop-filter: none;
   box-shadow: none;
 }
-:root[data-shell='sidebar'] .no-cover { background: rgba(120, 120, 128, .08); color: var(--text-secondary); }
+:root[data-shell='sidebar'] .no-cover { background: var(--surface-3); color: var(--text-secondary); }
 /* 悬停播放徽标（Apple TV 缩略图观感）：默认隐藏，悬停淡入 */
 :root[data-shell='sidebar'] .grid { gap: 18px; }
 :root[data-shell='sidebar'] .list-item {
-  background: rgba(255, 255, 255, .92); border: 1px solid var(--hairline); border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
   transition: box-shadow .18s ease, transform .18s ease;
 }
 :root[data-shell='sidebar'] .list-item:hover {
@@ -375,13 +375,13 @@
 :root[data-detail='glass'] .ap-detail-wrap .ep-list { gap: 8px; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); }
 :root[data-detail='glass'] .ap-detail-wrap .row { row-gap: 10px; }
 :root[data-shell='sidebar'] .ep {
-  background: #fff; border: 1px solid var(--hairline); border-radius: var(--radius-sm);
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
   color: var(--text); font-weight: 500; padding: 8px 10px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
   transition: border-color var(--dur-state) var(--ease-standard), background var(--dur-state) var(--ease-standard),
     color var(--dur-quick) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
 }
-:root[data-shell='sidebar'] .ep:hover { border-color: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--text-accent); background: #fff; }
+:root[data-shell='sidebar'] .ep:hover { border-color: var(--text-accent); color: var(--text-accent); background: var(--surface-3); }
 :root[data-shell='sidebar'] .ep.active {
   background: var(--accent); border-color: transparent; color: var(--on-accent); font-weight: 600;
   box-shadow: 0 2px 10px -2px color-mix(in srgb, var(--accent) 55%, transparent), inset 0 .5px 0 rgba(255, 255, 255, .3);
@@ -401,11 +401,11 @@
 }
 :root[data-shell='sidebar'] .empty { color: var(--text-dim); }
 :root[data-shell='sidebar'] .hist-undo {
-  background: rgba(255, 255, 255, .92); border: 1px solid var(--hairline); border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
 }
 :root[data-shell='sidebar'] .about-link {
-  background: rgba(255, 255, 255, .92); border: 1px solid var(--hairline); border-radius: 12px;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
 }
 :root[data-shell='sidebar'] .about-link:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--text-accent); }
@@ -452,9 +452,9 @@
    此前这里写成 `.app.pwin`（无 `pvwin` 限定）⇒ 连**独立详情窗口**也被涂黑，且与另两套浅色皮肤不一致。
    `pvwin` 只挂在真正的播放器窗口上（App.tsx 的 isPlayerWin 分支），详情窗口是 `app pwin`。 */
 :root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin,
-:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .main { background: #fff; }
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .main { background: var(--surface-0); }
 :root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .titlebar {
-  background: #fff; border-bottom: 1px solid var(--hairline); box-shadow: none;
+  background: var(--surface-glass); border-bottom: 1px solid var(--border); box-shadow: none;
 }
 :root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .tb-title { color: var(--text); }
 :root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .tb-btn { color: var(--text-dim); }
@@ -462,7 +462,7 @@
 :root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .tb-btn.tb-close:hover { background: var(--danger); color: var(--on-danger); }
 :root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .tb-btn.tb-pin-on { color: var(--text-accent, var(--accent)); background: var(--accent-soft); }
 /* 非 MPV 小窗口使用浅底，因此按钮悬停态也使用主题强调色。 */
-:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .mini-strip { background: rgba(255, 255, 255, .92); color: var(--text-dim); }
+:root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .mini-strip { background: var(--surface-2); color: var(--text-dim); }
 :root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .mini-btn { color: var(--text-dim); }
 :root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .mini-btn:hover { background: var(--accent-soft); color: var(--text-accent, var(--accent)); }
 :root[data-shell='sidebar']:not([data-mpv]) .app.pwin.pvwin .mini-strip-close:hover { background: var(--danger); color: var(--on-danger); }
@@ -474,11 +474,11 @@
 :root[data-shell='sidebar'] ::-webkit-scrollbar { width: 11px; height: 11px; }
 :root[data-shell='sidebar'] ::-webkit-scrollbar-track { background: transparent; }
 :root[data-shell='sidebar'] ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, .22); border-radius: 999px;
+  background: var(--border); border-radius: 999px;
   border: 3.5px solid transparent; background-clip: content-box;
 }
 :root[data-shell='sidebar'] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, .38); border: 3.5px solid transparent; background-clip: content-box;
+  background: var(--text-dim); border: 3.5px solid transparent; background-clip: content-box;
 }
 
 /* ================= 响应式：窄窗收窄侧边栏（HIG：空间不足时让位内容） ================= */
@@ -547,14 +547,14 @@
 
 /* ---- ③ 工具栏 / 侧栏：玻璃再提纯（内高光 + 发丝分隔线）+ 品牌渐变方块标 + 导航玻璃悬停 ---- */
 :root[data-shell='sidebar'] .ap-toolbar {
-  background: rgba(252, 252, 254, .62);
+  background: var(--surface-glass);
   backdrop-filter: blur(42px) saturate(190%);
   -webkit-backdrop-filter: blur(42px) saturate(190%);
   border-bottom: 1px solid var(--border-soft);
   box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .7), inset 0 -.5px 0 rgba(255, 255, 255, .22), 0 1px 0 rgba(255, 255, 255, .55), 0 8px 30px -20px rgba(31, 41, 55, .38);
 }
 :root[data-shell='sidebar'] .ap-sidebar {
-  background: rgba(250, 250, 252, .5);
+  background: var(--surface-1);
   backdrop-filter: blur(46px) saturate(190%);
   -webkit-backdrop-filter: blur(46px) saturate(190%);
   border-right: 1px solid rgba(255, 255, 255, .6);
@@ -577,7 +577,7 @@
 }
 /* 导航项：玻璃悬停 + 选中蓝胶囊（沿用既有 apPop 弹跳，不重写关键帧） */
 :root[data-shell='sidebar'] .ap-nav:hover {
-  background: rgba(255, 255, 255, .62); color: var(--text);
+  background: var(--surface-2); color: var(--text);
   box-shadow: 0 1px 2px rgba(31, 41, 55, .06), inset 0 .5px 0 rgba(255, 255, 255, .85);
 }
 :root[data-shell='sidebar'] .ap-nav.active {
@@ -588,13 +588,13 @@
 /* ---- ④ 分类条：白玻璃容器 + 弱化小标签 + 胶囊 chips（选中系统蓝） ---- */
 :root[data-shell='sidebar'] .cascade {
   padding: 12px 15px; margin-bottom: 22px; border-radius: 16px;
-  background: rgba(255, 255, 255, .58); border: 1px solid rgba(255, 255, 255, .7);
+  background: var(--surface-2); border: 1px solid var(--border);
   backdrop-filter: blur(26px) saturate(170%); -webkit-backdrop-filter: blur(26px) saturate(170%);
   box-shadow: 0 1px 2px rgba(31, 41, 55, .04), 0 14px 36px -22px rgba(31, 41, 55, .4),
     inset 0 .5px 0 rgba(255, 255, 255, .8);
 }
 :root[data-shell='sidebar'] .cascade-row + .cascade-row {
-  border-top: 1px solid rgba(60, 60, 67, .08); padding-top: 8px;
+  border-top: 1px solid var(--border); padding-top: 8px;
 }
 :root[data-shell='sidebar'] .cascade-label {
   color: var(--text-faint); font-size: 12px; font-weight: 700; letter-spacing: .12em; margin-right: 8px;
@@ -623,7 +623,7 @@
 :root[data-shell='sidebar'] .card-media { transition: transform var(--dur-state) var(--ease-spring); }
 :root[data-shell='sidebar'] .card-media:hover { transform: none; z-index: auto; }
 :root[data-shell='sidebar'] .card-media .card {
-  background: rgba(255, 255, 255, .92); border: 1px solid rgba(255, 255, 255, .75);
+  background: var(--surface-2); border: 1px solid var(--border);
   border-radius: 16px; overflow: hidden;
   box-shadow: none;
   transition: border-color var(--dur-state) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard);
@@ -639,11 +639,11 @@
 /* ---- ⑦ 按钮：次要按钮玻璃胶囊（增量收敛）+ 主行动系统蓝胶囊（既有，仅强化光泽） ---- */
 :root[data-shell='sidebar'] button {
   border-radius: 999px; padding: 6px 15px;
-  background: rgba(120, 120, 128, .12); border: 1px solid var(--border-soft); color: var(--text); font-weight: 500;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-weight: 500;
   box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .55);
 }
 :root[data-shell='sidebar'] button:hover {
-  background: rgba(120, 120, 128, .2); border-color: color-mix(in srgb, var(--accent) 28%, transparent); color: var(--text);
+  background: var(--surface-3); border-color: var(--text-accent); color: var(--text);
   box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .55);
 }
 :root[data-shell='sidebar'] button:active { transform: scale(.96); opacity: .92; }
@@ -694,10 +694,10 @@
 :root[data-shell='sidebar'] .spot-rank { color: var(--text-accent); font-weight: 700; letter-spacing: .06em; }
 :root[data-shell='sidebar'] .spot-go { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; }
 :root[data-shell='sidebar'] .spot-next {
-  background: rgba(255, 255, 255, .72); border: 1px solid rgba(60, 60, 67, .14); color: var(--text); font-weight: 600;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-weight: 600;
   box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .7);
 }
-:root[data-shell='sidebar'] .spot-next:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text-accent, var(--accent)); }
+:root[data-shell='sidebar'] .spot-next:hover { background: var(--surface-3); border-color: var(--text-accent); color: var(--text-accent); }
 :root[data-shell='sidebar'] .spot-poster {
   box-shadow: 0 24px 50px -20px rgba(31, 41, 55, .55), 0 0 0 1px rgba(255, 255, 255, .8),
     0 0 60px -14px color-mix(in srgb, var(--accent) 40%, transparent);
@@ -707,8 +707,8 @@
   filter: saturate(.7) brightness(1.1); opacity: .9;
   box-shadow: 0 18px 36px -18px rgba(31, 41, 55, .45), 0 0 0 1px rgba(255, 255, 255, .55);
 }
-:root[data-shell='sidebar'] .spot-dot { background: rgba(60, 60, 67, .24); }
-:root[data-shell='sidebar'] .spot-dot:hover { background: rgba(60, 60, 67, .42); }
+:root[data-shell='sidebar'] .spot-dot { background: var(--border); }
+:root[data-shell='sidebar'] .spot-dot:hover { background: var(--text-dim); }
 :root[data-shell='sidebar'] .spot-dot.active { background: var(--accent); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 70%, transparent); }
 
 /* ============================================================================
@@ -750,15 +750,15 @@
 
 /* ---- ⑪ 工具栏 / 侧栏：玻璃再提纯（玻璃高光 内高光 + 发丝分隔线）+ 品牌渐变方块标 ---- */
 :root[data-shell='sidebar'] .ap-toolbar {
-  background: rgba(252, 252, 254, .6);
+  background: var(--surface-glass);
   backdrop-filter: blur(44px) saturate(190%);
   -webkit-backdrop-filter: blur(44px) saturate(190%);
   border-bottom: 1px solid var(--border-soft);
   box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .7), inset 0 -.5px 0 rgba(255, 255, 255, .22), 0 8px 30px -22px rgba(31, 41, 55, .4);
 }
 :root[data-shell='sidebar'] .ap-sidebar {
-  background: rgba(250, 250, 252, .46);
-  border-right: 1px solid rgba(255, 255, 255, .6);
+  background: var(--surface-1);
+  border-right: 1px solid var(--border);
 }
 :root[data-shell='sidebar'] .ap-brand-dot {
   background: linear-gradient(145deg, #4aa8ff, #0071e3 52%, var(--accent-2));
@@ -767,7 +767,7 @@
 :root[data-shell='sidebar'] .ap-nav { border-radius: var(--radius-sm); }
 /* 玻璃悬停（选中态蓝胶囊 + apPop 弹跳沿用既有，不重写关键帧） */
 :root[data-shell='sidebar'] .ap-nav:hover {
-  background: rgba(255, 255, 255, .6); color: var(--text);
+  background: var(--surface-2); color: var(--text);
   box-shadow: 0 1px 2px rgba(31, 41, 55, .06), inset 0 .5px 0 rgba(255, 255, 255, .8);
 }
 :root[data-shell='sidebar'] .ap-nav.active {
@@ -778,13 +778,13 @@
 /* ---- ⑫ 分类条：白色磨砂分段容器（大圆角 + 发丝边 + 极轻阴影）+ 胶囊 chips ---- */
 :root[data-shell='sidebar'] .cascade {
   padding: 12px 16px; margin-bottom: 24px; border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, .56); border: 1px solid rgba(255, 255, 255, .72);
+  background: var(--surface-2); border: 1px solid var(--border);
   backdrop-filter: blur(28px) saturate(170%); -webkit-backdrop-filter: blur(28px) saturate(170%);
   box-shadow: 0 1px 2px rgba(31, 41, 55, .04), 0 16px 40px -26px rgba(31, 41, 55, .45),
     inset 0 .5px 0 rgba(255, 255, 255, .85);
 }
 :root[data-shell='sidebar'] .cascade-row + .cascade-row {
-  border-top: 1px solid rgba(60, 60, 67, .08); padding-top: 8px;
+  border-top: 1px solid var(--border); padding-top: 8px;
 }
 :root[data-shell='sidebar'] .cascade-label {
   color: var(--text-faint); font-size: 12px; font-weight: 700; letter-spacing: .12em; margin-right: 8px;
@@ -815,9 +815,9 @@
      左 = kicker + 超大标题 + 元信息 + 蓝色胶囊 CTA；右 = 放大的竖版海报卡（236×354） ----
    ★ 这是大果**专属**的首屏构图（netflix 全出血 billboard / 哔哔 彩色横幅 / 大豆 M3 容器皆不同）。 */
 :root[data-shell='sidebar'] .spot {
-  border: 1px solid rgba(255, 255, 255, .8); border-radius: 22px;
+  border: 1px solid var(--border); border-radius: 22px;
   padding: 36px 42px;
-  background: linear-gradient(135deg, rgba(255, 255, 255, .84), rgba(246, 248, 252, .68));
+  background: var(--surface-1);
   backdrop-filter: blur(22px) saturate(170%); -webkit-backdrop-filter: blur(22px) saturate(170%);
   box-shadow: 0 34px 74px -40px rgba(31, 41, 55, .55), inset 0 .5px 0 rgba(255, 255, 255, .95);
 }
@@ -831,7 +831,7 @@
 }
 /* ★ 浅色纱幕：**默认必须覆盖**（基类 .spot-veil 无底色）——只在文字区压薄白，氛围色从右侧透上来 */
 :root[data-shell='sidebar'] .spot-veil {
-  background: linear-gradient(100deg, rgba(252, 252, 254, .78) 0%, rgba(250, 251, 254, .4) 34%, rgba(250, 251, 254, 0) 60%);
+  background: linear-gradient(100deg, color-mix(in srgb, var(--surface-glass) 96%, transparent) 0%, color-mix(in srgb, var(--surface-glass) 78%, transparent) 34%, color-mix(in srgb, var(--surface-glass) 35%, transparent) 60%);
 }
 :root[data-shell='sidebar'] .spot-kicker { color: var(--text-accent); font-weight: 800; letter-spacing: .18em; }
 :root[data-shell='sidebar'] .spot-kicker-dot {
@@ -839,7 +839,7 @@
 }
 :root[data-shell='sidebar'] .spot-title {
   margin: 12px 0 10px; font-size: clamp(30px, 3.6vw, 46px); font-weight: 800; letter-spacing: -.03em;
-  color: var(--text); text-shadow: 0 1px 0 rgba(255, 255, 255, .8);
+  color: var(--text); text-shadow: none;
 }
 :root[data-shell='sidebar'] .spot-meta { color: var(--text-dim); font-size: var(--fs-md); gap: 10px; }
 :root[data-shell='sidebar'] .spot-year { color: var(--text-accent, var(--accent)); font-weight: 700; }
@@ -847,10 +847,10 @@
 :root[data-shell='sidebar'] .spot-rank { color: var(--text-accent); font-weight: 700; letter-spacing: .06em; }
 :root[data-shell='sidebar'] .spot-go { display: inline-flex; align-items: center; gap: 7px; font-size: 14.5px; padding: 10px 24px; }
 :root[data-shell='sidebar'] .spot-next {
-  background: rgba(255, 255, 255, .74); border: 1px solid rgba(60, 60, 67, .14); color: var(--text); font-weight: 600;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text); font-weight: 600;
   box-shadow: inset 0 .5px 0 rgba(255, 255, 255, .7);
 }
-:root[data-shell='sidebar'] .spot-next:hover { background: #fff; border-color: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text-accent, var(--accent)); }
+:root[data-shell='sidebar'] .spot-next:hover { background: var(--surface-3); border-color: var(--text-accent); color: var(--text-accent); }
 /* 右侧放大的海报卡：236×354 / 圆角 20px / 柔和长阴影 + 顶部玻璃高光 */
 :root[data-shell='sidebar'] .spot-stage { width: 236px; height: 354px; }
 :root[data-shell='sidebar'] .spot-poster {
@@ -863,8 +863,8 @@
   filter: saturate(.6) brightness(1.12); opacity: .85;
   box-shadow: 0 20px 40px -22px rgba(31, 41, 55, .5), 0 0 0 1px rgba(255, 255, 255, .5);
 }
-:root[data-shell='sidebar'] .spot-dot { background: rgba(60, 60, 67, .22); }
-:root[data-shell='sidebar'] .spot-dot:hover { background: rgba(60, 60, 67, .4); }
+:root[data-shell='sidebar'] .spot-dot { background: var(--border); }
+:root[data-shell='sidebar'] .spot-dot:hover { background: var(--text-dim); }
 :root[data-shell='sidebar'] .spot-dot.active { background: var(--accent); box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 70%, transparent); }
 
 /* ---- ⑮ 卡片：大圆角玻璃卡（18px，极淡发丝边）+ 柔和多层阴影；hover 轻微上浮 + 浮出蓝色播放钮
@@ -872,7 +872,7 @@
 :root[data-shell='sidebar'] .card-media { transition: transform var(--dur-state) var(--ease-spring); }
 :root[data-shell='sidebar'] .card-media:hover { transform: none; z-index: auto; }
 :root[data-shell='sidebar'] .card-media .card {
-  background: rgba(255, 255, 255, .88); border: 1px solid rgba(60, 60, 67, .06);
+  background: var(--surface-2); border: 1px solid var(--border);
   border-radius: var(--radius-lg); overflow: hidden;
   backdrop-filter: none; -webkit-backdrop-filter: none;
   box-shadow: none;

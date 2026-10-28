@@ -102,6 +102,16 @@ function contrastRatio(first: Color, second: Color): number {
   return (Math.max(firstLuminance, secondLuminance) + 0.05) / (Math.min(firstLuminance, secondLuminance) + 0.05);
 }
 
+function lastRuleForSelector(css: string, selector: string, property?: string): string {
+  const normalizedTarget = selector.replace(/\s+/g, ' ').trim();
+  const rules = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  const matches = rules.filter(([, rawSelector]) => rawSelector
+    .split(',')
+    .some((part) => part.replace(/\s+/g, ' ').trim() === normalizedTarget))
+    .filter(([, , declarations]) => !property || new RegExp(`(?:^|;)\\s*${property}\\s*:`).test(declarations));
+  return matches.at(-1)?.[2] ?? '';
+}
+
 describe('theme text contrast tokens', () => {
   for (const theme of themes) {
     it(`${theme.name} meets WCAG AA contrast for text on every base surface`, async () => {
@@ -275,6 +285,61 @@ describe('dualbar shell theme contrast wiring', () => {
         expect(contrastRatio(controlText!, surface), `${palette.name}: --text-dim boundary on ${surfaceToken}`).toBeGreaterThanOrEqual(3);
       }
     }
+  });
+});
+
+describe('remaining shell theme contrast wiring', () => {
+  it('uses semantic foreground and surface tokens for topbar shell chrome', async () => {
+    const css = await readFile(new URL('shell-topbar.css', stylesDirectory), 'utf8');
+    const navLink = lastRuleForSelector(css, ":root[data-shell='topbar'] .nf-link.active");
+    expect(navLink).toMatch(/color:\s*var\(--text\)/);
+
+    const pageButton = lastRuleForSelector(css, ':root[data-shell=\'topbar\'] .topbar button');
+    expect(pageButton).toMatch(/background:\s*var\(--surface-2\)/);
+    expect(pageButton).toMatch(/border:\s*1px\s+solid\s+var\(--border\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='topbar'] .tag")).toMatch(/color:\s*var\(--text\)/);
+
+    const fields = lastRuleForSelector(css, ":root[data-shell='topbar'] textarea", 'background');
+    expect(fields).toMatch(/background:\s*var\(--surface-2\)/);
+    expect(fields).toMatch(/color:\s*var\(--text\)/);
+    expect(fields).toMatch(/border:\s*1px\s+solid\s+var\(--border\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='topbar'] select:focus")).toMatch(/var\(--accent-soft\)/);
+  });
+
+  it('uses semantic foreground and surface tokens for sidebar navigation, fields, and popovers', async () => {
+    const css = await readFile(new URL('shell-sidebar.css', stylesDirectory), 'utf8');
+    expect(lastRuleForSelector(css, ":root[data-shell='sidebar'] .ap-toolbar")).toMatch(/background:\s*var\(--surface-glass\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='sidebar'] .ap-sidebar")).toMatch(/background:\s*var\(--surface-1\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='sidebar'] .ap-navbtn")).toMatch(/color:\s*var\(--text\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='sidebar'] .back-btn")).toMatch(/background:\s*var\(--surface-2\)/);
+
+    const fields = lastRuleForSelector(css, ":root[data-shell='sidebar'] textarea", 'background');
+    expect(fields).toMatch(/background:\s*var\(--surface-2\)/);
+    expect(fields).toMatch(/color:\s*var\(--text\)/);
+    const popover = lastRuleForSelector(css, ":root[data-shell='sidebar'] .srcpick-pop");
+    expect(popover).toMatch(/background:\s*var\(--surface-3\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='sidebar'] .banner")).toMatch(/color:\s*var\(--text-warn\)/);
+  });
+
+  it('keeps pillbar navigation, media cards, filters, and spotlight readable across base palettes', async () => {
+    const css = await readFile(new URL('shell-pillbar.css', stylesDirectory), 'utf8');
+    expect(lastRuleForSelector(css, ":root[data-shell='pillbar'] .db-head")).toMatch(/background:\s*var\(--surface-glass\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='pillbar'] .db-nav")).toMatch(/background:\s*var\(--surface-2\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='pillbar'] .db-fab-orb")).toMatch(/color:\s*var\(--text\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='pillbar'] .card-media .name")).toMatch(/color:\s*var\(--text\)/);
+    expect(lastRuleForSelector(css, ":root[data-filter='card'] .db-filters")).toMatch(/background:\s*var\(--surface-2\)/);
+    expect(lastRuleForSelector(css, ":root[data-detail='poster'] .db-hero")).toMatch(/background:\s*var\(--surface-2\)/);
+
+    const spotlight = lastRuleForSelector(css, ":root[data-shell='pillbar'] .spot");
+    expect(spotlight).toMatch(/background:\s*var\(--surface-2\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='pillbar'] .spot-title")).toMatch(/color:\s*var\(--text\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='pillbar'] .spot-meta")).toMatch(/color:\s*var\(--text-dim\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='pillbar'] .spot-veil")).toMatch(/var\(--surface-0\)/);
+
+    const fields = lastRuleForSelector(css, ":root[data-shell='pillbar'] textarea", 'background');
+    expect(fields).toMatch(/background:\s*var\(--surface-2\)/);
+    expect(fields).toMatch(/color:\s*var\(--text\)/);
+    expect(lastRuleForSelector(css, ":root[data-shell='pillbar'] select:focus")).toMatch(/var\(--accent-soft\)/);
   });
 });
 

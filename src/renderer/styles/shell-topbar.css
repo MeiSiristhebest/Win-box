@@ -23,7 +23,7 @@
 :root[data-shell='topbar'] .nf-nav .tb-title { display: none; }
 :root[data-shell='topbar'] .nf-nav .tb-controls { gap: 4px; }
 :root[data-shell='topbar'] .nf-nav .tb-btn {
-  width: 36px; height: 28px; padding: 0; margin: 0; border-radius: var(--radius-sm); color: #b9b9b9;
+  width: 36px; height: 28px; padding: 0; margin: 0; border-radius: var(--radius-sm); color: var(--text-dim);
   display: inline-flex; align-items: center; justify-content: center; background: transparent;
 }
 :root[data-shell='topbar'] .nf-nav .tb-btn:hover { background: rgba(255, 255, 255, .12); color: var(--text); }
@@ -52,7 +52,7 @@
 :root[data-shell='topbar'] .nf-logo:hover { text-shadow: 0 0 30px color-mix(in srgb, var(--accent) 62%, transparent); }
 /* 导航项：颜色过渡 + 下划线扫入（Netflix 现代的「当前位置」语言） */
 :root[data-shell='topbar'] .nf-link {
-  position: relative; color: #ddd; font-size: 14px; font-weight: 500; padding: 2px 0;
+  position: relative; color: var(--text-dim); font-size: 14px; font-weight: 500; padding: 2px 0;
   transition: color var(--dur-quick) var(--ease-standard), background var(--dur-quick) var(--ease-standard);
 }
 :root[data-shell='topbar'] .nf-link::after {
@@ -68,12 +68,12 @@
 /* ---- 顶栏（页面内工具栏）：融进黑底；按钮一律**低调小号**（★ 2026-09-24 用户：太大太突兀） ---- */
 :root[data-shell='topbar'] .topbar { background: var(--surface-glass); border-bottom: none; backdrop-filter: none; min-height: 44px; }
 :root[data-shell='topbar'] .topbar button {
-  background: rgba(255, 255, 255, .07); color: #c9c9c9; padding: 5px 12px; font-size: 12.5px; font-weight: 500;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text); padding: 5px 12px; font-size: 12.5px; font-weight: 500;
   border-radius: var(--radius-sm);
 }
 :root[data-shell='topbar'] .topbar button:hover { background: rgba(255, 255, 255, .14); color: var(--text); }
 /* 顶栏不出现红色 CTA（行动点交给内容区/导航），并隐藏「回到源主页/去导入源」这类冗余入口 */
-:root[data-shell='topbar'] .topbar button.primary { background: rgba(255, 255, 255, .07); color: #c9c9c9; display: none; }
+:root[data-shell='topbar'] .topbar button.primary { background: var(--surface-2); color: var(--text); display: none; }
 
 /* ---- 按钮：白底主行动 / 半透明次要 / 红色 CTA；统一弹性过渡 + 按压回弹 ---- */
 :root[data-shell='topbar'] button {
@@ -92,22 +92,22 @@
 :root[data-detail='cinema'] .nf-play-btn:hover { background: rgba(255, 255, 255, .82) !important; }
 :root[data-shell='topbar'] .linkbtn { background: none; color: var(--text); }
 :root[data-shell='topbar'] .tag {
-  background: rgba(109, 109, 110, .35); border: 1px solid rgba(255, 255, 255, .12); color: #e5e5e5;
+  background: color-mix(in srgb, var(--surface-2) 84%, var(--text) 16%); border: 1px solid var(--border); color: var(--text);
   border-radius: var(--radius-sm); padding: 4px 12px;
   transition: background var(--dur-state) var(--ease-standard), color var(--dur-state) var(--ease-standard),
     border-color var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
 }
 :root[data-shell='topbar'] .tag:hover { border-color: #fff; color: var(--text); }
-:root[data-shell='topbar'] .tag.active { background: #fff; border-color: #fff; color: var(--on-light); font-weight: 700; animation: nfPop var(--dur-state) var(--ease-spring); }
+:root[data-shell='topbar'] .tag.active { background: var(--surface-2); border-color: var(--text-accent); color: var(--text); font-weight: 700; animation: nfPop var(--dur-state) var(--ease-spring); }
 @keyframes nfPop { 0% { transform: scale(.88); } 100% { transform: scale(1); } }
 :root[data-shell='topbar'] input,
 :root[data-shell='topbar'] select,
 :root[data-shell='topbar'] textarea {
-  background: rgba(22, 22, 22, .7); border: 1px solid #5a5a5a; color: var(--text);
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
   transition: border-color var(--dur-quick) var(--ease-standard), box-shadow var(--dur-state) var(--ease-standard);
 }
-:root[data-shell='topbar'] input:focus, :root[data-shell='topbar'] select:focus {
-  border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .14);
+:root[data-shell='topbar'] input:focus, :root[data-shell='topbar'] select:focus, :root[data-shell='topbar'] textarea:focus {
+  border-color: var(--text-accent); box-shadow: 0 0 0 3px var(--accent-soft);
 }
 :root[data-shell='topbar'] ::placeholder { color: var(--text-faint); }
 /* 浏览器表面也要是设计的一部分：选中色 / 插入符 */
@@ -147,7 +147,7 @@
 :root[data-shell='topbar'] .card-media .name { font-size: var(--fs-md); font-weight: 600; color: var(--text); }
 :root[data-shell='topbar'] .card-media .remarks { color: var(--text-success); font-weight: 600; }
 :root[data-shell='topbar'] .card-media .badge {
-  background: var(--accent); color: #fff; font-weight: 700; border-radius: 3px; backdrop-filter: none;
+  background: var(--accent); color: var(--on-accent); font-weight: 700; border-radius: 3px; backdrop-filter: none;
   box-shadow: none;
 }
 :root[data-shell='topbar'] .no-cover {
@@ -158,8 +158,8 @@
 /* ---- 内容区滚动条（深色细条，悬停加亮） ---- */
 :root[data-shell='topbar'] .content { padding: 4px 26px 26px; }
 :root[data-shell='topbar'] ::-webkit-scrollbar { width: 8px; height: 8px; }
-:root[data-shell='topbar'] ::-webkit-scrollbar-thumb { background: #333; border-radius: var(--radius-sm); transition: background var(--dur-quick) var(--ease-standard); }
-:root[data-shell='topbar'] ::-webkit-scrollbar-thumb:hover { background: #4d4d4d; }
+:root[data-shell='topbar'] ::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-sm); transition: background var(--dur-quick) var(--ease-standard); }
+:root[data-shell='topbar'] ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 :root[data-shell='topbar'] ::-webkit-scrollbar-track { background: transparent; }
 
 /* ---- 发现页：Hero（横版剧照轮播 + 文字处高斯模糊层）+ 内容行 ---- */
@@ -197,10 +197,10 @@
 :root[data-shell='topbar'] .nf-hero-body {
   position: relative; z-index: 2; max-width: 62%;
   margin: 26px 34px 28px; padding: 20px 24px 22px;
-  background: color-mix(in srgb, var(--surface-glass) 38%, transparent);
+  background: var(--surface-glass);
   backdrop-filter: blur(18px) saturate(1.25);
   -webkit-backdrop-filter: blur(18px) saturate(1.25);
-  border: 1px solid rgba(255, 255, 255, .1);
+  border: 1px solid var(--border);
   border-radius: 14px;
   /* 换片时文字块轻微上浮淡入（与背景交叉淡入淡出同节奏） */
   animation: nfHeroIn .5s cubic-bezier(.22, .61, .36, 1) both;
@@ -211,7 +211,7 @@
 }
 :root[data-shell='topbar'] .nf-hero-kicker { display: inline-flex; align-items: center; gap: 8px; color: var(--text-accent, var(--accent)); font-weight: 800; font-size: var(--fs-sm); letter-spacing: 2px; margin-bottom: 8px; }
 :root[data-shell='topbar'] .nf-hero-title { margin: 0 0 10px; font-size: 40px; line-height: 1.06; font-weight: 800; letter-spacing: -.01em; text-shadow: 0 2px 18px rgba(0, 0, 0, .6); }
-:root[data-shell='topbar'] .nf-hero-meta { color: #d2d2d2; font-size: 13px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+:root[data-shell='topbar'] .nf-hero-meta { color: var(--text-dim); font-size: 13px; margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 :root[data-shell='topbar'] .nf-hero-match { color: var(--text-success, var(--success)); font-weight: 700; }
 :root[data-shell='topbar'] .nf-hero-actions { display: flex; gap: 8px; align-items: center; }
 /* ★ 用户反馈「按钮太大太突兀」→ 收敛为小号、低饱和，融进画面 */
@@ -219,7 +219,7 @@
 :root[data-shell='topbar'] .nf-hero-actions button:not(.nf-play-btn) { background: rgba(255, 255, 255, .12); }
 :root[data-shell='topbar'] .nf-hero-actions button:not(.nf-play-btn):hover { background: rgba(255, 255, 255, .2); }
 :root[data-discover='shelf'] .nf-row { margin-bottom: 26px; }
-:root[data-discover='shelf'] .nf-row-title { font-size: 20px; font-weight: 700; margin: 0 0 10px; color: #e5e5e5; }
+:root[data-discover='shelf'] .nf-row-title { font-size: 20px; font-weight: 700; margin: 0 0 10px; color: var(--text); }
 :root[data-discover='shelf'] .nf-row-scroll { display: flex; gap: 8px; overflow-x: auto; padding: 8px 2px 14px; }
 :root[data-discover='shelf'] .nf-row-scroll > * { flex: 0 0 var(--card-w); }
 /* ★ 2026-09-29：行项 min-width:0（缺陷修复）—— 超长片名（`.name` 是 nowrap）会经 flex 项
@@ -248,11 +248,11 @@
 :root[data-detail='cinema'] .nf-detail-wrap h2 { font-size: 34px; font-weight: 800; letter-spacing: -.01em; }
 :root[data-detail='cinema'] .nf-detail-wrap .ep-list { gap: 8px; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 :root[data-shell='topbar'] .ep {
-  background: rgba(109, 109, 110, .3); border: none; border-radius: var(--radius-sm); color: #e5e5e5; padding: 9px; font-weight: 500;
+  background: color-mix(in srgb, var(--surface-2) 84%, var(--text) 16%); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); padding: 9px; font-weight: 500;
   transition: background var(--dur-state) var(--ease-standard), color var(--dur-state) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
 }
 :root[data-shell='topbar'] .ep:hover { background: rgba(109, 109, 110, .55); color: var(--text); }
-:root[data-shell='topbar'] .ep.active { background: #fff; color: var(--on-light); font-weight: 700; animation: nfPop var(--dur-state) var(--ease-spring); }
+:root[data-shell='topbar'] .ep.active { background: var(--surface-2); border-color: var(--text-accent); color: var(--text); font-weight: 700; animation: nfPop var(--dur-state) var(--ease-spring); }
 
 /* ---- 播放器：Netflix 风格（黑色舞台 + 红色进度 + 40px 实底播放键 + 底部渐隐控制条） ---- */
 :root[data-shell='topbar'] .vplayer { background: var(--surface-0); }
@@ -360,7 +360,7 @@
 }
 /* 导航项：**纯文字链接**（Netflix 顶栏没有胶囊）—— 悬停变白，选中亮白 + 红色下划线发光 */
 :root[data-shell='topbar'] .nf-link {
-  position: relative; padding: 6px 2px; border-radius: 0; font-size: var(--fs-md); font-weight: 500; color: #c9c9cd;
+  position: relative; padding: 6px 2px; border-radius: 0; font-size: var(--fs-md); font-weight: 500; color: var(--text-dim);
   transition: color var(--dur-quick) var(--ease-standard), text-shadow var(--dur-state) var(--ease-standard);
 }
 :root[data-shell='topbar'] .nf-nav .nf-link { padding: 6px 2px; flex: 0 0 auto; white-space: nowrap; }
@@ -370,7 +370,7 @@
   transform: scaleX(0); transform-origin: center center;
   transition: transform var(--dur-state) var(--ease-spring);
 }
-:root[data-shell='topbar'] .nf-link:hover { background: none; color: var(--text); text-shadow: 0 0 14px rgba(255, 255, 255, .35); }
+:root[data-shell='topbar'] .nf-link:hover { background: none; color: var(--text); text-shadow: 0 0 14px color-mix(in srgb, var(--text) 35%, transparent); }
 :root[data-shell='topbar'] .nf-link:active { transform: none; }
 :root[data-shell='topbar'] .nf-link.active {
   background: none; box-shadow: none; color: var(--text); font-weight: 700;
@@ -385,12 +385,12 @@
 
 /* ---- ③ 页面内顶栏：玻璃条（原实心黑） ---- */
 :root[data-shell='topbar'] .topbar {
-  background: rgba(16, 16, 18, .62); border-bottom: 1px solid rgba(255, 255, 255, .06);
+  background: var(--surface-glass); border-bottom: 1px solid var(--border-soft);
   backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
   min-height: 48px;
 }
 :root[data-shell='topbar'] .topbar button {
-  background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .08);
+  background: var(--surface-2); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 5px 13px;
 }
 :root[data-shell='topbar'] .topbar button:hover {
@@ -405,17 +405,17 @@
   background: none; border: none;
   backdrop-filter: none; -webkit-backdrop-filter: none;
 }
-:root[data-shell='topbar'] .cascade-row + .cascade-row { border-top: 1px solid rgba(255, 255, 255, .06); padding-top: 6px; }
-:root[data-shell='topbar'] .cascade-label { color: #9a9aa2; font-size: var(--fs-xs); font-weight: 700; letter-spacing: .1em; }
+:root[data-shell='topbar'] .cascade-row + .cascade-row { border-top: 1px solid var(--border-soft); padding-top: 6px; }
+:root[data-shell='topbar'] .cascade-label { color: var(--text-dim); font-size: var(--fs-xs); font-weight: 700; letter-spacing: .1em; }
 :root[data-shell='topbar'] .tag {
   border-radius: var(--radius-sm); padding: 5px 14px; font-size: 12.5px;
-  background: rgba(255, 255, 255, .07); border: 1px solid rgba(255, 255, 255, .14); color: #d8d8dd;
+  background: color-mix(in srgb, var(--surface-2) 84%, var(--text) 16%); border: 1px solid var(--border); color: var(--text);
   transition: background var(--dur-quick) var(--ease-standard), color var(--dur-quick) var(--ease-standard),
     border-color var(--dur-quick) var(--ease-standard), transform var(--dur-state) var(--ease-spring);
 }
-:root[data-shell='topbar'] .tag:hover { background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .3); color: var(--text); }
+:root[data-shell='topbar'] .tag:hover { background: var(--accent-soft); border-color: var(--text-accent); color: var(--text); }
 :root[data-shell='topbar'] .tag.active {
-  background: #fff; border-color: #fff; color: #141414; font-weight: 700;
+  background: var(--surface-2); border-color: var(--border); color: var(--text); font-weight: 700;
   box-shadow: 0 6px 18px -8px rgba(0, 0, 0, .9); animation: nfPop var(--dur-state) var(--ease-spring);
 }
 
@@ -518,19 +518,19 @@
 /* billboard 模式不出现右侧海报卡（满幅剧场只要「景 + 字」） */
 :root[data-shell='topbar'] .spot-stage { display: none; }
 :root[data-shell='topbar'] .spot-body { max-width: 60%; }
-:root[data-shell='topbar'] .spot-kicker { color: var(--text-accent); font-size: var(--fs-sm); letter-spacing: .26em; }
+:root[data-shell='topbar'] .spot-kicker { color: var(--on-media); font-size: var(--fs-sm); letter-spacing: .26em; }
 :root[data-shell='topbar'] .spot-kicker-dot { background: var(--accent); box-shadow: 0 0 14px var(--accent); }
 :root[data-shell='topbar'] .spot-title {
   font-size: clamp(34px, 4.6vw, 56px); font-weight: 800; letter-spacing: -.03em;
-  color: var(--text); text-shadow: 0 6px 34px rgba(0, 0, 0, .85);
+  color: var(--on-media); text-shadow: 0 6px 34px rgba(0, 0, 0, .85);
 }
-:root[data-shell='topbar'] .spot-meta { color: #c6c6cc; font-size: var(--fs-md); }
-:root[data-shell='topbar'] .spot-year { color: var(--text-success, var(--success)); font-weight: 700; }
-:root[data-shell='topbar'] .spot-sep { color: #5a5a60; }
-:root[data-shell='topbar'] .spot-rank { color: var(--text-accent); font-weight: 700; letter-spacing: .06em; }
+:root[data-shell='topbar'] .spot-meta { color: color-mix(in srgb, var(--on-media) 82%, transparent); font-size: var(--fs-md); }
+:root[data-shell='topbar'] .spot-year { color: var(--on-media); font-weight: 700; }
+:root[data-shell='topbar'] .spot-sep { color: color-mix(in srgb, var(--on-media) 68%, transparent); }
+:root[data-shell='topbar'] .spot-rank { color: var(--on-media); font-weight: 700; letter-spacing: .06em; }
 :root[data-shell='topbar'] .spot-acts { margin-top: 22px; }
 :root[data-shell='topbar'] .spot-go { display: inline-flex; align-items: center; gap: 8px; padding: 10px 26px; font-size: 14.5px; }
-:root[data-shell='topbar'] .spot-next { background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .16); padding: 10px 20px; font-weight: 600; }
+:root[data-shell='topbar'] .spot-next { background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .3); color: var(--on-media); padding: 10px 20px; font-weight: 600; }
 :root[data-shell='topbar'] .spot-next:hover { background: rgba(255, 255, 255, .18); }
 :root[data-shell='topbar'] .spot-dots { left: auto; right: 44px; bottom: 26px; }
 :root[data-shell='topbar'] .spot-dot { background: rgba(255, 255, 255, .3); }

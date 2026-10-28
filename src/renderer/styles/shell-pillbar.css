@@ -1001,4 +1001,51 @@
 /* 开启态：豆绿 tonal 底 + 豆绿图标（.a.b 组合压过 hover 反压） */
 /* 小窗模式：dock 收敛（避免大内边距挤占小窗空间） */
 :root[data-shell='pillbar'] .vplayer.vp-mini .vp-controls { padding: 10px 14px 12px; border-radius: 22px; }
+
+/* Theme-safe shell surfaces and text. Media-stage/player controls above keep
+   their dedicated on-media palette. */
+:root[data-shell='pillbar'] .db-head { background: var(--surface-glass); border-bottom-color: var(--border); }
+:root[data-shell='pillbar'] .db-nav { background: var(--surface-2); border-color: var(--border); }
+:root[data-shell='pillbar'] .db-chip:hover { background: var(--surface-3); color: var(--text); }
+:root[data-shell='pillbar'] .db-chip.active,
+:root[data-shell='pillbar'] .db-chip.active:hover { background: var(--color-accent); color: var(--on-accent); }
+:root[data-shell='pillbar'] .db-fab-orb { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+:root[data-shell='pillbar'] .db-fab:hover .db-fab-orb { background: var(--surface-3); color: var(--text-accent); }
+:root[data-shell='pillbar'] .titlebar { background: var(--surface-glass); border-bottom-color: var(--border); }
+:root[data-shell='pillbar'] .mini-strip { background: var(--surface-2); color: var(--text); }
+:root[data-shell='pillbar'] .card-media .name,
+:root[data-shell='pillbar'] .rec-row > .card-media .name { color: var(--text); }
+:root[data-shell='pillbar'] .no-cover { background: var(--surface-3); color: var(--text-dim); }
+:root[data-shell='pillbar'] .db-topbar .sp-btn.sp-bar { background: var(--surface-2); color: var(--text); }
+:root[data-shell='pillbar'] .db-topbar .sp-btn.sp-bar:hover { background: var(--surface-3); }
+:root[data-filter='card'] .db-filters { background: var(--surface-2); border-color: var(--border); }
+:root[data-shell='pillbar'] .tag,
+:root[data-discover='wall'] .db-wall-chip { background: var(--surface-2); border-color: var(--border); color: var(--text-dim); }
+:root[data-shell='pillbar'] .tag:hover,
+:root[data-discover='wall'] .db-wall-chip:hover { background: var(--surface-3); color: var(--text); }
+:root[data-shell='pillbar'] .tag.active,
+:root[data-shell='pillbar'] .tag.active:hover,
+:root[data-discover='wall'] .db-wall-chip.active,
+:root[data-discover='wall'] .db-wall-chip.active:hover { background: var(--color-accent); color: var(--on-accent); }
+:root[data-shell='pillbar'] .card-media .card { background: var(--surface-2); border-color: var(--border); }
+:root[data-detail='poster'] .db-hero { background: var(--surface-2); border-color: var(--border); }
+:root[data-shell='pillbar'] .spot { background: var(--surface-2); border-color: var(--border); }
+:root[data-shell='pillbar'] .spot-veil {
+  background: linear-gradient(100deg,
+    color-mix(in srgb, var(--surface-0) 98%, transparent) 0%,
+    color-mix(in srgb, var(--surface-0) 92%, transparent) 55%,
+    color-mix(in srgb, var(--surface-0) 82%, transparent) 100%);
+}
+:root[data-shell='pillbar'] .spot-title { color: var(--text); text-shadow: none; }
+:root[data-shell='pillbar'] .spot-meta { color: var(--text-dim); }
+:root[data-shell='pillbar'] .spot-sep { color: var(--text-faint); }
+:root[data-shell='pillbar'] .spot-next { background: var(--surface-2); border-color: var(--border); color: var(--text); }
+:root[data-shell='pillbar'] .spot-next:hover { background: var(--surface-3); color: var(--text-accent); }
+:root[data-shell='pillbar'] .spot-poster-none { color: var(--text-dim); }
+:root[data-shell='pillbar'] .spot-dot { background: var(--border); }
+:root[data-shell='pillbar'] .spot-dot:hover,
+:root[data-shell='pillbar'] .spot-dot.active { background: var(--text-dim); }
+:root[data-shell='pillbar'] .cfg-tab.active:hover { background: var(--accent-container) !important; color: var(--text-accent) !important; }
+:root[data-shell='pillbar'] ::-webkit-scrollbar-thumb { background: var(--border); }
+:root[data-shell='pillbar'] ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 }
