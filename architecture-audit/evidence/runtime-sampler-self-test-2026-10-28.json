@@ -1,0 +1,147 @@
+{
+  "recordedAt": "2026-10-28T06:01:29.626Z",
+  "phase": "sampler-self-test",
+  "command": "node.exe",
+  "rootPid": 7924,
+  "exitCode": 1,
+  "signal": null,
+  "completion": "expected-window-stop",
+  "intervalMs": 1000,
+  "includedProcessNames": [],
+  "environmentNames": [],
+  "terminateAfterMs": 4000,
+  "probeMemorySamples": [],
+  "sampler": {
+    "exitCode": 0,
+    "signal": null,
+    "errors": [],
+    "stderr": ""
+  },
+  "summary": {
+    "sampleCount": 5,
+    "durationMs": 4895,
+    "peaks": {
+      "workingSetMB": 36.2,
+      "privateBytesMB": 19.1,
+      "cpuP95Percent": 0,
+      "cpuPeakPercent": 0,
+      "processCount": 1
+    },
+    "budgets": {
+      "workingSetMB": null,
+      "privateBytesMB": null,
+      "cpuP95Percent": null
+    },
+    "budgetStatus": "NOT_CONFIGURED",
+    "budgetChecks": {
+      "workingSetMB": {
+        "status": "NOT_CONFIGURED",
+        "limit": null,
+        "actual": 36.2
+      },
+      "privateBytesMB": {
+        "status": "NOT_CONFIGURED",
+        "limit": null,
+        "actual": 19.1
+      },
+      "cpuP95Percent": {
+        "status": "NOT_CONFIGURED",
+        "limit": null,
+        "actual": 0
+      }
+    },
+    "samples": [
+      {
+        "at": 1793167284708,
+        "elapsedMs": 0,
+        "rootPresent": true,
+        "processCount": 1,
+        "workingSetMB": 36.2,
+        "privateBytesMB": 19.1,
+        "cpuTimeDeltaMs": null,
+        "cpuPercent": null,
+        "processes": [
+          {
+            "pid": 7924,
+            "parentPid": 30832,
+            "name": "node.exe",
+            "workingSetBytes": 37908480,
+            "privateBytes": 20017152,
+            "cpuTimeMs": 62.5
+          }
+        ]
+      },
+      {
+        "at": 1793167285960,
+        "elapsedMs": 1252,
+        "rootPresent": true,
+        "processCount": 1,
+        "workingSetMB": 36.2,
+        "privateBytesMB": 19.1,
+        "cpuTimeDeltaMs": 0,
+        "cpuPercent": 0,
+        "processes": [
+          {
+            "pid": 7924,
+            "parentPid": 30832,
+            "name": "node.exe",
+            "workingSetBytes": 37908480,
+            "privateBytes": 20017152,
+            "cpuTimeMs": 62.5
+          }
+        ]
+      },
+      {
+        "at": 1793167287178,
+        "elapsedMs": 1218,
+        "rootPresent": true,
+        "processCount": 1,
+        "workingSetMB": 35.7,
+        "privateBytesMB": 19.1,
+        "cpuTimeDeltaMs": 0,
+        "cpuPercent": 0,
+        "processes": [
+          {
+            "pid": 7924,
+            "parentPid": 30832,
+            "name": "node.exe",
+            "workingSetBytes": 37445632,
+            "privateBytes": 20017152,
+            "cpuTimeMs": 62.5
+          }
+        ]
+      },
+      {
+        "at": 1793167288422,
+        "elapsedMs": 1244,
+        "rootPresent": true,
+        "processCount": 1,
+        "workingSetMB": 35.7,
+        "privateBytesMB": 19.1,
+        "cpuTimeDeltaMs": 0,
+        "cpuPercent": 0,
+        "processes": [
+          {
+            "pid": 7924,
+            "parentPid": 30832,
+            "name": "node.exe",
+            "workingSetBytes": 37445632,
+            "privateBytes": 20017152,
+            "cpuTimeMs": 62.5
+          }
+        ]
+      },
+      {
+        "at": 1793167289603,
+        "elapsedMs": 1181,
+        "rootPresent": false,
+        "processCount": 0,
+        "workingSetMB": 0,
+        "privateBytesMB": 0,
+        "cpuTimeDeltaMs": 0,
+        "cpuPercent": 0,
+        "processes": []
+      }
+    ]
+  }
+}

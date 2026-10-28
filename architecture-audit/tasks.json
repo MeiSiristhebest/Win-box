@@ -821,8 +821,8 @@
       ],
       "probes": [],
       "reviewEvidence": {
-        "commit": "1e02ab1033da8bab561ffa70d7ace96ef675d0d4",
-        "verification": "预热与调用共用父/子 classpath 规划；JAR 执行策略 17 项通过，typecheck、architecture:check、Oxlint 通过。只完成 classpath 小切片，产物准备与运行会话仍耦合。"
+        "commit": "6942172",
+        "verification": "抽出转换缓存版本策略；convertedJarCacheVersion、jarExecutionPolicy、jarSpiderRuntimeSession 共 27 项通过。只完成 cache/classpath 小切片，产物准备与运行会话仍耦合。"
       }
     },
     {
@@ -1294,6 +1294,11 @@
           "commit": "087bb1b24fd789a8bc54f485d4c8cec9e67cef05",
           "summary": "pure progress geometry policy",
           "verification": "playerProgressGeometry.spec.ts and playerProgressBar.spec.tsx included in combined 3-file / 38-test pass; renderer/test typecheck and architecture check passed"
+        },
+        {
+          "commit": "467b8b3",
+          "summary": "ImageViewer wheel zoom, pointer drag, keyboard navigation and cleanup coverage",
+          "verification": "ImageViewer.spec.tsx 3/3 and the full Vitest suite 4116/4116 non-skipped tests passed. This adds regression coverage; danmaku canvas and player progress/view boundaries still need broader review."
         }
       ]
     },
@@ -1485,7 +1490,7 @@
           "symbol": "explicit external packages"
         }
       ],
-      "gap": "packager 保留全部生产 node_modules 并验证每个生产依赖都在包中；main/worker/renderer 已 bundle 多个相同库。Babel、解压器等确有运行时外部依赖，不能直接删 node_modules 或把所有依赖改 dev。当前尚无按包路径的字节账本。",
+      "gap": "已建立按包路径的字节账本并通过运行依赖闭包核验；本轮完整包仍约 580.8 MB，未证明体积有实质下降。JVM 约 164.4 MB，Chromium 主 exe 约 247.4 MB；候选包没有 node_modules。还未在干净安装目录启动 JS/JVM/Python 与解压、下载能力。",
       "direction": "生成 dist 与动态 require/worker 共同需要的运行依赖闭包，按实际字节找重复；发布副本裁剪测试/源码/无用平台资源，保留许可证与所有运行时 external。",
       "acceptance": "输出安装包/ASAR/资源分项大小及前后对照；隔离干净目录能启动 JS/JVM/Python、解压和下载能力；A/B 不减少 React Compiler 的 hooks 覆盖，不预承诺压缩比例。",
       "estimateEngineerHours": {
@@ -1493,7 +1498,11 @@
         "max": 6
       },
       "dependsOn": [],
-      "probes": []
+      "probes": [],
+      "reviewEvidence": {
+        "commit": "65c43b2",
+        "verification": "package-size-report-2026-10-28.json 记录 app 580759059 B、app.asar 22403990 B、Setup 240808747 B；相对同目录上一候选 app.asar 增加 360 B，不能当作优化节省。运行闭包 4 项检查通过，真实候选安装 505 个文件通过；桌面运行验证受 workspace ACL 阻断，任务保持 open。"
+      }
     },
     {
       "id": "V01",
@@ -1656,7 +1665,11 @@
         "A17",
         "A18"
       ],
-      "probes": []
+      "probes": [],
+      "reviewEvidence": {
+        "commit": "0119e76",
+        "verification": "本轮快捷键加载状态改用语义 output，Presenter 的异步响应按活动会话作废；快捷键与主题测试 37/37、通用/React/JSX-a11y lint 通过。全窗口、DPI、暂停/模糊背景、弹幕拖影等可视验收仍因 Electron 工作区 ACL 未完成，保持 open。"
+      }
     },
     {
       "id": "V04",
@@ -1690,7 +1703,7 @@
           "symbol": "CLI invocation"
         }
       ],
-      "gap": "实际安装器已有停止/覆盖或先卸载再安装页面，不能再说完全未实现。验收函数的 stopRunningProcess 默认 false，CLI 未传该选项；标准命令无法覆盖用户反复报告的运行中安装场景。注册表/快捷方式也在隔离验收外。",
+      "gap": "隔离候选包现在验证了运行进程停止、覆盖、先卸载再安装、数据保留、注册表和快捷方式。仍未覆盖正在播放、老板键隐藏/无主窗口的真实桌面进程、取消安装保护旧版本，以及配置/订阅/网盘账号/历史/收藏各数据域的迁移。",
       "direction": "将运行中安装场景接入可显式运行的验收入口；在隔离数据目录测试正常退出/强退/无关锁定、覆盖及卸载再装，再核对真实安装集成。",
       "acceptance": "正在播放/老板键隐藏/后台无主窗口时可一键停止继续；其它安装目录不受影响；配置、订阅、账号、历史、收藏重启后保留；取消不破坏旧版；注册表/快捷方式正确。",
       "estimateEngineerHours": {
@@ -1705,8 +1718,8 @@
       ],
       "probes": [],
       "reviewEvidence": {
-        "commit": "6a7344072429e0ac13a4773748c64e505f0e1192",
-        "verification": "新增 --stop-running 实际验收入口和 3 项参数测试。此前 scratch 安装/覆盖/卸载/数据保留通过，但运行中进程实际停止仍 NOT_RUN。"
+        "commit": "3e3bd13",
+        "verification": "2026-10-28 最终候选 NSIS 隔离验收 PASS：install、overwrite、runningProcessStopped、uninstallFirst、uninstall、dataPreserved、registryAndShortcuts；505 个文件校验一致，数据/用户文件保留，清理 PASS。此 fixture 不等于真实播放/隐藏窗口和取消保护验收，因此保留 open。"
       }
     },
     {
@@ -1741,7 +1754,7 @@
           "symbol": "page residency"
         }
       ],
-      "gap": "已有内存探针和常驻页上限，但无本次快照受控前后数据。只采工作集/直接子进程、只看构建 Babel 耗时或 HLS chunk 警告，不能证明应用内存/播放体验已优化。",
+      "gap": "新增完整进程树采样器并验证了计划窗口停止与崩溃区分；目前只有 Node 自测进程的 5 个样本（峰值工作集 36.2 MB、私有字节 19.1 MB），预算未配置。没有应用空闲/搜索/播放/弹幕/多次切源的本快照基线或前后对照。",
       "direction": "固定机器/数据/窗口/冷热缓存条件，记录完整进程树与私有内存/工作集、CPU、搜索首个结果/总耗时、帧时间和关闭后资源恢复。根据数据再调并发与保留策略。",
       "acceptance": "空闲、1000级源搜索、1080p/高分辨率播放、弹幕开关/高密度、连续10轮切源/窗口关闭有可重复报告；无单调增长；先基线后定数值预算，不虚报节省百分比。",
       "estimateEngineerHours": {
@@ -1760,7 +1773,11 @@
         "A05",
         "A17"
       ],
-      "probes": []
+      "probes": [],
+      "reviewEvidence": {
+        "commit": "0139c23",
+        "verification": "runtime-sampler-self-test-2026-10-28.json：5 个 Node 自测进程样本、采样器退出 0、expected-window-stop；资源采样用例 8 项通过。它只验证测量工具，不代表 Win-Box 性能数据或达成资源预算。"
+      }
     },
     {
       "id": "V06",
@@ -1794,7 +1811,7 @@
           "symbol": "verification commands"
         }
       ],
-      "gap": "以前的绿灯不等于新发现故障已关闭。清理分支已有本地提交但尚未 push，没有当前分支远端 CI 证明；本轮没有生成安装包/执行桌面验收。",
+      "gap": "当前分支全量 Vitest、三套类型检查、三类 lint、架构门禁、构建、包体生成和隔离 NSIS 安装验收均通过；最终 Electron 窗口仍因继承 ACL 无法从工作区启动，未验收桌面视觉/真实播放。分支未 push，缺当前远端 CI。",
       "direction": "修复后在同一候选提交运行类型/lint/架构/正式测试/构建和上述验收，隔离目录制作唯一的本地安装包，记录 hash/尺寸/版本/提交。遵守用户不发布小版本、不创建多工作区的要求。",
       "acceptance": "所有必需任务有实现与验收链接；旧绿灯不代替当前结果；本地 Setup 在干净目录安装运行通过；保留数据及产物来源可查；不发布 Release，审计/修复改动分步提交，临时目录清理。",
       "estimateEngineerHours": {
@@ -1838,7 +1855,11 @@
         "V04",
         "V05"
       ],
-      "probes": []
+      "probes": [],
+      "reviewEvidence": {
+        "commit": "0119e76",
+        "verification": "verification-2026-10-28.json 记录 502 文件通过/3 跳过、4118 测试通过/5 跳过；main/renderer/test typecheck、base/React/JSX-a11y lint、architecture:check 通过；新包 240808747 B，安装生命周期验收通过。Electron 工作区启动被 AppContainer ACL 拦截，未发布 Release，未完成 CI/播放验收，故保持 open。"
+      }
     },
     {
       "id": "O01",
@@ -1920,24 +1941,76 @@
       "exitCode": 0,
       "result": "Architecture boundaries passed."
     },
-    "isolatedVitest": {
+    "historicalPreFixIsolatedVitest": {
       "files": 3,
       "tests": 10,
       "failed": 10,
-      "exitCode": 1
+      "exitCode": 1,
+      "context": "Initial isolated audit probe before the current implementation and full-suite run; not the current Vitest result."
     },
-    "python": {
+    "historicalPreFixPythonProbe": {
       "tests": 2,
       "failed": 2,
-      "exitCode": 1
+      "exitCode": 1,
+      "context": "Initial isolated audit probe; not rerun as part of the current full-suite gate."
     },
-    "productionChanges": 0,
-    "normalFullSuite": "NOT_RUN",
-    "typecheck": "NOT_RUN",
-    "lint": "NOT_RUN",
-    "build": "NOT_RUN",
-    "desktopAcceptance": "NOT_RUN",
-    "evidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
+    "productionChanges": 2,
+    "normalFullSuite": {
+      "filesPassed": 502,
+      "filesSkipped": 3,
+      "testsPassed": 4118,
+      "testsSkipped": 5,
+      "exitCode": 0,
+      "durationMs": 74710
+    },
+    "focusedRegression": {
+      "files": 2,
+      "testsPassed": 37,
+      "exitCode": 0
+    },
+    "scriptRegression": {
+      "testsPassed": 14,
+      "exitCode": 0
+    },
+    "typecheck": {
+      "main": "PASS",
+      "renderer": "PASS",
+      "tests": "PASS"
+    },
+    "lint": {
+      "base": "PASS",
+      "react": "PASS",
+      "jsxAccessibility": "PASS"
+    },
+    "build": {
+      "main": "PASS",
+      "renderer": "PASS",
+      "package": "PASS",
+      "version": "1.27.1",
+      "installerRebuilt": true,
+      "viteLargeChunkAdvisory": true
+    },
+    "desktopAcceptance": {
+      "installerLifecycle": "PASS",
+      "verifiedFiles": 505,
+      "runningProcessStopped": "PASS",
+      "dataPreserved": true,
+      "registryAndShortcuts": "PASS",
+      "windowLaunchAndPlayback": "BLOCKED_BY_WORKSPACE_ACL"
+    },
+    "localPackage": {
+      "path": ".tmp/local-package-candidate-3/Win-Box.Setup.1.27.1.exe",
+      "bytes": 240808747,
+      "sha256": "cdede604a867482e6d111daba62cde1ce5eb5b62a66fd1647fa739a633a9c1ba"
+    },
+    "releasePublished": false,
+    "latestEvidenceFiles": [
+      "architecture-audit/evidence/verification-2026-10-28.json",
+      "architecture-audit/evidence/installation-acceptance-2026-10-28.json",
+      "architecture-audit/evidence/package-size-report-2026-10-28.json",
+      "architecture-audit/evidence/runtime-sampler-self-test-2026-10-28.json"
+    ],
+    "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
   "latestProgress": {
     "recordedAt": "2026-10-28",
@@ -1987,6 +2060,13 @@
       "max": 58
     },
     "branch": "codex/architecture-cleanup-20261025",
+    "implementationTipBeforeEvidence": "0119e76",
+    "localCommitsThisTurn": [
+      "3e3bd13",
+      "0119e76"
+    ],
+    "localInstallerPath": ".tmp/local-package-candidate-3/Win-Box.Setup.1.27.1.exe",
+    "installerSha256": "cdede604a867482e6d111daba62cde1ce5eb5b62a66fd1647fa739a633a9c1ba",
     "localCommitsUnpushed": true,
     "releasePublished": false,
     "preservedUncommittedUserFile": "libnc.so"

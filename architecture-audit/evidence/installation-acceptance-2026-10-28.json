@@ -1,0 +1,13 @@
+{
+  "recordedAt": "2026-10-28T06:36:04.270Z",
+  "install": "PASS",
+  "overwrite": "PASS",
+  "runningProcessStopped": "PASS",
+  "uninstallFirst": "PASS",
+  "uninstall": "PASS",
+  "dataPreserved": true,
+  "verifiedFiles": 505,
+  "isolated": true,
+  "registryAndShortcuts": "PASS",
+  "cleaned": true
+}

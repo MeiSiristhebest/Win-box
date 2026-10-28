@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T14:46:58+08:00",
+  "branch": "codex/architecture-cleanup-20261025",
+  "localCommits": [
+    {
+      "sha": "3e3bd13",
+      "message": "fix-acceptance-cleanup-preserves-errors"
+    },
+    {
+      "sha": "0119e76",
+      "message": "refactor-plugin-keymap-session-and-loading-state"
+    }
+  ],
+  "fullVitest": {
+    "filesPassed": 502,
+    "filesSkipped": 3,
+    "testsPassed": 4118,
+    "testsSkipped": 5,
+    "exitCode": 0,
+    "startTime": "14:45:10 Asia/Shanghai",
+    "durationMs": 74710
+  },
+  "focusedRegression": {
+    "files": 2,
+    "tests": 37,
+    "failed": 0,
+    "exitCode": 0
+  },
+  "installerAndSamplerNodeTests": {
+    "tests": 14,
+    "passed": 14,
+    "failed": 0,
+    "exitCode": 0
+  },
+  "typecheck": {
+    "main": "PASS",
+    "renderer": "PASS",
+    "tests": "PASS"
+  },
+  "lint": {
+    "base": "PASS",
+    "react": "PASS",
+    "jsxAccessibility": "PASS"
+  },
+  "architectureCheck": {
+    "result": "Architecture boundaries passed.",
+    "exitCode": 0
+  },
+  "build": {
+    "main": "PASS",
+    "renderer": "PASS",
+    "package": "PASS",
+    "version": "1.27.1",
+    "installerRebuilt": true,
+    "viteLargeChunkAdvisory": true
+  },
+  "localPackage": {
+    "path": ".tmp/local-package-candidate-3/Win-Box.Setup.1.27.1.exe",
+    "installerBytes": 240808747,
+    "installerSha256": "cdede604a867482e6d111daba62cde1ce5eb5b62a66fd1647fa739a633a9c1ba",
+    "appDirectoryBytes": 580759059,
+    "appAsarBytes": 22403990,
+    "deltaFromCandidateBaselineBytes": {
+      "appDirectoryBytes": 360,
+      "appAsarBytes": 360,
+      "unpackedRuntimeResourceBytes": 0,
+      "nodeModulesBytes": 0,
+      "nodeModulesAttributedBytes": 0,
+      "nodeModulesUnattributedBytes": 0,
+      "nodeModulesPackageBreakdown": {},
+      "appDirectoryBreakdownBytes": {
+        "LICENSE": 0,
+        "LICENSES.chromium.html": 0,
+        "Win-Box.exe": 0,
+        "chrome_100_percent.pak": 0,
+        "chrome_200_percent.pak": 0,
+        "d3dcompiler_47.dll": 0,
+        "dxcompiler.dll": 0,
+        "dxil.dll": 0,
+        "ffmpeg.dll": 0,
+        "icudtl.dat": 0,
+        "locales": 0,
+        "resources": 360,
+        "resources.pak": 0,
+        "snapshot_blob.bin": 0,
+        "v8_context_snapshot.bin": 0,
+        "version": 0,
+        "vk_swiftshader.dll": 0,
+        "vk_swiftshader_icd.json": 0,
+        "vulkan-1.dll": 0
+      },
+      "unpackedRuntimeResourceBreakdownBytes": {
+        "aria2": 0,
+        "config.example.json": 0,
+        "ffmpeg": 0,
+        "js-lib": 0,
+        "jvm": 0,
+        "licenses": 0,
+        "plugins": 0,
+        "ui": 0,
+        "web": 0
+      },
+      "installerBytes": -166
+    },
+    "packageReport": "architecture-audit/evidence/package-size-report-2026-10-28.json"
+  },
+  "installationAcceptance": {
+    "recordedAt": "2026-10-28T06:36:04.270Z",
+    "install": "PASS",
+    "overwrite": "PASS",
+    "runningProcessStopped": "PASS",
+    "uninstallFirst": "PASS",
+    "uninstall": "PASS",
+    "dataPreserved": true,
+    "verifiedFiles": 505,
+    "isolated": true,
+    "registryAndShortcuts": "PASS",
+    "cleaned": true,
+    "report": "architecture-audit/evidence/installation-acceptance-2026-10-28.json"
+  },
+  "desktopLaunch": {
+    "status": "BLOCKED",
+    "reason": "Electron sandbox startup from the workspace candidate was rejected by inherited AppContainer ACL because ALL APPLICATION PACKAGES has no read entry; the final candidate is not claimed to have passed visual or playback startup."
+  },
+  "releasePublished": false,
+  "openRequiredTasks": [
+    "A07",
+    "A17",
+    "A21",
+    "V02",
+    "V03",
+    "V04",
+    "V05",
+    "V06"
+  ],
+  "openOptionalTasks": [
+    "O01",
+    "O02"
+  ]
+}

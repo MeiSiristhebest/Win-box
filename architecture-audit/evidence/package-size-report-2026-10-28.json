@@ -1,0 +1,310 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T06:35:49.815Z",
+  "version": "1.27.1",
+  "installerRebuilt": true,
+  "units": "bytes",
+  "baseline": {
+    "appDirectoryBytes": 580758699,
+    "appDirectoryFiles": 505,
+    "appDirectoryBreakdown": {
+      "chrome_100_percent.pak": {
+        "bytes": 719654,
+        "files": 1
+      },
+      "chrome_200_percent.pak": {
+        "bytes": 1269017,
+        "files": 1
+      },
+      "d3dcompiler_47.dll": {
+        "bytes": 4741488,
+        "files": 1
+      },
+      "dxcompiler.dll": {
+        "bytes": 25745408,
+        "files": 1
+      },
+      "dxil.dll": {
+        "bytes": 1509760,
+        "files": 1
+      },
+      "ffmpeg.dll": {
+        "bytes": 3113472,
+        "files": 1
+      },
+      "icudtl.dat": {
+        "bytes": 10875024,
+        "files": 1
+      },
+      "LICENSE": {
+        "bytes": 1096,
+        "files": 1
+      },
+      "LICENSES.chromium.html": {
+        "bytes": 20477229,
+        "files": 1
+      },
+      "locales": {
+        "bytes": 50643459,
+        "files": 55
+      },
+      "resources": {
+        "bytes": 194288855,
+        "files": 433
+      },
+      "resources.pak": {
+        "bytes": 12436085,
+        "files": 1
+      },
+      "snapshot_blob.bin": {
+        "bytes": 369024,
+        "files": 1
+      },
+      "v8_context_snapshot.bin": {
+        "bytes": 742456,
+        "files": 1
+      },
+      "version": {
+        "bytes": 6,
+        "files": 1
+      },
+      "vk_swiftshader_icd.json": {
+        "bytes": 106,
+        "files": 1
+      },
+      "vk_swiftshader.dll": {
+        "bytes": 5520384,
+        "files": 1
+      },
+      "vulkan-1.dll": {
+        "bytes": 939520,
+        "files": 1
+      },
+      "Win-Box.exe": {
+        "bytes": 247366656,
+        "files": 1
+      }
+    },
+    "nodeModulesBytes": 0,
+    "nodeModulesFiles": 0,
+    "nodeModulesPackageBreakdown": {},
+    "nodeModulesAttributedBytes": 0,
+    "nodeModulesUnattributedBytes": 0,
+    "nodeModulesUnattributedFiles": 0,
+    "appAsarBytes": 22403630,
+    "unpackedRuntimeResourceBytes": 171885225,
+    "unpackedRuntimeResourceFiles": 432,
+    "unpackedRuntimeResourceBreakdown": {
+      "aria2": {
+        "bytes": 5668731,
+        "files": 3
+      },
+      "config.example.json": {
+        "bytes": 2437,
+        "files": 1
+      },
+      "ffmpeg": {
+        "bytes": 647,
+        "files": 1
+      },
+      "js-lib": {
+        "bytes": 1117923,
+        "files": 8
+      },
+      "jvm": {
+        "bytes": 164429611,
+        "files": 371
+      },
+      "licenses": {
+        "bytes": 55931,
+        "files": 38
+      },
+      "plugins": {
+        "bytes": 303213,
+        "files": 3
+      },
+      "ui": {
+        "bytes": 18933,
+        "files": 2
+      },
+      "web": {
+        "bytes": 287799,
+        "files": 5
+      }
+    },
+    "installerBytes": 240808913
+  },
+  "current": {
+    "appDirectoryBytes": 580759059,
+    "appDirectoryFiles": 505,
+    "appDirectoryBreakdown": {
+      "chrome_100_percent.pak": {
+        "bytes": 719654,
+        "files": 1
+      },
+      "chrome_200_percent.pak": {
+        "bytes": 1269017,
+        "files": 1
+      },
+      "d3dcompiler_47.dll": {
+        "bytes": 4741488,
+        "files": 1
+      },
+      "dxcompiler.dll": {
+        "bytes": 25745408,
+        "files": 1
+      },
+      "dxil.dll": {
+        "bytes": 1509760,
+        "files": 1
+      },
+      "ffmpeg.dll": {
+        "bytes": 3113472,
+        "files": 1
+      },
+      "icudtl.dat": {
+        "bytes": 10875024,
+        "files": 1
+      },
+      "LICENSE": {
+        "bytes": 1096,
+        "files": 1
+      },
+      "LICENSES.chromium.html": {
+        "bytes": 20477229,
+        "files": 1
+      },
+      "locales": {
+        "bytes": 50643459,
+        "files": 55
+      },
+      "resources": {
+        "bytes": 194289215,
+        "files": 433
+      },
+      "resources.pak": {
+        "bytes": 12436085,
+        "files": 1
+      },
+      "snapshot_blob.bin": {
+        "bytes": 369024,
+        "files": 1
+      },
+      "v8_context_snapshot.bin": {
+        "bytes": 742456,
+        "files": 1
+      },
+      "version": {
+        "bytes": 6,
+        "files": 1
+      },
+      "vk_swiftshader_icd.json": {
+        "bytes": 106,
+        "files": 1
+      },
+      "vk_swiftshader.dll": {
+        "bytes": 5520384,
+        "files": 1
+      },
+      "vulkan-1.dll": {
+        "bytes": 939520,
+        "files": 1
+      },
+      "Win-Box.exe": {
+        "bytes": 247366656,
+        "files": 1
+      }
+    },
+    "nodeModulesBytes": 0,
+    "nodeModulesFiles": 0,
+    "nodeModulesPackageBreakdown": {},
+    "nodeModulesAttributedBytes": 0,
+    "nodeModulesUnattributedBytes": 0,
+    "nodeModulesUnattributedFiles": 0,
+    "appAsarBytes": 22403990,
+    "unpackedRuntimeResourceBytes": 171885225,
+    "unpackedRuntimeResourceFiles": 432,
+    "unpackedRuntimeResourceBreakdown": {
+      "aria2": {
+        "bytes": 5668731,
+        "files": 3
+      },
+      "config.example.json": {
+        "bytes": 2437,
+        "files": 1
+      },
+      "ffmpeg": {
+        "bytes": 647,
+        "files": 1
+      },
+      "js-lib": {
+        "bytes": 1117923,
+        "files": 8
+      },
+      "jvm": {
+        "bytes": 164429611,
+        "files": 371
+      },
+      "licenses": {
+        "bytes": 55931,
+        "files": 38
+      },
+      "plugins": {
+        "bytes": 303213,
+        "files": 3
+      },
+      "ui": {
+        "bytes": 18933,
+        "files": 2
+      },
+      "web": {
+        "bytes": 287799,
+        "files": 5
+      }
+    },
+    "installerBytes": 240808747
+  },
+  "deltaBytes": {
+    "appDirectoryBytes": 360,
+    "appAsarBytes": 360,
+    "unpackedRuntimeResourceBytes": 0,
+    "nodeModulesBytes": 0,
+    "nodeModulesAttributedBytes": 0,
+    "nodeModulesUnattributedBytes": 0,
+    "nodeModulesPackageBreakdown": {},
+    "appDirectoryBreakdownBytes": {
+      "LICENSE": 0,
+      "LICENSES.chromium.html": 0,
+      "Win-Box.exe": 0,
+      "chrome_100_percent.pak": 0,
+      "chrome_200_percent.pak": 0,
+      "d3dcompiler_47.dll": 0,
+      "dxcompiler.dll": 0,
+      "dxil.dll": 0,
+      "ffmpeg.dll": 0,
+      "icudtl.dat": 0,
+      "locales": 0,
+      "resources": 360,
+      "resources.pak": 0,
+      "snapshot_blob.bin": 0,
+      "v8_context_snapshot.bin": 0,
+      "version": 0,
+      "vk_swiftshader.dll": 0,
+      "vk_swiftshader_icd.json": 0,
+      "vulkan-1.dll": 0
+    },
+    "unpackedRuntimeResourceBreakdownBytes": {
+      "aria2": 0,
+      "config.example.json": 0,
+      "ffmpeg": 0,
+      "js-lib": 0,
+      "jvm": 0,
+      "licenses": 0,
+      "plugins": 0,
+      "ui": 0,
+      "web": 0
+    },
+    "installerBytes": -166
+  },
+  "baselineNote": "Baseline reflects the package output that existed before this build. Null means that artifact was not present for a direct comparison. Current node_modules package attribution counts each physical package once, excluding nested node_modules from its parent; signed per-path deltas compare before and after sizes and are not causal savings claims."
+}
