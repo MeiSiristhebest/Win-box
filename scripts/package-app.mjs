@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sanitizePackagedApp } from './after-pack.mjs';
@@ -8,6 +8,7 @@ import { assertReleaseAssets } from './verify-release-assets.mjs';
 import { collectDanglingNodeModulePaths, shouldIgnorePackagedAppPath } from './package-app-path-policy.mjs';
 import { assertPackagedRuntimeClosure, copyBundledPackageLicenses, loadAndValidateRuntimeClosure } from './package-app-runtime-closure.mjs';
 import { inspectPackageOutput, writePackageSizeReport } from './package-app-size-report.mjs';
+import { promoteStagedApp } from './package-app-promotion.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const packageJson = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'));
@@ -92,9 +93,9 @@ await assertPackagedRuntimeClosure({
   runtimeAssetManifest,
 });
 await mkdir(dirname(appDir), { recursive: true });
-await rm(appDir, { recursive: true, force: true });
-await rename(expectedStage, appDir);
-console.log(`Windows app staged at ${appDir}`);
+await rm(appDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
+const promotionMethod = await promoteStagedApp({ source: expectedStage, destination: appDir });
+console.log(`Windows app staged at ${appDir} (${promotionMethod})`);
 
 if (installerRebuilt) {
   const nsiPath = join(stagingDir, 'win-box-installer.nsi');
@@ -109,4 +110,4 @@ const after = await inspectPackageOutput({ appDirectory: appDir, installerPath }
 const { reportPath, report } = await writePackageSizeReport({ outputDirectory: outputDir, version, before: baseline, after, installerRebuilt });
 console.log(`Package size report: ${reportPath}`);
 console.log(JSON.stringify({ baseline: report.baseline, current: report.current, deltaBytes: report.deltaBytes }, null, 2));
-await rm(stagingDir, { recursive: true, force: true });
+await rm(stagingDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 250 });
