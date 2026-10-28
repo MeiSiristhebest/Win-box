@@ -345,5 +345,16 @@
       "processAfterRefresh": "NOT_RUNNING",
       "playback": "NOT_RUN"
     }
+  },
+  "targetedRegressionTests": {
+    "recordedAt": "2026-10-28T18:22:58Z",
+    "commands": [
+      "pnpm exec vitest run tests/useHtml5PlaybackSession.spec.tsx tests/html5PlaybackRecovery.spec.ts tests/externalPlayback.spec.ts tests/SpiderPanProxyPlayback.spec.ts",
+      "pnpm exec vitest run tests/m3u8Proxy.spec.ts tests/relayFailure.spec.ts tests/spiderPlaybackRequestService.spec.ts tests/playbackParseFallback.spec.ts"
+    ],
+    "filesPassed": 8,
+    "testsPassed": 104,
+    "failures": 0,
+    "scopeLimit": "These fixture and unit tests validate local recovery, relay, HLS proxy, request, and parser-fallback behavior. They do not prove live third-party source playback or PotPlayer video decoding."
   }
 }
