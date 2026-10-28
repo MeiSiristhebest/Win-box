@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T13:04:54.102Z",
+  "taskId": "V02",
+  "candidate": {
+    "version": "1.27.1",
+    "sourceCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
+    "buildTime": "2026-10-28T12:48:44.800Z",
+    "installer": {
+      "path": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+      "bytes": 228695186,
+      "sha256": "2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a"
+    },
+    "unpackedApp": {
+      "bytes": 533312990,
+      "files": 451
+    },
+    "appAsarBytes": 24880332,
+    "unpackedRuntimeResourceBytes": 170843755,
+    "spiderStubsJar": {
+      "bytes": 289398,
+      "sha256": "31da2d64273eb170a1705c3fedb3d835e98a70742230d4eef14b26af61fbd63c"
+    },
+    "releaseDirectories": [
+      "release1.27.1"
+    ]
+  },
+  "execution": {
+    "status": "PASS",
+    "mode": "packaged",
+    "fixture": "generated local 320x180 VP8 WebM, 14.0 seconds",
+    "launchPath": "temporary junction under repository .tmp pointing to isolated copy under the authorized visualization root",
+    "directReleaseFolderLaunch": "BLOCKED before window by Electron AppContainer ACL (install_dir_access.cc:52); no ACL was changed",
+    "externalThirdPartySources": "NOT_RUN",
+    "potPlayer": "NOT_RUN"
+  },
+  "checks": [
+    {
+      "name": "generated-local-video",
+      "status": "PASS",
+      "bytes": 73964,
+      "codec": "VP8",
+      "width": 320,
+      "height": 180,
+      "durationMs": 14007.800000000745
+    },
+    {
+      "name": "html5-pause-feedback-compact-centered-and-sharp",
+      "status": "PASS",
+      "width": 28,
+      "height": 28,
+      "iconWidth": 14,
+      "iconHeight": 14,
+      "centerOffsetX": 0,
+      "centerOffsetY": 0,
+      "opacity": "1",
+      "background": "rgb(20, 23, 29)",
+      "backdropFilter": "none",
+      "boxShadow": "none"
+    },
+    {
+      "name": "html5-real-decode-time-progress-pause-resume",
+      "status": "PASS",
+      "time": 1.09484,
+      "width": 320,
+      "height": 180,
+      "paused": true,
+      "resumedFrom": 0.574154
+    },
+    {
+      "name": "mpv-real-decode-seek-time-progress-pause-resume",
+      "status": "PASS",
+      "session": 2,
+      "time": 3.587,
+      "resumedFrom": 3.038,
+      "width": 320,
+      "height": 180,
+      "paused": true
+    },
+    {
+      "name": "restore-auto-and-preserve-paused-position",
+      "status": "PASS",
+      "time": 3.587,
+      "paused": true
+    }
+  ],
+  "mpv": {
+    "version": "0.41.0",
+    "source": "https://github.com/mpv-player/mpv/releases/tag/v0.41.0",
+    "archiveSha256": "4e197f729f5071c6772f35fffd96e0f36e3e8a044bd9479b136bb09b7c6a80ff",
+    "executableSha256": "6145e63f026451a764077d53fd60860ec9f5c2bc76dcd6e62a88967ac375453d"
+  },
+  "rendererErrors": [],
+  "fixtureRequests": [
+    {
+      "method": "GET",
+      "path": "/repos.json",
+      "range": "",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "responseBytes": 0,
+      "completed": true
+    },
+    {
+      "method": "GET",
+      "path": "/a.json",
+      "range": "",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "responseBytes": 0,
+      "completed": true
+    },
+    {
+      "method": "GET",
+      "path": "/b.json",
+      "range": "",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "responseBytes": 0,
+      "completed": true
+    },
+    {
+      "method": "GET",
+      "path": "/clip.webm",
+      "range": "bytes=0-",
+      "status": 206,
+      "contentType": "video/webm",
+      "responseBytes": 73964,
+      "completed": true
+    },
+    {
+      "method": "GET",
+      "path": "/clip.webm",
+      "range": "bytes=0-",
+      "status": 206,
+      "contentType": "video/webm",
+      "responseBytes": 73964,
+      "completed": true
+    }
+  ],
+  "mpvVisibleFrame": "UNCONFIRMED: MPV time/seek/pause telemetry advances, but its native video child surface is black in the captured Chromium screenshot; confirm actual desktop-visible frame separately.",
+  "cleanup": {
+    "processExited": true,
+    "cleaned": true,
+    "steps": [
+      {
+        "action": "close-electron",
+        "status": "PASS"
+      },
+      {
+        "action": "wait-electron-exit",
+        "status": "PASS"
+      },
+      {
+        "action": "close-fixture-server",
+        "status": "PASS",
+        "durationMs": 0
+      },
+      {
+        "action": "remove-mpv-runtime",
+        "status": "PASS",
+        "durationMs": 26
+      },
+      {
+        "action": "remove-session-directory",
+        "status": "PASS",
+        "durationMs": 34
+      }
+    ],
+    "temporaryJunctionAndCopy": "scheduled for removal after evidence copy"
+  },
+  "evidenceImages": {
+    "html5": "architecture-audit/evidence/packaged-playback-final-html5-2026-10-28.png",
+    "mpv": "architecture-audit/evidence/packaged-playback-final-mpv-2026-10-28.png"
+  }
+}

@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T12:25:14Z",
+  "recordedAt": "2026-10-28T13:10:10Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
-    "applicationBuildCommit": "ad4bbe092248e982d37791aff4b0ce28b74cc764",
+    "applicationBuildCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
     "version": "1.27.1",
     "published": false,
     "pushed": false,
-    "packageBuiltAt": "2026-10-28T12:11:00.218Z",
+    "packageBuiltAt": "2026-10-28T12:48:44.800Z",
     "acceptanceHarnessCommitAfterBuild": {
       "commit": "85b806103c5fb16a4b581cfb6f7e0ff9ada3416d",
       "changeId": "qpy",
@@ -18,22 +18,24 @@
     "command": "pnpm run dist",
     "status": "PASS",
     "installer": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-    "installerBytes": 228694839,
-    "installerSha256": "74004bb13219dafab819084e642332298e77ad33b4e29f5f2b5430464e4afdcb",
-    "unpackedAppBytes": 533312020,
+    "installerBytes": 228695186,
+    "installerSha256": "2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a",
+    "unpackedAppBytes": 533312990,
     "unpackedAppFiles": 451,
-    "appAsarBytes": 24879880,
-    "jvmBytes": 163387623,
+    "appAsarBytes": 24880332,
+    "jvmBytes": 163388141,
     "releaseDirectoryCount": 1,
     "optionalExternalPlayerBinariesBundled": false,
-    "chromiumFfmpegDllBundled": true
+    "chromiumFfmpegDllBundled": true,
+    "spiderStubsJarBytes": 289398,
+    "spiderStubsJarSha256": "31da2d64273eb170a1705c3fedb3d835e98a70742230d4eef14b26af61fbd63c"
   },
   "verification": {
     "vitest": {
       "status": "PASS",
       "filesPassed": 507,
       "filesSkipped": 3,
-      "testsPassed": 4162,
+      "testsPassed": 4163,
       "testsSkipped": 5
     },
     "typecheck": "PASS: main, renderer, and test projects",
@@ -49,8 +51,8 @@
     },
     "installerScript": {
       "status": "PASS",
-      "tests": 9,
-      "targetProcessStoppedMs": 3748,
+      "tests": 10,
+      "targetProcessStoppedMs": 4335,
       "oldUninstallerFailurePreservedOldInstallAndSixUserDataDomains": true
     },
     "runtimeClosure": "PASS",
@@ -60,13 +62,15 @@
     },
     "packagedPlayback": {
       "status": "PASS",
+      "evidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json",
       "fixture": "Generated local VP8 WebM, 320x180, approximately 14 seconds",
       "html5DecodeProgressPauseResume": "PASS",
-      "managedMpvDecodeSeekProgressPauseResume": "PASS, MPV 0.41.0",
+      "managedMpvDecodeSeekTimeProgressPauseResume": "PASS, MPV 0.41.0",
       "restoreAutoAndPausedPosition": "PASS",
       "rendererErrors": 0,
       "processExitedAndOwnedArtifactsCleaned": true,
-      "externalSourcesAndPotPlayer": "NOT_RUN"
+      "externalSourcesAndPotPlayer": "NOT_RUN",
+      "mpvVisibleFrame": "UNCONFIRMED; captured native video surface remains black"
     },
     "pauseFeedbackVisual": {
       "status": "PASS",
@@ -80,7 +84,7 @@
       },
       "backdropFilter": "none",
       "boxShadow": "none",
-      "screenshot": "architecture-audit/evidence/player-pause-feedback-packaged-2026-10-28.png"
+      "screenshot": "architecture-audit/evidence/packaged-playback-final-html5-2026-10-28.png"
     },
     "idleMemorySample": {
       "source": "architecture-audit/evidence/memory-sample-packaged-2026-10-28.json",
@@ -104,16 +108,28 @@
       "mpvPeakPrivateMiB": 137.8,
       "playwrightDriverPeakWorkingSetMiB": 445.9,
       "playwrightDriverPeakPrivateMiB": 445.6,
-      "note": "One local-fixture run; driver memory must be separated from application memory. Does not prove a leak or establish a budget."
+      "note": "One local-fixture run; driver memory must be separated from application memory. Does not prove a leak or establish a budget. Sample predates final post-oor package rebuild; not rerun on this candidate."
+    },
+    "releaseAssets": {
+      "status": "PASS",
+      "tests": 17
+    },
+    "packagedSpiderJar": {
+      "status": "PASS",
+      "evidence": "architecture-audit/evidence/spider-jre-protocol-smoke-2026-10-28.json",
+      "observed": "quick=true,page=7 preserved in actual packaged JRE SpiderRunner call",
+      "pythonRuntime": "NOT_RUN"
     }
   },
   "remaining": [
-    "A21: test real packaged spider JAR, Python runtime download/extraction, and runtime use from an isolated installed profile.",
-    "V02: test representative live sources, PotPlayer decode/progress, and MPV visible frame output; captured MPV native child surface is not visible in Chromium screenshots.",
-    "V03: full routes/themes/focus/DPI/narrow-layout contrast and danmaku-trail visual matrix remains unverified; packaged pause feedback itself now passes size/center/no-blur assertion and screenshot.",
-    "V04: actual GUI stop/continue, interactive cancel preserving the old install, playing/hidden-window scenarios, and real upgrade data migration remain unverified.",
-    "V05: repeat search, 1080p, danmaku, and 10-cycle workload samples with stable process-role attribution and then define memory/performance budgets.",
-    "V06: candidate installer binary was built but not run interactively or installed over the user's app; remote CI was not run because the user requested no publish/push."
+    "A21: actual bundled SpiderRunner/JAR invocation now passes after release build refresh; Python runtime download/extraction and invocation from an isolated installed profile remain unverified.",
+    "V02: local packaged HTML5/MPV decode, time, seek, pause/resume pass; MPV visible frame is unconfirmed; live third-party sources and PotPlayer remain untested.",
+    "V03: all-route/theme/focus/DPI/narrow-layout contrast matrix and live danmaku-trail check remain incomplete; episode tab keyboard navigation and packaged pause feedback are fixed and verified.",
+    "V04: scripted NSIS stop/preflight and rollback/data preservation pass; interactive stop/continue, cancellation, playing/hidden-window cases, and real upgrade migration remain unverified.",
+    "V05: repeat search, 1080p, dense danmaku, and 10-cycle workload samples with stable role attribution and performance budgets remain incomplete.",
+    "V06: local package and automated gates pass; interactive installation over the user installation and remote CI remain unrun; nothing was published or pushed.",
+    "O01 (optional): third-party Spider runtime install/disable/unload lifecycle is not implemented.",
+    "O02 (optional): measured cross-player enhancement PoC for quality, latency, CPU/GPU/memory is not implemented."
   ],
   "localChangesPreserved": [
     "libnc.so",
