@@ -9,10 +9,13 @@ import type { SpiderSourceProviderPort } from '../src/engine/vod/SpiderSourcePor
 import type { SearchReadinessPort } from '../src/main/spider/AggregateSearchCoordinator';
 import type { DrivePanSharePlaybackPorts } from '../src/main/drive/DrivePanSharePlayback';
 import type { SpiderHostServices } from '../src/main/spider/SpiderHostServices';
+import type { EngineHost } from '../src/engine/ports';
+import type { SpiderRuntimeProvider } from '../src/engine/spider/SpiderRuntimeProvider';
 
 export interface SpiderHostIntegrationFixtureOptions {
   infrastructure?: SpiderHostTestInfrastructureOverrides;
   spiderSources?: SpiderSourceProviderPort;
+  runtimeProviders?: readonly SpiderRuntimeProvider<EngineHost>[];
   aggregateSearchReadiness?: SearchReadinessPort;
   drivePanSharePlayback?: Partial<DrivePanSharePlaybackPorts>;
   probeSelfResolveUrl?: (url: string) => Promise<boolean>;
@@ -35,6 +38,7 @@ export function createSpiderHostServicesTestFixture(
     localPackages: localPkgs,
     integrations,
     spiderSources: options.spiderSources,
+    runtimeProviders: options.runtimeProviders,
     aggregateSearchReadiness: options.aggregateSearchReadiness,
     drivePanSharePlayback: options.drivePanSharePlayback,
     probeSelfResolveUrl: options.probeSelfResolveUrl,

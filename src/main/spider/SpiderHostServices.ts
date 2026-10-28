@@ -27,6 +27,8 @@ import type { LiveTemplate } from '../plugin/pluginLiveTemplate';
 import type { SpiderSourceProviderPort } from '../../engine/vod/SpiderSourcePorts';
 import type { SearchReadinessPort } from './AggregateSearchCoordinator';
 import type { DrivePanSharePlaybackPorts } from '../drive/DrivePanSharePlayback';
+import type { EngineHost } from '../../engine/ports';
+import type { SpiderRuntimeProvider } from '../../engine/spider/SpiderRuntimeProvider';
 
 /** Optional capabilities supplied by the application composition root. */
 export interface SpiderHostOptionalIntegrations {
@@ -41,6 +43,8 @@ export interface SpiderHostDependencies {
   integrations?: SpiderHostOptionalIntegrations;
   /** Consumer-owned source capabilities and readiness may be replaced at the composition boundary. */
   spiderSources?: SpiderSourceProviderPort;
+  /** Ordered in-process runtime extensions; built-in JS/Python/JAR providers remain the fallback. */
+  runtimeProviders?: readonly SpiderRuntimeProvider<EngineHost>[];
   aggregateSearchReadiness?: SearchReadinessPort;
   /** External playback effects remain replaceable without exposing runtime internals. */
   drivePanSharePlayback?: Partial<DrivePanSharePlaybackPorts>;

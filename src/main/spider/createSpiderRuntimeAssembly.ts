@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import type { EngineHost } from '../../engine/ports';
+import type { SpiderRuntimeProvider } from '../../engine/spider/SpiderRuntimeProvider';
 import { createPooledSandboxFactory } from '../../engine/js/worker/JsWorkerPool';
 import { JarSpiderBridge } from '../../engine/spider/JarSpiderBridge';
 import { PythonSpiderScriptAdapter } from './PythonSpiderScriptAdapter';
@@ -22,6 +23,8 @@ export interface SpiderRuntimeAssemblyOptions {
   cacheDirectory: string;
   spiderCacheDirectory: string;
   workerBundlePath: string;
+  /** Ordered in-process extensions are evaluated before built-in providers. */
+  runtimeProviders?: readonly SpiderRuntimeProvider<EngineHost>[];
 }
 
 /**
@@ -67,6 +70,7 @@ export function createSpiderRuntimeAssembly(options: SpiderRuntimeAssemblyOption
       jarRuntime: bridge,
       pythonRuntime: bridge,
       pythonScripts,
+      runtimeProviders: options.runtimeProviders,
       onDisposeError: (error, spider) => options.logger.e(`蜘蛛 ${spider.siteKey} 释放失败`, error),
     }),
   };

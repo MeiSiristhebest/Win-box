@@ -90,6 +90,7 @@ export function createSpiderHostServices(
     cacheDirectory: directories.cache,
     spiderCacheDirectory: directories.spiderCache,
     workerBundlePath: directories.workerBundle,
+    runtimeProviders: dependencies.runtimeProviders,
   });
   const engineHost = runtime.host;
   const spiderLiveContent = new SpiderLiveContentAdapter(runtime.spiders, engineHost);
