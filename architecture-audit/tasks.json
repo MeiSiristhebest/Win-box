@@ -1672,11 +1672,11 @@
           "Actual desktop-visible MPV native frame"
         ],
         "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-        "latestVerification": "Final package passes local HTML5/MPV playback and compact pause-feedback visual assertions. MPV HWND rendering explains why the Chromium screenshot can be black (strong inference only); actual desktop-visible pixels remain unconfirmed. PotPlayer/live sources remain NOT_RUN.",
+        "latestVerification": "Latest packaged candidate passed ten local HTML5/MPV playback cycles. PotPlayer launch and full fixture fetch passed, decode/time/pause not verified; desktop-visible MPV frame and live sources remain unconfirmed.",
         "latestEvidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json"
       },
       "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-      "latestVerification": "Final package local HTML5/MPV decode and controls pass. PotPlayer launcher and complete local media fetch pass, while decode/time/pause remain NOT_VERIFIED. Actual desktop-visible MPV frame and live sources remain unconfirmed.",
+      "latestVerification": "Latest packaged candidate passed ten local HTML5/MPV playback cycles. PotPlayer launch and full fixture fetch passed, decode/time/pause not verified; desktop-visible MPV frame and live sources remain unconfirmed.",
       "latestEvidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json"
     },
     {
@@ -1862,7 +1862,7 @@
           "symbol": "isolatedSamplerFixture"
         }
       ],
-      "gap": "已从最终打包应用采得 idle 15 点（稳定约 513.1 MiB WS/484.5 MiB private）及一轮本地播放进程树；该轮 Win-Box 树峰值约 708.1/522.5 MiB，MPV 约 105.4/137.8 MiB，测试驱动另占约 445.9 MiB WS。采样没有记录 Chromium 子进程角色，且未做搜索/1080p/弹幕/10 轮矩阵，内存预算仍未配置。",
+      "gap": "Ten isolated cycles on the latest packaged candidate pass local 320x180 VP8 HTML5/MPV decode, progress, seek, pause/resume and cleanup. Per-executable memory/CPU percentiles are recorded and the acceptance driver is separately attributed. No resource budgets are configured; aggregate-search load, 1080p/4K, dense danmaku, live sources and same-process profile switching remain unmeasured.",
       "direction": "固定机器/数据/窗口/冷热缓存条件，记录完整进程树与私有内存/工作集、CPU、搜索首个结果/总耗时、帧时间和关闭后资源恢复。根据数据再调并发与保留策略。",
       "acceptance": "空闲、1000级源搜索、1080p/高分辨率播放、弹幕开关/高密度、连续10轮切源/窗口关闭有可重复报告；无单调增长；先基线后定数值预算，不虚报节省百分比。",
       "estimateEngineerHours": {
@@ -1883,10 +1883,14 @@
       ],
       "probes": [],
       "reviewEvidence": {
-        "commit": "0139c23",
-        "latestImplementationCommit": "8925f6ed41f686648f9393ea8130da02ecdea79c",
-        "verification": "最终打包进程树 idle 与本地 playback 报告已记录。Idle 稳定约 513.1 MiB WS/484.5 MiB private；playback app tree peak 708.1/522.5 MiB，MPV peak 105.4/137.8 MiB；Playwright driver 单列。当前只有各一轮样本、无法按 Chromium --type 可靠拆 renderer/GPU/utility，也未覆盖大规模聚合搜索、1080p、高密度弹幕与十轮切源；V05 仍开放且预算未定。"
-      }
+        "commit": "040d1885e8a1debfe5ce07ac9380ae14cca91068",
+        "verification": "V05 harness checks 3/3 pass. Ten packaged local playback cycles pass, each 21.7–23.3 s; 183 one-second process-tree samples. Win-Box image-group working set p50/p95/peak 517.1/704.8/714.5 MiB; private 415.9/526.5/538.6 MiB. MPV peaks 122.6/155.1 MiB; Node acceptance driver peaks 682.1/777.6 MiB and is excluded from app memory. No budgets configured; search/1080p/danmaku not measured.",
+        "evidence": "architecture-audit/evidence/repeated-playback-10cycle-2026-10-28.json",
+        "remaining": "Keep V05 open until search, higher-resolution/danmaku workloads and performance budgets are measured."
+      },
+      "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
+      "latestVerification": "V05 harness checks 3/3 pass. Ten packaged local playback cycles pass, each 21.7–23.3 s; 183 one-second process-tree samples. Win-Box image-group working set p50/p95/peak 517.1/704.8/714.5 MiB; private 415.9/526.5/538.6 MiB. MPV peaks 122.6/155.1 MiB; Node acceptance driver peaks 682.1/777.6 MiB and is excluded from app memory. No budgets configured; search/1080p/danmaku not measured.",
+      "latestEvidence": "architecture-audit/evidence/repeated-playback-10cycle-2026-10-28.json"
     },
     {
       "id": "V06",
@@ -1924,7 +1928,7 @@
           "symbol": "current test, typecheck, lint, build gates"
         }
       ],
-      "gap": "Latest source commit 88fd7c666c6fb62bd70747883aab53d323d30250; full Vitest 507 files/4,163 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17 and installer 10/10 pass. Local installer 228695186 bytes SHA-256 2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a; packaged local HTML5/MPV and SpiderRunner JAR probes pass. Configured PotPlayer launch+fixture fetch pass but decode/time/pause remain unverified. Interactive installation over the user app, Python runtime workflow, live sources, and remote CI remain unrun; not published/pushed.",
+      "gap": "Latest local candidate was built from production source commit 292f8150d63ceb89df36d19fd1e8a1b69f0249c7; full Vitest 507 files/4,169 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17, acceptance tools 20/20, package policy 12/12 and installer 10/10 pass. Installer 228695919 bytes SHA-256 cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a. Packaged HTML5/MPV and Java/Python spider probes pass; ten-cycle local playback evidence recorded. Interactive upgrade over the user install, live sources, MPV desktop pixels and remote CI remain open; not published/pushed.",
       "direction": "修复后在同一候选提交运行类型/lint/架构/正式测试/构建和上述验收，隔离目录制作唯一的本地安装包，记录 hash/尺寸/版本/提交。遵守用户不发布小版本、不创建多工作区的要求。",
       "acceptance": "所有必需任务有实现与验收链接；旧绿灯不代替当前结果；本地 Setup 在干净目录安装运行通过；保留数据及产物来源可查；不发布 Release，审计/修复改动分步提交，临时目录清理。",
       "estimateEngineerHours": {
@@ -1979,14 +1983,14 @@
         ],
         "evidence": "architecture-audit/evidence/current-build-2026-10-28.json",
         "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json",
-        "latestVerification": "Latest source commit 88fd7c666c6fb62bd70747883aab53d323d30250; full Vitest 507 files/4,163 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17 and installer 10/10 pass. Local installer 228695186 bytes SHA-256 2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a; packaged local HTML5/MPV and SpiderRunner JAR probes pass. Interactive installation over the user app, Python runtime workflow, live sources/PotPlayer, and remote CI remain unrun; not published/pushed."
+        "latestVerification": "Latest local candidate was built from production source commit 292f8150d63ceb89df36d19fd1e8a1b69f0249c7; full Vitest 507 files/4,169 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17, acceptance tools 20/20, package policy 12/12 and installer 10/10 pass. Installer 228695919 bytes SHA-256 cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a. Packaged HTML5/MPV and Java/Python spider probes pass; ten-cycle local playback evidence recorded. Interactive upgrade over the user install, live sources, MPV desktop pixels and remote CI remain open; not published/pushed."
       },
       "latestImplementationCommits": [
         "48105537",
         "129f566a65d07c3c3f7b5a0849226eef141aec16",
         "88fd7c666c6fb62bd70747883aab53d323d30250"
       ],
-      "latestVerification": "Latest source commit 88fd7c666c6fb62bd70747883aab53d323d30250; full Vitest 507 files/4,163 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17 and installer 10/10 pass. Local installer 228695186 bytes SHA-256 2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a; packaged local HTML5/MPV and SpiderRunner JAR probes pass. Configured PotPlayer launch+fixture fetch pass but decode/time/pause remain unverified. Interactive installation over the user app, Python runtime workflow, live sources, and remote CI remain unrun; not published/pushed.",
+      "latestVerification": "Latest local candidate was built from production source commit 292f8150d63ceb89df36d19fd1e8a1b69f0249c7; full Vitest 507 files/4,169 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17, acceptance tools 20/20, package policy 12/12 and installer 10/10 pass. Installer 228695919 bytes SHA-256 cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a. Packaged HTML5/MPV and Java/Python spider probes pass; ten-cycle local playback evidence recorded. Interactive upgrade over the user install, live sources, MPV desktop pixels and remote CI remain open; not published/pushed.",
       "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
     },
     {
@@ -2166,7 +2170,7 @@
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
   "latestProgress": {
-    "recordedAt": "2026-10-28T13:45:30Z",
+    "recordedAt": "2026-10-28T14:05:52Z",
     "requiredTaskCount": 36,
     "completedTaskIds": [
       "B01",
@@ -2229,15 +2233,17 @@
       "wto",
       "oor",
       "vnp",
-      "xwy"
+      "xwy",
+      "sttl",
+      "ror"
     ],
     "localInstallerPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-    "installerSha256": "2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a",
+    "installerSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
     "localCommitsUnpushed": true,
     "releasePublished": false,
     "preservedUncommittedUserFile": "libnc.so",
-    "localInstallerBytes": 228695186,
-    "localAppDirectoryBytes": 533312990,
+    "localInstallerBytes": 228695919,
+    "localAppDirectoryBytes": 533313618,
     "localReleaseDirectories": [
       "release1.27.1"
     ],
@@ -2246,8 +2252,8 @@
       "src/renderer/components/SourcePicker.tsx"
     ],
     "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json",
-    "applicationBuildCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-    "applicationBuildAt": "2026-10-28T12:48:44.800Z",
+    "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
+    "applicationBuildAt": "2026-10-28T13:50:08.827Z",
     "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json",
     "requiredCompletedCount": 31,
     "optionalOpenTaskIds": [
@@ -2259,9 +2265,11 @@
       "V02",
       "V03",
       "V04",
-      "V06"
+      "V06",
+      "V05"
     ],
     "mpvFrameDiagnostic": "Strong inference: Chromium screenshot omits native MPV child HWND; desktop pixels not confirmed.",
-    "latestPythonEvidence": "architecture-audit/evidence/python-runtime-acceptance-2026-10-28.json"
+    "latestPythonEvidence": "architecture-audit/evidence/python-runtime-acceptance-2026-10-28.json",
+    "latestPerformanceEvidence": "architecture-audit/evidence/repeated-playback-10cycle-2026-10-28.json"
   }
 }

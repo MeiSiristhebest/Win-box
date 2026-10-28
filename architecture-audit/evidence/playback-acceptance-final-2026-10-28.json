@@ -1,21 +1,21 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T13:38:14Z",
+  "recordedAt": "2026-10-28T14:10:32.493Z",
   "taskId": "V02",
   "candidate": {
     "version": "1.27.1",
-    "sourceCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-    "buildTime": "2026-10-28T12:48:44.800Z",
+    "sourceCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
+    "buildTime": "2026-10-28T13:50:08.827Z",
     "installer": {
       "path": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-      "bytes": 228695186,
-      "sha256": "2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a"
+      "bytes": 228695919,
+      "sha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a"
     },
     "unpackedApp": {
-      "bytes": 533312990,
+      "bytes": 533313618,
       "files": 451
     },
-    "appAsarBytes": 24880332,
+    "appAsarBytes": 24880960,
     "unpackedRuntimeResourceBytes": 170843755,
     "spiderStubsJar": {
       "bytes": 289398,
@@ -32,7 +32,7 @@
     "launchPath": "temporary junction under repository .tmp pointing to isolated copy under the authorized visualization root",
     "directReleaseFolderLaunch": "BLOCKED before window by Electron AppContainer ACL (install_dir_access.cc:52); no ACL was changed",
     "externalThirdPartySources": "NOT_RUN",
-    "potPlayer": "Configured PotPlayer executable launch and full local fixture fetch PASS; decode/time progression/pause-resume NOT_VERIFIED"
+    "potPlayer": "Configured PotPlayer path launch and complete local fixture fetch PASS; decode/time progression/pause-resume NOT_VERIFIED"
   },
   "checks": [
     {
@@ -93,7 +93,8 @@
       "bytes": 73964,
       "decode": "NOT_VERIFIED",
       "timeProgress": "NOT_VERIFIED",
-      "pauseResume": "NOT_VERIFIED"
+      "pauseResume": "NOT_VERIFIED",
+      "verifiedAgainstFinalCandidate": true
     }
   ],
   "mpv": {
@@ -209,7 +210,7 @@
     "fixture": "generated local 320x180 VP8 WebM, 14.0 seconds",
     "processStart": "PROCESS_LIST_CONFIRMED",
     "processIds": [
-      36452
+      11084
     ],
     "mediaResponse": {
       "method": "GET",
@@ -223,7 +224,7 @@
     "decode": "NOT_VERIFIED",
     "timeProgress": "NOT_VERIFIED",
     "pauseResume": "NOT_VERIFIED",
-    "cleanup": "PASS; only newly started PotPlayer PID and packaged app were closed",
-    "evidenceSource": "isolated local acceptance run; transient raw report intentionally omitted after copying normalized evidence"
+    "cleanup": "PASS; newly started PotPlayer PID closed in 1,421 ms; packaged app and fixture server exited",
+    "verifiedAgainstFinalCandidate": true
   }
 }

@@ -1,40 +1,29 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T13:45:30Z",
+  "recordedAt": "2026-10-28T14:05:52Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
-    "applicationBuildCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
+    "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
     "version": "1.27.1",
     "published": false,
     "pushed": false,
-    "packageBuiltAt": "2026-10-28T12:48:44.800Z",
-    "acceptanceHarnessCommitAfterBuild": {
-      "commit": "85b806103c5fb16a4b581cfb6f7e0ff9ada3416d",
-      "changeId": "qpy",
-      "scope": "acceptance script only; packaged application runtime is unchanged"
-    },
-    "postBuildSourceCommits": [
-      {
-        "changeId": "vnp",
-        "commit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
-        "scope": "theme disabled-state contrast fix; pending final package rebuild"
-      },
-      {
-        "changeId": "xwy",
-        "commit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
-        "scope": "legacy installer locked-file preflight; pending final package rebuild"
-      }
-    ]
+    "packageBuiltAt": "2026-10-28T13:50:08.827Z",
+    "postBuildSourceCommits": [],
+    "acceptanceHarnessCommit": {
+      "commit": "040d1885e8a1debfe5ce07ac9380ae14cca91068",
+      "changeId": "ror",
+      "scope": "local test harness; not shipped as application code"
+    }
   },
   "build": {
     "command": "pnpm run dist",
     "status": "PASS",
     "installer": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-    "installerBytes": 228695186,
-    "installerSha256": "2feac4feb7b8d396b891af3c3441b25fec9af240b35774c39542aadba94b713a",
-    "unpackedAppBytes": 533312990,
+    "installerBytes": 228695919,
+    "installerSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
+    "unpackedAppBytes": 533313618,
     "unpackedAppFiles": 451,
-    "appAsarBytes": 24880332,
+    "appAsarBytes": 24880960,
     "jvmBytes": 163388141,
     "releaseDirectoryCount": 1,
     "optionalExternalPlayerBinariesBundled": false,
@@ -47,7 +36,7 @@
       "status": "PASS",
       "filesPassed": 507,
       "filesSkipped": 3,
-      "testsPassed": 4163,
+      "testsPassed": 4169,
       "testsSkipped": 5
     },
     "typecheck": "PASS: main, renderer, and test projects",
@@ -55,7 +44,7 @@
     "focusedPlayerStyles": {
       "status": "PASS",
       "files": 2,
-      "tests": 15
+      "tests": 59
     },
     "acceptanceTools": {
       "status": "PASS",
@@ -64,8 +53,9 @@
     "installerScript": {
       "status": "PASS",
       "tests": 10,
-      "targetProcessStoppedMs": 4335,
-      "oldUninstallerFailurePreservedOldInstallAndSixUserDataDomains": true
+      "targetProcessStoppedMs": 4414,
+      "oldUninstallerFailurePreservedOldInstallAndSixUserDataDomains": true,
+      "lockedLegacyOnlyFileRejectedBeforeOldUninstaller": true
     },
     "runtimeClosure": "PASS",
     "packagedJava": {
@@ -81,8 +71,10 @@
       "restoreAutoAndPausedPosition": "PASS",
       "rendererErrors": 0,
       "processExitedAndOwnedArtifactsCleaned": true,
-      "externalSourcesAndPotPlayer": "Configured PotPlayer path launch and full local fixture bytes fetch PASS; decode/time/pause NOT_VERIFIED; live third-party sources NOT_RUN.",
-      "mpvVisibleFrame": "UNCONFIRMED; strong inference that the black Playwright screenshot omits MPV native child HWND pixels; no desktop screenshot was obtained. Playback/time/seek/pause pass but do not prove visible frame."
+      "externalSourcesAndPotPlayer": "PotPlayer launch+fetch partially verified; decode/time/pause not verified; live third-party sources not run.",
+      "mpvVisibleFrame": "UNCONFIRMED; strong inference that Playwright screenshot omits native child HWND; desktop pixels not captured.",
+      "potplayer": "Configured PotPlayer launch and full local fixture fetch PASS (HTTP 200, 73,964 bytes); decode/time/pause NOT_VERIFIED",
+      "tenCycleEvidence": "architecture-audit/evidence/repeated-playback-10cycle-2026-10-28.json"
     },
     "pauseFeedbackVisual": {
       "status": "PASS",
@@ -130,16 +122,51 @@
       "status": "PASS",
       "evidence": "architecture-audit/evidence/spider-jre-protocol-smoke-2026-10-28.json",
       "observed": "quick=true,page=7 preserved in actual packaged JRE SpiderRunner call",
-      "pythonRuntime": "PASS: CPython 3.15.0 runtime and required wheels downloaded/extracted into an isolated profile; package runner invoked a local Python spider preserving quick=true,page=7.",
+      "pythonRuntime": "PASS: CPython 3.15.0 and required wheels downloaded/extracted in isolated profile; packaged runner invoked local spider preserving quick=true,page=7.",
       "pythonRuntimeEvidence": "architecture-audit/evidence/python-runtime-acceptance-2026-10-28.json"
+    },
+    "packagePolicy": {
+      "status": "PASS",
+      "tests": 12
+    },
+    "v05Harness": {
+      "status": "PASS",
+      "tests": 3
+    },
+    "repeatedPlayback": {
+      "status": "PASS_WITH_SCOPE_LIMITS",
+      "evidence": "architecture-audit/evidence/repeated-playback-10cycle-2026-10-28.json",
+      "cycles": 10,
+      "cycleDurationMs": {
+        "p50": 21886,
+        "p95": 23326,
+        "peak": 23326
+      },
+      "samplerSamples": 183,
+      "winBoxWorkingSetMiB": {
+        "p50": 517.1,
+        "p95": 704.8,
+        "peak": 714.5
+      },
+      "winBoxPrivateMiB": {
+        "p50": 415.9,
+        "p95": 526.5,
+        "peak": 538.6
+      },
+      "mpvPeakWorkingSetMiB": 122.6,
+      "mpvPeakPrivateMiB": 155.1,
+      "driverPeakWorkingSetMiB": 682.1,
+      "driverPeakPrivateMiB": 777.6,
+      "budget": "NOT_CONFIGURED",
+      "search1080pAndDenseDanmaku": "NOT_RUN"
     }
   },
   "remaining": [
-    "V02: local packaged HTML5/MPV decode, time, seek, pause/resume pass; PotPlayer configured executable starts and receives full local fixture bytes (HTTP 200), but actual decode/time/pause is NOT_VERIFIED; actual desktop-visible MPV pixels and live third-party sources remain unconfirmed.",
-    "V03: all-route/theme/focus/DPI/narrow-layout contrast matrix and live danmaku-trail check remain incomplete; episode tab keyboard navigation and packaged pause feedback are fixed and verified.",
-    "V04: scripted NSIS stop/preflight and rollback/data preservation pass; interactive stop/continue, cancellation, playing/hidden-window cases, and real upgrade migration remain unverified.",
-    "V05: repeat search, 1080p, dense danmaku, and 10-cycle workload samples with stable role attribution and performance budgets remain incomplete.",
-    "V06: local package and automated gates pass; interactive installation over the user installation and remote CI remain unrun; nothing was published or pushed.",
+    "V02: Local HTML5/MPV decode, progress, seek and pause/resume pass in one and ten-cycle packaged runs. PotPlayer launches and receives fixture bytes; decode/time/pause not verified. MPV desktop-visible pixels and live third-party sources unconfirmed.",
+    "V03: Keyboard/ARIA episode tabs, compact pause feedback, and six-theme disabled/selected control contrast regression pass; full route/theme/DPI/narrow-layout matrix and live danmaku trails remain unverified.",
+    "V04: Locked legacy-only file preflight, same-directory process stop, and rollback/data preservation pass in isolated NSIS tests; interactive Cancel/Back/elevation and playing/hidden-window GUI cases remain unverified.",
+    "V05: Ten local 320x180 playback lifecycle cycles pass with role-attributed resource samples; no configured budgets, real aggregate-search workload, 1080p/4K, dense danmaku, or same-process switching.",
+    "V06: Local package gates and ten-cycle run pass; final interactive installer/upgrade over the user install, remote CI and live third-party playback remain unrun; not published or pushed.",
     "O01 (optional): third-party Spider runtime install/disable/unload lifecycle is not implemented.",
     "O02 (optional): measured cross-player enhancement PoC for quality, latency, CPU/GPU/memory is not implemented."
   ],

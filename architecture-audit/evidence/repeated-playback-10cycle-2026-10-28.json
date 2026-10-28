@@ -1,0 +1,123 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T14:05:52Z",
+  "taskId": "V05",
+  "status": "PASS_WITH_SCOPE_LIMITS",
+  "candidate": {
+    "version": "1.27.1",
+    "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
+    "builtAt": "2026-10-28T13:50:08.827Z",
+    "installerBytes": 228695919,
+    "installerSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a"
+  },
+  "command": "node scripts/v05-repeated-playback.mjs --packaged-app .tmp/v05-final-candidate-link-20261028-1345 --cycles 10 --output-dir .tmp/v05-final-run-20261028-1345",
+  "workload": {
+    "cyclesRequested": 10,
+    "externalSources": "NOT_RUN",
+    "aggregateSearch": "NOT_RUN",
+    "freshIsolatedProfilePerCycle": true,
+    "userDatabase": "NOT_ACCESSED"
+  },
+  "result": {
+    "allCyclesPass": true,
+    "rendererErrors": 0,
+    "ownedProcessCleanup": "PASS",
+    "samplerExitCode": 0,
+    "intervalMs": 1000,
+    "sampleCount": 183,
+    "durationMs": 221570,
+    "budgetStatus": "NOT_CONFIGURED",
+    "processTree": {
+      "workingSetMiB": {
+        "p50": 764.2,
+        "p95": 1097.1,
+        "peak": 1251
+      },
+      "privateBytesMiB": {
+        "p50": 655.1,
+        "p95": 975.3,
+        "peak": 1109.2
+      },
+      "cpuPercent": {
+        "p50": 8.4,
+        "p95": 138.9,
+        "peak": 204.4
+      },
+      "processCountPeak": 8
+    },
+    "byExecutable": [
+      {
+        "name": "Win-Box.exe",
+        "role": "Win-Box/Electron process image; Chromium main, renderer, GPU and utility roles are not separable here",
+        "processCountPeak": 5,
+        "workingSetMiB": {
+          "p50": 517.1,
+          "p95": 704.8,
+          "peak": 714.5
+        },
+        "privateBytesMiB": {
+          "p50": 415.9,
+          "p95": 526.5,
+          "peak": 538.6
+        },
+        "cpuPercent": {
+          "p50": 5.2,
+          "p95": 95.9,
+          "peak": 179
+        }
+      },
+      {
+        "name": "mpv.exe",
+        "role": "managed MPV playback process",
+        "processCountPeak": 1,
+        "workingSetMiB": {
+          "p50": 0,
+          "p95": 106,
+          "peak": 122.6
+        },
+        "privateBytesMiB": {
+          "p50": 0,
+          "p95": 138.5,
+          "peak": 155.1
+        },
+        "cpuPercent": {
+          "p50": 0,
+          "p95": 1.3,
+          "peak": 46.5
+        }
+      },
+      {
+        "name": "node.exe",
+        "role": "acceptance driver and local fixture server",
+        "processCountPeak": 1,
+        "workingSetMiB": {
+          "p50": 237.8,
+          "p95": 496,
+          "peak": 682.1
+        },
+        "privateBytesMiB": {
+          "p50": 240.4,
+          "p95": 578.1,
+          "peak": 777.6
+        },
+        "cpuPercent": {
+          "p50": 0,
+          "p95": 132.6,
+          "peak": 204.4
+        }
+      }
+    ]
+  },
+  "cycleDurationsMs": [
+    23326,
+    22215,
+    21886,
+    21879,
+    21901,
+    22567,
+    21744,
+    21870,
+    21937,
+    21844
+  ]
+}
