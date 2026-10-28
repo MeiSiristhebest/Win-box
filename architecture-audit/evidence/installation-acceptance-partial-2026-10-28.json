@@ -1,0 +1,36 @@
+{
+  "recordedAt": "2026-10-28T14:33:20.280Z",
+  "scope": "V04/V06 partial installer integration acceptance",
+  "payload": "release1.27.1/win-unpacked",
+  "installerRegression": {
+    "script": "test:installer",
+    "command": "node --test --test-isolation=none scripts/installer-script.check.mjs",
+    "passed": 11,
+    "failed": 0
+  },
+  "integrationAcceptance": {
+    "method": "Built isolated NSIS integration installers from the unpacked 1.27.1 payload; installation, overwrite and uninstall paths ran under a system temporary directory.",
+    "install": "PASS",
+    "overwrite": "PASS",
+    "uninstallFirst": "PASS",
+    "uninstall": "PASS",
+    "syntheticDataPreserved": true,
+    "syntheticDataCategories": [
+      "configuration",
+      "settings",
+      "subscriptions",
+      "cloud account",
+      "watch history",
+      "favorites"
+    ],
+    "verifiedPackagedFiles": 451,
+    "temporaryRegistryKeyAndShortcutCleanup": "PASS",
+    "temporaryWorkDirectoryCleanup": "PASS"
+  },
+  "notVerified": [
+    "The shipping Setup.exe itself was not installed; this is an integration acceptance built from the unpacked payload, not a shipping-Setup clean-install pass.",
+    "Hidden or background playback was not tested.",
+    "Upgrade migration from a real existing installation and user data was not tested."
+  ],
+  "classification": "PARTIAL"
+}
