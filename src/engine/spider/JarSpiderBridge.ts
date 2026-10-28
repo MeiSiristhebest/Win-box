@@ -66,6 +66,7 @@ import { mergeJarResourceEntries } from './jarResourceMerge';
 import { SpiderSubprocessRunner } from './SpiderSubprocessRunner';
 import { JarSpiderRuntimeSession } from './JarSpiderRuntimeSession';
 import { decideJarCallFallback } from './jarCallFallbackPolicy';
+import { ensureConvertedJarCacheVersion } from './convertedJarCacheVersion';
 
 /**
  * ★ 转换产物格式版本（导出：单测与诊断用；**改变了「产物内容」就必须 +1**）。
@@ -515,9 +516,6 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
    * 这里在缓存目录里放一个版本戳，版本不符就把转换产物整体作废重转
    * （只删 `.jar`，不动别的；raw jar 一并删掉以保证重新下载最新内容）。
    */
-  private static readonly CACHE_VERSION = CONVERTED_CACHE_VERSION;
-  private static readonly CACHE_STAMP = '.converted-version';
-
   /** 版本不符时清空转换产物，强制重转。失败只警告，不影响主流程。 */
   private ensureCacheVersion(): void {
     // ★ 2026-09-23 / 2026-09-24 修复「每次清缓存后首次进源要等 30s+」：
@@ -526,36 +524,23 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     //      此时保留磁盘上已有的转换产物（它们本来就是当前版本的产物），只补写戳。
     //      真升级（戳存在且值不同）才作废重转 —— 用户实测：清缓存后第一次进源要 37s
     //      （下载 + dex2jar + JVM 冷启动全在这一条请求里），进而被源超时打断成「加载失败」。
-    const stamp = join(this.cacheDir, JarSpiderBridge.CACHE_STAMP);
-    try {
-      if (!existsSync(this.cacheDir)) {
-        mkdirSync(this.cacheDir, { recursive: true });
-        writeFileSync(stamp, String(JarSpiderBridge.CACHE_VERSION));
-        return;
-      }
-      const cur = existsSync(stamp) ? readFileSync(stamp, 'utf8').trim() : '';
-      if (cur === String(JarSpiderBridge.CACHE_VERSION)) return;
-      if (!cur) {
-        // 戳缺失（清理缓存/首装）→ 保留已有产物，补写戳
-        writeFileSync(stamp, String(JarSpiderBridge.CACHE_VERSION));
-        return;
-      }
-      const fs = require('node:fs') as typeof import('node:fs');
-      let removed = 0;
-      for (const f of fs.readdirSync(this.cacheDir)) {
-        if (f.endsWith('.jar')) {
-          try { fs.rmSync(join(this.cacheDir, f), { force: true }); removed += 1; } catch { /* ignore */ }
-        }
-      }
-      writeFileSync(stamp, String(JarSpiderBridge.CACHE_VERSION));
-      if (removed > 0) {
-        this.host?.logger.i(
-          `jvm-bridge 转换产物格式升级（v${cur} → v${JarSpiderBridge.CACHE_VERSION}），已作废 ${removed} 个旧产物并重新转换`,
-        );
-      }
-    } catch (e) {
-      this.host?.logger.w(`jvm-bridge 缓存版本检查失败: ${(e as Error).message}`);
-    }
+    const stamp = join(this.cacheDir, '.converted-version');
+    ensureConvertedJarCacheVersion(this.cacheDir, stamp, CONVERTED_CACHE_VERSION, {
+      exists: existsSync,
+      createDirectory: (directory) => mkdirSync(directory, { recursive: true }),
+      readText: (path) => readFileSync(path, 'utf8'),
+      writeText: (path, contents) => writeFileSync(path, contents),
+      listEntries: (directory) => {
+        const fs = require('node:fs') as typeof import('node:fs');
+        return fs.readdirSync(directory);
+      },
+      removeFile: (directory, name) => {
+        const fs = require('node:fs') as typeof import('node:fs');
+        fs.rmSync(join(directory, name), { force: true });
+      },
+      info: (message) => this.host?.logger.i(message),
+      warn: (message) => this.host?.logger.w(message),
+    });
   }
 
   private async doConvert(jarUrl: string): Promise<string> {
