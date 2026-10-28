@@ -1533,8 +1533,8 @@
         "verification": "包体定向检查 12/12 通过；候选 app 534,252,979 B、installer 228,831,102 B。与此前报告相比 app 少 46,506,080 B（约 8.0%）、installer 少 11,977,645 B（约 5.0%；该跨构建差值不全归因于本改动）。locale pack 直接减少 48,880,941 B；同构建排除 node_modules/.ignored 后 ASAR 减少 15,030,737 B。隔离安装/覆盖/卸载重装和用户数据保留通过，Java 17 运行通过；运行中停止进程与应用完整运行时冒烟未执行，状态仍 open。",
         "evidence": "architecture-audit/evidence/package-optimization-2026-10-28.json",
         "latestImplementationCommit": "7d760eb53fc17f5b1bdfd3592f7744d75827f2f3",
-      "latestVerification": "当前 build 与 package 通过；Temurin JRE 17.0.20.1 在最终包中可启动；真实 spider JAR 与 Python 运行时安装/下载仍待验收。",
-      "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
+        "latestVerification": "当前 build 与 package 通过；Temurin JRE 17.0.20.1 在最终包中可启动；真实 spider JAR 与 Python 运行时安装/下载仍待验收。",
+        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
       }
     },
     {
@@ -1599,74 +1599,74 @@
       }
     },
     {
-  "id": "V02",
-  "kind": "validation",
-  "priority": "P1",
-  "title": "真实播放与外置播放器、超分能力边界验收",
-  "status": "open",
-  "principles": [
-    3,
-    7,
-    14
-  ],
-  "evidence": [
-    {
-      "path": "scripts/verify-playback.mjs",
-      "line": 81,
-      "symbol": "local acceptance report"
+      "id": "V02",
+      "kind": "validation",
+      "priority": "P1",
+      "title": "真实播放与外置播放器、超分能力边界验收",
+      "status": "open",
+      "principles": [
+        3,
+        7,
+        14
+      ],
+      "evidence": [
+        {
+          "path": "scripts/verify-playback.mjs",
+          "line": 81,
+          "symbol": "local acceptance report"
+        },
+        {
+          "path": "scripts/verify-playback.mjs",
+          "line": 134,
+          "symbol": "HTML5/MPV local video"
+        },
+        {
+          "path": "scripts/source-acceptance.mjs",
+          "line": 31,
+          "symbol": "import/home/search probes"
+        },
+        {
+          "path": "src/main/torrent/ExternalPlayback.ts",
+          "line": 47,
+          "symbol": "configured external player"
+        },
+        {
+          "path": "architecture-audit/evidence/playback-diagnostics-2026-10-28.json",
+          "symbol": "Range and HLS failure diagnostics"
+        },
+        {
+          "path": "architecture-audit/evidence/playback-acl-path-diagnostics-2026-10-28.json",
+          "symbol": "install_dir_access ACL diagnosis and isolated packaged playback"
+        }
+      ],
+      "gap": "最新候选包通过隔离 ACL 安全副本的本地 VP8 WebM 验收：HTML5 与托管 MPV 均解码、推进时间、跳转及暂停/续播成功，renderer errors 为 0；MPV 可见画面仍无法由 Chromium 截图确认。代表性在线源与 PotPlayer 未测，V02 保持 open。",
+      "direction": "先可控夹具验证 MP4/HLS/TS、401/403/HTML 假媒体、Range/跳转；再按获准的代表来源测完整播放。单独验证已配置 PotPlayer 直接启动和失败反馈；超分按内核能力如实展示。",
+      "acceptance": "保存至少 HTML5、托管 MPV、PotPlayer 的实际启动/时间推进/暂停续播证据；源失效与播放器回归分开；账号切子仓可复用；明确托管 shader 不自动影响任意外部播放器。",
+      "estimateEngineerHours": {
+        "min": 4,
+        "max": 8
+      },
+      "dependsOn": [
+        "B05",
+        "B09",
+        "A05",
+        "A08",
+        "A09"
+      ],
+      "probes": [],
+      "reviewEvidence": {
+        "verification": "Current package playback-only acceptance passed local HTML5 and MPV decode/seek/time/pause-resume; MPV 0.41.0. A separate packaged HTML5 screenshot confirmed the pause feedback is 28x28 px, icon 14x14 px, exactly centered, with no backdrop blur or shadow. Fixture is localhost-only; no third-party sources or PotPlayer. MPV native child frame remains outside the captured Chromium surface.",
+        "evidence": "architecture-audit/evidence/playback-acceptance-2026-10-28.json",
+        "notRun": [
+          "Live third-party source playback matrix",
+          "PotPlayer real decode/time progression/pause-resume",
+          "Visible video frame content for the MPV screenshot; captured surface was black despite decode/time telemetry"
+        ],
+        "latestImplementationCommit": "848c876adc4312e44b619b64281e57bab4d6dfae",
+        "latestVerification": "Latest package passes isolated local-fixture playback and pause-feedback visual assertions. Direct workspace-path ACL block remains documented; PotPlayer, live source playback, and MPV visible frame are still unverified.",
+        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
+      }
     },
-    {
-      "path": "scripts/verify-playback.mjs",
-      "line": 134,
-      "symbol": "HTML5/MPV local video"
-    },
-    {
-      "path": "scripts/source-acceptance.mjs",
-      "line": 31,
-      "symbol": "import/home/search probes"
-    },
-    {
-      "path": "src/main/torrent/ExternalPlayback.ts",
-      "line": 47,
-      "symbol": "configured external player"
-    },
-    {
-      "path": "architecture-audit/evidence/playback-diagnostics-2026-10-28.json",
-      "symbol": "Range and HLS failure diagnostics"
-    },
-    {
-      "path": "architecture-audit/evidence/playback-acl-path-diagnostics-2026-10-28.json",
-      "symbol": "install_dir_access ACL diagnosis and isolated packaged playback"
-    }
-  ],
-  "gap": "最新候选包通过隔离 ACL 安全副本的本地 VP8 WebM 验收：HTML5 与托管 MPV 均解码、推进时间、跳转及暂停/续播成功，renderer errors 为 0；MPV 可见画面仍无法由 Chromium 截图确认。代表性在线源与 PotPlayer 未测，V02 保持 open。",
-  "direction": "先可控夹具验证 MP4/HLS/TS、401/403/HTML 假媒体、Range/跳转；再按获准的代表来源测完整播放。单独验证已配置 PotPlayer 直接启动和失败反馈；超分按内核能力如实展示。",
-  "acceptance": "保存至少 HTML5、托管 MPV、PotPlayer 的实际启动/时间推进/暂停续播证据；源失效与播放器回归分开；账号切子仓可复用；明确托管 shader 不自动影响任意外部播放器。",
-  "estimateEngineerHours": {
-    "min": 4,
-    "max": 8
-  },
-  "dependsOn": [
-    "B05",
-    "B09",
-    "A05",
-    "A08",
-    "A09"
-  ],
-  "probes": [],
-  "reviewEvidence": {
-      "verification": "Current package playback-only acceptance passed local HTML5 and MPV decode/seek/time/pause-resume; MPV 0.41.0. A separate packaged HTML5 screenshot confirmed the pause feedback is 28x28 px, icon 14x14 px, exactly centered, with no backdrop blur or shadow. Fixture is localhost-only; no third-party sources or PotPlayer. MPV native child frame remains outside the captured Chromium surface.",
-    "evidence": "architecture-audit/evidence/playback-acceptance-2026-10-28.json",
-    "notRun": [
-      "Live third-party source playback matrix",
-      "PotPlayer real decode/time progression/pause-resume",
-      "Visible video frame content for the MPV screenshot; captured surface was black despite decode/time telemetry"
-    ],
-    "latestImplementationCommit": "848c876adc4312e44b619b64281e57bab4d6dfae",
-      "latestVerification": "Latest package passes isolated local-fixture playback and pause-feedback visual assertions. Direct workspace-path ACL block remains documented; PotPlayer, live source playback, and MPV visible frame are still unverified.",
-      "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
-  }
-},
     {
       "id": "V03",
       "visualSpotCheckEvidence": {
@@ -1719,7 +1719,7 @@
           "symbol": "measured player overlay contrast regressions"
         }
       ],
-  "gap": "暂停反馈已改为 28x28 px、14 px 图标，中心偏差 0 px，无 backdrop blur/shadow；最新打包 Electron HTML5 窗口截图与运行时样式断言通过。完整全窗口/所有路由主题对比度、键盘焦点、弹幕拖影现场复现、DPI/窄屏矩阵仍未完成；保持 open。",
+      "gap": "暂停反馈已改为 28x28 px、14 px 图标，中心偏差 0 px，无 backdrop blur/shadow；最新打包 Electron HTML5 窗口截图与运行时样式断言通过。完整全窗口/所有路由主题对比度、键盘焦点、弹幕拖影现场复现、DPI/窄屏矩阵仍未完成；保持 open。",
       "direction": "按窗口×组件状态×主题/外壳×DPI 建立检查矩阵；复用已有 showcase，计算最终样式并用真实 Electron 窗口复核；业务功能清单作回归对照。",
       "acceptance": "主/详情/搜索/播放器/全局账号/设置/历史/直播/存储均有记录；100/125/150% DPI 与窄宽布局；沿用仓库普通文本4.5:1/功能边界3:1口径；键盘焦点、selected 语义、弹幕拖影和暂停无模糊逐项关闭。",
       "estimateEngineerHours": {
@@ -1742,8 +1742,8 @@
         "verification": "播放器样式 9/9 测试和音量滑块 6 项静态几何检查通过；全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过），三套 typecheck、lint/架构边界和生产 build 通过。仍缺最终 Electron 截图复核。",
         "evidence": "architecture-audit/evidence/player-controls-followup-2026-10-28.json",
         "latestImplementationCommit": "75c28a22b9fc128faf0779912e00be3e91ced3da",
-      "latestVerification": "完整 Vitest 包含播放器样式与主题回归；新增 packaged HTML5 视觉验收通过，28x28 px、14x14 px、中心偏差 0 px、无模糊/阴影。弹幕拖影和全界面状态矩阵仍无动态验收。",
-      "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
+        "latestVerification": "完整 Vitest 包含播放器样式与主题回归；新增 packaged HTML5 视觉验收通过，28x28 px、14x14 px、中心偏差 0 px、无模糊/阴影。弹幕拖影和全界面状态矩阵仍无动态验收。",
+        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
       }
     },
     {
@@ -1786,7 +1786,7 @@
           "symbol": "old uninstaller failure rollback and six user-data files"
         }
       ],
-  "gap": "最新真实 NSIS 脚本回归 9/9 通过，覆盖文件占用预检避免重试框、停止同目录运行进程（3,748 ms）、旧卸载器失败回滚和六类数据保留。实际 GUI 的继续安装/交互取消、播放中/老板键隐藏和升级数据迁移仍未验收；保持 open。",
+      "gap": "最新真实 NSIS 脚本回归 9/9 通过，覆盖文件占用预检避免重试框、停止同目录运行进程（3,748 ms）、旧卸载器失败回滚和六类数据保留。实际 GUI 的继续安装/交互取消、播放中/老板键隐藏和升级数据迁移仍未验收；保持 open。",
       "direction": "将安装验收扩展到完整候选包的播放中和老板键隐藏场景，再核对取消安装保护及每个用户数据域迁移。",
       "acceptance": "正在播放/老板键隐藏/后台无主窗口时可一键停止继续；其它安装目录不受影响；配置、订阅、账号、历史、收藏重启后保留；取消不破坏旧版；注册表/快捷方式正确。",
       "estimateEngineerHours": {
@@ -1804,8 +1804,8 @@
         "commit": "3e3bd13",
         "latestImplementationCommit": "faa4cdb5c83c1492d5036d8c58a44de1d9450045",
         "verification": "最终候选包的 505 文件隔离安装/覆盖/卸载/数据保留记录见 installation-acceptance-2026-10-28.json。最新 installer-script.check.mjs 为 7/7 PASS；无窗口进程实测 4549ms 停止。该合成 fixture 不等于真实播放/隐藏窗口和取消保护验收，因此 V04 仍为 open。",
-      "latestVerification": "最新 installer-script.check.mjs 9/9 PASS；真实 NSIS 同目录运行进程 3,748 ms 内停止，旧卸载器失败时旧安装与 settings/subscriptions/cloud accounts/history/favorites 六类数据保留。",
-      "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
+        "latestVerification": "最新 installer-script.check.mjs 9/9 PASS；真实 NSIS 同目录运行进程 3,748 ms 内停止，旧卸载器失败时旧安装与 settings/subscriptions/cloud accounts/history/favorites 六类数据保留。",
+        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
       }
     },
     {
@@ -1844,7 +1844,7 @@
           "symbol": "isolatedSamplerFixture"
         }
       ],
-  "gap": "已从最终打包应用采得 idle 15 点（稳定约 513.1 MiB WS/484.5 MiB private）及一轮本地播放进程树；该轮 Win-Box 树峰值约 708.1/522.5 MiB，MPV 约 105.4/137.8 MiB，测试驱动另占约 445.9 MiB WS。采样没有记录 Chromium 子进程角色，且未做搜索/1080p/弹幕/10 轮矩阵，内存预算仍未配置。",
+      "gap": "已从最终打包应用采得 idle 15 点（稳定约 513.1 MiB WS/484.5 MiB private）及一轮本地播放进程树；该轮 Win-Box 树峰值约 708.1/522.5 MiB，MPV 约 105.4/137.8 MiB，测试驱动另占约 445.9 MiB WS。采样没有记录 Chromium 子进程角色，且未做搜索/1080p/弹幕/10 轮矩阵，内存预算仍未配置。",
       "direction": "固定机器/数据/窗口/冷热缓存条件，记录完整进程树与私有内存/工作集、CPU、搜索首个结果/总耗时、帧时间和关闭后资源恢复。根据数据再调并发与保留策略。",
       "acceptance": "空闲、1000级源搜索、1080p/高分辨率播放、弹幕开关/高密度、连续10轮切源/窗口关闭有可重复报告；无单调增长；先基线后定数值预算，不虚报节省百分比。",
       "estimateEngineerHours": {
@@ -1867,7 +1867,7 @@
       "reviewEvidence": {
         "commit": "0139c23",
         "latestImplementationCommit": "8925f6ed41f686648f9393ea8130da02ecdea79c",
-      "verification": "最终打包进程树 idle 与本地 playback 报告已记录。Idle 稳定约 513.1 MiB WS/484.5 MiB private；playback app tree peak 708.1/522.5 MiB，MPV peak 105.4/137.8 MiB；Playwright driver 单列。当前只有各一轮样本、无法按 Chromium --type 可靠拆 renderer/GPU/utility，也未覆盖大规模聚合搜索、1080p、高密度弹幕与十轮切源；V05 仍开放且预算未定。"
+        "verification": "最终打包进程树 idle 与本地 playback 报告已记录。Idle 稳定约 513.1 MiB WS/484.5 MiB private；playback app tree peak 708.1/522.5 MiB，MPV peak 105.4/137.8 MiB；Playwright driver 单列。当前只有各一轮样本、无法按 Chromium --type 可靠拆 renderer/GPU/utility，也未覆盖大规模聚合搜索、1080p、高密度弹幕与十轮切源；V05 仍开放且预算未定。"
       }
     },
     {
@@ -1906,7 +1906,7 @@
           "symbol": "current test, typecheck, lint, build gates"
         }
       ],
-  "gap": "当前源代码完整 Vitest 507 文件/4162 测试、三套 typecheck、lint/架构边界、打包、runtime closure、安装器 9/9、验收工具 20/20 均通过；1.27.1 本地安装包为 228,694,839 B。隔离副本打包启动及 HTML5/MPV 本地播放通过，内置 JRE version smoke 通过。仍未执行安装器交互 GUI/覆盖用户应用、真实安装 Python/JAR 运行工作流、live sources/PotPlayer 和远端 CI；未发布/推送，V06 保持 open。",
+      "gap": "当前源代码完整 Vitest 507 文件/4162 测试、三套 typecheck、lint/架构边界、打包、runtime closure、安装器 9/9、验收工具 20/20 均通过；1.27.1 本地安装包为 228,694,839 B。隔离副本打包启动及 HTML5/MPV 本地播放通过，内置 JRE version smoke 通过。仍未执行安装器交互 GUI/覆盖用户应用、真实安装 Python/JAR 运行工作流、live sources/PotPlayer 和远端 CI；未发布/推送，V06 保持 open。",
       "direction": "修复后在同一候选提交运行类型/lint/架构/正式测试/构建和上述验收，隔离目录制作唯一的本地安装包，记录 hash/尺寸/版本/提交。遵守用户不发布小版本、不创建多工作区的要求。",
       "acceptance": "所有必需任务有实现与验收链接；旧绿灯不代替当前结果；本地 Setup 在干净目录安装运行通过；保留数据及产物来源可查；不发布 Release，审计/修复改动分步提交，临时目录清理。",
       "estimateEngineerHours": {
@@ -1953,7 +1953,7 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "0119e76",
-      "verification": "当前代码完整 Vitest 507 文件/4162 测试（3 files/5 tests skipped）、main/renderer/test typecheck、lint/architecture、dist、package runtime closure、installer 9/9、acceptance tools 20/20、JRE version、packaged local HTML5/MPV playback 与 pause feedback screenshot 均通过。远端 CI 未运行，安装器 Setup 未交互执行。",
+        "verification": "当前代码完整 Vitest 507 文件/4162 测试（3 files/5 tests skipped）、main/renderer/test typecheck、lint/architecture、dist、package runtime closure、installer 9/9、acceptance tools 20/20、JRE version、packaged local HTML5/MPV playback 与 pause feedback screenshot 均通过。远端 CI 未运行，安装器 Setup 未交互执行。",
         "latestImplementationCommits": [
           "848c876adc4312e44b619b64281e57bab4d6dfae",
           "e785a42e14cfc44d43b1162f43f658f754fece04",
@@ -1961,8 +1961,8 @@
           "faa4cdb5c83c1492d5036d8c58a44de1d9450045"
         ],
         "evidence": "architecture-audit/evidence/current-build-2026-10-28.json",
-      "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json",
-      "latestVerification": "最终本地候选包与验收证据见 current-candidate-2026-10-28.json；安装器尚未交互安装到用户目录，远端 CI 未运行，release 未发布。"
+        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json",
+        "latestVerification": "最终本地候选包与验收证据见 current-candidate-2026-10-28.json；安装器尚未交互安装到用户目录，远端 CI 未运行，release 未发布。"
       }
     },
     {
@@ -2142,7 +2142,7 @@
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
   "latestProgress": {
-    "recordedAt": "2026-10-28T12:20:11Z",
+    "recordedAt": "2026-10-28T12:27:54Z",
     "requiredTaskCount": 36,
     "completedTaskIds": [
       "B01",
@@ -2189,7 +2189,6 @@
       "max": 42
     },
     "branch": "codex/architecture-cleanup-20261025",
-    "implementationTipBeforeEvidence": "1d1a2426f69f4b1047df73efdcb99e123e05cbc3",
     "localCommitsThisTurn": [
       "3e3bd13",
       "0119e76",
@@ -2200,7 +2199,8 @@
       "6d3e6d2",
       "orx",
       "mzs",
-      "qpy"
+      "qpy",
+      "pxr"
     ],
     "localInstallerPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
     "installerSha256": "74004bb13219dafab819084e642332298e77ad33b4e29f5f2b5430464e4afdcb",
@@ -2216,6 +2216,9 @@
       "libnc.so",
       "src/renderer/components/SourcePicker.tsx"
     ],
-    "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
+    "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json",
+    "applicationBuildCommit": "ad4bbe092248e982d37791aff4b0ce28b74cc764",
+    "applicationBuildAt": "2026-10-28T12:11:00.218Z",
+    "latestPlaybackEvidence": "architecture-audit/evidence/player-pause-feedback-packaged-2026-10-28.png"
   }
 }
