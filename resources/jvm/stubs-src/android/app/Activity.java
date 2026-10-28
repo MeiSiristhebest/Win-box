@@ -52,4 +52,48 @@ public class Activity extends android.content.Context {
      */
     public void requestPermissions(String[] permissions, int requestCode) {
     }
+
+    /**
+     * ★ 2026-10-28（实测 dongli-spider `Init.checkPermission` → `NoSuchMethodError: Activity.isFinishing()`）：
+     * 蜘蛛在拿到 Activity 后先判断它是否已结束/销毁再弹窗或申请权限。桌面版的 Activity 常驻，
+     * 一律返回 false（"活着"），其余 UI 相关调用空实现或返回 null，走蜘蛛自己的"无界面"分支。
+     * 方法清单来自对已缓存蜘蛛 jar 的 invokevirtual 扫描。
+     */
+    public boolean isFinishing() {
+        return false;
+    }
+
+    public boolean isDestroyed() {
+        return false;
+    }
+
+    public boolean shouldShowRequestPermissionRationale(String permission) {
+        return false;
+    }
+
+    public android.view.WindowManager getWindowManager() {
+        Object wm = getSystemService("window");
+        return wm instanceof android.view.WindowManager ? (android.view.WindowManager) wm : null;
+    }
+
+    public void setRequestedOrientation(int requestedOrientation) {
+    }
+
+    public void recreate() {
+    }
+
+    public android.view.View findViewById(int id) {
+        return null;
+    }
+
+    public android.view.View requireViewById(int id) {
+        throw new IllegalArgumentException("ID does not reference a View inside this Activity");
+    }
+
+    public void startActivityForResult(android.content.Intent intent, int requestCode) {
+    }
+
+    public android.net.Uri getReferrer() {
+        return null;
+    }
 }
