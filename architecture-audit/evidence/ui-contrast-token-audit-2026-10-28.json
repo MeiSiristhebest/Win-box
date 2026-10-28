@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V03",
+  "recordedAt": "2026-10-28",
+  "scope": "Legacy fallback interactive border token in global-foundation.css",
+  "criterion": "WCAG non-text component boundary contrast: at least 3:1 where the outline is needed to identify a control",
+  "before": {
+    "darkBorder": "#262c3b",
+    "darkLowestContrastAgainstRaisedSurface": 1.17,
+    "lightBorder": "rgba(60, 60, 67, .16)",
+    "lightContrastAgainstBaseAndWhite": 1.32
+  },
+  "after": {
+    "darkBorder": "#788391",
+    "darkMinimumAcrossBaseAndCompositedSurfaces": 4.43,
+    "lightBorder": "#707986",
+    "lightMinimumAcrossBaseAndCompositedSurfaces": 4.04
+  },
+  "verification": "Source token values were parsed and contrast ratios calculated after compositing translucent theme surfaces. Both fallback palettes exceed 3:1 across the checked surfaces.",
+  "limitations": [
+    "This is a token-level calculation, not a browser computed-style or screenshot audit.",
+    "It covers the generic fallback border only; themed overrides and page-specific text/control pairs remain to audit.",
+    "V03 remains open pending full route, state, theme, DPI, narrow-layout, and player visual acceptance."
+  ]
+}

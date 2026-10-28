@@ -27,7 +27,8 @@
   --text-success: #83e2bc;
   --text-disabled: #a5afbe;
   /* ===== 分隔与语义色 ===== */
-  --border: #262c3b;
+  /* Fallback control outlines must remain distinguishable on raised dark surfaces. */
+  --border: #788391;
   --border-soft: rgba(38, 44, 59, .5);
   --hairline: rgba(38, 44, 59, .5);
   --danger: #ff6b6b;
@@ -90,7 +91,8 @@
   --text-warn: #714700;
   --text-success: #176747;
   --text-disabled: #596474;
-  --border: rgba(60, 60, 67, .16);
+  /* Fallback control outlines must remain distinguishable on light input surfaces. */
+  --border: #707986;
   --border-soft: rgba(60, 60, 67, .1);
   --hairline: rgba(60, 60, 67, .12);
   --danger: #ff3b30;

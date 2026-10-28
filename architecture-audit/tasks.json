@@ -1659,6 +1659,11 @@
         "result": "Packaged window spot-checked at 100% in dark discovery and light credentials plus the appearance settings at 175%/200%. Theme/scale selected states and text were legible; settings remained reachable through scrolling. The app was restored to dark Discover at 100%.",
         "remaining": "Full per-component contrast ratios, pause blur, danmaku trails, player controls, history/live/storage, keyboard focus, and narrow widths remain open."
       },
+      "contrastTokenEvidence": {
+        "path": "architecture-audit/evidence/ui-contrast-token-audit-2026-10-28.json",
+        "result": "Raised the legacy fallback border token from 1.17:1 dark / 1.32:1 light to a minimum 4.43:1 dark / 4.04:1 light against checked fallback surfaces.",
+        "remaining": "Token-only calculation; themed overrides and rendered page states remain unverified."
+      },
       "kind": "validation",
       "priority": "P1",
       "title": "全窗口可读性、交互状态、DPI 与功能保留验收",
@@ -1691,7 +1696,7 @@
           "symbol": "volume slider"
         }
       ],
-      "gap": "中央暂停/播放控件此前没有专属样式，依赖通用按钮基线；本轮已设为 48x48 居中、不模糊的明确表面。音量滑块从旋转水平 range 改为原生纵向 range，消除旋转时的负边距偏移。UI lint 与 renderer build 通过；实机视觉复核因窗口处于最小化且检测到用户输入而未完成。全软件对比度、选中态、原生菜单、DPI/窄屏和其它页面仍需逐项检查。",
+      "gap": "中央暂停/播放控件已设为 48x48 居中、不模糊的明确表面；音量滑块已改为原生纵向 range。新增静态主题变量复核并修复 legacy fallback 边界对比度。UI lint 与 renderer build 曾通过；本轮 token 计算通过，但没有浏览器最终样式/截图验收。全软件对比度、选中态、原生菜单、DPI/窄屏和其它页面仍需逐项检查。",
       "direction": "按窗口×组件状态×主题/外壳×DPI 建立检查矩阵；复用已有 showcase，计算最终样式并用真实 Electron 窗口复核；业务功能清单作回归对照。",
       "acceptance": "主/详情/搜索/播放器/全局账号/设置/历史/直播/存储均有记录；100/125/150% DPI 与窄宽布局；沿用仓库普通文本4.5:1/功能边界3:1口径；键盘焦点、selected 语义、弹幕拖影和暂停无模糊逐项关闭。",
       "estimateEngineerHours": {
@@ -2057,7 +2062,8 @@
       "architecture-audit/evidence/package-size-report-2026-10-28.json",
       "architecture-audit/evidence/runtime-sampler-self-test-2026-10-28.json",
       "architecture-audit/evidence/playback-acceptance-2026-10-28.json",
-      "architecture-audit/evidence/ui-spot-check-2026-10-28.json"
+      "architecture-audit/evidence/ui-spot-check-2026-10-28.json",
+      "architecture-audit/evidence/ui-contrast-token-audit-2026-10-28.json"
     ],
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
