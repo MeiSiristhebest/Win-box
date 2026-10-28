@@ -20,6 +20,7 @@ describe('global stylesheet composition', () => {
       'global-layouts.css',
       'player-rate-cascade.css',
       'drive-account-cascade.css',
+      'player-feedback.css',
     ]);
     expect(css).toContain('@layer reset, legacy, tokens, base, components, layouts, utilities, desktop;');
     expect(css.indexOf('@layer legacy {')).toBeLessThan(css.indexOf('@layer tokens {'));
@@ -29,22 +30,26 @@ describe('global stylesheet composition', () => {
       .toBeGreaterThan(css.indexOf('@layer layouts {'));
   });
 
-  it('defines the pause affordance once in the shared component layer', async () => {
-    const { css } = await readGlobalStyleComposition();
+  it('defines the pause affordance once in the final player feedback stylesheet', async () => {
+    const { imports, css } = await readGlobalStyleComposition();
     const componentStart = css.indexOf('@layer components {');
-    const ruleStart = css.indexOf('.vplayer > .vp-big {', componentStart);
+    const selector = ':root[data-theme] .vplayer > .vp-big {';
+    const ruleStart = css.lastIndexOf(selector);
     const ruleEnd = css.indexOf('}', ruleStart);
     const pauseRule = css.slice(ruleStart, ruleEnd);
 
+    expect(imports.at(-1)).toBe('player-feedback.css');
     expect(ruleStart).toBeGreaterThan(componentStart);
-    expect(pauseRule).toContain('width: 40px;');
-    expect(pauseRule).toContain('height: 40px;');
+    expect(pauseRule).toContain('width: 28px;');
+    expect(pauseRule).toContain('height: 28px;');
     expect(pauseRule).toContain('border-radius: 50%;');
+    expect(pauseRule).toContain('background: #14171d;');
     expect(pauseRule).toContain('padding: 0;');
     expect(pauseRule).toContain('backdrop-filter: none;');
     expect(pauseRule).toContain('-webkit-backdrop-filter: none;');
     expect(pauseRule).not.toMatch(/backdrop-filter:\s*blur\(/);
-    expect(css.match(/\.vplayer > \.vp-big\s*\{/g)).toHaveLength(1);
+    expect(css.match(/:root\[data-theme\] \.vplayer > \.vp-big\s*\{/g)).toHaveLength(1);
+    expect(css).not.toMatch(/(?:^|\n)\s*\.vplayer > \.vp-big\s*\{/);
     expect(css).not.toMatch(/:root\[data-shell=['"](?:topbar|dualbar|sidebar|pillbar)['"]\]\s+\.vp-big\s*\{/);
     expect(css).not.toContain('player-pause-cascade.css');
   });
