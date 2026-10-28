@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "taskId": "A21",
+  "recordedAt": "2026-10-28T08:37:10Z",
+  "implementationCommit": "6c9b0b68242ed2d566b41cb527ec39e646db2fe6",
+  "version": "1.27.1",
+  "units": "bytes",
+  "candidate": {
+    "appDirectoryBytes": 534252979,
+    "appDirectoryFiles": 453,
+    "appAsarBytes": 24778851,
+    "unpackedRuntimeResourceBytes": 171885225,
+    "installerPath": ".tmp/a21-locale-candidate/Win-Box.Setup.1.27.1.exe",
+    "installerBytes": 228831102,
+    "installerSha256": "f928db1114a3a1801f8083006986ef3ec230dc9344a9a49f3198047bd047e1a6"
+  },
+  "comparison": {
+    "baselinePackageReport": "architecture-audit/evidence/package-size-report-2026-10-28.json",
+    "baselineAppDirectoryBytes": 580759059,
+    "baselineInstallerBytes": 240808747,
+    "appDirectoryBytesSaved": 46506080,
+    "installerBytesSaved": 11977645,
+    "appDirectoryReductionPercent": 8,
+    "installerReductionPercent": 4.97,
+    "baselineLocalePacksBytes": 50643459,
+    "candidateLocalePacksBytes": 1762518,
+    "localePackBytesSaved": 48880941,
+    "localePacksRetained": [
+      "en-US.pak",
+      "zh-CN.pak",
+      "zh-TW.pak"
+    ],
+    "localePacksRemoved": 52,
+    "sameBuildIgnoredTemporaryDependencies": {
+      "beforeAppAsarBytes": 39809588,
+      "afterAppAsarBytes": 24778851,
+      "bytesSaved": 15030737,
+      "excludedPath": "node_modules/.ignored/**"
+    },
+    "note": "The app directory and installer comparisons use the prior package-size report and include unrelated source/output changes; only the locale and same-build .ignored deltas are direct attribution. Candidate ASAR is larger than the earlier baseline ASAR because packaged application content changed."
+  },
+  "verification": {
+    "packagePolicyAndLocaleChecks": {
+      "passed": 12,
+      "failed": 0,
+      "command": "node --test --test-isolation=none scripts/package-app-path-policy.check.mjs scripts/package-app-runtime-closure.check.mjs scripts/package-app-size-report.check.mjs scripts/package-locales.check.mjs"
+    },
+    "isolatedInstallerAcceptance": {
+      "isolated": true,
+      "install": "PASS",
+      "overwrite": "PASS",
+      "runningProcessStopped": "NOT_RUN",
+      "uninstallFirst": "PASS",
+      "uninstall": "PASS",
+      "dataPreserved": true,
+      "verifiedFiles": 453,
+      "registryAndShortcuts": "PASS",
+      "cleaned": true,
+      "report": ".tmp/installation-acceptance.json"
+    },
+    "bundledJavaRuntime": {
+      "status": "PASS",
+      "version": "OpenJDK 17.0.20.1+1",
+      "executable": "resources/app.asar.unpacked/resources/jvm/jre/bin/java.exe"
+    },
+    "notRun": [
+      "Launch packaged Win-Box UI and exercise JS/JVM/Python, archive extraction, and download flows; Python runtime was not found in candidate package.",
+      "Installer process-stop behavior while the user's running Win-Box instance is open."
+    ],
+    "releasePublished": false,
+    "pushed": false
+  }
+}

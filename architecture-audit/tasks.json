@@ -1519,7 +1519,7 @@
           "symbol": "explicit external packages"
         }
       ],
-      "gap": "已建立按包路径的字节账本并通过运行依赖闭包核验；本轮完整包仍约 580.8 MB，未证明体积有实质下降。JVM 约 164.4 MB，Chromium 主 exe 约 247.4 MB；候选包没有 node_modules。还未在干净安装目录启动 JS/JVM/Python 与解压、下载能力。",
+      "gap": "包体已通过实际候选包显著收敛：保留 en-US/zh-CN/zh-TW，移除 52 个未用 Chromium locale pack；同时排除 node_modules/.ignored 临时依赖。候选包安装、覆盖安装、卸载重装、数据保留、注册表/快捷方式验收通过，内置 Java 17 可执行。尚未在干净安装目录启动完整应用并覆盖 JS/JVM/Python、解压和下载流程；运行中停止进程验收未运行，因此不能关闭 A21。",
       "direction": "生成 dist 与动态 require/worker 共同需要的运行依赖闭包，按实际字节找重复；发布副本裁剪测试/源码/无用平台资源，保留许可证与所有运行时 external。",
       "acceptance": "输出安装包/ASAR/资源分项大小及前后对照；隔离干净目录能启动 JS/JVM/Python、解压和下载能力；A/B 不减少 React Compiler 的 hooks 覆盖，不预承诺压缩比例。",
       "estimateEngineerHours": {
@@ -1529,8 +1529,9 @@
       "dependsOn": [],
       "probes": [],
       "reviewEvidence": {
-        "commit": "65c43b2",
-        "verification": "package-size-report-2026-10-28.json 记录 app 580759059 B、app.asar 22403990 B、Setup 240808747 B；相对同目录上一候选 app.asar 增加 360 B，不能当作优化节省。运行闭包 4 项检查通过，真实候选安装 505 个文件通过；桌面运行验证受 workspace ACL 阻断，任务保持 open。"
+        "commit": "6c9b0b6",
+        "verification": "包体定向检查 12/12 通过；候选 app 534,252,979 B、installer 228,831,102 B。与此前报告相比 app 少 46,506,080 B（约 8.0%）、installer 少 11,977,645 B（约 5.0%；该跨构建差值不全归因于本改动）。locale pack 直接减少 48,880,941 B；同构建排除 node_modules/.ignored 后 ASAR 减少 15,030,737 B。隔离安装/覆盖/卸载重装和用户数据保留通过，Java 17 运行通过；运行中停止进程与应用完整运行时冒烟未执行，状态仍 open。",
+        "evidence": "architecture-audit/evidence/package-optimization-2026-10-28.json"
       }
     },
     {
@@ -2033,8 +2034,8 @@
       "viteLargeChunkAdvisory": true
     },
     "desktopAcceptance": {
-    "installerScriptLifecycle": "PASS_ISOLATED_GENERATED_NSIS",
-    "candidateSetupBinary": "BUILT_NOT_EXECUTED_DIRECTLY",
+      "installerScriptLifecycle": "PASS_ISOLATED_GENERATED_NSIS",
+      "candidateSetupBinary": "BUILT_NOT_EXECUTED_DIRECTLY",
       "verifiedFiles": 505,
       "runningProcessStopped": "PASS",
       "dataPreserved": true,
@@ -2107,13 +2108,14 @@
       "max": 42
     },
     "branch": "codex/architecture-cleanup-20261025",
-    "implementationTipBeforeEvidence": "0119e76",
+    "implementationTipBeforeEvidence": "6c9b0b68242ed2d566b41cb527ec39e646db2fe6",
     "localCommitsThisTurn": [
       "3e3bd13",
-      "0119e76"
+      "0119e76",
+      "6c9b0b6"
     ],
-    "localInstallerPath": ".tmp/local-package-candidate-3/Win-Box.Setup.1.27.1.exe",
-    "installerSha256": "cdede604a867482e6d111daba62cde1ce5eb5b62a66fd1647fa739a633a9c1ba",
+    "localInstallerPath": ".tmp/a21-locale-candidate/Win-Box.Setup.1.27.1.exe",
+    "installerSha256": "f928db1114a3a1801f8083006986ef3ec230dc9344a9a49f3198047bd047e1a6",
     "localCommitsUnpushed": true,
     "releasePublished": false,
     "preservedUncommittedUserFile": "libnc.so"
