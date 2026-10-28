@@ -27,10 +27,47 @@
     "temporaryRegistryKeyAndShortcutCleanup": "PASS",
     "temporaryWorkDirectoryCleanup": "PASS"
   },
+  "supplementalVerification": {
+    "recordedAt": "2026-10-28T16:19:45Z",
+    "installerRegression": {
+      "command": "pnpm run test:installer",
+      "exitCode": 0,
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "durationMs": 90124,
+      "runningProcessStopFixture": {
+        "status": "PASS",
+        "fixture": "node.exe copied as Win-Box.exe; process-name-compatible harness fixture, not the packaged application process",
+        "stopDurationMs": 4101
+      },
+      "uninstallFirstFailureRollbackAndLegacyFileLockFixture": "PASS",
+      "notes": "The regression suite uses isolated temporary installer fixtures. It verifies the real NSIS script and lifecycle, while its active-app stop scenario uses a Node executable renamed Win-Box.exe."
+    },
+    "candidatePayloadRollback": {
+      "invocation": "verifyInstallation('release1.27.1/win-unpacked', { simulateExistingUninstallerFailure: true })",
+      "temporaryRoot": "workspace .tmp",
+      "appDataIsolation": "APPDATA and LOCALAPPDATA pointed to a dedicated temporary profile; the profile and harness workspace were removed after the run.",
+      "install": "PASS",
+      "overwrite": "PASS",
+      "uninstallFirst": "PASS",
+      "failedUninstallerRollback": "PASS",
+      "legacyOnlyFileLockRejected": "PASS",
+      "uninstall": "PASS",
+      "syntheticDataPreserved": true,
+      "syntheticDataCategoriesPreserved": 6,
+      "verifiedPackagedFiles": 451,
+      "runningProcessStopped": "NOT_RUN",
+      "temporaryRegistryKeyAndShortcutCleanup": "PASS",
+      "temporaryWorkspaceAndProfileCleanup": "PASS"
+    }
+  },
   "notVerified": [
     "The shipping Setup.exe itself was not installed; this is an integration acceptance built from the unpacked payload, not a shipping-Setup clean-install pass.",
     "Hidden or background playback was not tested.",
-    "Upgrade migration from a real existing installation and user data was not tested."
+    "Upgrade migration from a real existing installation and user data was not tested.",
+    "The packaged Win-Box.exe itself was not launched for the process-stop check; the isolated regression used node.exe copied as Win-Box.exe to avoid starting the real application or its GUI. Actual packaged-process shutdown therefore remains unverified.",
+    "Interactive Cancel/Back and elevation/UAC behavior were not automated; Cancel is covered only by installer-script assertions."
   ],
   "classification": "PARTIAL"
 }
