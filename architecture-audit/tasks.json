@@ -1260,7 +1260,7 @@
       "kind": "debt",
       "priority": "P2",
       "title": "媒体绘制/图集/进度控件的状态和 DOM 适配边界明确化",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         5,
@@ -1273,28 +1273,28 @@
       "evidence": [
         {
           "path": "src/renderer/components/DanmakuOverlay.tsx",
-          "line": 48,
-          "symbol": "module-level setTextMeasurer"
+          "line": 1,
+          "symbol": "thin React surface delegates to canvas renderer adapter"
         },
         {
-          "path": "src/renderer/components/DanmakuOverlay.tsx",
-          "line": 111,
-          "symbol": "canvas lifecycle"
+          "path": "src/renderer/components/useDanmakuCanvasRenderer.ts",
+          "line": 50,
+          "symbol": "overlay scoped measurement, canvas and animation lifecycle"
         },
         {
           "path": "src/renderer/components/ImageViewer.tsx",
-          "line": 31,
-          "symbol": "image state/gestures"
+          "line": 20,
+          "symbol": "view delegates retry and interaction state to focused hooks"
         },
         {
           "path": "src/renderer/features/playback/PlayerProgressBar.tsx",
           "line": 1,
-          "symbol": "progress interaction"
+          "symbol": "DOM measurements/events adapt into a presenter model"
         }
       ],
-      "gap": "弹幕布局虽在 engine，模块导入仍修改全局文本测量器；绘制缓存/RAF、图集重试/缩放拖动、进度手势与 JSX 仍共置。不能把这些 DOM 适配模块统称纯领域/被动 View。",
-      "direction": "测量能力作为布局实例/调用依赖显式传入；绘制生命周期由 canvas adapter 持有，图集和进度的交互规则由 Presenter/纯坐标策略负责，View 只委托。",
-      "acceptance": "多实例测量不互相污染；拖动/键盘 seek/缩放/重试地址正确；关闭组件释放 RAF/监听；DPR、全屏与开关弹幕无拖影的实际结果由 V03 验收。",
+      "gap": "A17 的代码职责边界与隔离测试已完成。播放器画面在不同 DPR/全屏/弹幕开关下是否残留拖影属于 V03 的真实窗口验收，不能由 DOM 单测替代。",
+      "direction": "保留弹幕布局的显式 TextMeasurer 端口和每实例 measurement/cache；React view 只适配 DOM 尺寸与事件；把绘制与 RAF 生命周期留在 canvas adapter；进度几何保持纯函数，图集交互保持 session/policy 分层。",
+      "acceptance": "多实例测量与缓存隔离、RAF/ResizeObserver/媒体监听/定时器清理、进度拖动/滚轮/边界、图集缩放/拖动/重试/键盘与卸载均有覆盖；5 个焦点测试文件 46/46 通过，全量 Vitest 4130 通过/5 跳过。实际 DPR/全屏无拖影仍由 V03 验收。",
       "estimateEngineerHours": {
         "min": 4,
         "max": 7
@@ -1316,8 +1316,20 @@
           "commit": "467b8b3",
           "summary": "ImageViewer wheel zoom, pointer drag, keyboard navigation and cleanup coverage",
           "verification": "ImageViewer.spec.tsx 3/3 and the full Vitest suite 4116/4116 non-skipped tests passed. This adds regression coverage; danmaku canvas and player progress/view boundaries still need broader review."
+        },
+        {
+          "summary": "Focused DOM/geometry regression rerun after restoring the incomplete locked happy-dom package from the local offline store",
+          "verification": "2026-10-28: danmakuLayout.spec.ts, danmakuOverlay.spec.tsx, playerProgressGeometry.spec.ts, playerProgressBar.spec.tsx, and ImageViewer.spec.tsx passed 46/46 tests.",
+          "evidence": "architecture-audit/evidence/a17-dom-tests-2026-10-28.json"
         }
-      ]
+      ],
+      "reviewEvidence": {
+        "verification": "Reviewed current DanmakuOverlay/useDanmakuCanvasRenderer, PlayerProgressBar/usePlayerProgressBarPresenter and ImageViewer/session/retry/policy boundaries. Focused suite passed 46/46; full current checkout passed 4130 tests across 504 files with 5 skipped tests and no failures. Visual DPR/fullscreen danmaku-trail acceptance remains tracked by V03.",
+        "evidence": [
+          "architecture-audit/evidence/a17-dom-tests-2026-10-28.json",
+          "architecture-audit/evidence/vitest-full-2026-10-28.json"
+        ]
+      }
     },
     {
       "id": "A18",
@@ -1888,7 +1900,7 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "0119e76",
-        "verification": "verification-2026-10-28.json 记录 502 文件通过/3 跳过、4118 测试通过/5 跳过；main/renderer/test typecheck、base/React/JSX-a11y lint、architecture:check 通过；新包 240808747 B。隔离 NSIS 生命周期测试使用最终候选应用目录和同一 installer-script 生成逻辑；最终 Setup.exe 已构建但未直接运行。Electron 工作区启动被 AppContainer ACL 拦截，未发布 Release，未完成 CI/播放验收，故保持 open。"
+        "verification": "Current Vitest rerun is 504 files passed/3 skipped and 4130 tests passed/5 skipped (architecture-audit/evidence/vitest-full-2026-10-28.json). Other recorded gates, package/installer, desktop and CI evidence remain tied to earlier commit 0119e76; this task remains open until all required gates and current-candidate acceptance are refreshed."
       }
     },
     {
@@ -2076,13 +2088,13 @@
       "A14",
       "A15",
       "A16",
+      "A17",
       "A18",
       "A19",
       "A20",
       "V01"
     ],
     "openTaskIds": [
-      "A17",
       "A21",
       "V02",
       "V03",
@@ -2091,8 +2103,8 @@
       "V06"
     ],
     "remainingEngineerHours": {
-      "min": 28,
-      "max": 49
+      "min": 24,
+      "max": 42
     },
     "branch": "codex/architecture-cleanup-20261025",
     "implementationTipBeforeEvidence": "0119e76",

@@ -1,0 +1,21 @@
+{
+  "recordedAt": "2026-10-28",
+  "command": "node node_modules/vitest/vitest.mjs run",
+  "runner": {
+    "vitest": "5.0.5",
+    "node": "system PATH node used by workspace"
+  },
+  "result": {
+    "testFilesPassed": 504,
+    "testFilesSkipped": 3,
+    "testFilesFailed": 0,
+    "testsPassed": 4130,
+    "testsSkipped": 5,
+    "testsFailed": 0,
+    "durationSeconds": 103.2
+  },
+  "nonBlockingOutput": [
+    "Node emitted an ExperimentalWarning that localStorage is unavailable without --localstorage-file while running watchHistory.spec.ts; the test passed."
+  ],
+  "scope": "Full Vitest suite on the current checkout after repairing the incomplete local happy-dom installation. This does not replace typecheck, lint, architecture gates, packaging, desktop acceptance, or remote CI."
+}
