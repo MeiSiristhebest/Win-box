@@ -77,6 +77,27 @@ test('running app offers update-in-place or data-preserving uninstall and reinst
   } finally { await rm(path, { recursive: true, force: true }); }
 });
 
+test('preflights every existing packaged file before overwrite and avoids retry prompts', async () => {
+  const path = await fixture();
+  try {
+    const script = await buildInstallerScript(options(path));
+    const installPreflight = script.indexOf('FileOpen $0 "$INSTDIR\\resources\\app.asar" a');
+    const installCall = script.indexOf('Call CheckInstallFiles');
+    const extraction = script.indexOf('File /r ');
+    const uninstallPreflight = script.indexOf('FileOpen $0 "$INSTDIR\\resources\\app.asar" a', installPreflight + 1);
+    const uninstallCall = script.indexOf('Call un.CheckInstallFiles');
+    const deletion = script.indexOf('Delete "$INSTDIR\\resources\\app.asar"');
+
+    assert.ok(installPreflight >= 0, 'installer checks the application archive for a conflicting file lock');
+    assert.ok(installCall > installPreflight && extraction > installCall, 'installer runs all file-lock checks before copying application files');
+    assert.ok(uninstallPreflight > installPreflight && uninstallCall > uninstallPreflight, 'uninstaller runs its file-lock check');
+    assert.ok(deletion > uninstallCall, 'uninstaller checks locks before deleting application files');
+    assert.ok(script.includes('程序文件无法安全替换（可能被占用或无写入权限）'));
+    assert.ok(!script.includes('MB_RETRYCANCEL'));
+    assert.ok(!script.includes('重试'));
+  } finally { await rm(path, { recursive: true, force: true }); }
+});
+
 test('isolated acceptance has no desktop shortcut or registry writes', async () => {
   const path = await fixture();
   try {

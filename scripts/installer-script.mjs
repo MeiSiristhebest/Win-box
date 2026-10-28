@@ -22,10 +22,27 @@ async function packagedFiles(directory, prefix = '') {
   return { files: files.sort(), directories: directories.sort((left, right) => right.split('/').length - left.split('/').length || left.localeCompare(right)) };
 }
 
-function lockCheck(prefix) {
+function lockCheck(prefix, files) {
   const verb = prefix ? '卸载' : '安装';
+  const existingFileChecks = files.map((path, index) => {
+    const target = `$INSTDIR\\${quote(path.replaceAll('/', '\\'))}`;
+    const label = `${prefix ? 'un_' : ''}lock_file_${index}`;
+    return `  IfFileExists "${target}" 0 ${label}_next
+  ClearErrors
+  FileOpen $0 "${target}" a
+  IfErrors ${label}_busy
+  FileClose $0
+  Goto ${label}_next
+  ${label}_busy:
+  IfSilent ${label}_silent
+  MessageBox MB_OK|MB_ICONSTOP "程序文件无法安全替换（可能被占用或无写入权限）：${target}。${verb}已取消；请关闭占用程序或检查目录权限后再运行。"
+  ${label}_silent:
+  StrCpy $R4 "1"
+  Return
+  ${label}_next:`;
+  }).join('\n');
   return `Function ${prefix}CheckInstallFiles
-  IfFileExists "$INSTDIR\\Win-Box.exe" 0 done
+  IfFileExists "$INSTDIR\\Win-Box.exe" 0 check_remaining_files
   Call ${prefix}CloseRunningWinBox
   StrCmp $R4 "0" continue_after_close
   Return
@@ -38,7 +55,7 @@ function lockCheck(prefix) {
   FileOpen $0 "$INSTDIR\\Win-Box.exe" a
   IfErrors busy
   FileClose $0
-  Goto done
+  Goto check_remaining_files
   busy:
   IntOp $1 $1 + 1
   IntCmp $1 50 report_busy retry_wait report_busy
@@ -65,6 +82,8 @@ ${runPowerShell('force')}
   silent:
   StrCpy $R4 "1"
   Return
+  check_remaining_files:
+${existingFileChecks}
   done:
 FunctionEnd`;
 }
@@ -322,8 +341,8 @@ Page custom InstallModePage InstallModeLeave
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "SimpChinese"
-${lockCheck('')}
-${lockCheck('un.')}
+${lockCheck('', manifest.files)}
+${lockCheck('un.', manifest.files)}
 ${installModePage()}
 ${closeRunningApp('', 'install_close')}
 ${closeRunningApp('un.', 'uninstall_close')}
