@@ -250,6 +250,46 @@ describe('interactive state contrast combinations', () => {
   }
 });
 
+describe('disabled control state contrast', () => {
+  for (const theme of themes) {
+    it(`${theme.name} keeps disabled actions and form fields readable`, async () => {
+      const css = await readFile(new URL(theme.file, stylesDirectory), 'utf8');
+      const tokens = readRootTokens(css, theme.selector);
+      const baseSurface = parseColor(tokens['--surface-0']);
+      const disabledSurface = parseColor(tokens['--surface-3']);
+      const disabledText = parseColor(tokens['--text-disabled']);
+      expect(baseSurface, `${theme.name} needs a base surface`).not.toBeNull();
+      expect(disabledSurface, `${theme.name} needs a disabled surface`).not.toBeNull();
+      expect(disabledText, `${theme.name} needs a disabled text token`).not.toBeNull();
+
+      const effectiveDisabledSurface = composite(disabledSurface!, baseSurface!);
+      const effectiveDisabledText = composite(disabledText!, effectiveDisabledSurface);
+      const ratio = contrastRatio(effectiveDisabledText, effectiveDisabledSurface);
+      expect(ratio, `${theme.name}: disabled text on disabled surface is ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5);
+
+      const componentStyles = await readFile(new URL('global-components.css', stylesDirectory), 'utf8');
+      const globalStyles = await readFile(new URL('global.css', stylesDirectory), 'utf8');
+      const disabledPrimary = lastRuleForSelector(componentStyles, ':root button.primary:disabled', 'background');
+      expect(disabledPrimary, `${theme.name}: final disabled primary rule`).toMatch(/background:\s*var\(--surface-3\)/);
+      expect(disabledPrimary).toMatch(/color:\s*var\(--text-disabled,\s*var\(--text-dim\)\)/);
+
+      for (const selector of [
+        ":root input:not([type='checkbox']):not([type='radio']):disabled",
+        ':root select:disabled',
+        ':root textarea:disabled',
+      ]) {
+        const fieldRule = lastRuleForSelector(componentStyles, selector, 'background');
+        expect(fieldRule, `${theme.name}: ${selector}`).toMatch(/background:\s*var\(--surface-3\)/);
+        expect(fieldRule).toMatch(/color:\s*var\(--text-disabled,\s*var\(--text-dim\)\)/);
+      }
+
+      expect(globalStyles.indexOf("@import './global-foundation.css';")).toBeLessThan(
+        globalStyles.indexOf("@import './global-components.css';"),
+      );
+    });
+  }
+});
+
 describe('global focus ring token', () => {
   it('provides a theme-aware focus color when a theme does not override it', async () => {
     const css = await readFile(new URL('global-tokens.css', stylesDirectory), 'utf8');

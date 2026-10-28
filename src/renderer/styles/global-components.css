@@ -102,6 +102,34 @@
 .app-dialog button.primary:hover:not(:disabled) {
   filter: brightness(1.06); box-shadow: 0 4px 14px color-mix(in srgb, var(--color-accent, var(--accent)) 32%, transparent);
 }
+/* Disabled controls are a real state, not a faded enabled action. Keep this in
+   the component layer so legacy shell hover rules cannot restore the accent fill. */
+:root button:disabled,
+:root button:disabled:hover,
+:root button:disabled:active {
+  color: var(--text-disabled, var(--text-dim));
+  opacity: 1;
+  cursor: not-allowed;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+:root button.primary:disabled,
+:root button.primary:disabled:hover,
+:root button.primary:disabled:active {
+  color: var(--text-disabled, var(--text-dim));
+  background: var(--surface-3);
+  border-color: var(--border);
+}
+:root input:not([type='checkbox']):not([type='radio']):disabled,
+:root select:disabled,
+:root textarea:disabled {
+  color: var(--text-disabled, var(--text-dim));
+  background: var(--surface-3);
+  border-color: var(--border);
+  opacity: 1;
+  cursor: not-allowed;
+}
 .app-dialog-form { width: min(460px, calc(100vw - 32px)); }
 .app-dialog-input { width: 100%; box-sizing: border-box; margin-bottom: 14px; }
 .app-dialog-input:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
