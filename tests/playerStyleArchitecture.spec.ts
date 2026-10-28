@@ -132,9 +132,12 @@ describe('player control style architecture', () => {
     const thumbHeight = Number(thumb.match(/\bheight\s*:\s*([\d.]+)px/)?.[1]);
     const thumbOffset = Number(thumb.match(/\bmargin-top\s*:\s*(-?[\d.]+)px/)?.[1]);
 
+    expect(range).toMatch(/\bwidth\s*:\s*92px\s*;/);
+    expect(range).toMatch(/\bheight\s*:\s*16px\s*;/);
     expect(range).toMatch(/\bleft\s*:\s*50%/);
     expect(range).toMatch(/\btop\s*:\s*50%/);
     expect(range).toMatch(/\btransform\s*:\s*translate\(-50%,\s*-50%\) rotate\(-90deg\)/);
+    expect(track).toMatch(/\bwidth\s*:\s*100%\s*;/);
     expect(trackHeight).toBeGreaterThan(0);
     expect(thumbHeight).toBeGreaterThan(trackHeight);
     expect(thumbOffset).toBe(-((thumbHeight - trackHeight) / 2));

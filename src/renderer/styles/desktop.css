@@ -382,23 +382,12 @@
   :root[data-ui='desktop'] .vp-ctl:not(.vp-on):not([aria-expanded='true']):not([aria-pressed='true']) { min-height: 0; background: transparent; color: #fff; border: 0; box-shadow: none; }
   :root[data-ui='desktop'] .vplayer .vp-ctl.vp-rate { min-height: 40px; }
   :root[data-ui='desktop'] .vp-ctl:hover:not(.vp-on):not([aria-expanded='true']):not([aria-pressed='true']) { background: #ffffff24; color: #fff; }
-  :root[data-ui='desktop'] .vplayer .vp-big {
-    all: unset; box-sizing: border-box; position: absolute; z-index: 6; left: 50%; top: 50%;
-    width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center;
-    transform: translate(-50%, -50%); border: 1px solid #778294; border-radius: 10px;
-    color: #fff; background: #1b2029; box-shadow: 0 3px 12px #0009;
-    -webkit-backdrop-filter: none; backdrop-filter: none; cursor: pointer;
-  }
-  :root[data-ui='desktop'] .vplayer .vp-big:hover { color: #fff; background: #272e39; border-color: #a6b1c2; }
-  :root[data-ui='desktop'] .vplayer .vp-big:active { transform: translate(-50%, -50%) scale(.97); }
-  :root[data-ui='desktop'] .vplayer .vp-big:focus-visible { outline: 2px solid #b5d0ff; outline-offset: 3px; }
-  :root[data-ui='desktop'] .vplayer .vp-big svg { width: 20px; height: 20px; }
   :root[data-ui='desktop'] .vplayer .vp-vpanel { color: #f3f5f9; background: #181b21; border-color: #727b8a; box-shadow: var(--shadow-lg); }
   :root[data-ui='desktop'] .vplayer .vp-vpct { color: #f3f5f9; }
-  :root[data-ui='desktop'] .vplayer :is(.vp-ctl, .vp-big, .vp-citem, .vp-skipmenu-item, .vp-rate, .vp-vtrack, .vsp-btn, .ivi-nav-btn):disabled {
+  :root[data-ui='desktop'] .vplayer :is(.vp-ctl, .vp-citem, .vp-skipmenu-item, .vp-rate, .vp-vtrack, .vsp-btn, .ivi-nav-btn):disabled {
     opacity: 1; color: #c5cedc; background-color: transparent; border-color: transparent; box-shadow: none; filter: drop-shadow(0 1px 2px #000); cursor: default;
   }
-  :root[data-ui='desktop'] .vplayer :is(.vp-ctl, .vp-big):focus-visible { outline-color: #fff; outline-offset: 2px; }
+  :root[data-ui='desktop'] .vplayer .vp-ctl:focus-visible { outline-color: #fff; outline-offset: 2px; }
   :root[data-ui='desktop'] .vplayer .vp-load-text { color: var(--on-media); text-shadow: 0 1px 3px #000; }
   :root[data-ui='desktop'] .vplayer .vp-loading { background: rgba(0, 0, 0, .7); }
   :root[data-ui='desktop'] * { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
