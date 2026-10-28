@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { startAcceptanceFixture } from './acceptance-fixture.mjs';
-import { parsePlaybackAcceptanceArgs } from './verify-playback.mjs';
+import { parsePlaybackAcceptanceArgs } from './playback-acceptance-arguments.mjs';
 
 test('keeps source playback acceptance as the default mode', () => {
   assert.deepEqual(parsePlaybackAcceptanceArgs([]), { packagedAppDirectory: null, potplayerPath: null, sourceMatrixPath: null });

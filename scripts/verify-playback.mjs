@@ -11,32 +11,14 @@ import { prepareMpvAcceptanceRuntime } from './acceptance-runtime.mjs';
 import { startAcceptanceFixture } from './acceptance-fixture.mjs';
 import { verifySourceMatrix } from './source-acceptance.mjs';
 import { withWebmDuration } from './webm-fixture.mjs';
+import { parsePlaybackAcceptanceArgs } from './playback-acceptance-arguments.mjs';
+export { parsePlaybackAcceptanceArgs } from './playback-acceptance-arguments.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const inside = (parent, path) => {
   const rel = relative(parent, path);
   return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 };
-
-export function parsePlaybackAcceptanceArgs(args) {
-  const indexes = args.flatMap((argument, index) => argument === '--packaged-app' ? [index] : []);
-  if (indexes.length > 1) throw new Error('Use --packaged-app once.');
-  const directory = indexes.length ? args[indexes[0] + 1] : null;
-  if (indexes.length && (!directory || directory.startsWith('--'))) throw new Error('--packaged-app requires a win-unpacked directory.');
-  const playerIndexes = args.flatMap((argument, index) => argument === '--potplayer' ? [index] : []);
-  if (playerIndexes.length > 1) throw new Error('Use --potplayer once.');
-  const player = playerIndexes.length ? args[playerIndexes[0] + 1] : null;
-  if (playerIndexes.length && (!player || player.startsWith('--'))) throw new Error('--potplayer requires the PotPlayer executable path.');
-  const matrixIndexes = args.flatMap((argument, index) => argument === '--source-matrix' ? [index] : []);
-  if (matrixIndexes.length > 1) throw new Error('Use --source-matrix once.');
-  const matrixPath = matrixIndexes.length ? args[matrixIndexes[0] + 1] : null;
-  if (matrixIndexes.length && (!matrixPath || matrixPath.startsWith('--'))) throw new Error('--source-matrix requires a JSON file path.');
-  return {
-    packagedAppDirectory: directory ? resolve(directory) : null,
-    potplayerPath: player ? resolve(player) : null,
-    sourceMatrixPath: matrixPath ? resolve(matrixPath) : null,
-  };
-}
 
 async function assertRelayPortFree() {
   const probe = createServer();

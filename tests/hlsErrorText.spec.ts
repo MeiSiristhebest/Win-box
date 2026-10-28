@@ -21,4 +21,24 @@ describe('hlsErrorText', () => {
   it('shows an upstream HTTP status for failed manifest requests', () => {
     expect(hlsErrorText('networkError', 'manifestLoadError', 403)).toContain('HTTP 403');
   });
+
+  it('distinguishes HTML login/interstitial pages from a failed HLS manifest', () => {
+    expect(hlsErrorText('networkError', 'manifestLoadError', 200, '<!doctype html><html><title>Sign in</title></html>'))
+      .toContain('HTML 网页而非 HLS 清单（HTTP 200）');
+  });
+
+  it('distinguishes a JSON API error body from an HLS manifest', () => {
+    expect(hlsErrorText('networkError', 'manifestParsingError', 200, '{"error":"token expired"}'))
+      .toContain('JSON 错误而非 HLS 清单（HTTP 200）');
+  });
+
+  it.each([
+    [401, '要求登录或授权已过期'],
+    [403, '拒绝访问'],
+    [404, '不存在'],
+    [429, '过于频繁'],
+    [502, '暂时不可用'],
+  ])('explains upstream HTTP %s without retrying it as a transient network error', (status, expected) => {
+    expect(hlsErrorText('networkError', 'manifestLoadError', status)).toContain(expected);
+  });
 });

@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Logger } from '../../shared/types';
 import { mediaRuntimesDir, resourcesDir } from '../util/paths';
+import { mediaRangeFailureMessage } from './mediaRangeDiagnostics';
 
 const SEGMENT_SECONDS = 6;
 const BLOCK_BYTES = 512 * 1024;
@@ -37,6 +38,8 @@ export function htmlMediaPlan(probe: any): { duration: number; compatible: boole
 export function htmlMediaToolsAvailable(ffprobe: string, ffmpeg: string, exists: (path: string) => boolean = path => existsSync(path)): boolean {
   return exists(ffprobe) && exists(ffmpeg);
 }
+
+export { mediaRangeFailureMessage } from './mediaRangeDiagnostics';
 
 function ffmpegExecutables(): { ffmpeg: string; ffprobe: string } {
   const runtimeRoot = join(mediaRuntimesDir(), 'ffmpeg');
@@ -202,13 +205,24 @@ export class HtmlMedia {
         const start = n * BLOCK_BYTES;
         const end = input.size ? Math.min(input.size - 1, start + BLOCK_BYTES - 1) : start + BLOCK_BYTES - 1;
         const response = await fetch(input.source, { headers: { Range: `bytes=${start}-${end}` }, signal: AbortSignal.any([input.controller.signal, AbortSignal.timeout(SOURCE_RANGE_TIMEOUT_MS)]) });
+        const contentType = response.headers.get('content-type') || '';
         const range = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get('content-range') || '');
-        if (response.status !== 206 || !range || Number(range[1]) !== start) {
-          await response.body?.cancel(); throw new Error('媒体源未返回有效 Range 数据');
+        if (response.status !== 206) {
+          const reason = mediaRangeFailureMessage(response.status, contentType, response.redirected);
+          await response.body?.cancel(); throw new Error(reason);
         }
-        input.size = Number(range[3]);
+        const rangeStart = Number(range?.[1]);
+        const rangeEnd = Number(range?.[2]);
+        const total = Number(range?.[3]);
+        const expectedEnd = Number.isSafeInteger(total) && total > 0 ? Math.min(end, total - 1) : -1;
+        const validRange = !!range && rangeStart === start && rangeEnd === expectedEnd
+          && Number.isSafeInteger(total) && total > rangeEnd && (!input.size || input.size === total);
+        if (!validRange) {
+          await response.body?.cancel(); throw new Error(mediaRangeFailureMessage(response.status, contentType));
+        }
+        input.size = total;
         const buffer = Buffer.from(await response.arrayBuffer());
-        if (buffer.length !== Number(range[2]) - start + 1 || buffer.length > BLOCK_BYTES) throw new Error('媒体 Range 长度不完整');
+        if (buffer.length !== rangeEnd - start + 1 || buffer.length > BLOCK_BYTES) throw new Error('媒体 Range 长度不完整');
         input.blocks.set(n, buffer);
         while (input.blocks.size > INPUT_BLOCK_CACHE_MAX) input.blocks.delete(input.blocks.keys().next().value!);
         return buffer;

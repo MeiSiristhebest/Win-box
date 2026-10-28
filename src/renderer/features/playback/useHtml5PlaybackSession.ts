@@ -212,7 +212,7 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
           const completion = recovery.completeExternalFallback(result);
           if (completion.kind === 'ignore') return;
           if (completion.kind === 'external-player-opened') {
-            updatePlaybackStatus({ error: `内置播放器无法解析此媒体，已交给${completion.player || '外部播放器'}播放。` });
+            updatePlaybackStatus({ error: `内置播放器无法解析此媒体，已启动${completion.player || '外部播放器'}；请在播放器窗口确认播放状态。` });
             return;
           }
           updatePlaybackStatus({ error: completion.error ? `${errorMessage}（外部播放器启动失败：${completion.error}）` : errorMessage });
@@ -326,7 +326,7 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
             }
             if (decision.kind === 'switch-kernel' && recoverHtmlPlayback()) return;
             const retries = decision.retryCount ?? 0;
-            updatePlaybackStatus({ error: `HLS 播放失败：${hlsErrorText(data.type, data.details, responseStatus)}` + (retries ? `（已自动重试 ${retries} 次）` : '') });
+            updatePlaybackStatus({ error: `HLS 播放失败：${hlsErrorText(data.type, data.details, responseStatus, data.response?.data)}` + (retries ? `（已自动重试 ${retries} 次）` : '') });
           });
         }).catch(() => {
           if (cancelled) return;

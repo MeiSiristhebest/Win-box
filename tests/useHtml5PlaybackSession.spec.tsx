@@ -67,13 +67,13 @@ const positionMemory: PlaybackPositionMemoryPort = {
 const playbackRuntime: PlaybackRuntimePort = { isDesktopRuntime: () => false };
 const desktopRuntime: PlaybackRuntimePort = { isDesktopRuntime: () => true };
 
-function emitFatalHlsError(instanceIndex: number, type: 'networkError' | 'mediaError', responseStatus?: number) {
+function emitFatalHlsError(instanceIndex: number, type: 'networkError' | 'mediaError', responseStatus?: number, responseBody?: unknown, details?: string) {
   const errorHandler = hlsTestState.instances[instanceIndex]?.errorHandler;
   errorHandler?.('error', {
     fatal: true,
     type,
-    details: type === 'networkError' ? 'fragLoadError' : 'bufferAppendError',
-    response: responseStatus === undefined ? undefined : { code: responseStatus },
+    details: details || (type === 'networkError' ? 'fragLoadError' : 'bufferAppendError'),
+    response: responseStatus === undefined ? undefined : { code: responseStatus, data: responseBody },
   });
 }
 
@@ -330,7 +330,7 @@ describe('useHtml5PlaybackSession', () => {
     await waitFor(() => expect(tryExternalFallback).toHaveBeenCalledOnce());
     expect(recoverHtmlPlayback).toHaveBeenCalledOnce();
     expect(tryExternalFallback).toHaveBeenCalledWith(playbackUrl, 45);
-    await waitFor(() => expect(screen.getByTestId('view').textContent).toContain('已交给PotPlayer播放'));
+    await waitFor(() => expect(screen.getByTestId('view').textContent).toContain('已启动PotPlayer；请在播放器窗口确认播放状态'));
   });
 
   it('shows the external-player startup failure instead of leaving an unsupported media error ambiguous', async () => {
@@ -356,6 +356,19 @@ describe('useHtml5PlaybackSession', () => {
     expect(hlsTestState.instances[0]?.startLoads).toBe(0);
     expect(recoverHtmlPlayback).not.toHaveBeenCalled();
     expect(screen.getByTestId('view').textContent).toContain('HLS 播放失败');
+  });
+
+  it('uses the HLS manifest response body to identify an HTML login redirect', async () => {
+    const recoverHtmlPlayback = vi.fn(() => false);
+    render(<Harness url="https://media.example/live.m3u8" runtime={desktopRuntime} recoverHtmlPlayback={recoverHtmlPlayback} />);
+    await waitFor(() => expect(hlsTestState.instances[0]?.errorHandler).toBeTypeOf('function'));
+    act(() => {
+      emitFatalHlsError(0, 'networkError', 200, '<!doctype html><html><title>Sign in</title></html>', 'manifestParsingError');
+      emitFatalHlsError(0, 'networkError', 200, '<!doctype html><html><title>Sign in</title></html>', 'manifestParsingError');
+      emitFatalHlsError(0, 'networkError', 200, '<!doctype html><html><title>Sign in</title></html>', 'manifestParsingError');
+    });
+    expect(recoverHtmlPlayback).toHaveBeenCalledOnce();
+    expect(screen.getByTestId('view').textContent).toContain('HTML 网页而非 HLS 清单（HTTP 200）');
   });
 
   it('exhausts bounded HLS network retries before requesting kernel recovery', async () => {

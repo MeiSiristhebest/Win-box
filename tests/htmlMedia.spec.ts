@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('electron', () => ({ app: { isPackaged: false, getPath: () => '' } }));
-import { htmlMediaPlan, htmlMediaToolsAvailable, htmlPlaylist, HTML_MEDIA_MAX_CACHED_SEGMENT_BYTES } from '../src/main/player/HtmlMedia';
+import { htmlMediaPlan, htmlMediaToolsAvailable, htmlPlaylist, HTML_MEDIA_MAX_CACHED_SEGMENT_BYTES, mediaRangeFailureMessage } from '../src/main/player/HtmlMedia';
 import { HtmlMedia } from '../src/main/player/HtmlMedia';
 import { createServer } from 'node:http';
 import { afterEach, beforeEach } from 'vitest';
@@ -23,6 +23,18 @@ describe('HTML media codec compatibility', () => {
     expect(htmlMediaToolsAvailable('ffprobe.exe', 'ffmpeg.exe', () => true)).toBe(true);
     expect(htmlMediaToolsAvailable('ffprobe.exe', 'ffmpeg.exe', path => path === 'ffprobe.exe')).toBe(false);
     expect(HTML_MEDIA_MAX_CACHED_SEGMENT_BYTES).toBe(64 * 1024 * 1024);
+  });
+  it.each([
+    [401, 'application/json', '需要登录或授权已过期'],
+    [403, 'text/html', '拒绝访问'],
+    [404, 'text/plain', '地址不存在'],
+    [416, 'video/mp4', '拒绝了 Range 请求'],
+    [200, 'video/mp4', '未提供兼容播放所需的 Range'],
+    [200, 'application/json', 'JSON 错误而非视频'],
+    [200, 'text/html', 'HTML 网页而非视频'],
+    [206, 'video/mp4', 'Content-Range 不完整或不匹配'],
+  ])('explains upstream %s %s responses at the Range boundary', (status, type, expected) => {
+    expect(mediaRangeFailureMessage(status, type)).toContain(expected);
   });
   it('returns the original playback URL when one FFmpeg tool is missing', async () => {
     fsMocks.existsSync.mockImplementation(path => !String(path).endsWith('ffmpeg.exe'));
@@ -89,6 +101,31 @@ describe('HTML media codec compatibility', () => {
       const invalid = await originalFetch(base, { headers: { Range: 'bytes=99-' } });
       expect(invalid.status).toBe(416);
     } finally { media.stop(); server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); }
+  });
+  it('identifies a followed login redirect when upstream Range playback receives HTML', async () => {
+    const upstream = createServer((req, res) => {
+      if (req.url === '/redirect') { res.writeHead(302, { Location: '/login' }); res.end(); return; }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end('<!doctype html><html><title>Sign in</title></html>');
+    });
+    await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
+    const upstreamPort = (upstream.address() as { port: number }).port;
+    const media = new HtmlMedia({ i: vi.fn(), w: vi.fn(), e: vi.fn() });
+    const inputId = 'a1234567-89ab-4def-a123-456789abcdef';
+    (media as any).inputs.set(inputId, {
+      source: `http://127.0.0.1:${upstreamPort}/redirect`, size: 0, expires: Date.now() + 60_000,
+      blocks: new Map(), pending: new Map(), controller: new AbortController(), procs: new Set(),
+    });
+    const relay = createServer((req, res) => { void media.handle(new URL(req.url!, 'http://localhost'), req, res); });
+    await new Promise<void>(resolve => relay.listen(0, '127.0.0.1', resolve));
+    try {
+      const response = await fetch(`http://127.0.0.1:${(relay.address() as { port: number }).port}/html/${inputId}/source`);
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({ error: '媒体源返回了 HTML 网页而非视频（HTTP 200，请求经重定向；可能是登录页或访问拦截）' });
+    } finally {
+      media.stop();
+      relay.closeAllConnections(); upstream.closeAllConnections();
+      await Promise.all([new Promise<void>(resolve => relay.close(() => resolve())), new Promise<void>(resolve => upstream.close(() => resolve()))]);
+    }
   });
   it('bounds cached segment buffers across sessions and evicts least recently used segments', () => {
     const media = new HtmlMedia({ i: vi.fn(), w: vi.fn(), e: vi.fn() }) as any;
