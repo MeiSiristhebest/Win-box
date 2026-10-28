@@ -124,6 +124,25 @@ export function summarizeV05Search(workload, resourceReport, outputDirectory) {
   const cycleResultsValid = workload.status === 'PASS'
     && cycles.length === workload.requestedCycles
     && cycles.every(cycle => cycle.status === 'PASS' && cycle.requestsReceived === workload.sourcesPerCycle && cycle.reportItems === workload.sourcesPerCycle);
+  const resilienceScenarios = workload.resilienceScenarios ?? [];
+  const expectedScenarios = ['mixed-success-timeout', 'cancel-after-first-result', 'recovery-after-cancel'];
+  const scenarioResultsValid = resilienceScenarios.length === expectedScenarios.length
+    && expectedScenarios.every(name => resilienceScenarios.some(scenario => scenario.name === name
+      && scenario.status === 'PASS'
+      && scenario.sourceCount > 1000
+      && Number.isFinite(scenario.firstResultMs)
+      && scenario.peakConcurrentRequests > 1
+      && scenario.activeRequestsAfterSettle === 0))
+    && resilienceScenarios.some(scenario => scenario.name === 'mixed-success-timeout'
+      && scenario.failedSources > 0
+      && scenario.timedOutRequests === 1
+      && scenario.explicitFixtureFailures > 0)
+    && resilienceScenarios.some(scenario => scenario.name === 'cancel-after-first-result'
+      && scenario.cancelledRequests > 0
+      && scenario.receivedRequests < scenario.sourceCount)
+    && resilienceScenarios.some(scenario => scenario.name === 'recovery-after-cancel'
+      && scenario.receivedRequests === scenario.sourceCount
+      && scenario.failedSources === 0);
   const resourceValid = resourceReport?.completion === 'completed'
     && (resourceReport?.sampler?.errors?.length ?? 1) === 0
     && (resourceReport?.summary?.sampleCount ?? 0) >= 2;
@@ -131,16 +150,19 @@ export function summarizeV05Search(workload, resourceReport, outputDirectory) {
   return {
     schemaVersion: 1,
     recordedAt: new Date().toISOString(),
-    status: cycleResultsValid && resourceValid ? 'PASS' : 'FAIL',
+    status: cycleResultsValid && scenarioResultsValid && resourceValid ? 'PASS' : 'FAIL',
     scope: {
       implementation: 'AggregateSearchCoordinator + SearchSourceReadiness + SourceSearchHealth + SourceGateway + CmsSourceAdapter + CmsSource',
       sourcesPerCycle: workload.sourcesPerCycle,
       cyclesRequested: workload.requestedCycles,
       cyclesCompleted: cycles.filter(cycle => cycle.status === 'PASS').length,
-      totalLocalHttpRequests: cycles.reduce((sum, cycle) => sum + cycle.requestsReceived, 0),
+      totalLocalHttpRequests: cycles.reduce((sum, cycle) => sum + cycle.requestsReceived, 0)
+        + resilienceScenarios.reduce((sum, scenario) => sum + scenario.receivedRequests, 0),
+      baselineLocalHttpRequests: cycles.reduce((sum, cycle) => sum + cycle.requestsReceived, 0),
+      resilienceLocalHttpRequests: resilienceScenarios.reduce((sum, scenario) => sum + scenario.receivedRequests, 0),
       profileCount: workload.profileCount,
       concurrencyLimit: workload.concurrencyLimit,
-      fixture: 'synthetic CMS JSON served by an ephemeral 127.0.0.1 loopback HTTP server; one generated result per source; deterministic 4-8 ms response delay',
+      fixture: 'synthetic CMS JSON served by an ephemeral 127.0.0.1 loopback HTTP server; baseline uses deterministic 4-8 ms success responses; resilience scenarios add fixture-only HTTP 503, a declared 5-second source timeout, delayed in-flight requests canceled after first result, and a subsequent recovery search',
       externalSources: 'NOT_ACCESSED',
       userConfiguration: 'NOT_ACCESSED; all three profiles and all source entries are generated in-process',
       searchWorkload: 'synthetic only; this exercises production aggregate scheduling, cross-profile worker budgeting, gateway routing, CMS request parsing, and result aggregation',
@@ -158,6 +180,23 @@ export function summarizeV05Search(workload, resourceReport, outputDirectory) {
         external: metricSet(memory.map(sample => sample.externalMiB)),
         arrayBuffers: metricSet(memory.map(sample => sample.arrayBuffersMiB)),
       },
+      resilienceScenarios: resilienceScenarios.map(scenario => ({
+        name: scenario.name,
+        status: scenario.status,
+        sourceCount: scenario.sourceCount,
+        receivedRequests: scenario.receivedRequests,
+        hitSources: scenario.hitSources,
+        failedSources: scenario.failedSources,
+        firstResultMs: scenario.firstResultMs,
+        totalDurationMs: scenario.totalDurationMs,
+        peakConcurrentRequests: scenario.peakConcurrentRequests,
+        cancelledRequests: scenario.cancelledRequests,
+        timedOutRequests: scenario.timedOutRequests,
+        explicitFixtureFailures: scenario.explicitFixtureFailures,
+        activeRequestsAfterSettle: scenario.activeRequestsAfterSettle,
+        ...(scenario.cancellationOutcome ? { cancellationOutcome: scenario.cancellationOutcome } : {}),
+        ...(scenario.error ? { error: scenario.error } : {}),
+      })),
     },
     sampler: {
       intervalMs: resourceReport?.intervalMs ?? null,
@@ -191,6 +230,7 @@ export function summarizeV05Search(workload, resourceReport, outputDirectory) {
       'Queue wait has no dedicated production instrumentation. Dispatch offsets measure when each source entered the injected search port relative to its cycle start; they include scheduling and earlier work, not a pure queue-wait duration.',
       'No performance budgets are configured. Results provide repeatable distributions and resource observations only; they do not claim a budget pass or prove absence of leaks.',
       'A 4-8 ms loopback fixture is useful for exercising fan-out and queue behavior, but it does not model remote DNS/TLS, real server throttling, response-size variance, or user-visible search quality.',
+      'The resilience scenarios use loopback-generated delays and HTTP 503 responses; the timeout and abort outcomes confirm local cancellation propagation/cleanup only, not third-party source behavior or real user experience.',
       'The Windows sampler uses a 250 ms interval; very short spikes between samples may be missed, and the first CPU interval has no prior process sample.',
     ],
     outputDirectory,

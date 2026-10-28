@@ -55,15 +55,34 @@ type CycleEvidence = {
   error?: string;
 };
 
+type ResilienceScenarioEvidence = {
+  name: 'mixed-success-timeout' | 'cancel-after-first-result' | 'recovery-after-cancel';
+  status: 'PASS' | 'FAIL';
+  sourceCount: number;
+  receivedRequests: number;
+  hitSources: number | null;
+  failedSources: number | null;
+  firstResultMs: number | null;
+  totalDurationMs: number;
+  peakConcurrentRequests: number;
+  cancelledRequests: number;
+  timedOutRequests: number;
+  explicitFixtureFailures: number;
+  activeRequestsAfterSettle: number;
+  cancellationOutcome?: string;
+  error?: string;
+};
+
 const evidence = {
   schemaVersion: 1,
   status: 'RUNNING' as 'RUNNING' | 'PASS' | 'FAIL',
-  workload: 'AggregateSearchCoordinator over 1,000 synthetic CMS sources per cycle, split across three in-memory synthetic profiles; SourceGateway/CMS adapter/parser requests go only to loopback.',
+  workload: 'AggregateSearchCoordinator over 1,000 synthetic CMS sources per repeated cycle plus 1,001-source mixed-success, timeout, cancellation, and recovery scenarios, split across three in-memory synthetic profiles; SourceGateway/CMS adapter/parser requests go only to loopback.',
   requestedCycles,
   sourcesPerCycle,
   profileCount: PROFILE_IDS.length,
   concurrencyLimit: CONCURRENCY_LIMIT,
   cycles: [] as CycleEvidence[],
+  resilienceScenarios: [] as ResilienceScenarioEvidence[],
   processMemorySamples: [] as Array<{ atEpochMs: number; cycleIndex: number | null; rssMiB: number; heapUsedMiB: number; externalMiB: number; arrayBuffersMiB: number }>,
 };
 
@@ -72,6 +91,10 @@ let activeCycleIndex: number | null = null;
 let cycleRequestCounts = new Map<string, number>();
 let cycleActiveCounts = new Map<string, number>();
 let cycleConcurrencyPeaks = new Map<string, number>();
+let cycleCancelledCounts = new Map<string, number>();
+let cycleTimedOutCounts = new Map<string, number>();
+let cycleFixtureFailureCounts = new Map<string, number>();
+let scenarioModeByCycle = new Map<string, 'baseline' | 'mixed' | 'cancel' | 'recovery'>();
 let memoryTimer: ReturnType<typeof setInterval> | undefined;
 
 function toMiB(bytes: number): number {
@@ -94,7 +117,7 @@ async function writeEvidence(): Promise<void> {
   await writeFile(join(outputDirectory, 'cycles.json'), JSON.stringify(evidence, null, 2));
 }
 
-function sourceBean(profileId: string, sourceIndex: number, origin: string): SourceBean {
+function sourceBean(profileId: string, sourceIndex: number, origin: string, scenario: 'baseline' | 'mixed' | 'cancel' | 'recovery' = 'baseline'): SourceBean {
   const key = `v05-${profileId}-${String(sourceIndex).padStart(4, '0')}`;
   const api = `${origin}/synthetic/${profileId}/${sourceIndex}`;
   assert.equal(new URL(api).hostname, '127.0.0.1');
@@ -112,7 +135,7 @@ function sourceBean(profileId: string, sourceIndex: number, origin: string): Sou
     jar: '',
     playerType: -1,
     categories: null,
-    timeout: 10,
+    timeout: scenario === 'mixed' && profileId === 'fixture-a' && sourceIndex === 333 ? 5 : 10,
     click: '',
     style: '',
   };
@@ -148,6 +171,12 @@ async function startLoopbackFixture(): Promise<{ origin: string; close: () => Pr
     const active = (cycleActiveCounts.get(cycleId) || 0) + 1;
     cycleActiveCounts.set(cycleId, active);
     cycleConcurrencyPeaks.set(cycleId, Math.max(cycleConcurrencyPeaks.get(cycleId) || 0, active));
+    const scenario = scenarioModeByCycle.get(cycleId) || 'baseline';
+    const isFixtureFailure = scenario === 'mixed' && sourceIndex % 97 === 0;
+    const isTimeoutProbe = scenario === 'mixed' && profileId === 'fixture-a' && sourceIndex === 333;
+    const delayMs = scenario === 'cancel'
+      ? (sourceIndex === 0 ? 2 : 2000)
+      : isTimeoutProbe ? 7000 : 4 + (sourceIndex % 5);
     const body = JSON.stringify({
       page: 1,
       pagecount: 1,
@@ -159,13 +188,31 @@ async function startLoopbackFixture(): Promise<{ origin: string; close: () => Pr
         type_name: 'local-fixture',
       }],
     });
-    const delayMs = 4 + (sourceIndex % 5);
-    setTimeout(() => {
+    let settled = false;
+    const finishActiveRequest = (): void => {
+      if (settled) return;
+      settled = true;
       cycleActiveCounts.set(cycleId, Math.max(0, (cycleActiveCounts.get(cycleId) || 1) - 1));
+    };
+    const timer = setTimeout(() => {
+      finishActiveRequest();
       if (response.destroyed) return;
+      if (isFixtureFailure) {
+        cycleFixtureFailureCounts.set(cycleId, (cycleFixtureFailureCounts.get(cycleId) || 0) + 1);
+        response.writeHead(503, { 'content-type': 'text/plain; charset=utf-8' });
+        response.end('synthetic fixture failure');
+        return;
+      }
       response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       response.end(body);
     }, delayMs);
+    response.once('close', () => {
+      if (response.writableEnded) return;
+      clearTimeout(timer);
+      if (isTimeoutProbe) cycleTimedOutCounts.set(cycleId, (cycleTimedOutCounts.get(cycleId) || 0) + 1);
+      else cycleCancelledCounts.set(cycleId, (cycleCancelledCounts.get(cycleId) || 0) + 1);
+      finishActiveRequest();
+    });
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -186,12 +233,12 @@ async function startLoopbackFixture(): Promise<{ origin: string; close: () => Pr
   };
 }
 
-function createCoordinator(origin: string, metrics: RequestMetric[], cycleStartedAt: number): AggregateSearchCoordinator {
+function createCoordinator(origin: string, metrics: RequestMetric[], cycleStartedAt: number, sourceCount = sourcesPerCycle, scenario: 'baseline' | 'mixed' | 'cancel' | 'recovery' = 'baseline'): AggregateSearchCoordinator {
   const profilePools = new Map<string, SourceBean[]>();
   const profileBySourceKey = new Map<string, string>();
   for (const profileId of PROFILE_IDS) {
-    const pool = Array.from({ length: Math.floor(sourcesPerCycle / PROFILE_IDS.length) + (PROFILE_IDS.indexOf(profileId) < sourcesPerCycle % PROFILE_IDS.length ? 1 : 0) }, (_value, index) => {
-      const source = sourceBean(profileId, index, origin);
+    const pool = Array.from({ length: Math.floor(sourceCount / PROFILE_IDS.length) + (PROFILE_IDS.indexOf(profileId) < sourceCount % PROFILE_IDS.length ? 1 : 0) }, (_value, index) => {
+      const source = sourceBean(profileId, index, origin, scenario);
       profileBySourceKey.set(source.key, profileId);
       return source;
     });
@@ -272,6 +319,14 @@ function percentile(values: number[], fraction: number): number | null {
   const sorted = values.filter(Number.isFinite).sort((left, right) => left - right);
   if (!sorted.length) return null;
   return Math.round(sorted[Math.max(0, Math.ceil(fraction * sorted.length) - 1)]! * 10) / 10;
+}
+
+async function waitForNoActiveRequests(cycleId: string, timeoutMs: number): Promise<number> {
+  const deadline = Date.now() + timeoutMs;
+  while ((cycleActiveCounts.get(cycleId) || 0) > 0 && Date.now() < deadline) {
+    await new Promise((resolveWait) => setTimeout(resolveWait, 10));
+  }
+  return cycleActiveCounts.get(cycleId) || 0;
 }
 
 workloadSuite('V05 aggregate-search synthetic workload', () => {
@@ -407,5 +462,194 @@ workloadSuite('V05 aggregate-search synthetic workload', () => {
       dispatchOffsetFromCycleStartMs: { p50: percentile(allDispatchOffsets, 0.5), p95: percentile(allDispatchOffsets, 0.95), peak: Math.max(...allDispatchOffsets) },
     };
     console.log(`V05 search summary: ${JSON.stringify(runStats)}`);
+  }, 120_000);
+
+  it('measures first result, partial success, source timeout, cancellation cleanup, and recovery with 1,001 synthetic sources', async () => {
+    assert.equal(process.platform, 'win32', 'The Windows process sampler is expected to wrap this workload.');
+    assert.ok(Number.isInteger(sourcesPerCycle) && sourcesPerCycle >= 1000);
+    assert.ok(outputDirectory.startsWith(TMP + '\\'), 'Evidence must be written under workspace .tmp/v05-search-* only.');
+
+    const fixture = await startLoopbackFixture();
+    const sourceCount = sourcesPerCycle + 1;
+    const evidenceByName = new Map<ResilienceScenarioEvidence['name'], ResilienceScenarioEvidence>();
+    let activeScenarioName: ResilienceScenarioEvidence['name'] = 'mixed-success-timeout';
+    const resetCycle = (cycleId: string, mode: 'mixed' | 'cancel' | 'recovery'): void => {
+      scenarioModeByCycle.set(cycleId, mode);
+      cycleRequestCounts.set(cycleId, 0);
+      cycleActiveCounts.set(cycleId, 0);
+      cycleConcurrencyPeaks.set(cycleId, 0);
+      cycleCancelledCounts.set(cycleId, 0);
+      cycleTimedOutCounts.set(cycleId, 0);
+      cycleFixtureFailureCounts.set(cycleId, 0);
+    };
+    const firstResultTime = (event: { source?: { status?: string; items?: unknown[] } }, startedAt: number, current: number | null): number | null =>
+      current === null && event.source?.status === 'ok' && (event.source.items?.length || 0) > 0
+        ? Math.round((performance.now() - startedAt) * 10) / 10
+        : current;
+
+    try {
+      resetCycle('11', 'mixed');
+      const mixedMetrics: RequestMetric[] = [];
+      const mixedCoordinator = createCoordinator(fixture.origin, mixedMetrics, performance.now(), sourceCount, 'mixed');
+      const mixedStartedAt = performance.now();
+      let mixedFirstResultMs: number | null = null;
+      const mixedReport = await mixedCoordinator.run('v05-synthetic-cycle-11', { refresh: true, profileIds: [...PROFILE_IDS] }, (event) => {
+        mixedFirstResultMs = firstResultTime(event, mixedStartedAt, mixedFirstResultMs);
+      });
+      const mixedDurationMs = Math.round((performance.now() - mixedStartedAt) * 10) / 10;
+      const mixedReceived = cycleRequestCounts.get('11') || 0;
+      const mixedPeak = cycleConcurrencyPeaks.get('11') || 0;
+      const mixedActiveAfter = await waitForNoActiveRequests('11', 3000);
+      const mixedFailures = cycleFixtureFailureCounts.get('11') || 0;
+      const mixedTimeouts = cycleTimedOutCounts.get('11') || 0;
+      const expectedFixtureFailures = PROFILE_IDS.reduce((total, profileId, profileIndex) => {
+        const count = Math.floor(sourceCount / PROFILE_IDS.length) + (profileIndex < sourceCount % PROFILE_IDS.length ? 1 : 0);
+        return total + Array.from({ length: count }, (_value, index) => index).filter(index => index % 97 === 0).length;
+      }, 0);
+      const mixedEvidence: ResilienceScenarioEvidence = {
+        name: 'mixed-success-timeout',
+        status: 'PASS',
+        sourceCount,
+        receivedRequests: mixedReceived,
+        hitSources: mixedReport.hitSources,
+        failedSources: mixedReport.failedSources,
+        firstResultMs: mixedFirstResultMs,
+        totalDurationMs: mixedDurationMs,
+        peakConcurrentRequests: mixedPeak,
+        cancelledRequests: cycleCancelledCounts.get('11') || 0,
+        timedOutRequests: mixedTimeouts,
+        explicitFixtureFailures: mixedFailures,
+        activeRequestsAfterSettle: mixedActiveAfter,
+      };
+      assert.equal(mixedReceived, sourceCount);
+      assert.equal(mixedReport.perSource.length, sourceCount);
+      assert.equal(mixedFailures, expectedFixtureFailures);
+      assert.equal(mixedTimeouts, 1, 'The designated 5-second source must be canceled by its declared timeout.');
+      assert.equal(mixedReport.failedSources, mixedFailures + mixedTimeouts);
+      assert.equal(mixedReport.hitSources, sourceCount - mixedFailures - mixedTimeouts);
+      assert.ok(mixedFirstResultMs !== null, 'At least one source must yield a first result.');
+      assert.ok(mixedPeak > 1 && mixedPeak <= CONCURRENCY_LIMIT);
+      assert.equal(mixedActiveAfter, 0, 'All mixed-result loopback requests must settle.');
+      evidenceByName.set(mixedEvidence.name, mixedEvidence);
+      evidence.resilienceScenarios.push(mixedEvidence);
+      await writeEvidence();
+
+      resetCycle('12', 'cancel');
+      activeScenarioName = 'cancel-after-first-result';
+      const cancelMetrics: RequestMetric[] = [];
+      const cancelStartedAt = performance.now();
+      const cancelCoordinator = createCoordinator(fixture.origin, cancelMetrics, cancelStartedAt, sourceCount, 'cancel');
+      const cancelController = new AbortController();
+      let cancelFirstResultMs: number | null = null;
+      let cancelObserved = false;
+      let cancelHitSources = 0;
+      let cancelError = '';
+      try {
+        await cancelCoordinator.run('v05-synthetic-cycle-12', { refresh: true, profileIds: [...PROFILE_IDS] }, (event) => {
+          cancelFirstResultMs = firstResultTime(event, cancelStartedAt, cancelFirstResultMs);
+          if (event.source?.status === 'ok') cancelHitSources += 1;
+          if (!cancelObserved && cancelFirstResultMs !== null) {
+            cancelObserved = true;
+            cancelController.abort(new Error('synthetic cancellation after first result'));
+          }
+        }, cancelController.signal);
+      } catch (error) {
+        cancelError = error instanceof Error ? error.name + ': ' + error.message : String(error);
+      }
+      const cancelDurationMs = Math.round((performance.now() - cancelStartedAt) * 10) / 10;
+      const cancelReceived = cycleRequestCounts.get('12') || 0;
+      const cancelPeak = cycleConcurrencyPeaks.get('12') || 0;
+      const cancelActiveAfter = await waitForNoActiveRequests('12', 3000);
+      const cancellationEvidence: ResilienceScenarioEvidence = {
+        name: 'cancel-after-first-result',
+        status: 'PASS',
+        sourceCount,
+        receivedRequests: cancelReceived,
+        hitSources: cancelHitSources,
+        failedSources: null,
+        firstResultMs: cancelFirstResultMs,
+        totalDurationMs: cancelDurationMs,
+        peakConcurrentRequests: cancelPeak,
+        cancelledRequests: cycleCancelledCounts.get('12') || 0,
+        timedOutRequests: cycleTimedOutCounts.get('12') || 0,
+        explicitFixtureFailures: cycleFixtureFailureCounts.get('12') || 0,
+        activeRequestsAfterSettle: cancelActiveAfter,
+        cancellationOutcome: cancelError,
+      };
+      assert.ok(cancelObserved, 'Caller cancellation must be triggered by the first successful result.');
+      assert.match(cancelError, /AbortError|cancel/i, 'Canceled aggregate search must reject as canceled.');
+      assert.ok(cancelReceived < sourceCount, 'Cancellation should stop dispatch before every source is requested.');
+      assert.ok(cancelPeak > 1 && cancelPeak <= CONCURRENCY_LIMIT);
+      assert.ok(cancellationEvidence.cancelledRequests > 0, 'The fixture must observe in-flight HTTP cancellations.');
+      assert.equal(cancelActiveAfter, 0, 'Active HTTP fixture requests must be reclaimed after cancellation.');
+      evidenceByName.set(cancellationEvidence.name, cancellationEvidence);
+      evidence.resilienceScenarios.push(cancellationEvidence);
+      await writeEvidence();
+
+      resetCycle('13', 'recovery');
+      activeScenarioName = 'recovery-after-cancel';
+      const recoveryStartedAt = performance.now();
+      let recoveryFirstResultMs: number | null = null;
+      const recoveryReport = await cancelCoordinator.run('v05-synthetic-cycle-13', { refresh: true, profileIds: [...PROFILE_IDS] }, (event) => {
+        recoveryFirstResultMs = firstResultTime(event, recoveryStartedAt, recoveryFirstResultMs);
+      });
+      const recoveryDurationMs = Math.round((performance.now() - recoveryStartedAt) * 10) / 10;
+      const recoveryEvidence: ResilienceScenarioEvidence = {
+        name: 'recovery-after-cancel',
+        status: 'PASS',
+        sourceCount,
+        receivedRequests: cycleRequestCounts.get('13') || 0,
+        hitSources: recoveryReport.hitSources,
+        failedSources: recoveryReport.failedSources,
+        firstResultMs: recoveryFirstResultMs,
+        totalDurationMs: recoveryDurationMs,
+        peakConcurrentRequests: cycleConcurrencyPeaks.get('13') || 0,
+        cancelledRequests: cycleCancelledCounts.get('13') || 0,
+        timedOutRequests: cycleTimedOutCounts.get('13') || 0,
+        explicitFixtureFailures: cycleFixtureFailureCounts.get('13') || 0,
+        activeRequestsAfterSettle: await waitForNoActiveRequests('13', 3000),
+      };
+      assert.equal(recoveryEvidence.receivedRequests, sourceCount);
+      assert.equal(recoveryReport.hitSources, sourceCount);
+      assert.equal(recoveryReport.failedSources, 0);
+      assert.ok(recoveryEvidence.firstResultMs !== null);
+      assert.ok(recoveryEvidence.peakConcurrentRequests > 1 && recoveryEvidence.peakConcurrentRequests <= CONCURRENCY_LIMIT);
+      assert.equal(recoveryEvidence.activeRequestsAfterSettle, 0);
+      evidenceByName.set(recoveryEvidence.name, recoveryEvidence);
+      evidence.resilienceScenarios.push(recoveryEvidence);
+      await writeEvidence();
+    } catch (error) {
+      const failedScenario = {
+        name: activeScenarioName,
+        status: 'FAIL',
+        sourceCount,
+        receivedRequests: 0,
+        hitSources: 0,
+        failedSources: 0,
+        firstResultMs: null,
+        totalDurationMs: 0,
+        peakConcurrentRequests: 0,
+        cancelledRequests: 0,
+        timedOutRequests: 0,
+        explicitFixtureFailures: 0,
+        activeRequestsAfterSettle: 0,
+        error: String(error instanceof Error ? error.stack || error.message : error),
+      } satisfies ResilienceScenarioEvidence;
+      const priorScenario = evidence.resilienceScenarios.find(scenario => scenario.name === failedScenario.name);
+      if (priorScenario) {
+        priorScenario.status = 'FAIL';
+        priorScenario.error = failedScenario.error;
+      } else {
+        evidence.resilienceScenarios.push(failedScenario);
+      }
+      evidence.status = 'FAIL';
+      await writeEvidence();
+      throw error;
+    } finally {
+      await fixture.close();
+    }
+
+    assert.equal(evidenceByName.size, 3);
+    console.log(`V05 resilience summary: ${JSON.stringify(evidence.resilienceScenarios)}`);
   }, 120_000);
 });
