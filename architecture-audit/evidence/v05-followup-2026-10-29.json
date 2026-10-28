@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T18:41:37Z",
+  "taskId": "V05",
+  "status": "PARTIAL",
+  "candidateProductBudgets": "NOT_ESTABLISHED",
+  "changes": {
+    "files": [
+      "scripts/v05-aggregate-search.mjs",
+      "scripts/v05-aggregate-search.check.mjs",
+      "scripts/v05-repeated-playback.mjs",
+      "scripts/v05-repeated-playback.check.mjs"
+    ],
+    "behavior": [
+      "Both V05 runners accept explicit Working Set, Private Bytes, and CPU p95 budget arguments and pass them to the Windows sampler.",
+      "Configured budget failure or insufficient samples now fails the aggregate result instead of printing a passing workload summary.",
+      "The synthetic search sampler includes only node.exe process images; the playback sampler includes Win-Box.exe and mpv.exe, excluding the Playwright driver from application budgets."
+    ]
+  },
+  "syntheticSearchRun": {
+    "command": "pnpm exec node scripts/v05-aggregate-search.mjs --cycles 10 --sources 1000 --output-dir .tmp/v05-search-followup-20261029-a --budget-working-set-mb 500 --budget-private-bytes-mb 700 --budget-cpu-p95-percent 180",
+    "exitCode": 0,
+    "result": "PASS",
+    "scope": {
+      "sourcesPerCycle": 1000,
+      "cyclesCompleted": 10,
+      "resilienceSources": 1001,
+      "totalLocalHttpRequests": 12050,
+      "maximumConcurrency": 48,
+      "fixture": "Synthetic CMS JSON over loopback; no third-party sources or user configuration accessed."
+    },
+    "performance": {
+      "cycleLatencyMs": {
+        "p50": 304.2,
+        "p95": 565.6,
+        "peak": 565.6
+      },
+      "requestLatencyMs": {
+        "p50": 13.9,
+        "p95": 29.3,
+        "peak": 129.9
+      },
+      "throughputSourcesPerSecond": {
+        "p50": 3259.8,
+        "p95": 3434.9,
+        "peak": 3434.9
+      },
+      "processMemoryMiB": {
+        "rss": {
+          "p50": 192.7,
+          "p95": 222.2,
+          "peak": 224.9
+        },
+        "heapUsed": {
+          "p50": 66.8,
+          "p95": 109.5,
+          "peak": 126.5
+        },
+        "external": {
+          "p50": 6.1,
+          "p95": 9.6,
+          "peak": 10
+        },
+        "arrayBuffers": {
+          "p50": 1.8,
+          "p95": 5.3,
+          "peak": 5.7
+        }
+      },
+      "sampledNodeProcessTree": {
+        "workingSetMiB": {
+          "p50": 351.3,
+          "p95": 351.7,
+          "peak": 352.8
+        },
+        "privateBytesMiB": {
+          "p50": 443.8,
+          "p95": 443.8,
+          "peak": 444.3
+        },
+        "cpuPercent": {
+          "p50": 0,
+          "p95": 139.7,
+          "peak": 155.2
+        },
+        "processCountPeak": 2,
+        "sampleCount": 23,
+        "durationMs": 9570
+      }
+    },
+    "provisionalHarnessGuardrails": {
+      "workingSetMB": {
+        "limit": 500,
+        "actualPeak": 352.8,
+        "status": "PASS"
+      },
+      "privateBytesMB": {
+        "limit": 700,
+        "actualPeak": 444.3,
+        "status": "PASS"
+      },
+      "cpuP95Percent": {
+        "limit": 180,
+        "actual": 139.7,
+        "status": "PASS"
+      },
+      "scope": "These are conservative regression ceilings for this local Node/Vitest synthetic harness, based on earlier synthetic runs. They are not Win-Box product budgets or cross-device performance promises."
+    },
+    "resilience": [
+      {
+        "name": "mixed-success-timeout",
+        "status": "PASS",
+        "hits": 988,
+        "failures": 13,
+        "firstResultMs": 29.5,
+        "timedOutRequests": 1,
+        "activeRequestsAfterSettle": 0
+      },
+      {
+        "name": "cancel-after-first-result",
+        "status": "PASS",
+        "firstResultMs": 28.7,
+        "cancelledRequests": 45,
+        "activeRequestsAfterSettle": 0
+      },
+      {
+        "name": "recovery-after-cancel",
+        "status": "PASS",
+        "hits": 1001,
+        "firstResultMs": 22.6,
+        "activeRequestsAfterSettle": 0
+      }
+    ]
+  },
+  "verification": {
+    "command": "pnpm exec node --test --test-isolation=none scripts/v05-aggregate-search.check.mjs scripts/v05-repeated-playback.check.mjs scripts/measure-runtime-resources.check.mjs",
+    "testsPassed": 16,
+    "testsFailed": 0,
+    "focusedLint": "pnpm exec oxlint --deny-warnings scripts/v05-aggregate-search.mjs scripts/v05-aggregate-search.check.mjs scripts/v05-repeated-playback.mjs scripts/v05-repeated-playback.check.mjs",
+    "lintExitCode": 0
+  },
+  "limitations": [
+    "No packaged Win-Box/MPV playback benchmark was started in this follow-up; real UI execution was reserved for the parent V02 desktop investigation.",
+    "This run does not cover real source/network variability, spider/JAR/Python runtimes, user configuration or same-process profile changes.",
+    "No 1080p/4K decode, dense danmaku, or UI responsiveness workload was measured.",
+    "The synthetic harness budgets cannot be used as application idle/playback budgets. A current packaged-app sample is still required before product limits can be set."
+  ],
+  "temporaryArtifacts": {
+    "directory": ".tmp/v05-search-followup-20261029-a",
+    "cleanup": "PASS: validated the exact .tmp child and its passing summary, then removed only this run directory.",
+    "negativeGateRunDirectory": ".tmp/v05-search-budget-reject-20261029-b",
+    "negativeGateCleanup": "PASS: validated the exact .tmp child and the expected failing budget summary, then removed only this run directory."
+  },
+  "negativeBudgetGate": {
+    "command": "pnpm exec node scripts/v05-aggregate-search.mjs --cycles 10 --sources 1000 --output-dir .tmp/v05-search-budget-reject-20261029-b --budget-working-set-mb 1",
+    "expected": "FAIL: the 1 MiB Working Set ceiling is below the observed synthetic harness footprint.",
+    "exitCode": 3,
+    "budgetStatus": "FAIL",
+    "observedWorkingSetPeakMiB": 343.9,
+    "summaryStatus": "FAIL"
+  }
+}
