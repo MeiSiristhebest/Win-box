@@ -146,6 +146,8 @@
     "resources/**/stubs-src/**",
     "resources/**/tools/**",
     "resources/**/__pycache__/**",
+    "resources/jvm/jre/lib/jvm.lib",
+    "resources/jvm/jre/lib/jawt.lib",
     "resources/jvm/jre/lib/jython-standalone-2.7.3.jar"
   ],
   "licenseRetention": {

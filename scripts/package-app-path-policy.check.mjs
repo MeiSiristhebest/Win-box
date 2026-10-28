@@ -78,8 +78,15 @@ test('rejects paths outside the app root and preserves the existing resource exc
   for (const path of [
     'resources/tools/helper.exe',
     'resources/runtime/.tmp/cache.bin',
+    'resources/jvm/jre/lib/jvm.lib',
+    'resources/jvm/jre/lib/jawt.lib',
     'resources/jvm/jre/lib/jython-standalone-2.7.3.jar',
     'resources/jvm/__pycache__/module.pyc',
   ]) assert.equal(policy(path), true, path);
   assert.equal(policy('resources/plugins/plugin.winbox'), false);
+  for (const path of [
+    'resources/jvm/jre/bin/java.exe',
+    'resources/jvm/jre/bin/server/jvm.dll',
+    'resources/jvm/jre/lib/modules',
+  ]) assert.equal(policy(path), false, path);
 });
