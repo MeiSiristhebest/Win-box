@@ -3,6 +3,7 @@ import { resolveCover, type CoverRequest } from '../../lib/coverPick';
 import { useCoverRuntimePorts } from './CoverLookupContext';
 import type { CoverLookupSettings } from './application/coverLookupPort';
 import { sharedCoverLookupCoordinator } from './application/CoverLookupCoordinator';
+import { rememberFailedCover, type CoverFailureMemory } from './application/coverFailureMemory';
 
 export interface CoverItem extends CoverRequest { id: string }
 
@@ -12,7 +13,16 @@ export function useCovers(items: CoverItem[], enabled = true, sourceFirst = fals
   const lookupCoordinator = useMemo(() => sharedCoverLookupCoordinator(port, clock), [port, clock]);
   const [settings, setSettings] = useState<CoverLookupSettings | null>(null);
   const [, setCoverRevision] = useState(0);
-  const [failed, setFailed] = useState<Record<string, string[]>>({});
+  const [failed, setFailed] = useState<CoverFailureMemory>([]);
+  const failedByItem = useMemo(() => {
+    const index = new Map<string, Set<string>>();
+    for (const [key, url] of failed) {
+      const urls = index.get(key) ?? new Set<string>();
+      urls.add(url);
+      index.set(key, urls);
+    }
+    return index;
+  }, [failed]);
   const covers = useRef(new Map<string, string>());
   const publishTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const signature = JSON.stringify(items.map(({ id, name, year, pic }) => [id, name, year, pic]));
@@ -57,7 +67,7 @@ export function useCovers(items: CoverItem[], enabled = true, sourceFirst = fals
       const key = JSON.stringify([settings.key, item.id, item.name, item.year, item.pic]);
       if (covers.current.has(key)) continue;
       // Keep source covers in discovery lists and let the browser's native lazy loading decide when to fetch.
-      if (sourceFirst && item.pic?.trim() && !failed[key]?.includes(item.pic.trim())) continue;
+      if (sourceFirst && item.pic?.trim() && !failedByItem.get(key)?.has(item.pic.trim())) continue;
       void lookupCoordinator.enqueue(async () => {
         if (!alive) return;
         const cover = await resolveCover(item, {
@@ -66,7 +76,7 @@ export function useCovers(items: CoverItem[], enabled = true, sourceFirst = fals
             if (!provider || !item.name.trim()) return Promise.resolve('');
             return lookupCoordinator.searchPoster(item.name, item.year, provider, settings.key);
           },
-          validate: (url) => failed[key]?.includes(url) ? Promise.resolve(false) : images.validate(url),
+          validate: (url) => failedByItem.get(key)?.has(url) ? Promise.resolve(false) : images.validate(url),
           relay: images.relay,
         });
         if (alive) {
@@ -79,20 +89,20 @@ export function useCovers(items: CoverItem[], enabled = true, sourceFirst = fals
     return () => { alive = false; };
     // Completed batches should not restart their queue as individual results arrive.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stableItems, settings, enabled, sourceFirst, failed, publishCoverBatch, lookupCoordinator, images]);
+  }, [stableItems, settings, enabled, sourceFirst, failedByItem, publishCoverBatch, lookupCoordinator, images]);
 
-  const refresh = useCallback(() => { covers.current.clear(); setFailed({}); }, []);
+  const refresh = useCallback(() => { covers.current.clear(); setFailed([]); }, []);
   return {
     refresh,
     picOf: (item: CoverItem): string => {
       const key = itemKey(item);
       const source = item.pic?.trim() || '';
-      return covers.current.get(key) ?? (failed[key]?.includes(source) ? '' : source);
+      return covers.current.get(key) ?? (failedByItem.get(key)?.has(source) ? '' : source);
     },
     onError: (item: CoverItem, url: string): void => {
       const key = itemKey(item);
-      if (failed[key]?.includes(url)) return;
-      setFailed((previous) => previous[key]?.includes(url) ? previous : ({ ...previous, [key]: [...(previous[key] || []), url] }));
+      if (failedByItem.get(key)?.has(url)) return;
+      setFailed((previous) => rememberFailedCover(previous, key, url));
       covers.current.delete(key);
     },
   };
