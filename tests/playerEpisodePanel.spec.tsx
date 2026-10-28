@@ -104,6 +104,40 @@ describe('PlayerEpisodePanel', () => {
     expect(newItems[0].textContent).toContain('101');
   });
 
+  it('keeps the episode range tabs in a labelled panel and supports tab-key navigation', () => {
+    const episodes = makeEpisodes(120);
+    const onPageChange = vi.fn();
+    const props = {
+      episodes,
+      current: 75,
+      open: true,
+      title: '海贼王',
+      onClose: vi.fn(),
+      onSelect: vi.fn(),
+      onPageChange,
+    };
+    const { rerender } = render(<PlayerEpisodePanel {...props} page={0} />);
+
+    const firstTab = screen.getByRole('tab', { name: '1-50' });
+    const secondTab = screen.getByRole('tab', { name: '51-100' });
+    const panel = screen.getByRole('tabpanel');
+    expect(firstTab.getAttribute('aria-selected')).toBe('true');
+    expect(firstTab.getAttribute('tabindex')).toBe('0');
+    expect(secondTab.getAttribute('tabindex')).toBe('-1');
+    expect(firstTab.getAttribute('aria-controls')).toBe(panel.id);
+    expect(panel.getAttribute('aria-labelledby')).toBe(firstTab.id);
+
+    fireEvent.keyDown(firstTab, { key: 'ArrowRight' });
+    expect(onPageChange).toHaveBeenCalledWith(1);
+    expect(document.activeElement).toBe(secondTab);
+
+    rerender(<PlayerEpisodePanel {...props} page={1} />);
+    expect(screen.getByRole('tab', { name: '51-100' }).getAttribute('tabindex')).toBe('0');
+    fireEvent.keyDown(screen.getByRole('tab', { name: '51-100' }), { key: 'Home' });
+    expect(onPageChange).toHaveBeenLastCalledWith(0);
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: '1-50' }));
+  });
+
   it('resets to the selected episode page when opened and follows selection changes', () => {
     const setOpen = vi.fn();
     const onSelect = vi.fn();
