@@ -1691,7 +1691,7 @@
           "symbol": "volume slider"
         }
       ],
-      "gap": "token 对比度测试和局部 CSS 已修，但不覆盖每个实际级联结果。暂停背景/图标尺度、原生菜单、音量 thumb 居中、选中态辨识与历史卡片的最终窗口效果尚未逐项签收。",
+      "gap": "中央暂停/播放控件此前没有专属样式，依赖通用按钮基线；本轮已设为 48x48 居中、不模糊的明确表面。音量滑块从旋转水平 range 改为原生纵向 range，消除旋转时的负边距偏移。UI lint 与 renderer build 通过；实机视觉复核因窗口处于最小化且检测到用户输入而未完成。全软件对比度、选中态、原生菜单、DPI/窄屏和其它页面仍需逐项检查。",
       "direction": "按窗口×组件状态×主题/外壳×DPI 建立检查矩阵；复用已有 showcase，计算最终样式并用真实 Electron 窗口复核；业务功能清单作回归对照。",
       "acceptance": "主/详情/搜索/播放器/全局账号/设置/历史/直播/存储均有记录；100/125/150% DPI 与窄宽布局；沿用仓库普通文本4.5:1/功能边界3:1口径；键盘焦点、selected 语义、弹幕拖影和暂停无模糊逐项关闭。",
       "estimateEngineerHours": {
@@ -1710,8 +1710,9 @@
       ],
       "probes": [],
       "reviewEvidence": {
-        "commit": "0119e76",
-        "verification": "本轮快捷键加载状态改用语义 output，Presenter 的异步响应按活动会话作废；快捷键与主题测试 37/37、通用/React/JSX-a11y lint 通过。全窗口、DPI、暂停/模糊背景、弹幕拖影等可视验收仍因 Electron 工作区 ACL 未完成，保持 open。"
+        "commit": "9d5a958",
+        "verification": "pnpm run lint:ui 通过；pnpm run build:renderer 通过。样式源代码已明确覆盖暂停控件尺寸/背景并移除音量滑块旋转偏移；由于现有 Win-Box 窗口保持最小化且 Computer Use 检测到用户输入，本轮没有完成截图核对，不能关闭 V03。",
+        "evidence": "architecture-audit/evidence/player-controls-2026-10-28.json"
       }
     },
     {
@@ -2108,11 +2109,12 @@
       "max": 42
     },
     "branch": "codex/architecture-cleanup-20261025",
-    "implementationTipBeforeEvidence": "6c9b0b68242ed2d566b41cb527ec39e646db2fe6",
+    "implementationTipBeforeEvidence": "9d5a9585e46a3241bca6511db9151fc22087ba8a",
     "localCommitsThisTurn": [
       "3e3bd13",
       "0119e76",
-      "6c9b0b6"
+      "6c9b0b6",
+      "9d5a958"
     ],
     "localInstallerPath": ".tmp/a21-locale-candidate/Win-Box.Setup.1.27.1.exe",
     "installerSha256": "f928db1114a3a1801f8083006986ef3ec230dc9344a9a49f3198047bd047e1a6",
