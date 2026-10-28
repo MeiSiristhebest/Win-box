@@ -50,7 +50,10 @@ import {
   buildJarJvmPrefix,
   decideJarPoolCallResult,
 } from './jarExecutionPolicy';
-import { isUsableConvertedJar as isUsableConvertedJarFile } from './convertedJarArtifact';
+import {
+  ConvertedJarArtifactInspector,
+  isUsableConvertedJar as isUsableConvertedJarFile,
+} from './convertedJarArtifact';
 import { prepareConvertedJarArtifact } from './JarArtifactPreparation';
 import { repairDexConstructorArtifact } from './dexConstructorRepair';
 import { runDexConstructorRepairProcess } from './dexConstructorRepairProcess';
@@ -247,10 +250,10 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
   private readonly conversionRegistry = new JarConversionRegistry();
   /** Missing entry classes are resolved through an isolated, content-aware classpath policy. */
   private readonly classpathResolver: JarClasspathResolver;
+  /** Owns the size/mtime validation cache for converted archives. */
+  private readonly convertedJarArtifactInspector: ConvertedJarArtifactInspector;
   /** 多个源共用一只 jar 时，后台预热只挂一条完成/失败日志。 */
   private warmupLocks = new Map<string, Promise<void>>();
-  /** 产物有效性缓存（路径 → `size:mtime`）：闸门判定每轮每源都要问一次，不能每次都重读整只 jar */
-  private artifactOkCache = new Map<string, string>();
   /** 全局 spider jar（配置顶层 spider 字段），site.jar 优先 */
   private globalJar = '';
   /** 已上屏过的原生桥消息（stderr 跨请求累积，去重防刷屏；见 noteBridgeLog） */
@@ -287,6 +290,13 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
       logAttempt: (message) => this.host?.logger.i(message),
     } : undefined);
     this.classpathResolver = new JarClasspathResolver(this.cacheDir);
+    this.convertedJarArtifactInspector = new ConvertedJarArtifactInspector({
+      fingerprint: (file) => {
+        const stat = statSync(file);
+        return `${stat.size}:${stat.mtimeMs}`;
+      },
+      isUsable: isUsableConvertedJarFile,
+    });
     this.callTimeoutMs = opts.callTimeoutMs ?? 20000;
     this.shellCompatibility = new SpiderShellCompatibility(
       this.jvmDir,
@@ -488,7 +498,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
   async ensureConverted(jarUrl: string): Promise<string> {
     const url = normalizeJarUrl(jarUrl);
     if (!url) throw new Error(`jar URL 为空: ${jarUrl}`);
-    return this.conversionRegistry.ensure(url, (path) => this.artifactOk(path), () => this.doConvert(url));
+    return this.conversionRegistry.ensure(url, (path) => this.convertedJarArtifactInspector.isUsable(path), () => this.doConvert(url));
   }
 
   /**
@@ -546,7 +556,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     const key = md5Hex(jarUrl);
     const target = join(this.cacheDir, `${key}.jar`);
     // ★ 有效性判定（不是「文件存在且 size>0」）：见 isUsableConvertedJar —— 空 zip 残骸必须重转
-    if (this.artifactOk(target)) return target;
+    if (this.convertedJarArtifactInspector.isUsable(target)) return target;
     try {
       return await this.doConvertUncached(jarUrl, key, target);
     } catch (e) {
@@ -620,7 +630,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
           this.cacheDir,
           contentKey,
           cacheKey,
-          (path) => this.artifactOk(path),
+          (path) => this.convertedJarArtifactInspector.isUsable(path),
         ),
         complete: (url, output, contentKey) => this.finishConvert(url, output, contentKey),
       },
@@ -689,7 +699,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
       promote: (partPath, destination) => {
         try { rmSync(destination, { force: true }); } catch { /* best effort */ }
         try { renameSync(partPath, destination); } catch { /* best effort */ }
-        return this.artifactOk(destination);
+        return this.convertedJarArtifactInspector.isUsable(destination);
       },
     });
   }
@@ -742,25 +752,6 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
   }
 
   /**
-   * 产物有效性（带缓存）：`size:mtime` 未变则复用上次结论，避免闸门判定每轮重读整只 jar。
-   * 详见 isUsableConvertedJar —— 「22 字节空 zip 被当成已转换」会让整份配置的源全废。
-   */
-  private artifactOk(file: string): boolean {
-    try {
-      const fs = require('node:fs') as typeof import('node:fs');
-      const st = fs.statSync(file);
-      const key = `${st.size}:${st.mtimeMs}`;
-      if (this.artifactOkCache.get(file) === key) return true;
-      const ok = isUsableConvertedJar(file);
-      if (ok) this.artifactOkCache.set(file, key);
-      else this.artifactOkCache.delete(file);
-      return ok;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * URL → 已转换的本地 jar 路径（须先 ensureConverted）。传入值同样规范化，避免键不匹配。
    *
    * ★ 只返回**磁盘上真实存在**的路径。
@@ -778,7 +769,7 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
       const key = normalizeJarUrl(u);
       const p = this.conversionRegistry.convertedPath(key);
       if (!p) continue;
-      if (existsSync(p) && this.artifactOk(p)) {
+      if (existsSync(p) && this.convertedJarArtifactInspector.isUsable(p)) {
         out.push(p);
       } else {
         this.conversionRegistry.forgetConvertedPath(key);
@@ -797,11 +788,11 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
     const url = normalizeJarUrl(jarUrl);
     if (!url) return '';
     const cached = this.conversionRegistry.convertedPath(url);
-    if (cached && existsSync(cached) && this.artifactOk(cached)) return cached;
+    if (cached && existsSync(cached) && this.convertedJarArtifactInspector.isUsable(cached)) return cached;
     if (cached) this.conversionRegistry.forgetConvertedPath(url);
     const p = join(this.cacheDir, `${md5Hex(url)}.jar`);
     // ★ 残骸（空 zip）不算「已转换」：否则闸门会把该源标成 ready，实际一调就类找不到
-    return this.artifactOk(p) ? p : '';
+    return this.convertedJarArtifactInspector.isUsable(p) ? p : '';
   }
 
   /**
