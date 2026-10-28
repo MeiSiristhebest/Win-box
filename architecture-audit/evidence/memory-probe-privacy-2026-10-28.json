@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V05",
+  "recordedAt": "2026-10-28",
+  "implementationCommit": "8925f6ed41f686648f9393ea8130da02ecdea79c",
+  "finding": "The memory probe documentation promised to exclude titles, but electronRows() included BrowserWindow.getTitle() in persisted process labels.",
+  "change": "Renderer processes are labeled with BrowserWindow IDs (window#<id>); the probe does not read window titles.",
+  "verification": {
+    "privacyRegression": "PASS: 1 focused Vitest test; verifies title is not read and does not appear in process rows.",
+    "samplerChecks": "PASS: 7 checks using node --test --test-isolation=none scripts/measure-runtime-resources.check.mjs.",
+    "isolatedSamplerFixture": {
+      "durationSeconds": 4.375,
+      "samples": 7,
+      "peakWorkingSetMB": 58.7,
+      "peakPrivateBytesMB": 19.1,
+      "cpuPercent": 0,
+      "samplerErrors": []
+    },
+    "applicationBaseline": "NOT_AVAILABLE: no running Win-Box.exe instance was found during the read-only process query."
+  },
+  "limitations": [
+    "The isolated Node fixture is a sampler self-check, not a Win-Box performance measurement.",
+    "The 2026-10-27 packaged candidate baseline is stale and cannot establish current-head idle/search/playback budgets.",
+    "V05 remains open pending repeatable current-app idle, search, playback, danmaku, source-switch, and close-recovery measurements."
+  ]
+}

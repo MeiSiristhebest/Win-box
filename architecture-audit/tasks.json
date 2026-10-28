@@ -1806,9 +1806,13 @@
           "path": "src/renderer/features/navigation/KeepAliveRoutes.tsx",
           "line": 1,
           "symbol": "page residency"
+      },
+      {
+        "path": "architecture-audit/evidence/memory-probe-privacy-2026-10-28.json",
+        "symbol": "isolatedSamplerFixture"
         }
       ],
-      "gap": "新增完整进程树采样器并验证了计划窗口停止与崩溃区分；目前只有 Node 自测进程的 5 个样本（峰值工作集 36.2 MB、私有字节 19.1 MB），预算未配置。没有应用空闲/搜索/播放/弹幕/多次切源的本快照基线或前后对照。",
+    "gap": "采样器计划窗口与退出状态检查 7/7 通过；已修复窗口标题可能写入内存日志的隐私缺陷。隔离 Node 夹具 7 个样本峰值工作集 58.7 MB、私有字节 19.1 MB，但未发现运行中的 Win-Box 实例，无法得到本快照应用基线，预算未配置。",
       "direction": "固定机器/数据/窗口/冷热缓存条件，记录完整进程树与私有内存/工作集、CPU、搜索首个结果/总耗时、帧时间和关闭后资源恢复。根据数据再调并发与保留策略。",
       "acceptance": "空闲、1000级源搜索、1080p/高分辨率播放、弹幕开关/高密度、连续10轮切源/窗口关闭有可重复报告；无单调增长；先基线后定数值预算，不虚报节省百分比。",
       "estimateEngineerHours": {
@@ -1830,7 +1834,8 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "0139c23",
-        "verification": "runtime-sampler-self-test-2026-10-28.json：5 个 Node 自测进程样本、采样器退出 0、expected-window-stop；资源采样用例 8 项通过。它只验证测量工具，不代表 Win-Box 性能数据或达成资源预算。"
+      "latestImplementationCommit": "8925f6ed41f686648f9393ea8130da02ecdea79c",
+        "verification": "measure-runtime-resources.check.mjs 在 --test-isolation=none 下 7/7 通过；隔离 Node 夹具运行 4.375 秒、7 个样本，峰值工作集 58.7 MB、私有字节 19.1 MB、CPU 0%、采样错误 0；窗口标题隐私回归 1/1 通过。未发现运行中的 Win-Box.exe，因此没有当前应用基线；V05 仍开放且资源预算未配置。"
       }
     },
     {
