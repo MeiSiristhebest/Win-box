@@ -35,7 +35,7 @@ import { PREFS_SHIM_JAR } from './prefsShim';
 import { NativeSpiderRuntime } from './NativeSpiderRuntime';
 import { createSpiderShellCompatibilityPorts, SpiderShellCompatibility } from './SpiderShellCompatibility';
 import { extractBridgeNotes } from './spiderDiagnostics';
-import { spiderCallFailed, spiderCallSucceeded, type SpiderCallResult } from './spiderCallResult';
+import type { SpiderCallResult } from './spiderCallResult';
 import type { PythonSpiderRuntimePort } from './PythonSpiderRuntimePort';
 import { PythonSpiderRuntimeAdapter } from './PythonSpiderRuntimeAdapter';
 import {
@@ -48,7 +48,7 @@ import {
 import {
   createJarExecutionLaunchPlan,
   buildJarJvmPrefix,
-  jarPoolFailureAction,
+  decideJarPoolCallResult,
 } from './jarExecutionPolicy';
 import { isUsableConvertedJar as isUsableConvertedJarFile } from './convertedJarArtifact';
 import { prepareConvertedJarArtifact } from './JarArtifactPreparation';
@@ -57,9 +57,8 @@ import { runDexConstructorRepairProcess } from './dexConstructorRepairProcess';
 import { runJarConversionWorkflow, type JarConversionWorkflowEvent } from './JarConversionWorkflow';
 import { ConversionInFlightError, JarConversionRegistry } from './JarConversionRegistry';
 import { JarClasspathResolver } from './JarClasspathResolver';
-import { normalizeSpiderRuntimeFailure } from './spiderRuntimeFailure';
 import { abortError, throwIfAborted } from '../util/abort';
-import { spiderPoolCapacityResult, spiderPoolOutputLimitResult, spiderPoolTimeoutResult } from './spiderPoolFailure';
+import { spiderPoolCapacityResult } from './spiderPoolFailure';
 import { Dex2jarConversion } from './Dex2jarConversion';
 import { JarArchiveDownloader } from './JarArchiveDownloader';
 import { mergeJarResourceEntries } from './jarResourceMerge';
@@ -1076,43 +1075,30 @@ export class JarSpiderBridge implements PythonSpiderRuntimePort, JarSpiderRuntim
           if (proxyIdentity.pinForDetailSelection) {
             this.pool?.pin(key, 2 * 60_000); // 给用户选集留出时间，避免详情会话被 LRU 回收。
           }
-          const rawError = r.error ? String(r.error) : '';
-          const runtimeFailure = rawError ? normalizeSpiderRuntimeFailure(rawError) : null;
-          const reason = runtimeFailure?.reason ?? '';
-          if (rawError) {
-            // ★ 2026-10-08：人话旁边**并记原始报错** —— 人话规则命中（如「接口缺失」）会把「具体缺哪个
-            //   类/方法」吞掉，没有原始串就无法定位该补哪个桩（用户报「配置中心」源时日志里只有一句中文）。
-            this.host?.logger.i(`jvm-bridge ${className}.${method} 失败原因: ${reason}｜原始: ${rawError.slice(0, 300)}`);
-          }
-          return runtimeFailure
-            ? spiderCallFailed(r.data, reason, runtimeFailure.failureKind, runtimeFailure.problemCode)
-            : spiderCallSucceeded(r.data);
         }
-        switch (jarPoolFailureAction(r.reason)) {
-          case 'return-timeout': {
-            const timeoutResult = spiderPoolTimeoutResult(r.reason, tmo);
-            if (timeoutResult) {
-              if (r.reason === 'queue-timeout') this.host?.logger.w(`jvm-bridge ${className}.${method}: ${timeoutResult.reason}`);
-              else this.host?.logger.i(`jvm-bridge ${className}.${method} 失败原因: ${timeoutResult.reason}`);
-              return timeoutResult;
-            }
-            break;
+        const decision = decideJarPoolCallResult({
+          ok: r.ok,
+          data: r.data,
+          reason: r.reason,
+          error: r.error,
+          timeoutMs: tmo,
+        });
+        if (decision.type === 'completed') {
+          if (decision.runtimeError) {
+            // Keep the raw exception beside the translated message for runtime diagnostics.
+            this.host?.logger.i(
+              `jvm-bridge ${className}.${method} 失败原因: ${decision.runtimeError.reason}｜原始: ${decision.runtimeError.raw.slice(0, 300)}`,
+            );
           }
-          case 'return-capacity': {
-            const result = spiderPoolCapacityResult(r.reason);
-            if (result) return result;
-            break;
+          if (r.reason === 'queue-timeout') {
+            this.host?.logger.w(`jvm-bridge ${className}.${method}: ${decision.result.reason}`);
+          } else if (r.reason === 'timeout') {
+            this.host?.logger.i(`jvm-bridge ${className}.${method} 失败原因: ${decision.result.reason}`);
           }
-          case 'return-output-limit': {
-            const result = spiderPoolOutputLimitResult(r.reason);
-            if (result) return result;
-            break;
-          }
-          case 'throw-cancelled':
-            cancellationError = signal ? abortError(signal) : new Error('搜索已取消');
-            break;
-          case 'fallback-one-shot':
-            break;
+          return decision.result;
+        }
+        if (decision.type === 'cancelled') {
+          cancellationError = signal ? abortError(signal) : new Error('搜索已取消');
         }
       } catch {
         if (signal?.aborted) throw abortError(signal);

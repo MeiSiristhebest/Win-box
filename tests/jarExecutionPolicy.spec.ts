@@ -9,6 +9,7 @@ import {
   buildJarJvmPrefix,
   buildJarServeArgv,
   createJarExecutionLaunchPlan,
+  decideJarPoolCallResult,
   jarPoolFailureAction,
 } from '../src/engine/spider/jarExecutionPolicy';
 
@@ -159,6 +160,49 @@ describe('JAR execution policy', () => {
     [undefined, 'fallback-one-shot'],
   ] as const)('classifies pool reason %s as %s', (reason, expected) => {
     expect(jarPoolFailureAction(reason)).toBe(expected);
+  });
+
+  it('treats an empty successful spider response as a completed call', () => {
+    expect(decideJarPoolCallResult({ ok: true, data: '', timeoutMs: 1000 })).toEqual({
+      type: 'completed',
+      result: { ok: true, output: '', reason: '', failureKind: null, problemCode: null },
+    });
+  });
+
+  it('normalizes spider errors without marking the completed pool transport for retry', () => {
+    expect(decideJarPoolCallResult({
+      ok: true,
+      data: 'worker error payload',
+      error: 'WINBOX_OPERATION_UNSUPPORTED:playerContent',
+      timeoutMs: 1000,
+    })).toMatchObject({
+      type: 'completed',
+      result: {
+        output: 'worker error payload',
+        reason: '该源未提供播放功能',
+        problemCode: 'OPERATION_UNSUPPORTED',
+      },
+      runtimeError: { raw: 'WINBOX_OPERATION_UNSUPPORTED:playerContent' },
+    });
+  });
+
+  it.each([
+    ['timeout', 'SPIDER_TIMEOUT'],
+    ['queue-timeout', 'SPIDER_TIMEOUT'],
+    ['capacity-exhausted', 'SPIDER_CAPACITY'],
+    ['output-limit', 'SPIDER_OUTPUT_LIMIT'],
+  ] as const)('returns %s as a terminal result rather than replaying one-shot', (reason, problemCode) => {
+    expect(decideJarPoolCallResult({ ok: false, data: '', reason, timeoutMs: 1200 })).toMatchObject({
+      type: 'completed',
+      result: { reason: expect.any(String), problemCode },
+    });
+  });
+
+  it('keeps cancellation terminal while allowing transport failures to recover once', () => {
+    expect(decideJarPoolCallResult({ ok: false, data: '', reason: 'cancelled', timeoutMs: 1000 }))
+      .toEqual({ type: 'cancelled' });
+    expect(decideJarPoolCallResult({ ok: false, data: '', reason: 'exit', timeoutMs: 1000 }))
+      .toEqual({ type: 'retry-one-shot' });
   });
 
   it('does not turn a pool cancellation into a one-shot JVM launch', async () => {

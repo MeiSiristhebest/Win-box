@@ -1,5 +1,8 @@
 import { LOCAL_PROXY_BASE } from '../../shared/constants';
 import { spiderProxyPort } from './jarBridgePolicy';
+import { spiderCallFailed, spiderCallSucceeded, type SpiderCallResult } from './spiderCallResult';
+import { normalizeSpiderRuntimeFailure } from './spiderRuntimeFailure';
+import { spiderPoolCapacityResult, spiderPoolOutputLimitResult, spiderPoolTimeoutResult } from './spiderPoolFailure';
 
 /** Values needed to describe a JVM launch; collecting them has no I/O or process side effects. */
 export interface JarJvmPrefixInput {
@@ -178,5 +181,56 @@ export function jarPoolFailureAction(reason: string | undefined): JarPoolFailure
       return 'throw-cancelled';
     default:
       return 'fallback-one-shot';
+  }
+}
+
+export interface JarPoolCallResultInput {
+  ok: boolean;
+  data: string;
+  reason?: string;
+  error?: string;
+  timeoutMs: number;
+}
+
+export type JarPoolCallResultDecision =
+  | { type: 'completed'; result: SpiderCallResult; runtimeError?: { reason: string; raw: string } }
+  | { type: 'cancelled' }
+  | { type: 'retry-one-shot' };
+
+/**
+ * Translate a pooled JVM response into the caller-visible outcome. This keeps
+ * the retry boundary explicit: completed spider errors, timeouts, capacity
+ * pressure, malformed output, and cancellation never start a duplicate JVM.
+ */
+export function decideJarPoolCallResult(input: JarPoolCallResultInput): JarPoolCallResultDecision {
+  if (input.ok) {
+    const rawError = input.error ? String(input.error) : '';
+    const runtimeFailure = rawError ? normalizeSpiderRuntimeFailure(rawError) : null;
+    return {
+      type: 'completed',
+      result: runtimeFailure
+        ? spiderCallFailed(input.data, runtimeFailure.reason, runtimeFailure.failureKind, runtimeFailure.problemCode)
+        : spiderCallSucceeded(input.data),
+      ...(rawError ? { runtimeError: { reason: runtimeFailure?.reason ?? '', raw: rawError } } : {}),
+    };
+  }
+
+  switch (jarPoolFailureAction(input.reason)) {
+    case 'return-timeout': {
+      const result = spiderPoolTimeoutResult(input.reason, input.timeoutMs);
+      return result ? { type: 'completed', result } : { type: 'retry-one-shot' };
+    }
+    case 'return-capacity': {
+      const result = spiderPoolCapacityResult(input.reason);
+      return result ? { type: 'completed', result } : { type: 'retry-one-shot' };
+    }
+    case 'return-output-limit': {
+      const result = spiderPoolOutputLimitResult(input.reason);
+      return result ? { type: 'completed', result } : { type: 'retry-one-shot' };
+    }
+    case 'throw-cancelled':
+      return { type: 'cancelled' };
+    case 'fallback-one-shot':
+      return { type: 'retry-one-shot' };
   }
 }
