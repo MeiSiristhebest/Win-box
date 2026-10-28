@@ -830,6 +830,11 @@
           "commit": "7ac5cd3aac31b74f1efbc2724ef36ae63989d27a",
           "summary": "Move converted-archive fingerprint validation cache behind a dedicated inspector port",
           "verification": "7 JAR regression files 56/56; main and test TypeScript checks passed; focused oxlint passed"
+        },
+        {
+          "commit": "c121435143b053a335b637f61a7ba830eb87d46d",
+          "summary": "Use the conversion registry as the single-flight owner for duplicate warmups",
+          "verification": "8 JAR regression files 58/58; main and test TypeScript checks passed; focused oxlint and architecture-boundary checks passed"
         }
       ],
       "reviewEvidence": {
