@@ -57,7 +57,7 @@
       "PotPlayer or arbitrary external-player shader injection",
       "Built-in Chromium WebGPU processing"
     ],
-    "temporaryArtifacts": "The extracted shader and run logs were kept only under the unique .tmp/o02-ravu-poc-20261029-01 directory pending evidence commit."
+    "temporaryArtifacts": "The extracted shader and run logs were removed from the unique .tmp/o02-ravu-poc-20261029-01 directory after the evidence commit; no temporary O02 artifacts remain."
   },
   "notRun": [
     "No image-quality comparison or isolated per-frame performance/VRAM budget measurement.",
