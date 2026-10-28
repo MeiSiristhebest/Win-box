@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "taskId": "O02",
-  "recordedAt": "2026-10-28",
+  "recordedAt": "2026-10-29",
   "finding": "A single transparent enhancement implementation cannot be assumed across these players. Chromium, MPV, and PotPlayer expose distinct rendering/filter boundaries; the app needs per-backend adapters and capability reporting.",
   "supportMatrix": [
     {
@@ -27,8 +27,40 @@
     }
   ],
   "recommendation": "Define a common plugin manifest and capability model, then implement separate Chromium WebGPU and MPV/libplacebo adapters. Treat PotPlayer as external/native filter guidance until a documented and tested control interface exists. Label only actual model inference as super-resolution; ordinary scaling/sharpening must be named accurately.",
+  "mpvShaderPoc": {
+    "status": "PASS_SHADER_REGISTRATION_AND_SYNTHETIC_RENDER",
+    "environment": {
+      "mpvVersion": "v0.41.0-dev-g41f6a6450",
+      "videoOutput": "gpu-next / D3D11 / libplacebo",
+      "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+      "input": "1920x1080 lavfi testsrc2, 600 frames, untimed, minimized window"
+    },
+    "shader": {
+      "plugin": "ravu-lite.winbox",
+      "hook": "RAVU-Lite (step1, r4) and RAVU-Lite (step2, r4)",
+      "license": "LGPL-3.0-or-later",
+      "result": "Both hook passes registered; shader compilation succeeded with zero errors. The first pass reported one unsupported GL_ARB_texture_buffer_object extension warning, then compiled successfully."
+    },
+    "runs": {
+      "repetitions": 3,
+      "framesPerRun": 600,
+      "baselineElapsedMs": [4417, 4304, 4322],
+      "shaderElapsedMs": [4393, 4418, 4552],
+      "medianBaselineMs": 4322,
+      "medianShaderMs": 4418,
+      "interpretation": "All six processes exited successfully. These wall times include process startup and shader compilation, so they are only a coarse synthetic comparison, not isolated frame latency or an application performance budget."
+    },
+    "notVerified": [
+      "Visible before/after image quality at an output resolution larger than the source",
+      "Per-frame GPU latency, VRAM use, and real-time headroom on representative content",
+      "Integration through Win-Box settings and plugin lifecycle",
+      "PotPlayer or arbitrary external-player shader injection",
+      "Built-in Chromium WebGPU processing"
+    ],
+    "temporaryArtifacts": "The extracted shader and run logs were kept only under the unique .tmp/o02-ravu-poc-20261029-01 directory pending evidence commit."
+  },
   "notRun": [
-    "No image-quality, frame-latency, CPU, GPU, or VRAM PoC measurement.",
+    "No image-quality comparison or isolated per-frame performance/VRAM budget measurement.",
     "No PotPlayer runtime injection experiment; there is no documented integration point to test."
   ]
 }
