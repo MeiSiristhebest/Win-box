@@ -5,7 +5,7 @@
  *
  * 口径（先量化再优化，别盲猜）：
  *  ① Electron 自身进程 —— `app.getAppMetrics()` 逐进程取 workingSetSize（KB），
- *     并用 `webContents.getOSProcessId()` 把渲染进程标注成「哪个窗口」（main / player），
+ *     并用 `webContents.getOSProcessId()` 把渲染进程标注成窗口编号，
  *     便于区分「主窗口常驻页缓存」与「播放器窗口」两笔账；
  *  ② 我们 spawn 的子进程 —— 按**父进程 = 主进程 pid** 归集（wmic 优先，缺失时回落 PowerShell CIM），
  *     再排除 Electron 自己那批 pid 与探针外壳（wmic/powershell/conhost/cmd）；
@@ -14,7 +14,7 @@
  * 仅在 WINBOX_MEMORY_PROBE=1 时启用自动采样。播放开始（主进程 `media:state` 收到播放器窗口的 play/playing）→ 60s 窗口内每 5s 采一次
  *   （一次播放会话只跑一轮，避免反复刷屏）；另在启动后采一次「空闲基线」以作对照。
  *
- * 隐私：只落内存数字与进程名，**不含 URL / 标题 / 凭据**（与 mediaDiag 同口径）。
+ * 隐私：只落内存数字、进程名和窗口编号，**不含 URL / 窗口标题 / 凭据**（与 mediaDiag 同口径）。
  * 依赖：本模块 import electron（`app` / `BrowserWindow`），只供主进程使用。
  */
 import { app, BrowserWindow } from 'electron';
@@ -45,14 +45,13 @@ export interface MemSample {
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
 
-/** Electron 进程（`getAppMetrics().memory.workingSetSize` 单位是 KB）＋ 把渲染进程标成窗口名 */
+/** Electron 进程（`getAppMetrics().memory.workingSetSize` 单位是 KB）＋ 用不含标题的编号标记渲染窗口 */
 export function electronRows(): Row[] {
   const labelByPid = new Map<number, string>();
   for (const w of BrowserWindow.getAllWindows()) {
     try {
       const pid = w.webContents.getOSProcessId();
-      const title = (w.getTitle() || 'win').replace(/\s+/g, ' ').slice(0, 20);
-      labelByPid.set(pid, title);
+      labelByPid.set(pid, `window#${w.id}`);
     } catch {
       /* 窗口正在销毁 → 忽略 */
     }
