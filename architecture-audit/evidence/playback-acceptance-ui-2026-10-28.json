@@ -145,6 +145,45 @@
       "cleanup": "PASS"
     }
   ],
+  "workspaceRegression": {
+    "recordedAt": "2026-10-28T15:06:54Z",
+    "runs": [
+      {
+        "label": "full-suite-default-parallelism",
+        "command": "D:\\develop\\nodejs\\node.exe node_modules\\vitest\\vitest.mjs run",
+        "exitCode": 1,
+        "testFiles": {
+          "passed": 507,
+          "skipped": 4,
+          "failed": 0
+        },
+        "tests": {
+          "passed": 4168,
+          "skipped": 6,
+          "failed": 0
+        },
+        "unhandledErrors": 1,
+        "workerError": "[vitest-pool]: Worker forks emitted error; a worker exited unexpectedly with exit code 1 while starting."
+      },
+      {
+        "label": "full-suite-limited-workers",
+        "command": "D:\\develop\\nodejs\\node.exe node_modules\\vitest\\vitest.mjs run --maxWorkers=4",
+        "exitCode": 0,
+        "testFiles": {
+          "passed": 508,
+          "skipped": 4,
+          "failed": 0
+        },
+        "tests": {
+          "passed": 4171,
+          "skipped": 6,
+          "failed": 0
+        },
+        "unhandledErrors": 0
+      }
+    ],
+    "scopeNote": "Workspace test-suite results are recorded separately from packaged playback acceptance. The default run's worker startup error is retained; the bounded-worker rerun passed. V05 synthetic workload remained skipped by default."
+  },
   "userState": {
     "potplayerSettingsChanged": false,
     "potplayerInputs": "Space playback toggles only.",
