@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V06",
+  "recordedAt": "2026-10-28",
+  "implementationCommits": [
+    "848c876adc4312e44b619b64281e57bab4d6dfae",
+    "e785a42e14cfc44d43b1162f43f658f754fece04"
+  ],
+  "verification": {
+    "vitest": "PASS: 505 files and 4148 tests passed; 3 files and 5 tests skipped.",
+    "typecheck": "PASS: main, renderer, and test TypeScript projects.",
+    "lint": "PASS: oxlint source/scripts/tests, architecture boundaries, and UI lint.",
+    "build": "PASS: main and renderer production build.",
+    "rendererBundleWarning": "hls chunk is 574.41 kB raw / 178.97 kB gzip; the bundler warns about chunks larger than 500 kB after minification. Impact and code splitting were not measured."
+  },
+  "notRun": [
+    "Creating a fresh Windows installer/package from these commits.",
+    "Installing that fresh package and visually checking the actual desktop window.",
+    "Current-head CI and push."
+  ]
+}

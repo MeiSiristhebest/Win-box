@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V02",
+  "recordedAt": "2026-10-28",
+  "implementationCommit": "848c876adc4312e44b619b64281e57bab4d6dfae",
+  "changes": [
+    "Range playback now validates Content-Range coordinates, byte length, and known total size before serving data.",
+    "Upstream 401/403/404/416, ignored Range, invalid 206, HTML login/interstitial pages, and JSON errors produce distinct diagnostics.",
+    "HLS diagnostics inspect response data to distinguish common HTTP failures, HTML, and JSON bodies.",
+    "External-player feedback reports process startup and asks users to confirm playback in that player; it no longer claims successful decoding.",
+    "Playback acceptance argument parsing is isolated from Electron imports so its contract can run independently."
+  ],
+  "verification": {
+    "focusedVitest": "PASS: 59 tests across htmlMedia, hlsErrorText, useHtml5PlaybackSession, and playerStyleArchitecture.",
+    "acceptanceNodeChecks": "PASS: 14 checks across playback arguments, source acceptance, and WebM fixtures.",
+    "fullVitest": "PASS: 505 files and 4148 tests passed; 3 files and 5 tests skipped.",
+    "typecheck": "PASS: main, renderer, and test TypeScript projects.",
+    "lint": "PASS: oxlint source/scripts/tests, architecture boundaries, and UI lint.",
+    "productionBuild": "PASS: main and renderer build. Renderer emitted the existing >500 kB chunk warning; hls chunk was 574.41 kB raw / 178.97 kB gzip."
+  },
+  "limitations": [
+    "No live third-party source matrix was run in this turn; successful parsing and a local fixture do not prove a provider is playable.",
+    "PotPlayer was not installed/configured for a real decode and playback-progress check.",
+    "This work does not make the managed shader pipeline affect arbitrary external player windows.",
+    "No new packaged installer was produced or installed in this turn."
+  ]
+}
