@@ -4,24 +4,33 @@ import { promoteStagedApp } from './package-app-promotion.mjs';
 const CLEANUP_OPTIONS = { recursive: true, force: true, maxRetries: 10, retryDelay: 250 };
 
 export async function withPackageStaging(stagingDir, operation, remove = rm) {
+  let result;
   let operationError;
+  let operationFailed = false;
   try {
-    return await operation();
+    result = await operation();
   } catch (error) {
     operationError = error;
-    throw error;
-  } finally {
-    try {
-      await remove(stagingDir, CLEANUP_OPTIONS);
-    } catch (cleanupError) {
-      if (operationError) {
-        throw new AggregateError([operationError, cleanupError], `Package staging failed and could not be fully cleaned: ${stagingDir}`, {
-          cause: operationError,
-        });
-      }
-      throw cleanupError;
-    }
+    operationFailed = true;
   }
+
+  let cleanupError;
+  let cleanupFailed = false;
+  try {
+    await remove(stagingDir, CLEANUP_OPTIONS);
+  } catch (error) {
+    cleanupError = error;
+    cleanupFailed = true;
+  }
+
+  if (operationFailed && cleanupFailed) {
+    throw new AggregateError([operationError, cleanupError], `Package staging failed and could not be fully cleaned: ${stagingDir}`, {
+      cause: operationError,
+    });
+  }
+  if (operationFailed) throw operationError;
+  if (cleanupFailed) throw cleanupError;
+  return result;
 }
 
 export async function promotePackageDirectory({

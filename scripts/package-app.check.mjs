@@ -29,6 +29,36 @@ describe('package app staging and promotion', () => {
     await assert.rejects(stat(stagingDir), error => error.code === 'ENOENT');
   });
 
+  it('preserves both operation and cleanup errors when staging cleanup also fails', async () => {
+    const operationError = new Error('packaging failed');
+    const cleanupError = new Error('staging cleanup failed');
+    let cleanupCalled = false;
+
+    await assert.rejects(withPackageStaging('staging-dir', async () => {
+      throw operationError;
+    }, async () => {
+      cleanupCalled = true;
+      throw cleanupError;
+    }), error => error instanceof AggregateError
+      && error.cause === operationError
+      && error.errors[0] === operationError
+      && error.errors[1] === cleanupError);
+    assert.equal(cleanupCalled, true);
+
+    await assert.rejects(withPackageStaging('staging-dir', async () => 'done', async () => {
+      throw cleanupError;
+    }), error => error === cleanupError);
+
+    let threwUndefined = false;
+    try {
+      await withPackageStaging('staging-dir', async () => { throw undefined; });
+    } catch (error) {
+      threwUndefined = true;
+      assert.equal(error, undefined);
+    }
+    assert.equal(threwUndefined, true);
+  });
+
   it('restores the previous app when the Windows copy fallback fails', async () => {
     const root = await createFixtureRoot();
     const source = join(root, 'staged', 'win-unpacked');
