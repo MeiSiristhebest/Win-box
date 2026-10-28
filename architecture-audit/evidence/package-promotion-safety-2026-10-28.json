@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "taskId": "A21",
+  "recordedAt": "2026-10-28",
+  "implementationCommit": "7d760eb53fc17f5b1bdfd3592f7744d75827f2f3",
+  "change": "Package staging is removed in a finally boundary. Before promoting a replacement, the existing win-unpacked directory is moved to a unique backup; failed promotion removes partial output and restores the previous app. The staging/promotion helpers are isolated from Electron and NSIS imports.",
+  "verification": {
+    "command": "pnpm exec node --test --test-isolation=none scripts/package-app.check.mjs",
+    "result": "PASS: 2 tests, 0 failures",
+    "checks": [
+      "staging is cleaned after an operation fails while the original error is preserved",
+      "simulated Windows EPERM rename then partial ENOSPC copy failure removes partial output and restores old Win-Box.exe"
+    ],
+    "packageAppSyntax": "PASS: node --check scripts/package-app.mjs"
+  },
+  "limitations": [
+    "No fresh package or installer was built after this change.",
+    "No clean-directory application launch or JS/JVM/Python, extraction, and download runtime matrix was run."
+  ]
+}

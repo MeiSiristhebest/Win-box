@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V06",
+  "recordedAt": "2026-10-28",
+  "implementationCommits": [
+    "7d760eb53fc17f5b1bdfd3592f7744d75827f2f3",
+    "faa4cdb5c83c1492d5036d8c58a44de1d9450045"
+  ],
+  "verification": {
+    "packagePromotion": {
+      "result": "PASS: 2/2 focused tests",
+      "command": "pnpm exec node --test --test-isolation=none scripts/package-app.check.mjs"
+    },
+    "installer": {
+      "result": "PASS: 8/8 focused tests",
+      "command": "pnpm exec node --test --test-isolation=none scripts/installer-script.check.mjs"
+    },
+    "fullVitestTypecheckLintBuild": "NOT_RUN after these two commits; earlier green result predates them."
+  },
+  "limitations": [
+    "No fresh Windows package/installer has been produced from these commits.",
+    "No final desktop UI run or remote CI verification was performed.",
+    "No release was published or pushed."
+  ]
+}

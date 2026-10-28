@@ -1519,7 +1519,7 @@
           "symbol": "explicit external packages"
         }
       ],
-      "gap": "包体已通过实际候选包显著收敛：保留 en-US/zh-CN/zh-TW，移除 52 个未用 Chromium locale pack；同时排除 node_modules/.ignored 临时依赖。候选包安装、覆盖安装、卸载重装、数据保留、注册表/快捷方式验收通过，内置 Java 17 可执行。尚未在干净安装目录启动完整应用并覆盖 JS/JVM/Python、解压和下载流程；运行中停止进程验收未运行，因此不能关闭 A21。",
+      "gap": "包依赖闭包和 locale 裁剪已通过 12/12 定向检查；本轮新增 staging 失败清理、旧 win-unpacked 备份晋升失败恢复，2/2 回归通过。仍未基于这些最新提交重打候选包、记录新体积/hash，或在干净目录启动完整应用验证 JS/JVM/Python、解压与下载；A21 保持 open。",
       "direction": "生成 dist 与动态 require/worker 共同需要的运行依赖闭包，按实际字节找重复；发布副本裁剪测试/源码/无用平台资源，保留许可证与所有运行时 external。",
       "acceptance": "输出安装包/ASAR/资源分项大小及前后对照；隔离干净目录能启动 JS/JVM/Python、解压和下载能力；A/B 不减少 React Compiler 的 hooks 覆盖，不预承诺压缩比例。",
       "estimateEngineerHours": {
@@ -1531,7 +1531,10 @@
       "reviewEvidence": {
         "commit": "6c9b0b6",
         "verification": "包体定向检查 12/12 通过；候选 app 534,252,979 B、installer 228,831,102 B。与此前报告相比 app 少 46,506,080 B（约 8.0%）、installer 少 11,977,645 B（约 5.0%；该跨构建差值不全归因于本改动）。locale pack 直接减少 48,880,941 B；同构建排除 node_modules/.ignored 后 ASAR 减少 15,030,737 B。隔离安装/覆盖/卸载重装和用户数据保留通过，Java 17 运行通过；运行中停止进程与应用完整运行时冒烟未执行，状态仍 open。",
-        "evidence": "architecture-audit/evidence/package-optimization-2026-10-28.json"
+        "evidence": "architecture-audit/evidence/package-optimization-2026-10-28.json",
+        "latestImplementationCommit": "7d760eb53fc17f5b1bdfd3592f7744d75827f2f3",
+        "latestVerification": "打包晋升回滚 2/2 通过；包体策略/运行依赖闭包基线检查 12/12 通过。尚未基于当前提交重打包或做干净目录运行时验证。",
+        "latestEvidence": "architecture-audit/evidence/package-promotion-safety-2026-10-28.json"
       }
     },
     {
@@ -1768,9 +1771,13 @@
         {
           "path": "architecture-audit/evidence/installer-process-stop-2026-10-28.json",
           "symbol": "targetProcessStopDurationMs"
+        },
+        {
+          "path": "architecture-audit/evidence/installer-rollback-2026-10-28.json",
+          "symbol": "old uninstaller failure rollback and six user-data files"
         }
       ],
-      "gap": "隔离 NSIS 套件已验证无窗口进程在 4549ms 内停止、覆盖、先卸载再安装、数据保留、注册表和快捷方式。仍未覆盖正在播放或老板键隐藏的真实桌面进程、取消安装保护旧版本，以及配置/订阅/网盘账号/历史/收藏各数据域的迁移。",
+      "gap": "真实 NSIS 全套 8/8 通过；覆盖更新、uninstall-first、旧卸载器失败时终止安装并恢复旧 payload；设置、订阅、网盘账号、历史、收藏和用户配置六类 data 文件均保留。无窗口进程约 4.5 秒停止。仍未验证真实播放中/老板键隐藏窗口、交互式取消保旧安装以及真实应用升级后的完整数据迁移；V04 保持 open。",
       "direction": "将安装验收扩展到完整候选包的播放中和老板键隐藏场景，再核对取消安装保护及每个用户数据域迁移。",
       "acceptance": "正在播放/老板键隐藏/后台无主窗口时可一键停止继续；其它安装目录不受影响；配置、订阅、账号、历史、收藏重启后保留；取消不破坏旧版；注册表/快捷方式正确。",
       "estimateEngineerHours": {
@@ -1786,8 +1793,10 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "3e3bd13",
-        "latestImplementationCommit": "2ac5a0d6fc1f098501f3a3135f006d273aafd51f",
-        "verification": "最终候选包的 505 文件隔离安装/覆盖/卸载/数据保留记录见 installation-acceptance-2026-10-28.json。最新 installer-script.check.mjs 为 7/7 PASS；无窗口进程实测 4549ms 停止。该合成 fixture 不等于真实播放/隐藏窗口和取消保护验收，因此 V04 仍为 open。"
+        "latestImplementationCommit": "faa4cdb5c83c1492d5036d8c58a44de1d9450045",
+        "verification": "最终候选包的 505 文件隔离安装/覆盖/卸载/数据保留记录见 installation-acceptance-2026-10-28.json。最新 installer-script.check.mjs 为 7/7 PASS；无窗口进程实测 4549ms 停止。该合成 fixture 不等于真实播放/隐藏窗口和取消保护验收，因此 V04 仍为 open。",
+        "latestVerification": "真实 NSIS installer-script.check.mjs 8/8 通过；无窗口进程 4526 ms 停止；旧卸载器失败后旧 payload 与六个用户数据文件保留。老板键隐藏/播放中和交互式取消尚未验收。",
+        "latestEvidence": "architecture-audit/evidence/installer-rollback-2026-10-28.json"
       }
     },
     {
@@ -1888,7 +1897,7 @@
           "symbol": "current test, typecheck, lint, build gates"
         }
       ],
-      "gap": "当前提交的全量 Vitest、三套类型检查、全量 lint/架构门禁及主进程与 renderer build 均通过。最新 Windows 安装包未重新生成，最终 Electron 窗口/真实线路播放未复核，分支未 push 且缺当前远端 CI；renderer 还报告 hls chunk 超过 500 kB。",
+      "gap": "此前全量 Vitest、类型检查、lint/架构门禁与主进程/renderer build 通过；本轮两个新提交仅复跑打包回滚 2/2、安装器 NSIS 8/8。尚未在当前提交运行完整门禁、重打 Windows 包并干净安装启动、复核桌面播放，也未验证远端 CI；V06 保持 open。",
       "direction": "修复后在同一候选提交运行类型/lint/架构/正式测试/构建和上述验收，隔离目录制作唯一的本地安装包，记录 hash/尺寸/版本/提交。遵守用户不发布小版本、不创建多工作区的要求。",
       "acceptance": "所有必需任务有实现与验收链接；旧绿灯不代替当前结果；本地 Setup 在干净目录安装运行通过；保留数据及产物来源可查；不发布 Release，审计/修复改动分步提交，临时目录清理。",
       "estimateEngineerHours": {
@@ -1935,12 +1944,15 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "0119e76",
-        "verification": "当前全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过）；三套 typecheck、lint/架构边界、主进程与 renderer build 通过。最新 build 记录见 current-build-2026-10-28.json。尚未基于新提交重打 Windows 安装包、安装并复核桌面窗口，也未 push 获取远端 CI，因此 V06 仍开放。",
+        "verification": "此前全量 Vitest 505 文件/4148 测试、三套 typecheck、全量 lint/架构边界、主进程与 renderer build 通过；这些结果早于最新两个提交。最新提交定向回归 10/10 通过。当前提交完整门禁、新 Windows 安装包和远端 CI 尚未验证。",
         "latestImplementationCommits": [
           "848c876adc4312e44b619b64281e57bab4d6dfae",
-          "e785a42e14cfc44d43b1162f43f658f754fece04"
+          "e785a42e14cfc44d43b1162f43f658f754fece04",
+          "7d760eb53fc17f5b1bdfd3592f7744d75827f2f3",
+          "faa4cdb5c83c1492d5036d8c58a44de1d9450045"
         ],
-        "evidence": "architecture-audit/evidence/current-build-2026-10-28.json"
+        "evidence": "architecture-audit/evidence/current-build-2026-10-28.json",
+        "latestEvidence": "architecture-audit/evidence/focused-regressions-2026-10-28.json"
       }
     },
     {

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V04",
+  "recordedAt": "2026-10-28",
+  "implementationCommit": "faa4cdb5c83c1492d5036d8c58a44de1d9450045",
+  "change": "Installer stops with a non-zero result when the existing uninstaller fails. Acceptance verifies the old application payload and user data remain available after failed uninstall-first, and covers six data files across settings, subscriptions, cloud accounts, history, and favorites.",
+  "verification": {
+    "command": "pnpm exec node --test --test-isolation=none scripts/installer-script.check.mjs",
+    "result": "PASS: 8 tests, 0 failures",
+    "runningHeadlessProcessStopDurationMs": 4526,
+    "oldUninstallerFailureRollback": "PASS: prior payload and all six user-data files restored/preserved",
+    "dataDomains": [
+      "settings",
+      "subscriptions",
+      "cloud accounts",
+      "history",
+      "favorites",
+      "user configuration"
+    ],
+    "overwriteUninstallReinstallRegistryAndShortcuts": "PASS"
+  },
+  "limitations": [
+    "Process-stop fixture is a headless timer process, not Win-Box while playing or hidden by boss-key.",
+    "Interactive cancellation preserving the prior installation and data migration after a real app upgrade remain unverified."
+  ]
+}
