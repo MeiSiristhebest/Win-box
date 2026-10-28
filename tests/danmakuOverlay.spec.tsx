@@ -101,6 +101,63 @@ describe('DanmakuOverlay canvas adapter', () => {
     expect(requestFrame).not.toHaveBeenCalled();
   });
 
+  it('clears the full backing canvas before every active animation frame', () => {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let nextFrame = 0;
+    const requestFrame = vi.fn((callback: FrameRequestCallback) => {
+      const id = ++nextFrame;
+      callbacks.set(id, callback);
+      return id;
+    });
+    const cancelFrame = vi.fn((id: number) => callbacks.delete(id));
+    vi.stubGlobal('ResizeObserver', ResizeObserverFixture);
+    vi.stubGlobal('requestAnimationFrame', requestFrame);
+    vi.stubGlobal('cancelAnimationFrame', cancelFrame);
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => canvasContext as never);
+    const videoRef = createRef<HTMLVideoElement>();
+
+    const view = render(
+      <div>
+        <video ref={videoRef}><track kind="captions" /></video>
+        <DanmakuOverlay
+          videoRef={videoRef}
+          items={[]}
+          enabled
+          region="full"
+          fontSize={24}
+          opacity={1}
+          density={1}
+          speed={110}
+          offset={0}
+        />
+      </div>,
+    );
+    const canvas = view.container.querySelector('canvas');
+    expect(canvas).not.toBeNull();
+    Object.defineProperty(canvas, 'clientWidth', { configurable: true, value: 200 });
+    Object.defineProperty(canvas, 'clientHeight', { configurable: true, value: 100 });
+
+    const clearCallsBeforeActiveFrames = canvasContext.clearRect.mock.calls.length;
+    const advancePendingFrame = (timestamp: number) => {
+      const pending = callbacks.entries().next().value;
+      expect(pending, 'renderer should have one pending animation frame').toBeDefined();
+      if (!pending) return;
+      callbacks.delete(pending[0]);
+      pending[1](timestamp);
+    };
+    advancePendingFrame(16);
+    advancePendingFrame(32);
+
+    expect(canvasContext.clearRect.mock.calls.slice(clearCallsBeforeActiveFrames)).toEqual([
+      [0, 0, 200, 100],
+      [0, 0, 200, 100],
+    ]);
+    const pendingFrameId = callbacks.keys().next().value;
+    view.unmount();
+    expect(pendingFrameId).toBeDefined();
+    expect(cancelFrame).toHaveBeenCalledWith(pendingFrameId);
+  });
+
   it('clears mpv size polling when the overlay unmounts', () => {
     vi.useFakeTimers();
     vi.stubGlobal('ResizeObserver', ResizeObserverFixture);
