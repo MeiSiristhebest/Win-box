@@ -129,6 +129,7 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
   if (!inside(artifactRoot, outputDirectory)) throw new Error('Playback acceptance artifacts must be inside the workspace .tmp directory.');
   if (artifactDirectory) await mkdir(outputDirectory, { recursive: false });
   const reportPath = join(outputDirectory, 'playback-acceptance.json');
+  const html5ScreenshotPath = join(outputDirectory, 'playback-acceptance-html5.png');
   const mpvScreenshotPath = join(outputDirectory, 'playback-acceptance-mpv.png');
   if (!artifactDirectory && ((await stat(reportPath).catch(() => null)) || (await stat(mpvScreenshotPath).catch(() => null)))) {
     throw new Error('Playback acceptance artifacts already exist. Use --artifact-dir with a new .tmp directory to preserve them.');
@@ -237,6 +238,38 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
     await player.locator('.vplayer').hover();
     await player.locator('.vp-ctl[title="暂停"]').click();
     await player.waitForFunction(() => document.querySelector('video')?.paused === true);
+    await player.waitForFunction(() => {
+      const feedback = document.querySelector('.vplayer > .vp-big');
+      return feedback && Number.parseFloat(getComputedStyle(feedback).opacity) >= 0.99;
+    });
+    const pauseFeedback = await player.locator('.vplayer > .vp-big').evaluate(button => {
+      const rect = button.getBoundingClientRect();
+      const playerRect = button.parentElement.getBoundingClientRect();
+      const iconRect = button.querySelector('svg')?.getBoundingClientRect();
+      const style = getComputedStyle(button);
+      return {
+        width: rect.width,
+        height: rect.height,
+        iconWidth: iconRect?.width ?? 0,
+        iconHeight: iconRect?.height ?? 0,
+        centerOffsetX: rect.left + rect.width / 2 - (playerRect.left + playerRect.width / 2),
+        centerOffsetY: rect.top + rect.height / 2 - (playerRect.top + playerRect.height / 2),
+        opacity: style.opacity,
+        background: style.backgroundColor,
+        backdropFilter: style.backdropFilter,
+        boxShadow: style.boxShadow,
+      };
+    });
+    assert.equal(pauseFeedback.width, 28, 'Pause feedback should remain compact');
+    assert.equal(pauseFeedback.height, 28, 'Pause feedback should remain compact');
+    assert.equal(pauseFeedback.iconWidth, 14, 'Pause icon should remain compact');
+    assert.equal(pauseFeedback.iconHeight, 14, 'Pause icon should remain compact');
+    assert.ok(Math.abs(pauseFeedback.centerOffsetX) <= 0.5, 'Pause feedback should be horizontally centered');
+    assert.ok(Math.abs(pauseFeedback.centerOffsetY) <= 0.5, 'Pause feedback should be vertically centered');
+    assert.equal(pauseFeedback.backdropFilter, 'none', 'Pause feedback must not blur the video');
+    assert.equal(pauseFeedback.boxShadow, 'none', 'Pause feedback must not add a heavy shadow');
+    await player.screenshot({ path: html5ScreenshotPath });
+    record('html5-pause-feedback-compact-centered-and-sharp', pauseFeedback);
     const html5PausedAt = await player.locator('video').evaluate(video => video.currentTime);
     await player.locator('.vp-ctl[title="播放"]').click();
     await player.waitForFunction(pausedAt => { const video = document.querySelector('video'); return video && !video.paused && video.currentTime > pausedAt + 0.5; }, html5PausedAt);
