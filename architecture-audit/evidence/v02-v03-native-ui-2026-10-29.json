@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T17:00:49Z",
+  "candidate": {
+    "version": "1.27.1",
+    "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "setupSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
+    "winBoxExeSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30"
+  },
+  "scope": "Native desktop launch feasibility and V02/V03 UI acceptance follow-up; no user installation or profile was used.",
+  "releaseDirectoryObservation": {
+    "status": "PRESERVED",
+    "fileCount": 454,
+    "bytes": 533313738,
+    "extraRuntimeDataFiles": [
+      { "path": "data/local-pkgs.json", "bytes": 18, "modifiedAt": "2026-10-28T16:20:00Z" },
+      { "path": "data/winbox-cache/spider/converted/.converted-version", "bytes": 1, "modifiedAt": "2026-10-28T16:20:00Z" },
+      { "path": "data/.winbox-migrated.json", "bytes": 101, "modifiedAt": "2026-10-28T16:20:00Z" }
+    ],
+    "note": "These three runtime/profile files were absent from the earlier 451-file package payload. The files in the existing release directory were not modified or deleted; only the isolated temporary copy was normalized to the recorded build payload before the ACL probe, and that copy was removed afterward."
+  },
+  "isolatedProbe": {
+    "temporaryCopyBaseline": { "fileCount": 451, "bytes": 533313618 },
+    "aclOperation": "icacls <temporary-copy> /grant *S-1-15-2-1:(OI)(CI)(RX) /T /C",
+    "aclResult": "BLOCKED_ACCESS_DENIED",
+    "aclOutput": "0 files processed, 1 failed",
+    "elevationRequested": false,
+    "appLaunchAttempted": false,
+    "windowsFound": [],
+    "temporaryCopyCleanup": "PASS"
+  },
+  "playbackAcceptance": {
+    "status": "NOT_VERIFIED_THIS_PROBE",
+    "note": "No Win-Box, MPV, or PotPlayer window was available. No fixture playback, desktop pixel, time progression, pause/resume, route/theme/DPI matrix, or live source test was run. Prior local HTML5 and managed MPV fixture results remain in the linked candidate playback evidence."
+  },
+  "classification": "PARTIAL",
+  "blocker": "The current execution identity cannot add the required AppContainer read/execute ACL even on the isolated copy. No privilege escalation or security prompt was attempted."
+}
