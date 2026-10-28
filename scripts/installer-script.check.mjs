@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildInstallerScript } from './installer-script.mjs';
-import { verifyInstallation } from './verify-installation.mjs';
+import { installationAcceptanceWorkspacePrefix, verifyInstallation } from './verify-installation.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 await mkdir(join(root, '.tmp'), { recursive: true });
@@ -182,6 +183,18 @@ test('real NSIS installation, overwrite and uninstall preserve user files', { sk
     assert.equal(result.registryAndShortcuts, 'PASS');
     assert.equal(result.cleaned, true);
   } finally { await rm(path, { recursive: true, force: true }); }
+});
+
+test('acceptance input preflight failure removes its system-temp workspace', { skip: process.platform !== 'win32', timeout: 30_000 }, async () => {
+  const path = await fixture();
+  const temporaryRoot = await realpath(tmpdir());
+  const before = new Set(await readdir(temporaryRoot));
+  try {
+    await rm(join(path, 'Win-Box.exe'));
+    await assert.rejects(verifyInstallation(path), /missing Win-Box\.exe/);
+  } finally { await rm(path, { recursive: true, force: true }); }
+  const leaked = (await readdir(temporaryRoot)).filter(name => name.startsWith(installationAcceptanceWorkspacePrefix) && !before.has(name));
+  assert.deepEqual(leaked, []);
 });
 
 test('real NSIS overwrite stops a running same-directory app process first', { skip: process.platform !== 'win32', timeout: 120_000 }, async t => {

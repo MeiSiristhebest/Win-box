@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -9,6 +10,7 @@ import { compileNsis } from './nsis-tool.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const inside = (parent, path) => { const rel = relative(parent, path); return rel !== '' && rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel); };
+export const installationAcceptanceWorkspacePrefix = 'winbox-installation-acceptance-';
 async function files(directory, prefix = '') {
   const result = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -67,15 +69,14 @@ function shortcutTarget(path) {
   return child.stdout.trim();
 }
 
-/** Executes real NSIS install/overwrite/uninstall file operations in a fresh workspace directory. */
+/** Executes real NSIS install/overwrite/uninstall file operations in a fresh system-temp directory. */
 export async function verifyInstallation(appDir, { stopRunningProcess = false, simulateExistingUninstallerFailure = false } = {}) {
   if (process.platform !== 'win32') throw new Error('Installer acceptance requires Windows.');
   appDir = await realpath(resolve(appDir));
   const workspace = await realpath(ROOT);
   if (!inside(workspace, appDir)) throw new Error('Acceptance input must be inside the workspace.');
-  await mkdir(join(ROOT, '.tmp'), { recursive: true });
-  const work = await mkdtemp(join(ROOT, '.tmp', 'installation acceptance-'));
-  if (!inside(workspace, await realpath(work))) throw new Error('Acceptance directory escaped the workspace.');
+  const temporaryRoot = await realpath(tmpdir());
+  const work = await mkdtemp(join(temporaryRoot, installationAcceptanceWorkspacePrefix));
   const installed = join(work, 'installed app');
   const script = join(work, 'installer.nsi');
   const installer = join(work, 'Setup.exe');
@@ -89,15 +90,28 @@ export async function verifyInstallation(appDir, { stopRunningProcess = false, s
   const integrationScript = join(work, 'installer-integration.nsi');
   const integrationInstaller = join(work, 'Setup-integration.exe');
   const integrationRegistryKey = `Software\\WinBoxAcceptance\\${randomUUID()}`;
-  const version = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')).version;
-  const sourceFiles = await files(appDir);
-  if (!sourceFiles.includes('Win-Box.exe')) throw new Error('Acceptance input is missing Win-Box.exe.');
-  const installerOptions = { appDir, version, isolatedInstallDir: installed, icon: join(ROOT, 'build/icon.ico'), license: join(ROOT, 'LICENSE') };
-  await writeFile(script, '\uFEFF' + await buildInstallerScript({ ...installerOptions, outFile: installer }));
-  await compileNsis(script);
-  const verifyCopies = async () => {
-    for (const path of sourceFiles) if (await digest(join(appDir, path)) !== await digest(join(installed, path))) throw new Error(`Installed file mismatch: ${path}`);
-  };
+  let sourceFiles;
+  let installerOptions;
+  let verifyCopies;
+  try {
+    if (!inside(temporaryRoot, await realpath(work))) throw new Error('Acceptance directory escaped the system temporary directory.');
+    const version = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')).version;
+    sourceFiles = await files(appDir);
+    if (!sourceFiles.includes('Win-Box.exe')) throw new Error('Acceptance input is missing Win-Box.exe.');
+    installerOptions = { appDir, version, isolatedInstallDir: installed, icon: join(ROOT, 'build/icon.ico'), license: join(ROOT, 'LICENSE') };
+    await writeFile(script, '\uFEFF' + await buildInstallerScript({ ...installerOptions, outFile: installer }));
+    await compileNsis(script);
+    verifyCopies = async () => {
+      for (const path of sourceFiles) if (await digest(join(appDir, path)) !== await digest(join(installed, path))) throw new Error(`Installed file mismatch: ${path}`);
+    };
+  } catch (error) {
+    try {
+      await rm(work, { recursive: true, force: true });
+    } catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], 'Installer acceptance preparation failed and cleanup also failed.');
+    }
+    throw error;
+  }
   let running;
   let lockHolder;
   let runningStartedAt;
@@ -337,6 +351,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const version = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8')).version;
   const options = parseInstallationAcceptanceArgs(process.argv.slice(2), join(ROOT, `release${version}`, 'win-unpacked'));
   const result = { recordedAt: new Date().toISOString(), ...await verifyInstallation(options.appDir, options) };
-  await writeFile(join(ROOT, '.tmp/installation-acceptance.json'), JSON.stringify(result, null, 2));
-  console.log(JSON.stringify(result, null, 2));
+  const evidencePath = join(tmpdir(), `winbox-installation-acceptance-${version}-${randomUUID()}.json`);
+  await writeFile(evidencePath, JSON.stringify(result, null, 2));
+  console.log(JSON.stringify({ ...result, evidencePath }, null, 2));
 }
