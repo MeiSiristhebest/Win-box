@@ -1134,10 +1134,10 @@ describe('plugin 契约 — L4 权限（kind:"code" / permissions / permissionNo
     expect(validatePluginManifest(code())).toEqual({ ok: true });
   });
 
-  it('白名单 12 项齐全，且 PermissionId 守卫只认白名单', () => {
+  it('白名单 13 项齐全，且 PermissionId 守卫只认白名单', () => {
     expect([...PERMISSIONS]).toEqual([
       'net', 'net.download', 'kv', 'settings', 'fs.plugin', 'log',
-      'notify', 'clipboard.read', 'clipboard.write', 'dialog', 'player.control', 'openExternal',
+      'notify', 'clipboard.read', 'clipboard.write', 'dialog', 'player.control', 'openExternal', 'spider.runtime',
     ]);
     for (const p of PERMISSIONS) expect(PERMISSION_LABELS[p]).toBeTruthy();
     for (const p of PERMISSIONS) expect(isPermission(p)).toBe(true);

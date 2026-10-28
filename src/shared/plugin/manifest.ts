@@ -10,6 +10,7 @@ import { validateUiCommandContribute, validateKeymapContribute } from './uiActio
 import { validateSettingsPanelContribute } from './settingsPanel';
 import { validateUiSlotContribute } from './uiSlot';
 import { validatePlayerEngineContribute } from './playerEngine';
+import { validateSpiderRuntimeContribute } from './spiderRuntime';
 
 export const HOST_API_VERSION = '1.x';
 export const MANIFEST_VERSION = 1;
@@ -30,6 +31,8 @@ export const CONTRIBUTES: Record<string, { kinds: PluginKind[]; level: PluginLev
   'discover.source': { kinds: ['asset', 'code'], level: 'L2' },
   'live.template': { kinds: ['asset'], level: 'L2' },
   'player.engine': { kinds: ['code'], level: 'L2' },
+  // Spider runtime executes plugin-supplied code and therefore requires an explicit L4 permission.
+  'spider.runtime': { kinds: ['code'], level: 'L4' },
   'ui.slot': { kinds: ['asset'], level: 'L3' },
   'ui.command': { kinds: ['asset', 'code'], level: 'L3' },
   // ★ 2026-10-18（R10）：`settings.panel` 允许 `code` —— §5.11 明确「值的读取面留给 L4」，
@@ -44,7 +47,7 @@ export const CONTRIBUTES: Record<string, { kinds: PluginKind[]; level: PluginLev
  */
 export const PERMISSIONS = [
   'net', 'net.download', 'kv', 'settings', 'fs.plugin', 'log',
-  'notify', 'clipboard.read', 'clipboard.write', 'dialog', 'player.control', 'openExternal',
+  'notify', 'clipboard.read', 'clipboard.write', 'dialog', 'player.control', 'openExternal', 'spider.runtime',
 ] as const;
 /** 白名单权限的字面量类型（沙箱挂载表 / 宿主 API 面共用） */
 export type PermissionId = (typeof PERMISSIONS)[number];
@@ -63,6 +66,7 @@ export const PERMISSION_LABELS: Record<PermissionId, string> = {
   dialog: '显示应用内提示与确认',
   'player.control': '控制播放（播放 / 暂停 / 进度 / 音轨 / 字幕 / 音量）',
   openExternal: '用系统程序打开链接',
+  'spider.runtime': '执行第三方 Spider 运行时代码。仅安装你信任的代码插件；插件 worker 不是安全隔离边界',
 };
 
 /** 判定是否白名单权限（校验器与沙箱共用；`PermissionId` 的守卫） */
@@ -153,6 +157,7 @@ const CONTRIBUTION_CONTENT_RULES: Record<string, ContributionContentRule> = {
   'settings.panel': { appliesTo: 'all', validate: validateSettingsPanelContribute },
   'ui.slot': { appliesTo: 'asset', validate: validateUiSlotContribute },
   'player.engine': { appliesTo: 'all', validate: validatePlayerEngineContribute },
+  'spider.runtime': { appliesTo: 'all', validate: validateSpiderRuntimeContribute },
 };
 
 function validateContributionContent(contribution: Contribute, kind: PluginKind): ValidateResult | undefined {
@@ -206,6 +211,7 @@ export function validatePluginManifest(m: unknown): ValidateResult {
 
   const contributes = Array.isArray(p.contributes) ? p.contributes : null;
   if (!contributes) return { ok: false, reasonCode: 'UNKNOWN_CONTRIBUTE', reason: 'contributes 必须是数组' };
+  const spiderRuntimeIds = new Set<string>();
   for (const c of contributes) {
     if (!c || typeof c !== 'object') return { ok: false, reasonCode: 'UNKNOWN_CONTRIBUTE', reason: 'contributes 项非法' };
     const def = CONTRIBUTES[c.type];
@@ -213,6 +219,16 @@ export function validatePluginManifest(m: unknown): ValidateResult {
     if (!def.kinds.includes(p.kind)) return { ok: false, reasonCode: 'UNKNOWN_CONTRIBUTE_KIND', reason: `${c.type} 不支持 kind=${p.kind}` };
     const contentResult = validateContributionContent(c, p.kind);
     if (contentResult && !contentResult.ok) return contentResult;
+    if (c.type === 'spider.runtime' && !perms.includes('spider.runtime')) {
+      return { ok: false, reasonCode: 'KIND_PERM_MISMATCH', reason: 'spider.runtime 需要显式声明 spider.runtime 权限并由用户确认' };
+    }
+    if (c.type === 'spider.runtime') {
+      const id = (c as Record<string, unknown>).id;
+      if (typeof id === 'string' && spiderRuntimeIds.has(id)) {
+        return { ok: false, reasonCode: 'SPIDER_RUNTIME_INVALID', reason: `spider.runtime id 重复：${id}` };
+      }
+      if (typeof id === 'string') spiderRuntimeIds.add(id);
+    }
     for (const mode of c.modes ?? []) {
       for (const s of mode.shaders ?? []) {
         if (!isSafeRelPath(s)) return { ok: false, reasonCode: 'PATH_ESCAPE', reason: `shader 名称非法：${s}` };

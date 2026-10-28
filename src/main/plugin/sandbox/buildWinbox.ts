@@ -1,16 +1,18 @@
 // src/main/plugin/sandbox/buildWinbox.ts
-// ★★ L4 沙箱的**权限门禁**（纯函数、无 electron / 无 node:vm 依赖，可单测）★★
+// ★★ L4 插件 API 的**权限面收敛**（纯函数、无 electron / 无 node:vm 依赖，可单测）★★
 //
 // 铁律（R10，规范 §6.2）：沙箱内**未授权的 `winbox.*` 根本不存在**（`typeof === 'undefined'`，
 //   调用即 `TypeError`），**不是**「存在但抛错」。→ 由本文件的**挂载表**保证：
 //   只把已授权的组挂到 `winbox` 上，其余一律不挂。
 //
-// 另一条铁律：沙箱全局**没有** `require` / `process` / `module` / `exports` / `global` /
-//   `Buffer` / `fs` / `child_process` —— 只给出最小集（console + 定时器 + 编码/URL 工具）。
+// 另一条铁律：VM 全局**没有** `require` / `process` / `module` / `exports` / `global` /
+//   `Buffer` / `fs` / `child_process` —— 只给出最小集。node:vm / worker_threads 不是安全边界；
+//   代码插件必须经安装确认，并且只应安装可信来源。
 //
 // 事实源：docs/design/插件制作规范.md §6.1；docs/spec/R10-l4-sandbox-api/spec.md §4。
 
 import type { PermissionId } from '../../../shared/plugin';
+import type { SpiderRuntimeContribute, SpiderRuntimeOperation } from '../../../shared/plugin';
 import type { PluginHttpOpts, PlayerOp, SandboxCall } from './protocol';
 
 /** 构建结果：`winbox` 对象 + vm 上下文全局 + 下载进度派发口 */
@@ -21,7 +23,11 @@ export interface WinboxGlobals {
   globals: Record<string, unknown>;
   /** 宿主回 `progress` 消息时按 id 派发（`download` 的 onProgress） */
   deliverProgress(id: number, loaded: number, total: number): void;
+  /** Registered handlers are kept outside the VM globals and invoked only by the host request bridge. */
+  spiderHandlers: Map<string, Partial<Record<SpiderRuntimeOperation, SpiderRuntimeHandler>>>;
 }
+
+export type SpiderRuntimeHandler = (input: unknown, context: { signal: AbortSignal }) => unknown | Promise<unknown>;
 
 /** 把任意值转成可读日志文本（console 用） */
 function toText(v: unknown): string {
@@ -45,15 +51,50 @@ function isHttpUrl(u: unknown): boolean {
  * @param permissions 已授权权限（来自 `manifest.permissions`，安装期已过白名单校验）
  * @param call        宿主调用桥（worker 侧注入；返回 Promise）
  */
-export function buildWinbox(permissions: readonly PermissionId[], call: SandboxCall): WinboxGlobals {
+export function buildWinbox(
+  permissions: readonly PermissionId[],
+  call: SandboxCall,
+  spiderRuntimes: readonly SpiderRuntimeContribute[] = [],
+): WinboxGlobals {
   const has = (p: PermissionId): boolean => permissions.includes(p);
   /** 每次能力调用分配一个自增 id（与宿主回执/进度按 id 配对） */
   let seq = 1;
   const nextId = (): number => seq++;
 
   const progressCbs = new Map<number, (loaded: number, total: number) => void>();
+  const spiderHandlers = new Map<string, Partial<Record<SpiderRuntimeOperation, SpiderRuntimeHandler>>>();
 
   const winbox: Record<string, unknown> = {};
+
+  // ---- spider.runtime: trusted code contribution, restricted to manifest-declared protocols ----
+  if (has('spider.runtime') && spiderRuntimes.length > 0) {
+    const byId = new Map(spiderRuntimes.map((item) => [item.id, item]));
+    winbox.spider = {
+      register: (idValue: unknown, handlersValue: unknown): void => {
+        if (typeof idValue !== 'string') throw new Error('Spider provider id 须为字符串');
+        const descriptor = byId.get(idValue);
+        if (!descriptor) throw new Error(`Spider provider 未在 plugin.json 声明：${idValue}`);
+        if (spiderHandlers.has(idValue)) throw new Error(`Spider provider 已注册：${idValue}`);
+        if (!handlersValue || typeof handlersValue !== 'object' || Array.isArray(handlersValue)) {
+          throw new Error('Spider handlers 须为方法对象');
+        }
+        const handlers = handlersValue as Record<string, unknown>;
+        const declared = new Set(descriptor.operations);
+        for (const operation of Object.keys(handlers)) {
+          if (!declared.has(operation as SpiderRuntimeOperation)) {
+            throw new Error(`Spider 操作未在 plugin.json 声明：${operation}`);
+          }
+        }
+        const registered: Partial<Record<SpiderRuntimeOperation, SpiderRuntimeHandler>> = {};
+        for (const operation of descriptor.operations) {
+          const handler = handlers[operation];
+          if (typeof handler !== 'function') throw new Error(`Spider 操作缺少处理函数：${operation}`);
+          registered[operation] = handler as SpiderRuntimeHandler;
+        }
+        spiderHandlers.set(idValue, registered);
+      },
+    };
+  }
 
   // ---- net（HTTP，经宿主）----
   if (has('net')) {
@@ -203,6 +244,7 @@ export function buildWinbox(permissions: readonly PermissionId[], call: SandboxC
   return {
     winbox,
     globals,
+    spiderHandlers,
     deliverProgress: (id: number, loaded: number, total: number): void => {
       const cb = progressCbs.get(id);
       if (cb) {

@@ -24,5 +24,7 @@ export { UI_SLOT_IDS, UI_SLOT_ITEM_TYPES, validateUiSlotContribute, uiSlotContri
 export type { UiSlotId, UiSlotItemType, UiSlotKvItem, UiSlotItem, UiSlotContribute } from './plugin/uiSlot';
 export { PLAYER_ENGINE_PROTOCOLS, PLAYER_ENGINE_CAPABILITIES, PLAYER_ENGINE_PLACEHOLDERS, validatePlayerEngineContribute, playerEngineContributeOf } from './plugin/playerEngine';
 export type { PlayerEngineProtocol, PlayerEngineBinarySource, PlayerEngineCapability, PlayerEngineContribute } from './plugin/playerEngine';
+export { SPIDER_RUNTIME_OPERATIONS, validateSpiderRuntimeContribute, boundedJsonClone } from './plugin/spiderRuntime';
+export type { SpiderRuntimeOperation, SpiderRuntimeContribute } from './plugin/spiderRuntime';
 export * from './plugin/manifest';
 export * from './plugin/viewModels';

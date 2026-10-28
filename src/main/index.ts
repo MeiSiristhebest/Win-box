@@ -228,6 +228,7 @@ const hostServices = createSpiderHostServices(hostInfrastructure, {
     torrentPlayback: torrent,
     liveTemplates: () => plugins.liveTemplates(),
   },
+  runtimeProviders: [plugins.spiderRuntimeProvider()],
 });
 const syncDriveCredentialFiles = (): void => {
   hostServices.driveCredentialSynchronizer.sync(hostServices.drives.list(), hostServices.ucTvStore.get());

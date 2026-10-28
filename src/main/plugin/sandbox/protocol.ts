@@ -12,6 +12,7 @@
 // 事实源：docs/design/插件制作规范.md §6.1；docs/spec/R10-l4-sandbox-api/spec.md §3。
 
 import type { PermissionId } from '../../../shared/plugin';
+import type { SpiderRuntimeContribute, SpiderRuntimeOperation } from '../../../shared/plugin';
 
 /** `winbox.http(url, opts)` 的 opts（受限：仅 get/post + 头 + 体） */
 export interface PluginHttpOpts {
@@ -56,6 +57,22 @@ export type HostReply =
   | { t: 'reply'; id: number; ok: boolean; value?: unknown; error?: string }
   | { t: 'progress'; id: number; loaded: number; total: number };
 
+/** Host-initiated Spider calls; plugin code is only run after the manifest permission is confirmed. */
+export type SpiderRuntimeHostRequest =
+  | { t: 'spider.invoke'; id: number; providerId: string; operation: SpiderRuntimeOperation; input: unknown }
+  | { t: 'spider.cancel'; id: number };
+
+/** Worker-to-host result for a host-initiated Spider call. */
+export interface SpiderRuntimeWorkerResult {
+  t: 'spider.result';
+  id: number;
+  ok: boolean;
+  value?: unknown;
+  error?: string;
+}
+
+export type PluginWorkerMessage = HostCall | SpiderRuntimeWorkerResult;
+
 /** worker 启动参数（`workerData`） */
 export interface PluginWorkerData {
   pluginId: string;
@@ -65,6 +82,8 @@ export interface PluginWorkerData {
   mainFile: string;
   /** 已授权权限（★ 决定 globals 里挂哪些 `winbox.*`） */
   permissions: PermissionId[];
+  /** Manifest-validated protocols, sent only with the explicit spider.runtime permission. */
+  spiderRuntimes: SpiderRuntimeContribute[];
 }
 
 /** 单次宿主调用（worker 侧注入 `buildWinbox`；返回 Promise） */

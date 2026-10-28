@@ -5,6 +5,7 @@ import type { Logger } from '../../../shared/types';
 import type { PluginKind, PluginSandboxView } from '../../../shared/plugin';
 import { PluginSandbox, type PluginSandboxOptions, type SandboxLike } from './PluginSandbox';
 import type { PluginSandboxApi } from './protocol';
+import type { SpiderRuntimeContribute, SpiderRuntimeOperation } from '../../../shared/plugin';
 
 /** 与登记表对齐所需的最小条目描述（由 PluginHost 提供） */
 export interface SandboxEntry {
@@ -21,6 +22,7 @@ export interface SandboxEntry {
   /** 入口文件内容摘要，用于检测原地覆盖的同版本插件 */
   contentFingerprint?: string;
   permissions: string[];
+  spiderRuntimes?: SpiderRuntimeContribute[];
 }
 
 export interface PluginSandboxLifecycleOptions {
@@ -34,6 +36,7 @@ export interface PluginSandboxLifecycleOptions {
 interface SandboxRecord {
   identity: string;
   permissions: string[];
+  spiderRuntimes: SpiderRuntimeContribute[];
   box: SandboxLike;
   startPromise: Promise<void>;
   invalidated: Promise<void>;
@@ -104,6 +107,26 @@ export class PluginSandboxLifecycle {
     return failure ? { running: false, error: failure.error } : undefined;
   }
 
+  /** Route a validated Spider request only to the current, enabled provider generation. */
+  invokeSpider(
+    pluginId: string,
+    providerId: string,
+    operation: SpiderRuntimeOperation,
+    input: unknown,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const record = this.boxes.get(pluginId);
+    if (!record || record.disposed || !record.startedSuccessfully || !record.box.running) {
+      return Promise.reject(new Error(`插件 Spider provider 未启用或未运行：${pluginId}`));
+    }
+    if (!record.permissions.includes('spider.runtime')) return Promise.reject(new Error('插件未获 spider.runtime 授权'));
+    const provider = record.spiderRuntimes.find((item) => item.id === providerId);
+    if (!provider || !provider.operations.includes(operation)) return Promise.reject(new Error('Spider provider 或操作未在当前插件版本声明'));
+    if (!record.box.invokeSpider) return Promise.reject(new Error('当前插件沙箱不支持 Spider 调用'));
+    return record.box.invokeSpider(providerId, operation, input, timeoutMs, signal);
+  }
+
   disposeAll(): void {
     for (const [id, record] of this.boxes) {
       this.boxes.delete(id);
@@ -121,6 +144,7 @@ export class PluginSandboxLifecycle {
     const record: SandboxRecord = {
       identity,
       permissions: [...entry.permissions],
+      spiderRuntimes: [...(entry.spiderRuntimes ?? [])],
       box,
       startPromise: Promise.resolve(),
       invalidated,
@@ -181,6 +205,7 @@ export class PluginSandboxLifecycle {
       pluginDir: entry.path,
       mainFile: entry.main as string,
       permissions: entry.permissions as PluginSandboxOptions['permissions'],
+      spiderRuntimes: entry.spiderRuntimes,
       api: this.opts.api,
       workerFile: this.opts.workerFile,
       logger: this.opts.logger,
@@ -196,6 +221,7 @@ function identityOf(entry: SandboxEntry): string {
     main: entry.main ?? '',
     permissions: [...new Set(entry.permissions)].sort(),
     contentFingerprint: entry.contentFingerprint ?? '',
+    spiderRuntimes: entry.spiderRuntimes ?? [],
   });
 }
 

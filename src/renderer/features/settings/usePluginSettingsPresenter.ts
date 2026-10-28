@@ -122,10 +122,12 @@ export function usePluginSettingsPresenter(dependencies: PluginSettingsDependenc
       if (!inspection.ok || !inspection.path) throw new Error(inspection.reason || inspection.reasonCode || '插件包无效');
       if (inspection.kind === 'code') {
         const permissions = (inspection.permissions ?? []).map((permission) =>
-          `${permission}：${inspection.permissionNotes?.[permission] || permissionLabels[permission] || ''}`,
+          `${permission}：${permission === 'spider.runtime'
+            ? `${permissionLabels[permission] || ''}${inspection.permissionNotes?.[permission] ? `；插件说明：${inspection.permissionNotes[permission]}` : ''}`
+            : inspection.permissionNotes?.[permission] || permissionLabels[permission] || ''}`,
         ).join('\n');
         const accepted = await confirm(
-          `插件：${inspection.name}\n${permissions}\n代码将在独立沙箱中运行。是否安装？`,
+          `插件：${inspection.name}\n${permissions}\n代码在插件 worker 中运行；worker 不是安全隔离边界。仅安装你信任的代码插件。是否安装？`,
           { title: '确认插件权限', confirmLabel: '确认安装' },
         );
         if (!accepted) return;

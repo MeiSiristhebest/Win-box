@@ -20,16 +20,18 @@ import { PluginContributionCatalog } from './PluginContributionCatalog';
 import { PluginSettingsService } from './PluginSettingsService';
 import { createBuiltinPluginMaterializer } from './BuiltinPluginMaterializer';
 import { PluginRegistry, BUILTIN_MARKER, type PluginEntry } from './PluginRegistry';
-import type {
-  KeymapView,
-  PlayerEngineView,
-  PluginInspectResult,
-  PluginView,
-  SettingsPanelView,
-  SrState,
-  ThemeSkinView,
-  UiCommandView,
-  UiSlotView,
+import {
+  validateSpiderRuntimeContribute,
+  type SpiderRuntimeContribute,
+  type KeymapView,
+  type PlayerEngineView,
+  type PluginInspectResult,
+  type PluginView,
+  type SettingsPanelView,
+  type SrState,
+  type ThemeSkinView,
+  type UiCommandView,
+  type UiSlotView,
 } from '../../shared/plugin';
 import type { EngineLaunchSpec } from '../player/PlayerEngineController';
 import type { MetaProvider } from './pluginMetaProvider';
@@ -41,6 +43,9 @@ import { PluginSandboxLifecycle, type SandboxEntry } from './sandbox/PluginSandb
 import type { PluginSandboxApi } from './sandbox/protocol';
 import type { PluginSettingsAccess } from './pluginHostApi';
 import type { Logger } from '../../shared/types';
+import type { EngineHost } from '../../engine/ports';
+import type { SpiderRuntimeProvider } from '../../engine/spider/SpiderRuntimeProvider';
+import { PluginSpiderRuntimeProvider, type ActiveSpiderRuntimeContribute } from './PluginSpiderRuntimeProvider';
 
 export interface PluginOpResult {
   ok: boolean;
@@ -152,10 +157,15 @@ export class PluginHost {
   /** 卸载：删 `<id>.winbox/`（含 .tmp/.bak 残留）与启停记录 */
   async uninstall(id: string): Promise<PluginOpResult> {
     try {
-      this.setDisabled(this.disabled().filter((x) => x !== id));
+      const disabled = this.disabled();
+      this.setDisabled(disabled.includes(id) ? disabled : [...disabled, id]);
     } catch (error) {
       return { ok: false, reason: persistenceFailure(error) };
     }
+    await this.ensureLoaded();
+    // Retire the old worker generation before deleting its files (Windows may keep the
+    // installed entry module in use until the worker is terminated).
+    await this.syncSandboxes();
     const base = join(this.opts.pluginsDir, id);
     for (const suffix of ['.winbox', '.winbox.tmp', '.winbox.bak']) {
       try {
@@ -163,6 +173,11 @@ export class PluginHost {
       } catch {
         /* ignore */
       }
+    }
+    try {
+      this.setDisabled(this.disabled().filter((x) => x !== id));
+    } catch (error) {
+      return { ok: false, reason: persistenceFailure(error) };
     }
     await this.refresh();
     return { ok: true, items: await this.list() };
@@ -337,6 +352,17 @@ export class PluginHost {
     return this.contributions.playerEngineSpec(id);
   }
 
+  /** Dynamic SpiderFactory extension; each request resolves against current installed/enabled plugins. */
+  spiderRuntimeProvider(): SpiderRuntimeProvider<EngineHost> {
+    return new PluginSpiderRuntimeProvider({
+      list: () => this.activeSpiderRuntimes(),
+      invoke: (pluginId, providerId, operation, input, timeoutMs, signal) => {
+        if (!this.sandbox) return Promise.reject(new Error('插件 Spider 沙箱未接入'));
+        return this.sandbox.invokeSpider(pluginId, providerId, operation, input, timeoutMs, signal);
+      },
+    });
+  }
+
   // ---- ★ R10：L4 沙箱（`kind:"code"`）----
 
   /**
@@ -410,6 +436,12 @@ export class PluginHost {
       version: e.manifest.version,
       contentFingerprint: pluginMainFingerprint(join(this.opts.pluginsDir, `${e.id}.winbox`), e.manifest.main),
       permissions: e.manifest.permissions ?? [],
+      spiderRuntimes: e.manifest.permissions?.includes('spider.runtime')
+        ? e.manifest.contributes.flatMap((contribution) => {
+          if (contribution.type !== 'spider.runtime' || !validateSpiderRuntimeContribute(contribution).ok) return [];
+          return [contribution as unknown as SpiderRuntimeContribute];
+        })
+        : [],
     }));
     await this.sandbox.sync(list);
   }
@@ -491,6 +523,19 @@ export class PluginHost {
 
   private enabled(id: string): boolean {
     return !this.disabled().includes(id);
+  }
+
+  private activeSpiderRuntimes(): ActiveSpiderRuntimeContribute[] {
+    const providers: ActiveSpiderRuntimeContribute[] = [];
+    for (const entry of this.entries) {
+      if (entry.manifest.kind !== 'code' || !entry.payloadReady || !isDirPath(entry.path) || !this.enabled(entry.id)) continue;
+      if (!entry.manifest.permissions?.includes('spider.runtime')) continue;
+      for (const contribution of entry.manifest.contributes ?? []) {
+        if (contribution.type !== 'spider.runtime' || !validateSpiderRuntimeContribute(contribution).ok) continue;
+        providers.push({ ...(contribution as unknown as SpiderRuntimeContribute), pluginId: entry.id });
+      }
+    }
+    return providers;
   }
 
   private disabled(): string[] {

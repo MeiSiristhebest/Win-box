@@ -3,8 +3,8 @@
 //   由主进程用 `new Worker(代码, { eval: true, workerData })` 启动（见 PluginSandbox.ts）——
 //   eval 方式不依赖模块路径解析，打包态 asar 内也能跑（同引擎侧 js-worker 口径）。
 //
-// ★ 安全边界：第三方代码**只在这里**跑；本线程除本协议暴露的能力外，**没有任何**宿主能力。
-//   （`require`/`process`/`fs`/`child_process` 在 vm 上下文里**不存在** —— 见 buildWinbox.ts。）
+// ★ 信任边界：这里执行用户在安装确认中明确接受的代码插件。`node:vm` 与 worker_threads
+//   不是安全隔离边界；只安装信任的插件。vm globals 用于 API 收敛与兼容，不用于抵御恶意代码。
 //
 // 事实源：docs/spec/R10-l4-sandbox-api/spec.md §6.1。
 
@@ -13,7 +13,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import vm from 'node:vm';
 import { buildWinbox, type WinboxGlobals } from './buildWinbox';
-import type { HostCall, HostReply, PluginWorkerData, SandboxCall } from './protocol';
+import { boundedJsonClone, type SpiderRuntimeContribute } from '../../../shared/plugin';
+import type { HostCall, HostReply, PluginWorkerData, SandboxCall, SpiderRuntimeHostRequest, SpiderRuntimeWorkerResult } from './protocol';
+
+const MAX_SPIDER_INPUT_BYTES = 256 * 1024;
+const MAX_SPIDER_RESULT_BYTES = 2 * 1024 * 1024;
 
 const cfg = (workerData ?? {}) as PluginWorkerData;
 const port = parentPort;
@@ -23,6 +27,8 @@ if (!port) throw new Error('plugin-worker 必须由 worker_threads 启动');
 let wg: WinboxGlobals | null = null;
 /** 在途能力调用：id → 回执 */
 const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+/** Host-initiated Spider invocations that can be canceled without affecting other calls. */
+const spiderCalls = new Map<number, AbortController>();
 
 /** 宿主调用桥：无 `id` 的消息（`log` / 生命周期）fire-and-forget，其余按 id 等 reply */
 const call: SandboxCall = (msg: HostCall) => {
@@ -36,8 +42,47 @@ const call: SandboxCall = (msg: HostCall) => {
   });
 };
 
-port.on('message', (msg: HostReply) => {
+port.on('message', (msg: HostReply | SpiderRuntimeHostRequest) => {
   if (!msg || typeof msg !== 'object') return;
+  if (msg.t === 'spider.cancel') {
+    const controller = spiderCalls.get(msg.id);
+    if (controller) {
+      spiderCalls.delete(msg.id);
+      controller.abort(new Error('Spider call canceled by host'));
+    }
+    return;
+  }
+  if (msg.t === 'spider.invoke') {
+    const handlers = wg?.spiderHandlers.get(msg.providerId);
+    const handler = handlers?.[msg.operation];
+    if (!wg || typeof handler !== 'function' || spiderCalls.has(msg.id)) {
+      port.postMessage({ t: 'spider.result', id: msg.id, ok: false, error: 'Spider handler 未注册或调用 id 重复' } satisfies SpiderRuntimeWorkerResult);
+      return;
+    }
+    let input: unknown;
+    try {
+      input = boundedJsonClone(msg.input, MAX_SPIDER_INPUT_BYTES);
+    } catch (error) {
+      port.postMessage({ t: 'spider.result', id: msg.id, ok: false, error: errorText(error) } satisfies SpiderRuntimeWorkerResult);
+      return;
+    }
+    const controller = new AbortController();
+    spiderCalls.set(msg.id, controller);
+    void Promise.resolve()
+      .then(() => handler(input, { signal: controller.signal }))
+      .then((value) => boundedJsonClone(value, MAX_SPIDER_RESULT_BYTES))
+      .then((value) => {
+        if (spiderCalls.get(msg.id) !== controller) return;
+        spiderCalls.delete(msg.id);
+        port.postMessage({ t: 'spider.result', id: msg.id, ok: true, value } satisfies SpiderRuntimeWorkerResult);
+      })
+      .catch((error: unknown) => {
+        if (spiderCalls.get(msg.id) !== controller) return;
+        spiderCalls.delete(msg.id);
+        port.postMessage({ t: 'spider.result', id: msg.id, ok: false, error: errorText(error) } satisfies SpiderRuntimeWorkerResult);
+      });
+    return;
+  }
   if (msg.t === 'progress') {
     wg?.deliverProgress(msg.id, msg.loaded, msg.total);
     return;
@@ -56,7 +101,8 @@ port.on('message', (msg: HostReply) => {
  * ★ 包成 **async IIFE** 以支持顶层 `await`（作者可直接 `await winbox.http(...)`）。
  */
 async function boot(): Promise<void> {
-  wg = buildWinbox(Array.isArray(cfg.permissions) ? cfg.permissions : [], call);
+  const runtimes: SpiderRuntimeContribute[] = Array.isArray(cfg.spiderRuntimes) ? cfg.spiderRuntimes : [];
+  wg = buildWinbox(Array.isArray(cfg.permissions) ? cfg.permissions : [], call, runtimes);
   const ctx = vm.createContext(wg.globals);
   const file = join(cfg.pluginDir, cfg.mainFile);
   let src: string;
@@ -68,6 +114,11 @@ async function boot(): Promise<void> {
   const wrapped = `(async () => {\n${src}\n})()`;
   const ret = vm.runInContext(wrapped, ctx, { filename: file, timeout: 10_000 });
   if (ret && typeof (ret as { then?: unknown }).then === 'function') await (ret as Promise<unknown>);
+}
+
+function errorText(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return text.slice(0, 2_000);
 }
 
 boot().then(

@@ -23,7 +23,9 @@ export type PluginReasonCode =
   // L4 权限说明（`permissionNotes`；键必须 ⊆ 已声明权限，值 1~200 字无换行）
   | 'BAD_PERMISSION_NOTES'
   // 第三方播放内核（`contributes.player.engine`；宿主托管进程 — 插件只给描述符）
-  | 'PLAYER_ENGINE_INVALID' | 'BAD_ENGINE_ARGS';
+  | 'PLAYER_ENGINE_INVALID' | 'BAD_ENGINE_ARGS'
+  // Spider 运行时插件（受 `spider.runtime` 显式授权）
+  | 'SPIDER_RUNTIME_INVALID';
 
 export interface ValidateResult { ok: boolean; reasonCode?: PluginReasonCode; reason?: string }
 

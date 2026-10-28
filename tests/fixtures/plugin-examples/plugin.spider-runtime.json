@@ -1,0 +1,24 @@
+{
+  "manifestVersion": 1,
+  "id": "fixture-spider-plugin",
+  "name": "Spider Runtime Fixture",
+  "version": "1.0.0",
+  "apiVersion": "1.x",
+  "kind": "code",
+  "main": "main.js",
+  "license": "MIT",
+  "description": "Local-only fixture for Spider runtime lifecycle tests.",
+  "permissions": ["spider.runtime"],
+  "permissionNotes": {
+    "spider.runtime": "Runs the local Spider runtime fixture and does not make network requests."
+  },
+  "contributes": [
+    {
+      "type": "spider.runtime",
+      "id": "fixture-spider",
+      "label": "Fixture Spider",
+      "apiPrefix": "fixture-spider://",
+      "operations": ["searchContent", "detailContent"]
+    }
+  ]
+}
