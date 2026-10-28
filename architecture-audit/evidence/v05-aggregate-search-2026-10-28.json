@@ -1,0 +1,425 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T14:57:20.453Z",
+  "status": "PARTIAL",
+  "scope": {
+    "implementation": "AggregateSearchCoordinator + SearchSourceReadiness + SourceSearchHealth + SourceGateway + CmsSourceAdapter + CmsSource",
+    "sourcesPerCycle": 1000,
+    "cyclesRequested": 10,
+    "cyclesCompleted": 10,
+    "totalLocalHttpRequests": 10000,
+    "profileCount": 3,
+    "concurrencyLimit": 48,
+    "fixture": "synthetic CMS JSON served by an ephemeral 127.0.0.1 loopback HTTP server; one generated result per source; deterministic 4-8 ms response delay",
+    "externalSources": "NOT_ACCESSED",
+    "userConfiguration": "NOT_ACCESSED; all three profiles and all source entries are generated in-process",
+    "searchWorkload": "synthetic only; this exercises production aggregate scheduling, cross-profile worker budgeting, gateway routing, CMS request parsing, and result aggregation"
+  },
+  "performance": {
+    "cycleLatencyMs": {
+      "p50": 350.6,
+      "p95": 549.5,
+      "peak": 549.5
+    },
+    "requestLatencyMs": {
+      "p50": 15.2,
+      "p95": 31.1,
+      "peak": 100.3
+    },
+    "dispatchOffsetFromCycleStartMs": {
+      "p50": 197.9,
+      "p95": 425.5,
+      "peak": 528.1
+    },
+    "throughputSourcesPerSecond": {
+      "p50": 2838.7,
+      "p95": 3171.7,
+      "peak": 3171.7
+    },
+    "maxConcurrentLoopbackRequests": {
+      "p50": 48,
+      "p95": 48,
+      "peak": 48
+    },
+    "cycleCpuPercent": {
+      "p50": 104,
+      "p95": 147.9,
+      "peak": 147.9
+    },
+    "sampledProcessMemoryMiB": {
+      "rss": {
+        "p50": 191.6,
+        "p95": 223.9,
+        "peak": 226.4
+      },
+      "heapUsed": {
+        "p50": 64.7,
+        "p95": 111.9,
+        "peak": 123.8
+      },
+      "external": {
+        "p50": 4.9,
+        "p95": 6,
+        "peak": 6.6
+      },
+      "arrayBuffers": {
+        "p50": 1.1,
+        "p95": 2.1,
+        "peak": 2.7
+      }
+    }
+  },
+  "sampler": {
+    "intervalMs": 250,
+    "sampleCount": 10,
+    "durationMs": 4272,
+    "budgetStatus": "NOT_CONFIGURED",
+    "budgetChecks": {
+      "workingSetMB": {
+        "status": "NOT_CONFIGURED",
+        "limit": null,
+        "actual": 329
+      },
+      "privateBytesMB": {
+        "status": "NOT_CONFIGURED",
+        "limit": null,
+        "actual": 391
+      },
+      "cpuP95Percent": {
+        "status": "NOT_CONFIGURED",
+        "limit": null,
+        "actual": 162.2
+      }
+    },
+    "errors": [],
+    "processes": {
+      "sampleCount": 10,
+      "processTree": {
+        "workingSetMiB": {
+          "p50": 272.8,
+          "p95": 329,
+          "peak": 329
+        },
+        "privateBytesMiB": {
+          "p50": 329.4,
+          "p95": 391,
+          "peak": 391
+        },
+        "cpuPercent": {
+          "p50": 105.7,
+          "p95": 162.2,
+          "peak": 162.2
+        },
+        "processCountPeak": 2
+      },
+      "byExecutable": [
+        {
+          "name": "node.exe",
+          "processCountPeak": 2,
+          "workingSetMiB": {
+            "p50": 288.7,
+            "p95": 329,
+            "peak": 329
+          },
+          "privateBytesMiB": {
+            "p50": 345.2,
+            "p95": 391,
+            "peak": 391
+          },
+          "cpuPercent": {
+            "p50": 105.7,
+            "p95": 162.2,
+            "peak": 162.2
+          }
+        }
+      ]
+    }
+  },
+  "cycles": [
+    {
+      "index": 1,
+      "status": "PASS",
+      "durationMs": 549.5,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 1819.7,
+      "requestLatencyMs": {
+        "p50": 20.8,
+        "p95": 59.9,
+        "peak": 100.3
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 335.1,
+        "p95": 507.6,
+        "peak": 528.1
+      },
+      "cpuPercent": 147.9,
+      "memorySamples": 11
+    },
+    {
+      "index": 2,
+      "status": "PASS",
+      "durationMs": 524.8,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 1905.4,
+      "requestLatencyMs": {
+        "p50": 24.7,
+        "p95": 35.7,
+        "peak": 38.9
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 303.6,
+        "p95": 483.7,
+        "peak": 501.1
+      },
+      "cpuPercent": 92.2,
+      "memorySamples": 12
+    },
+    {
+      "index": 3,
+      "status": "PASS",
+      "durationMs": 377.6,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 2648.3,
+      "requestLatencyMs": {
+        "p50": 14.7,
+        "p95": 31.2,
+        "peak": 35.5
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 213.6,
+        "p95": 341.3,
+        "peak": 355.6
+      },
+      "cpuPercent": 99.3,
+      "memorySamples": 9
+    },
+    {
+      "index": 4,
+      "status": "PASS",
+      "durationMs": 345.4,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 2895.3,
+      "requestLatencyMs": {
+        "p50": 14,
+        "p95": 26.2,
+        "peak": 33.6
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 186.2,
+        "p95": 304.5,
+        "peak": 322.6
+      },
+      "cpuPercent": 90.3,
+      "memorySamples": 8
+    },
+    {
+      "index": 5,
+      "status": "PASS",
+      "durationMs": 365.2,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 2738.5,
+      "requestLatencyMs": {
+        "p50": 15.3,
+        "p95": 31,
+        "peak": 36
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 199.1,
+        "p95": 342.2,
+        "peak": 355
+      },
+      "cpuPercent": 111.2,
+      "memorySamples": 8
+    },
+    {
+      "index": 6,
+      "status": "PASS",
+      "durationMs": 352.3,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 2838.7,
+      "requestLatencyMs": {
+        "p50": 14.4,
+        "p95": 30.5,
+        "peak": 36.6
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 182.8,
+        "p95": 313.6,
+        "peak": 342
+      },
+      "cpuPercent": 141.9,
+      "memorySamples": 9
+    },
+    {
+      "index": 7,
+      "status": "PASS",
+      "durationMs": 315.3,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 3171.7,
+      "requestLatencyMs": {
+        "p50": 13.8,
+        "p95": 20.7,
+        "peak": 26.1
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 148,
+        "p95": 280,
+        "peak": 294.6
+      },
+      "cpuPercent": 104,
+      "memorySamples": 8
+    },
+    {
+      "index": 8,
+      "status": "PASS",
+      "durationMs": 317.3,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 3151.8,
+      "requestLatencyMs": {
+        "p50": 14,
+        "p95": 21.9,
+        "peak": 30.5
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 165.7,
+        "p95": 290.3,
+        "peak": 306.7
+      },
+      "cpuPercent": 122.9,
+      "memorySamples": 9
+    },
+    {
+      "index": 9,
+      "status": "PASS",
+      "durationMs": 318.2,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 3142.6,
+      "requestLatencyMs": {
+        "p50": 13.7,
+        "p95": 21,
+        "peak": 26.2
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 160.6,
+        "p95": 284.3,
+        "peak": 297.1
+      },
+      "cpuPercent": 137.6,
+      "memorySamples": 8
+    },
+    {
+      "index": 10,
+      "status": "PASS",
+      "durationMs": 350.6,
+      "requestsReceived": 1000,
+      "reportItems": 1000,
+      "hitSources": 1000,
+      "failedSources": 0,
+      "progressSourceEvents": 1000,
+      "maxConcurrentRequests": 48,
+      "throughputSourcesPerSecond": 2852.6,
+      "requestLatencyMs": {
+        "p50": 15,
+        "p95": 28.8,
+        "peak": 37
+      },
+      "dispatchOffsetFromCycleStartMs": {
+        "p50": 196.5,
+        "p95": 325.5,
+        "peak": 338.8
+      },
+      "cpuPercent": 97.8,
+      "memorySamples": 9
+    }
+  ],
+  "limitations": [
+    "This is an isolated synthetic CMS workload. It does not contact third-party sources, import user configuration, or measure the reliability/latency of real websites.",
+    "Spider/JAR/Python runtimes, their readiness/download work, IPC, source-specific parsers, and multi-source content variability are not exercised; the production CMS path is exercised through the loopback HTTP client.",
+    "The per-cycle process.memoryUsage values belong to the Vitest test worker and include test/runtime overhead. The Windows process tree groups by node.exe and cannot separate Vitest parent, test worker, and any Node roles by image name alone.",
+    "Queue wait has no dedicated production instrumentation. Dispatch offsets measure when each source entered the injected search port relative to its cycle start; they include scheduling and earlier work, not a pure queue-wait duration.",
+    "No performance budgets are configured. Results provide repeatable distributions and resource observations only; they do not claim a budget pass or prove absence of leaks.",
+    "A 4-8 ms loopback fixture is useful for exercising fan-out and queue behavior, but it does not model remote DNS/TLS, real server throttling, response-size variance, or user-visible search quality.",
+    "The Windows sampler uses a 250 ms interval; very short spikes between samples may be missed, and the first CPU interval has no prior process sample."
+  ],
+  "outputDirectory": "D:\\developWorkPlaces\\win-box\\.tmp\\v05-search-20261028-final1000",
+  "commandExitCode": 0,
+  "evidenceType": "synthetic_local_aggregate_search_benchmark",
+  "benchmarkResult": "PASS_SYNTHETIC_ONLY",
+  "v05Completion": "PARTIAL",
+  "completionNote": "The 1,000-source synthetic coordinator/CMS benchmark passed. V05 remains partial because spider/JAR/Python runtimes, real third-party sources, application UI, and real user profiles were not tested, and performance budgets are not configured.",
+  "runArtifactsLocation": ".tmp/v05-search-20261028-final1000 (temporary source measurements; scheduled for cleanup after this evidence commit)",
+  "testedProductionPaths": [
+    "src/main/spider/AggregateSearchCoordinator.ts",
+    "src/engine/vod/searchAcrossProfiles.ts",
+    "src/engine/vod/searchRuntime.ts",
+    "src/engine/vod/searchScheduler.ts",
+    "src/engine/vod/SourceSearchHealth.ts",
+    "src/engine/vod/SearchSourceReadiness.ts",
+    "src/engine/vod/SourceGateway.ts",
+    "src/engine/vod/CmsSourceAdapter.ts",
+    "src/engine/vod/CmsSource.ts",
+    "scripts/measure-runtime-resources.mjs"
+  ],
+  "executionCommands": {
+    "performanceRun": "D:\\develop\\nodejs\\node.exe scripts\\v05-aggregate-search.mjs --cycles 10 --sources 1000 --output-dir .tmp/v05-search-20261028-final1000",
+    "regressionCheck": "D:\\develop\\nodejs\\node.exe --test scripts\\v05-aggregate-search.check.mjs (3/3 passed)",
+    "defaultVitestGate": "D:\\develop\\nodejs\\node.exe node_modules\\vitest\\vitest.mjs run tests\\v05AggregateSearch.spec.ts --reporter=verbose (1 skipped as intended without V05_SEARCH_RUN=1)",
+    "typeCheck": "D:\\develop\\nodejs\\node.exe node_modules\\typescript\\bin\\tsc --noEmit -p tsconfig.test.json (passed)"
+  },
+  "harnessCommit": {
+    "changeId": "pyxuuuoszzvwksqtussmptplstmyonoq",
+    "sha": "b6eb82268b2e57bf43998ba8ec209aa34d10018f",
+    "message": "test-add-v05-aggregate-search-performance-harness"
+  },
+  "excludedCoverage": [
+    "Third-party source network behavior, DNS/TLS, rate limiting, content quality, or real source reliability",
+    "Spider/JAR runtime preparation, Java/Python calls, IPC, and source-specific spider adapters",
+    "Win-Box UI responsiveness and actual user profile/database contents",
+    "Configured pass/fail performance budgets and memory leak conclusions"
+  ]
+}
