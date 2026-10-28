@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
@@ -13,6 +13,30 @@ import { verifySourceMatrix } from './source-acceptance.mjs';
 import { withWebmDuration } from './webm-fixture.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const inside = (parent, path) => {
+  const rel = relative(parent, path);
+  return rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+};
+
+export function parsePlaybackAcceptanceArgs(args) {
+  const indexes = args.flatMap((argument, index) => argument === '--packaged-app' ? [index] : []);
+  if (indexes.length > 1) throw new Error('Use --packaged-app once.');
+  const directory = indexes.length ? args[indexes[0] + 1] : null;
+  if (indexes.length && (!directory || directory.startsWith('--'))) throw new Error('--packaged-app requires a win-unpacked directory.');
+  const playerIndexes = args.flatMap((argument, index) => argument === '--potplayer' ? [index] : []);
+  if (playerIndexes.length > 1) throw new Error('Use --potplayer once.');
+  const player = playerIndexes.length ? args[playerIndexes[0] + 1] : null;
+  if (playerIndexes.length && (!player || player.startsWith('--'))) throw new Error('--potplayer requires the PotPlayer executable path.');
+  const matrixIndexes = args.flatMap((argument, index) => argument === '--source-matrix' ? [index] : []);
+  if (matrixIndexes.length > 1) throw new Error('Use --source-matrix once.');
+  const matrixPath = matrixIndexes.length ? args[matrixIndexes[0] + 1] : null;
+  if (matrixIndexes.length && (!matrixPath || matrixPath.startsWith('--'))) throw new Error('--source-matrix requires a JSON file path.');
+  return {
+    packagedAppDirectory: directory ? resolve(directory) : null,
+    potplayerPath: player ? resolve(player) : null,
+    sourceMatrixPath: matrixPath ? resolve(matrixPath) : null,
+  };
+}
 
 async function assertRelayPortFree() {
   const probe = createServer();
@@ -64,8 +88,15 @@ async function generateVideo(page) {
   });
 }
 
-export async function verifyPlayback() {
+export async function verifyPlayback({ packagedAppDirectory = null, potplayerPath = null, sourceMatrixPath = null } = {}) {
   if (process.platform !== 'win32') throw new Error('Embedded MPV acceptance requires Windows.');
+  if (packagedAppDirectory) {
+    packagedAppDirectory = resolve(packagedAppDirectory);
+    if (!inside(ROOT, packagedAppDirectory)) throw new Error('Packaged acceptance input must be inside the workspace.');
+    if (!(await stat(join(packagedAppDirectory, 'Win-Box.exe')).catch(() => null))?.isFile()) {
+      throw new Error('Packaged acceptance input is missing Win-Box.exe.');
+    }
+  }
   await assertRelayPortFree();
   await mkdir(join(ROOT, '.tmp'), { recursive: true });
   const directory = await mkdtemp(join(ROOT, '.tmp', 'playback-acceptance-'));
@@ -78,14 +109,31 @@ export async function verifyPlayback() {
   let applicationProcess;
   let failure;
   const applicationOutput = { stdout: '', stderr: '' };
-  const report = { recordedAt: new Date().toISOString(), steps, rendererErrors: errors, externalThirdPartySources: 'NOT_RUN' };
+  const report = { recordedAt: new Date().toISOString(), executionMode: packagedAppDirectory ? 'packaged' : 'source', steps, rendererErrors: errors, externalThirdPartySources: 'NOT_RUN', potplayer: 'NOT_RUN' };
   const record = (name, evidence = {}) => { steps.push({ name, status: 'PASS', ...evidence }); console.log(`PASS ${name}`); };
   try {
     runtime = await prepareMpvAcceptanceRuntime();
     report.mpv = { version: runtime.version, source: runtime.source, archiveSha256: runtime.archiveSha256, executableSha256: runtime.executableSha256 };
-    const environment = { ...process.env, NODE_ENV: 'production', WINBOX_DEV_USER_DATA: join(directory, 'userData') };
+    const environment = { ...process.env, NODE_ENV: 'production' };
+    if (packagedAppDirectory) {
+      environment.APPDATA = join(directory, 'appdata');
+      environment.LOCALAPPDATA = join(directory, 'localappdata');
+      environment.PORTABLE_EXECUTABLE_DIR = join(directory, 'portable');
+      delete environment.WINBOX_DEV_USER_DATA;
+    } else {
+      environment.WINBOX_DEV_USER_DATA = join(directory, 'userData');
+    }
     delete environment.ELECTRON_RUN_AS_NODE; delete environment.WINBOX_DEV_RELOAD_PIPE;
-    application = await _electron.launch({ executablePath: electronPath, args: [ROOT, '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows'], cwd: ROOT, env: environment, timeout: 30_000 });
+    application = await _electron.launch({
+      executablePath: packagedAppDirectory ? join(packagedAppDirectory, 'Win-Box.exe') : electronPath,
+      args: [
+        ...(packagedAppDirectory ? [] : [ROOT]),
+        '--disable-renderer-backgrounding', '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows',
+      ],
+      cwd: packagedAppDirectory ?? ROOT,
+      env: environment,
+      timeout: 30_000,
+    });
     applicationProcess = application.process();
     for (const channel of ['stdout', 'stderr']) {
       applicationProcess[channel]?.on('data', chunk => {
@@ -163,6 +211,47 @@ export async function verifyPlayback() {
     await player.waitForFunction(() => JSON.parse(localStorage.getItem('winbox-player-prefs') || '{}').kernel === 'auto');
     await player.waitForFunction(() => { const video = document.querySelector('video'); return video?.videoWidth === 320 && video.paused && video.currentTime > 2; });
     record('restore-auto-and-preserve-paused-position', await player.locator('video').evaluate(video => ({ time: video.currentTime, paused: video.paused })));
+
+    if (potplayerPath) {
+      potplayerPath = resolve(potplayerPath);
+      const executable = await stat(potplayerPath).catch(() => null);
+      assert.ok(executable?.isFile(), `PotPlayer executable does not exist: ${potplayerPath}`);
+      await call(main, 'playerPrefs', 'set', { vodExternalPlayerEnabled: true, vodExternalPlayer: potplayerPath });
+      const detectedPlayers = await call(main, 'vod', 'detectPlayers');
+      assert.ok(detectedPlayers.some(item => item.path.toLowerCase() === potplayerPath.toLowerCase()), 'Configured PotPlayer path was not detected by the app');
+      const requestsBefore = fixture.requests.length;
+      const launch = await call(main, 'vod', 'openExternal', { url: fixture.base + '/clip.webm', seek: 0 });
+      assert.equal(launch.ok, true, launch.error || 'Win-Box did not launch PotPlayer');
+      assert.equal(launch.player, 'PotPlayer', 'Configured PotPlayer executable was not selected');
+      const requestDeadline = Date.now() + 30_000;
+      const requestsAfterLaunch = () => fixture.requests.slice(requestsBefore).filter(request => request.path === '/clip.webm');
+      const fetchedResponse = () => requestsAfterLaunch().find(request => request.method === 'GET' && request.completed && [200, 206].includes(request.status) && request.contentType.startsWith('video/webm') && request.responseBytes > 0);
+      while (Date.now() < requestDeadline && !fetchedResponse()) await delay(250);
+      const potplayerRequests = requestsAfterLaunch();
+      const mediaResponse = fetchedResponse();
+      assert.ok(mediaResponse, 'PotPlayer did not complete a successful GET for local video bytes');
+      report.potplayer = {
+        status: 'MEDIA_FETCH_COMPLETED',
+        player: launch.player,
+        executable: potplayerPath,
+        requestCount: potplayerRequests.length,
+        mediaResponse,
+        decode: 'NOT_RUN',
+        timeProgress: 'NOT_RUN',
+        pauseResume: 'NOT_RUN',
+      };
+      record('potplayer-configured-path-fetched-local-video-bytes', {
+        player: launch.player,
+        requestCount: potplayerRequests.length,
+        status: mediaResponse.status,
+        contentType: mediaResponse.contentType,
+        bytes: mediaResponse.responseBytes,
+        range: mediaResponse.range,
+        decode: 'NOT_RUN',
+        timeProgress: 'NOT_RUN',
+        pauseResume: 'NOT_RUN',
+      });
+    }
 
     await call(main, 'playerPrefs', 'set', { kernel: 'html5' });
     await player.close();
@@ -249,11 +338,7 @@ export async function verifyPlayback() {
     assert.equal((await call(main, 'player', 'isOpen')).open, false);
     record('backup-ui-restores-older-history-progress-and-settings', { restoredTime: 21, absentKeyRemoved: true, playerClosed: player.isClosed(), staleWriterObservationMs: 6000 });
     assert.deepEqual(errors, [], 'Renderer produced an unhandled error');
-    const matrixIndex = process.argv.indexOf('--source-matrix');
-    if (matrixIndex !== -1) {
-      assert.ok(process.argv[matrixIndex + 1], '--source-matrix requires a JSON file path.');
-      report.externalThirdPartySources = await verifySourceMatrix(main, call, resolve(process.argv[matrixIndex + 1]), ROOT);
-    }
+    if (sourceMatrixPath) report.externalThirdPartySources = await verifySourceMatrix(main, call, sourceMatrixPath, ROOT);
     report.status = 'PASS';
   } catch (error) {
     report.status = 'FAIL'; report.error = error.stack || String(error);
@@ -324,4 +409,7 @@ export async function verifyPlayback() {
   return report;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) console.log(JSON.stringify(await verifyPlayback(), null, 2));
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const options = parsePlaybackAcceptanceArgs(process.argv.slice(2));
+  console.log(JSON.stringify(await verifyPlayback(options), null, 2));
+}

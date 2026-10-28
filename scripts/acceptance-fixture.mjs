@@ -7,7 +7,14 @@ export async function startAcceptanceFixture() {
   const requests = [];
   const server = createServer((request, response) => {
     const url = new URL(request.url || '/', 'http://127.0.0.1');
-    requests.push({ path: url.pathname, range: request.headers.range || '' });
+    const exchange = { method: request.method || '', path: url.pathname, range: request.headers.range || '', status: null, contentType: '', responseBytes: 0, completed: false };
+    requests.push(exchange);
+    response.once('finish', () => {
+      exchange.status = response.statusCode;
+      exchange.contentType = String(response.getHeader('Content-Type') || '');
+      exchange.responseBytes = Number(response.getHeader('Content-Length')) || 0;
+      exchange.completed = true;
+    });
     response.setHeader('Access-Control-Allow-Origin', '*');
     response.setHeader('Cache-Control', 'no-store');
     const json = value => { response.setHeader('Content-Type', 'application/json; charset=utf-8'); response.end(JSON.stringify(value)); };
