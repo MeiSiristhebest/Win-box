@@ -777,7 +777,7 @@
       "kind": "debt",
       "priority": "P2",
       "title": "JAR 转换与运行会话策略的职责边界仍需收敛",
-      "status": "open",
+      "status": "completed",
       "principles": [
         1,
         4,
@@ -838,8 +838,8 @@
         }
       ],
       "reviewEvidence": {
-        "commit": "6942172",
-        "verification": "抽出转换缓存版本策略；convertedJarCacheVersion、jarExecutionPolicy、jarSpiderRuntimeSession 共 27 项通过。只完成 cache/classpath 小切片，产物准备与运行会话仍耦合。"
+        "commit": "c121435143b053a335b637f61a7ba830eb87d46d",
+        "verification": "JAR conversion/artifact/launch/fallback/session/pool/process suites: 25 files, 200 tests passed; main and test TypeScript checks, focused lint, and architecture boundaries passed. Artifact validation cache and warmup single-flight have explicit owners; remaining bridge responsibilities are adapter composition and orchestration. No live external-source playback is claimed here; that remains V02."
       }
     },
     {
