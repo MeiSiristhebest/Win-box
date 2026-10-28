@@ -1672,8 +1672,8 @@
           "Actual desktop-visible MPV native frame"
         ],
         "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-        "latestVerification": "Latest packaged candidate passed ten local HTML5/MPV playback cycles. PotPlayer launch and full fixture fetch passed, decode/time/pause not verified; desktop-visible MPV frame and live sources remain unconfirmed.",
-        "latestEvidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json"
+        "latestVerification": "Prior local HTML5/managed-MPV fixture evidence remains PASS with scope limits. The 2026-10-29 native UI follow-up could not launch the isolated candidate: AppContainer RX ACL grant was denied even on a disposable copy; no UI window, playback fixture, PotPlayer, MPV pixels, or live source was tested.",
+        "latestEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json"
       },
       "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
       "latestVerification": "Latest packaged candidate passed ten local HTML5/MPV playback cycles. PotPlayer launch and full fixture fetch passed, decode/time/pause not verified; desktop-visible MPV frame and live sources remain unconfirmed.",
@@ -1754,8 +1754,8 @@
         "verification": "播放器样式 9/9 测试和音量滑块 6 项静态几何检查通过；全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过），三套 typecheck、lint/架构边界和生产 build 通过。仍缺最终 Electron 截图复核。",
         "evidence": "architecture-audit/evidence/player-controls-followup-2026-10-28.json",
         "latestImplementationCommit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
-        "latestVerification": "Theme and player style regression tests: 59/59 pass; Oxlint passes. Six themes cover the relevant selected/unselected provider tab and disabled states; no live full-window route/theme/DPI matrix or danmaku trail capture.",
-        "latestEvidence": "tests/themeContrast.spec.ts"
+        "latestVerification": "Theme and player style regression tests: 59/59 pass; Oxlint passes. The latest native UI probe was blocked before launch by denied AppContainer ACL changes on a disposable copy; full-window route/theme/DPI matrix, actual-player pixels, and danmaku trail capture remain unverified.",
+        "latestEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json"
       },
       "latestImplementationCommit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
       "latestVerification": "Theme and player style regression tests: 59/59 pass; Oxlint passes. Six themes cover the relevant selected/unselected provider tab and disabled states; no live full-window route/theme/DPI matrix or danmaku trail capture.",
@@ -1819,8 +1819,8 @@
         "commit": "3e3bd13",
         "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
         "verification": "最终候选包的 505 文件隔离安装/覆盖/卸载/数据保留记录见 installation-acceptance-2026-10-28.json。最新 installer-script.check.mjs 为 7/7 PASS；无窗口进程实测 4549ms 停止。该合成 fixture 不等于真实播放/隐藏窗口和取消保护验收，因此 V04 仍为 open。",
-        "latestVerification": "Isolated NSIS installer checks 10/10; locked legacy-only file rejects before old uninstaller and preserves prior files plus six user-data domains; Oxlint passes. GUI Cancel/Back/elevation and playing/hidden-window upgrade are not verified.",
-        "latestEvidence": "scripts/installer-script.check.mjs"
+        "latestVerification": "pnpm run test:installer passed 11/11. The isolated candidate-payload integration verified install, overwrite, uninstall-first, simulated old-uninstaller rollback, legacy-file-lock rejection, uninstall, 451 packaged files, and preservation of six synthetic data categories. The stop fixture was a renamed Node process, not Win-Box.exe; actual packaged-process stop, interactive Cancel/Back/elevation, and playing/hidden-window upgrade remain unverified.",
+        "latestEvidence": "architecture-audit/evidence/installation-acceptance-partial-2026-10-28.json"
       },
       "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
       "latestVerification": "Isolated NSIS installer checks 10/10; locked legacy-only file rejects before old uninstaller and preserves prior files plus six user-data domains; Oxlint passes. GUI Cancel/Back/elevation and playing/hidden-window upgrade are not verified.",
@@ -1884,9 +1884,11 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "040d1885e8a1debfe5ce07ac9380ae14cca91068",
-        "verification": "V05 harness checks 3/3 pass. Ten packaged local playback cycles pass, each 21.7–23.3 s; 183 one-second process-tree samples. Win-Box image-group working set p50/p95/peak 517.1/704.8/714.5 MiB; private 415.9/526.5/538.6 MiB. MPV peaks 122.6/155.1 MiB; Node acceptance driver peaks 682.1/777.6 MiB and is excluded from app memory. No budgets configured; search/1080p/danmaku not measured.",
-        "evidence": "architecture-audit/evidence/repeated-playback-10cycle-2026-10-28.json",
-        "remaining": "Keep V05 open until search, higher-resolution/danmaku workloads and performance budgets are measured."
+        "verification": "V05 independent synthetic aggregate-search recheck: 10 x 1,000-source cycles, 12,050 loopback requests, peak concurrency 48; 1,001-source partial-failure/timeout, cancellation cleanup, and recovery all passed. Median cycle 378.5 ms, p95 615.1 ms; median throughput 2,441.5 sources/s. Regression self-check 4/4, test typecheck, and changed-source lint passed. No real source/user profile/spider workload or configured performance budget was exercised.",
+        "evidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
+        "remaining": "Keep V05 open until real third-party sources, user profiles and spider/JAR/Python workloads, UI responsiveness, 1080p/4K and dense-danmaku workloads are measured against explicit performance and memory budgets.",
+        "latestVerification": "Final root recheck on 2026-10-28 UTC: 10/10 cycles, 2/2 synthetic workload tests, 4/4 regression checks, test typecheck and changed-source Oxlint pass; output artifacts cleaned. The process sampler measured the Node acceptance/Vitest process tree (peak working set 355.9 MiB, private bytes 416.5 MiB), not Win-Box. V05 remains partial.",
+        "latestEvidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json"
       },
       "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
       "latestVerification": "V05 harness checks 3/3 pass. Ten packaged local playback cycles pass, each 21.7–23.3 s; 183 one-second process-tree samples. Win-Box image-group working set p50/p95/peak 517.1/704.8/714.5 MiB; private 415.9/526.5/538.6 MiB. MPV peaks 122.6/155.1 MiB; Node acceptance driver peaks 682.1/777.6 MiB and is excluded from app memory. No budgets configured; search/1080p/danmaku not measured.",
@@ -1982,8 +1984,8 @@
           "88fd7c666c6fb62bd70747883aab53d323d30250"
         ],
         "evidence": "architecture-audit/evidence/current-build-2026-10-28.json",
-        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json",
-        "latestVerification": "Latest local candidate was built from production source commit 292f8150d63ceb89df36d19fd1e8a1b69f0249c7; full Vitest 507 files/4,169 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17, acceptance tools 20/20, package policy 12/12 and installer 10/10 pass. Installer 228695919 bytes SHA-256 cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a. Packaged HTML5/MPV and Java/Python spider probes pass; ten-cycle local playback evidence recorded. Interactive upgrade over the user install, live sources, MPV desktop pixels and remote CI remain open; not published/pushed."
+        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json",
+        "latestVerification": "Local package hashes were rechecked and the final V05 synthetic aggregate-search run passed. The shipping setup was not installed interactively; remote CI, real user-install upgrade, live-source playback, and desktop-visible MPV pixels remain open. No release was published or pushed."
       },
       "latestImplementationCommits": [
         "48105537",
@@ -2143,17 +2145,19 @@
       "installerScriptLifecycle": "PASS_ISOLATED_GENERATED_NSIS",
       "candidateSetupBinary": "BUILT_NOT_EXECUTED_DIRECTLY",
       "verifiedFiles": 505,
-      "runningProcessStopped": "PASS",
+      "runningProcessStopped": "PASS_PROCESS_NAME_FIXTURE_ONLY",
       "dataPreserved": true,
       "registryAndShortcuts": "PASS",
       "windowLaunchAndPlayback": "PASS_PACKAGED_LOCAL_FIXTURE_HTML5_MPV_AND_PAUSE_FEEDBACK_VISUAL",
       "playbackAcceptanceEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json",
-      "liveSourcesAndPotPlayer": "NOT_RUN"
+      "liveSourcesAndPotPlayer": "NOT_RUN",
+      "actualPackagedAppProcessStopped": "NOT_RUN"
     },
     "localPackage": {
       "path": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-      "bytes": 228694839,
-      "sha256": "74004bb13219dafab819084e642332298e77ad33b4e29f5f2b5430464e4afdcb"
+      "bytes": 228695919,
+      "sha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
+      "published": false
     },
     "releasePublished": false,
     "latestEvidenceFiles": [
@@ -2165,12 +2169,16 @@
       "architecture-audit/evidence/ui-spot-check-2026-10-28.json",
       "architecture-audit/evidence/ui-contrast-token-audit-2026-10-28.json",
       "architecture-audit/evidence/current-candidate-2026-10-28.json",
-      "architecture-audit/evidence/player-pause-feedback-packaged-2026-10-28.png"
+      "architecture-audit/evidence/player-pause-feedback-packaged-2026-10-28.png",
+      "architecture-audit/evidence/installation-acceptance-partial-2026-10-28.json",
+      "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
+      "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
+      "architecture-audit/evidence/current-candidate-2026-10-29.json"
     ],
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
   "latestProgress": {
-    "recordedAt": "2026-10-28T14:05:52Z",
+    "recordedAt": "2026-10-28T17:13:16Z",
     "requiredTaskCount": 36,
     "completedTaskIds": [
       "B01",
@@ -2235,7 +2243,11 @@
       "vnp",
       "xwy",
       "sttl",
-      "ror"
+      "ror",
+      "617de7b4",
+      "4a5ac726",
+      "15fb29f2",
+      "863c41f6"
     ],
     "localInstallerPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
     "installerSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
@@ -2251,7 +2263,7 @@
       "libnc.so",
       "src/renderer/components/SourcePicker.tsx"
     ],
-    "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json",
+    "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
     "applicationBuildAt": "2026-10-28T13:50:08.827Z",
     "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json",
@@ -2270,6 +2282,7 @@
     ],
     "mpvFrameDiagnostic": "Strong inference: Chromium screenshot omits native MPV child HWND; desktop pixels not confirmed.",
     "latestPythonEvidence": "architecture-audit/evidence/python-runtime-acceptance-2026-10-28.json",
-    "latestPerformanceEvidence": "architecture-audit/evidence/repeated-playback-10cycle-2026-10-28.json"
+    "latestPerformanceEvidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
+    "latestNativeUiEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json"
   }
 }

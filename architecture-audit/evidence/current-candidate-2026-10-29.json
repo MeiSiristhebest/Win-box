@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-28T17:13:16Z",
+  "source": {
+    "branch": "codex/architecture-cleanup-20261025",
+    "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
+    "version": "1.27.1",
+    "productionChangesAfterBuild": false,
+    "published": false,
+    "pushed": false,
+    "localAcceptanceCommits": ["617de7b4", "4a5ac726", "15fb29f2", "863c41f6"]
+  },
+  "package": {
+    "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "setupBytes": 228695919,
+    "setupSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
+    "winBoxExeSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30",
+    "originalBuildPayload": { "fileCount": 451, "bytes": 533313618 },
+    "currentUnpackedDirectory": {
+      "observedFileCount": 454,
+      "observedBytes": 533313738,
+      "explanation": "Three runtime/profile files appeared after the original payload measurement; see v02-v03-native-ui-2026-10-29.json. They are preserved and were not included in package hash claims."
+    }
+  },
+  "acceptance": {
+    "V02": {
+      "status": "PARTIAL",
+      "evidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
+      "priorLocalFixture": "HTML5 and managed MPV decode/progress/pause-resume were recorded PASS; PotPlayer decode/time/pause and desktop-visible MPV pixels remain unverified.",
+      "latestNativeLaunch": "NOT_RUN: isolated-copy AppContainer ACL grant was denied; no app window was launched."
+    },
+    "V03": {
+      "status": "PARTIAL",
+      "evidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
+      "priorUiRegressions": "Theme and player style regression checks passed; live full-window route/theme/DPI and danmaku-trail capture remain unverified."
+    },
+    "V04": {
+      "status": "PARTIAL",
+      "evidence": "architecture-audit/evidence/installation-acceptance-partial-2026-10-28.json",
+      "installerRegression": { "passed": 11, "failed": 0 },
+      "isolatedPayloadLifecycle": "install, overwrite, uninstall-first, rollback, uninstall, 451 packaged files, and six synthetic data categories passed.",
+      "notVerified": ["Actual packaged Win-Box process-stop", "interactive Cancel/Back/elevation", "upgrade over a real existing install", "playing/hidden-window upgrade"]
+    },
+    "V05": {
+      "status": "PARTIAL_SYNTHETIC_ONLY",
+      "evidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
+      "independentRecheck": {
+        "cycles": 10,
+        "sourcesPerCycle": 1000,
+        "localHttpRequests": 12050,
+        "peakConcurrency": 48,
+        "cycleLatencyMs": { "p50": 378.5, "p95": 615.1 },
+        "throughputSourcesPerSecond": { "p50": 2441.5, "p95": 2945.9 },
+        "resilience": "1,001-source partial failure/timeout, cancel-after-first-result, and recovery scenarios passed; zero active requests after each settled.",
+        "resourceSample": { "workingSetPeakMiB": 355.9, "privateBytesPeakMiB": 416.5, "cpuP95Percent": 129.9, "processes": 2, "budget": "NOT_CONFIGURED" }
+      },
+      "notVerified": ["Real third-party sources", "User profiles and spider/JAR/Python workloads", "UI responsiveness", "1080p/4K and dense danmaku", "performance budgets"]
+    },
+    "V06": {
+      "status": "PARTIAL",
+      "notVerified": ["Remote CI", "interactive installation/upgrade over the user install", "live third-party playback", "desktop-visible MPV pixels"]
+    }
+  },
+  "requiredTaskStatus": {
+    "completed": 31,
+    "total": 36,
+    "open": ["V02", "V03", "V04", "V05", "V06"]
+  },
+  "optionalOpen": ["O01", "O02"],
+  "workspace": {
+    "localCommitsUnpushed": true,
+    "preservedUncommittedUserChanges": ["libnc.so", "src/renderer/components/SourcePicker.tsx"],
+    "temporaryAcceptanceArtifactsCleaned": true
+  },
+  "releasePublished": false
+}
