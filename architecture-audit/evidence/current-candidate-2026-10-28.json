@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T15:13:51Z",
+  "recordedAt": "2026-10-28T15:41:17Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
@@ -104,6 +104,15 @@
         "potplayer": "Process launch and local-fixture fetch PASS (HTTP 200, 73,964 bytes); visible VP8 decode observed in the desktop window; time progression unstable/not verified; pause/resume not verified.",
       "tenCycleEvidence": "architecture-audit/evidence/repeated-playback-10cycle-2026-10-28.json"
     },
+      "nativeUiProbe": {
+        "status": "NOT_VERIFIED",
+        "evidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-28.json",
+        "method": "Two hash-verified isolated direct Win-Box launches",
+        "launchAttempts": 2,
+        "exitCode": -2147483645,
+        "uiWindowsReturned": 0,
+        "cleanup": "PASS"
+      },
     "pauseFeedbackVisual": {
       "status": "PASS",
       "widthPx": 28,
@@ -223,7 +232,7 @@
   },
   "remaining": [
       "V02: Packaged HTML5 and managed MPV local-fixture playback passed; HTML5 seek was not exercised. PotPlayer visible decode was observed, but time progression was unstable and pause/resume was not verified. Live third-party sources remain untested. See architecture-audit/evidence/playback-acceptance-ui-2026-10-28.json.",
-    "V03: Keyboard/ARIA episode tabs, compact pause feedback, and six-theme disabled/selected control contrast regression pass; full route/theme/DPI/narrow-layout matrix and live danmaku trails remain unverified.",
+      "V03: Keyboard/ARIA episode tabs, compact pause feedback, and six-theme disabled/selected control contrast regression pass. Native UI launches exited before a window appeared; actual screenshots, DPI behavior, player pixels, the full route/theme/narrow-layout matrix, and live danmaku trails remain unverified.",
     "V04: Locked legacy-only file preflight, same-directory process stop, and rollback/data preservation pass in isolated NSIS tests; interactive Cancel/Back/elevation and playing/hidden-window GUI cases remain unverified.",
       "V05: The synthetic 1,000-source/10-cycle aggregate-search benchmark passed against loopback only. Real source behavior, spider/JAR/Python runtimes, user profiles, UI responsiveness, configured performance budgets, 1080p/4K, dense danmaku, and same-process switching remain unverified.",
     "V06: Local package gates and ten-cycle run pass; final interactive installer/upgrade over the user install, remote CI and live third-party playback remain unrun; not published or pushed.",
