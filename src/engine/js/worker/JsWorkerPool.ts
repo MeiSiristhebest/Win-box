@@ -104,9 +104,19 @@ export class JsWorkerPool {
     this.reclaimTimer.unref?.();
   }
 
-  /** 懒读 worker 代码（打包态在 asar 内也能 readFileSync；用 eval 启动，避路径解析问题） */
+  /**
+   * 懒读 worker 代码（打包态在 asar 内也能 readFileSync；用 eval 启动，避路径解析问题）。
+   * ★ 2026-10-28：eval 代码跑在**脚本全局作用域**，两处必须包起来：
+   *   ① 打包进来的 crypto-es 顶层 `var crypto` 会变成对 Node 只读 `global.crypto` 的赋值 →
+   *      `Cannot set property crypto of [object global] which has only a getter`，worker 一启动就崩（所有 JS 源失效）；
+   *   ② 裸 `require('@babel/parser')`（external）从 `[worker eval]` 即进程 cwd 解析，找不到 asar 里的 node_modules。
+   *   ⇒ 外包一层函数作用域，并把 require 锚定到 workerFile 本身。
+   */
   private workerCode(): string {
-    if (!this.code) this.code = readFileSync(this.workerFile, 'utf-8');
+    if (!this.code) {
+      const src = readFileSync(this.workerFile, 'utf-8');
+      this.code = `(function (require) {\n${src}\n})(require('node:module').createRequire(${JSON.stringify(this.workerFile)}));`;
+    }
     return this.code;
   }
 
