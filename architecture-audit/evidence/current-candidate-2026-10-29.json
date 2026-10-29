@@ -1,11 +1,12 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T18:17:06Z",
+  "recordedAt": "2026-10-29T17:15:00+08:00",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
     "version": "1.27.1",
-    "productionChangesAfterBuild": false,
+    "productionChangesAfterBuild": true,
+    "latestValidatedSourceCommits": ["8270cbb4", "123a50bb"],
     "published": false,
     "pushed": false,
     "localAcceptanceCommits": [
@@ -74,6 +75,13 @@
       "visibleAppFollowUp": {
         "status": "NOT_VERIFIED",
         "detail": "The packaged Win-Box executable launch did not expose a targetable window; refreshed app/window inventories had no Win-Box/PotPlayer window, and no process remained afterward. No live-source playback was run."
+      },
+      "relayDiagnosticFollowUp": {
+        "status": "IMPLEMENTED_AND_TESTED",
+        "commit": "8270cbb4",
+        "test": "tests/relayFailure.spec.ts: 41/41 passed",
+        "addedFields": ["redacted final URL", "content type", "content length", "content range"],
+        "limitation": "This improves diagnosis of upstream HTML/JSON/error responses; representative live-source playback has not yet been repeated."
       }
     },
     "V03": {
@@ -84,22 +92,26 @@
     },
     "V04": {
       "status": "PARTIAL",
-      "evidence": "architecture-audit/evidence/installation-acceptance-partial-2026-10-28.json",
+      "evidence": "architecture-audit/evidence/v04-followup-2026-10-29.json",
       "installerRegression": {
         "evidence": "architecture-audit/evidence/installer-regression-2026-10-29.json",
         "tests": 11,
         "passed": 11,
         "failed": 0,
         "skipped": 0,
-        "durationMs": 93801,
-        "processStopFixtureMs": 5279
+        "durationMs": 83675,
+        "processStopFixtureMs": 4077
       },
       "isolatedPayloadLifecycle": "install, overwrite, uninstall-first, rollback, uninstall, 451 packaged files, and six synthetic data categories passed.",
       "notVerified": [
         "Actual packaged Win-Box process-stop during playback or hidden mode",
         "Shipping Setup.exe upgrade over a real existing installation",
         "Interactive Cancel/Back/elevation"
-      ]
+      ],
+      "crashAddressInvestigation": {
+        "evidence": "architecture-audit/evidence/v04-followup-2026-10-29.json",
+        "result": "Same 0x80000003 at RVA 0x073D6749 in the candidate .text section; matching PDB and minidump unavailable, so the function/root cause remains unresolved."
+      }
     },
     "V05": {
       "status": "PARTIAL_SYNTHETIC_ONLY",
@@ -136,9 +148,12 @@
     },
     "V06": {
       "status": "PARTIAL",
+      "evidence": "architecture-audit/evidence/v06-followup-2026-10-29.json",
+      "latestLocalGates": "Full suite 4,176 passed/7 skipped; typecheck, lint, build, installer 11/11, release assets 17/17, package policy 12/12, acceptance tools 20/20, dev 3/3, native bridge 39 assertions, subscription import 9/9 all passed after O01.",
       "notVerified": [
-        "Remote CI",
-        "interactive installation/upgrade over the user install",
+        "Current-source Setup installer rebuild and isolated install",
+        "Remote CI because this branch remains unpushed",
+        "interactive installation/upgrade over an existing installation",
         "live third-party playback",
         "desktop-visible MPV pixels"
       ]
@@ -159,6 +174,20 @@
     "O01",
     "O02"
   ],
+  "optionalStatus": {
+    "O01": {
+      "status": "IMPLEMENTATION_AND_FOCUSED_TESTS_PASS; PACKAGED_ACCEPTANCE_OPEN",
+      "evidence": "architecture-audit/evidence/o01-followup-2026-10-29.json",
+      "commit": "123a50bb",
+      "tests": "5 files, 146 tests passed",
+      "trustBoundary": "Explicit trusted-code consent; Worker/node:vm is not strong isolation."
+    },
+    "O02": {
+      "status": "MPV_SHADER_POC_PASS; VISUAL_QUALITY_AND_APP_INTEGRATION_OPEN",
+      "evidence": "architecture-audit/evidence/player-enhancement-compatibility-2026-10-28.json",
+      "limitation": "Synthetic MPV/D3D11 RAVU-Lite render passed; no visual quality comparison, isolated frame budget, PotPlayer injection, or Chromium WebGPU integration."
+    }
+  },
   "workspace": {
     "localCommitsUnpushed": true,
     "preservedUncommittedUserChanges": [
