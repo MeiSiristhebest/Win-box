@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-29T14:13:31Z",
+  "recordedAt": "2026-10-29T14:24:16Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
-    "applicationBuildCommit": "cce91e7a4bdce8973f690975f7e407ae0186a6ac",
+    "applicationBuildCommit": "3b854d969270eb5b86f0bb955331ab1a771bb7c3",
     "version": "1.27.1",
-    "productionChangesAfterBuild": true,
+    "productionChangesAfterBuild": false,
     "latestValidatedSourceCommits": [
       "8270cbb4",
       "123a50bb",
@@ -29,36 +29,49 @@
   },
   "package": {
     "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-    "setupBytes": 228684789,
-    "setupSha256": "12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc",
-    "winBoxExeSha256": "60ce491cd5a9732830cae00cd05a4ef3991303acedca19d6f3819bfffb05d9ee",
+    "setupBytes": 228684730,
+    "setupSha256": "A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06",
+    "winBoxExeSha256": "98AA72104DEBC7F7008443F025D64EC60C2B3803C1195CBD57D412D4D498F07D",
     "originalBuildPayload": {
       "fileCount": 451,
       "bytes": 533313618
     },
     "currentUnpackedDirectory": {
       "observedFileCount": 451,
-      "observedBytes": 533335590,
-      "explanation": "Rebuilt from current source by pnpm dist on 2026-10-29; payload remains 21,852 bytes above the earlier baseline. Factoring the lock retry into one shared NSIS function reduced the installer by 26,188 bytes versus the immediately preceding candidate. The data marker directory is not in the package."
+      "observedBytes": 533336044,
+      "explanation": "Rebuilt from current source by pnpm dist on 2026-10-29T14:16:29Z. The payload is 22,426 bytes above the earlier baseline and 454 bytes above the immediately preceding candidate; app.asar accounts for the 454-byte increase."
     },
     "localCurrentSourceBuild": {
       "version": "1.27.1",
       "command": "pnpm dist",
+      "builtAt": "2026-10-29T14:16:29.4929769Z",
+      "applicationBuildCommit": "3b854d969270eb5b86f0bb955331ab1a771bb7c3",
       "sourceChanges": [
         "8270cbb4",
         "123a50bb",
         "b8597d44",
-        "cce91e7a"
+        "cce91e7a",
+        "7e83ea84",
+        "3b854d96"
       ],
       "installerBuilt": true,
-      "installerHash": "12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc",
-      "installerBytes": 228684789,
-      "exeHash": "60ce491cd5a9732830cae00cd05a4ef3991303acedca19d6f3819bfffb05d9ee",
+      "installerHash": "A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06",
+      "installerBytes": 228684730,
+      "exeHash": "98AA72104DEBC7F7008443F025D64EC60C2B3803C1195CBD57D412D4D498F07D",
+      "exeBytes": 247366656,
+      "appAsarHash": "3A3F69B047F4E85852DC2699379790831EF2982D50A504DA1E95A39351322779",
+      "appAsarBytes": 24903386,
+      "payloadFiles": 451,
+      "payloadBytes": 533336044,
       "releaseFolders": [
         "release1.27.1"
       ],
       "published": false,
-      "pushed": false
+      "pushed": false,
+      "workingTreeIncludedUncommittedChanges": [
+        "deleted src/renderer/components/SourcePicker.tsx (pre-existing user change)",
+        "added libnc.so (pre-existing user change; not present in packaged output)"
+      ]
     },
     "productionSourceChangesAfterBuild": {
       "commits": [
@@ -69,9 +82,14 @@
         "src/renderer/styles/player-rate-cascade.css",
         "src/renderer/styles/global-player.css"
       ],
-      "requiresRebuild": true,
-      "packagePath": "release1.27.1/Win-Box.Setup.1.27.1.exe"
-    }
+      "requiresRebuild": false,
+      "packagePath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+      "rebuiltAt": "2026-10-29T14:16:29.4929769Z",
+      "rebuiltSetupSha256": "A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06"
+    },
+    "winBoxExeBytes": 247366656,
+    "appAsarBytes": 24903386,
+    "appAsarSha256": "3A3F69B047F4E85852DC2699379790831EF2982D50A504DA1E95A39351322779"
   },
   "acceptance": {
     "V02": {
@@ -129,6 +147,12 @@
           "content range"
         ],
         "limitation": "This improves diagnosis of upstream HTML/JSON/error responses; representative live-source playback has not yet been repeated."
+      },
+      "latestPackageAfterRebuild": {
+        "status": "BUILT_NOT_PLAYBACK_TESTED",
+        "setupSha256": "A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06",
+        "builtAt": "2026-10-29T14:16:29.4929769Z",
+        "note": "The packaged HTML5/managed-MPV fixture pass predates this CSS-only rebuild. Do not treat it as playback validation of this exact package."
       }
     },
     "V03": {
@@ -152,8 +176,18 @@
             "passed": 12
           }
         ],
-        "notInCurrentPackage": true,
-        "remaining": "Full packaged visual verification is still required after rebuilding the Setup."
+        "notInCurrentPackage": false,
+        "remaining": "The fixes are included in the rebuilt local Setup, but full packaged visual verification across routes, themes, DPI, narrow layouts and keyboard focus remains open.",
+        "packageBuild": {
+          "status": "BUILT_NOT_VISUALLY_VERIFIED",
+          "builtAt": "2026-10-29T14:16:29.4929769Z",
+          "setupSha256": "A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06",
+          "sourceCommits": [
+            "7e83ea84",
+            "3b854d96"
+          ],
+          "note": "Both fixes are included in the local 1.27.1 package; full packaged screenshot, route/theme/DPI/focus matrix remains open."
+        }
       },
       "workspaceWindowCaptureAttempt": {
         "status": "NOT_VERIFIED",
@@ -257,7 +291,7 @@
     "V06": {
       "status": "PARTIAL",
       "evidence": "architecture-audit/evidence/v06-followup-2026-10-29.json",
-      "latestLocalGates": "Full suite 4,176 passed/7 skipped before the latest installer-only change; latest installer retry generation test passed, pnpm dist compiled, and current isolated payload acceptance passed.",
+      "latestLocalGates": "Full source suite/typecheck/lint/build and prior focused gates are recorded in v06-followup-2026-10-29.json. The newest local Setup has been rebuilt after both player CSS fixes, and its extracted payload passed isolated install/overwrite/uninstall acceptance; shipping Setup GUI, actual running-app stop/upgrade, real profile migration, remote CI, live playback and packaged visual acceptance remain open.",
       "notVerified": [
         "Shipping Setup.exe installation/upgrade itself",
         "Successful stop-running overwrite after the packaged process exits (prior run returned NSIS 22)",
@@ -266,16 +300,32 @@
         "Desktop-visible MPV pixels"
       ],
       "currentSourcePackageAcceptance": {
+        "version": "1.27.1",
         "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-        "setupSha256": "12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc",
-        "setupBytes": 228684789,
+        "setupBytes": 228684730,
+        "setupSha256": "A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06",
+        "winBoxExeBytes": 247366656,
+        "winBoxExeSha256": "98AA72104DEBC7F7008443F025D64EC60C2B3803C1195CBD57D412D4D498F07D",
+        "appAsarBytes": 24903386,
+        "appAsarSha256": "3A3F69B047F4E85852DC2699379790831EF2982D50A504DA1E95A39351322779",
         "payloadFiles": 451,
-        "payloadBytes": 533335590,
+        "payloadBytes": 533336044,
+        "builtAt": "2026-10-29T14:16:29.4929769Z",
+        "releaseFolders": [
+          "release1.27.1"
+        ],
+        "published": false,
+        "pushed": false,
         "installOverwriteUninstall": "PASS",
         "uninstallFirst": "PASS",
         "dataFilesPreserved": 6,
+        "registryAndShortcuts": "PASS",
+        "isolatedPayloadAcceptance": "PASS",
+        "isolatedAcceptanceCommand": "pnpm run acceptance:install 'release1.27.1/win-unpacked'",
+        "runningProcessStopped": "NOT_RUN",
         "shippingSetupExeInstalled": false,
-        "userInstallationTouched": false
+        "userInstallationTouched": false,
+        "releasePublished": false
       }
     }
   },
@@ -319,5 +369,5 @@
   },
   "releasePublished": false,
   "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json",
-  "latestInstallerEvidence": "architecture-audit/evidence/installer-regression-2026-10-29.json"
+  "latestInstallerEvidence": "architecture-audit/evidence/v06-followup-2026-10-29.json"
 }

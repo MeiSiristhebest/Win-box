@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-10-29T13:29:36Z",
+  "recordedAt": "2026-10-29T14:24:16Z",
   "scope": "V06 local validation of the current shared checkout after O01 implementation and playback diagnostics",
   "branch": "codex/architecture-cleanup-20261025",
   "policy": {
@@ -111,20 +111,20 @@
       "summary": "1/1 targeted generated-script test passed; all other tests, including process termination fixtures, were excluded."
     },
     {
-      "command": "pnpm dist after installer retry refactor",
+      "command": "pnpm dist (after player CSS fixes)",
       "result": "passed",
-      "summary": "NSIS compiled and rebuilt version 1.27.1. Shared retry helper reduced Setup.exe from 228,710,977 to 228,684,789 bytes; payload remains 451 files / 533,335,590 bytes.",
+      "summary": "Rebuilt local version 1.27.1. Setup.exe 228,684,730 bytes; SHA-256 A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06. Payload 451 files / 533,336,044 bytes. Only release1.27.1 exists; package is local and unpublished.",
       "warnings": [
         "MPV and external FFmpeg binaries remain optional and are not included; Chromium ffmpeg.dll remains part of Electron.",
         "Vite reported the HLS chunk at 574.41 kB above the 500 kB advisory threshold."
       ]
     },
     {
-      "command": "pnpm run acceptance:install 'release1.27.1/win-unpacked' after installer retry refactor",
+      "command": "pnpm run acceptance:install 'release1.27.1/win-unpacked' (after player CSS rebuild)",
       "result": "passed",
-      "summary": "Isolated install, overwrite, uninstall-first, uninstall; 451 files verified; six synthetic user-data files preserved; registry/shortcuts passed; acceptance workspace and result JSON cleaned.",
+      "summary": "Latest rebuilt payload install, overwrite, uninstall-first and uninstall passed; 451 packaged files verified, six synthetic user-data files preserved, registry/shortcuts passed, isolated workspace cleaned.",
       "limitations": [
-        "Running-process stop was not run in this pass; the prior packaged-process attempt returned NSIS 22 after the app exited."
+        "Does not execute the shipping Setup.exe; actual running-process stop is NOT_RUN; user installation was not touched."
       ]
     }
   ],
@@ -218,48 +218,55 @@
     "otherAgentOrUserChangesModified": false
   },
   "currentSourcePackageRebuild": {
-    "recordedAt": "2026-10-29T13:24:34Z",
+    "recordedAt": "2026-10-29T14:16:29.4929769Z",
     "command": "pnpm dist",
     "result": "PASS",
     "version": "1.27.1",
     "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-    "setupBytes": 228684789,
-    "setupSha256": "12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc",
-    "winBoxExeSha256": "60ce491cd5a9732830cae00cd05a4ef3991303acedca19d6f3819bfffb05d9ee",
-    "payload": {
-      "files": 451,
-      "bytes": 533335590
-    },
-    "previousArtifactDelta": {
-      "installerBytes": -26188,
-      "appDirectoryBytes": 0,
-      "appAsarBytes": 0
-    },
+    "setupBytes": 228684730,
+    "setupSha256": "A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06",
+    "winBoxExeBytes": 247366656,
+    "winBoxExeSha256": "98AA72104DEBC7F7008443F025D64EC60C2B3803C1195CBD57D412D4D498F07D",
+    "appAsarBytes": 24903386,
+    "appAsarSha256": "3A3F69B047F4E85852DC2699379790831EF2982D50A504DA1E95A39351322779",
+    "payloadFiles": 451,
+    "payloadBytes": 533336044,
+    "builtAt": "2026-10-29T14:16:29.4929769Z",
     "releaseFolders": [
       "release1.27.1"
     ],
     "published": false,
     "pushed": false,
+    "applicationBuildCommit": "3b854d969270eb5b86f0bb955331ab1a771bb7c3",
     "sourceScope": {
       "latestValidatedSourceChanges": [
         "8270cbb4",
         "123a50bb",
         "b8597d44",
-        "cce91e7a"
+        "cce91e7a",
+        "7e83ea84",
+        "3b854d96"
       ],
+      "productionChangesAfterBuild": false,
       "workingTreeIncludedUncommittedChanges": [
-        "deleted src/renderer/components/SourcePicker.tsx",
-        "added libnc.so (not present in packaged output)"
+        "deleted src/renderer/components/SourcePicker.tsx (pre-existing user change)",
+        "added libnc.so (pre-existing user change; absent from packaged output)"
       ]
+    },
+    "previousArtifactDelta": {
+      "installerBytes": -59,
+      "appAsarBytes": 454,
+      "appDirectoryBytes": 454
     },
     "warnings": [
       "MPV and external FFmpeg binaries remain optional and are not included; Chromium ffmpeg.dll remains part of Electron.",
-      "Vite reported the HLS chunk at 574.41 kB above the 500 kB advisory threshold."
+      "Vite reported the HLS chunk above its 500 kB advisory threshold."
     ]
   },
   "currentSourcePayloadAcceptance": {
-    "recordedAt": "2026-10-29T13:25:07.189Z",
+    "recordedAt": "2026-10-29T14:24:16Z",
     "command": "pnpm run acceptance:install 'release1.27.1/win-unpacked'",
+    "setupSha256": "A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06",
     "result": {
       "install": "PASS",
       "overwrite": "PASS",
@@ -273,7 +280,8 @@
       "cleaned": true,
       "runningProcessStopped": "NOT_RUN"
     },
-    "outputEvidence": "Captured in command output; generated temporary JSON report was removed after verification.",
-    "scope": "Uses current-source packaged payload in generated isolated NSIS installers; does not execute the shipping Setup.exe or modify the user installation."
+    "outputEvidence": "Acceptance command completed successfully; generated temporary JSON report was removed after checking the result.",
+    "scope": "Validates the rebuilt current-source payload using generated isolated NSIS installers. It does not execute the shipping Setup.exe, stop an actual Win-Box process, or modify the user installation.",
+    "temporaryArtifactsCleaned": true
   }
 }

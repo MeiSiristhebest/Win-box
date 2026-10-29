@@ -1648,7 +1648,7 @@
           "symbol": "install_dir_access ACL diagnosis and isolated packaged playback"
         }
       ],
-      "gap": "Fresh local packaged-candidate playback recheck passes HTML5 and managed MPV decode, time progress, seek, pause/resume; pause feedback is 28x28 with a 14x14 icon, centered, sharp and unblurred. Two PotPlayer runs confirm configured executable launch and complete HTTP 200 fetch of the local WebM fixture; PotPlayer decode/time/pause remain unverified. Live representative sources and desktop-visible MPV child-window pixels remain unverified.",
+      "gap": "An earlier local packaged candidate passed HTML5 and managed-MPV decode/progress/seek/pause-resume; a later CSS-only package rebuild has not been playback-tested. Two PotPlayer runs confirm configured executable launch and complete HTTP 200 fixture fetch, but PotPlayer decode/time/pause remain unverified. Live third-party sources and desktop-visible MPV child-window pixels remain open.",
       "direction": "先可控夹具验证 MP4/HLS/TS、401/403/HTML 假媒体、Range/跳转；再按获准的代表来源测完整播放。单独验证已配置 PotPlayer 直接启动和失败反馈；超分按内核能力如实展示。",
       "acceptance": "保存至少 HTML5、托管 MPV、PotPlayer 的实际启动/时间推进/暂停续播证据；源失效与播放器回归分开；账号切子仓可复用；明确托管 shader 不自动影响任意外部播放器。",
       "estimateEngineerHours": {
@@ -1672,12 +1672,12 @@
           "Actual desktop-visible MPV native frame"
         ],
         "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-        "latestVerification": "Latest packaged candidate passes HTML5/managed-MPV fixture decode and controls. Two PotPlayer runs confirmed configured executable launch and full local fixture fetch, but decoder output/time progression/pause-resume were not verified. Firewall prompt was handled by the user. Live sources and desktop-visible MPV frame remain unconfirmed.",
-        "latestEvidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json"
+        "latestVerification": "The last playback-verified package passed HTML5/managed-MPV local fixture playback and controls. The newest package (SHA-256 A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06) was rebuilt for player CSS fixes and was not playback-tested; PotPlayer decode/time/pause, live sources, and desktop-visible MPV pixels remain unverified.",
+        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json"
       },
       "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-      "latestVerification": "Latest packaged candidate passes HTML5/managed-MPV fixture decode and controls. Two PotPlayer runs confirmed configured executable launch and full local fixture fetch, but decoder output/time progression/pause-resume were not verified. Firewall prompt was handled by the user. Live sources and desktop-visible MPV frame remain unconfirmed.",
-      "latestEvidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json"
+      "latestVerification": "The last playback-verified package passed HTML5/managed-MPV local fixture playback and controls. The newest package (SHA-256 A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06) was rebuilt for player CSS fixes and was not playback-tested; PotPlayer decode/time/pause, live sources, and desktop-visible MPV pixels remain unverified.",
+      "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json"
     },
     {
       "id": "V03",
@@ -1735,7 +1735,7 @@
           "symbol": "latest player controls and V03 acceptance evidence"
         }
       ],
-      "gap": "Playback-rate menu contrast and volume slider input cascade defects are fixed and covered by focused style/contrast checks. Full packaged route/theme/DPI/focus screenshot acceptance and the reported live danmaku trail remain open. The latest local Setup still predates these CSS commits.",
+      "gap": "Playback-rate menu contrast and volume slider input cascade defects are fixed, covered by focused tests, and included in the rebuilt local Setup. Full packaged route/theme/DPI/focus screenshot acceptance and the reported live danmaku trail remain open; the workspace-path executable launch produced no targetable window.",
       "direction": "按窗口×组件状态×主题/外壳×DPI 建立检查矩阵；复用已有 showcase，计算最终样式并用真实 Electron 窗口复核；业务功能清单作回归对照。",
       "acceptance": "主/详情/搜索/播放器/全局账号/设置/历史/直播/存储均有记录；100/125/150% DPI 与窄宽布局；沿用仓库普通文本4.5:1/功能边界3:1口径；键盘焦点、selected 语义、弹幕拖影和暂停无模糊逐项关闭。",
       "estimateEngineerHours": {
@@ -1757,12 +1757,12 @@
         "commit": "9d5a958",
         "verification": "播放器样式 9/9 测试和音量滑块 6 项静态几何检查通过；全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过），三套 typecheck、lint/架构边界和生产 build 通过。仍缺最终 Electron 截图复核。",
         "evidence": "architecture-audit/evidence/player-controls-followup-2026-10-28.json",
-        "latestImplementationCommit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
-        "latestVerification": "2026-10-29: playback-rate menu and theme contrast checks pass 60/60; volume slider cascade checks pass 12/12, including the higher-priority desktop base layer. Source fixes are committed as 7e83ea84 and 3b854d96. Packaged visual checks remain open; the workspace-path Win-Box launch produced no targetable window and a 0x80000003 error consistent with the previously documented workspace ACL issue.",
+        "latestImplementationCommit": "3b854d969270eb5b86f0bb955331ab1a771bb7c3",
+        "latestVerification": "2026-10-29: rate-menu/theme checks 60/60 and slider cascade checks 12/12 passed. Both fixes are included in the rebuilt local Setup (SHA-256 A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06). Full packaged visual matrix and live danmaku remain NOT_VERIFIED; workspace-path launch did not expose a targetable window.",
         "latestEvidence": "architecture-audit/evidence/v03-followup-2026-10-29.json"
       },
       "latestImplementationCommit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
-      "latestVerification": "2026-10-29: playback-rate menu and theme contrast checks pass 60/60; volume slider cascade checks pass 12/12, including the higher-priority desktop base layer. Source fixes are committed as 7e83ea84 and 3b854d96. Packaged visual checks remain open; the workspace-path Win-Box launch produced no targetable window and a 0x80000003 error consistent with the previously documented workspace ACL issue.",
+      "latestVerification": "2026-10-29: rate-menu/theme checks 60/60 and slider cascade checks 12/12 passed. Both fixes are included in the rebuilt local Setup (SHA-256 A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06). Full packaged visual matrix and live danmaku remain NOT_VERIFIED; workspace-path launch did not expose a targetable window.",
       "latestEvidence": "architecture-audit/evidence/v03-followup-2026-10-29.json"
     },
     {
@@ -1947,7 +1947,7 @@
           "symbol": "current installer regression suite"
         }
       ],
-      "gap": "The latest recorded local 1.27.1 Setup was built from application source cce91e7a (SHA-256 12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc; 228,684,789 bytes). Two later production CSS commits (7e83ea84 and 3b854d96) now require a package rebuild. The latest installer regression suite passes 12/12 and the V05 synthetic budget gate passes. Shipping Setup installation, real user-profile migration, running-app stop/upgrade, remote CI, live playback and packaged visual acceptance remain open. No release was published or pushed.",
+      "gap": "The current local 1.27.1 Setup was rebuilt after the two player CSS fixes (SHA-256 A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06; 228,684,730 bytes; 451 payload files / 533,336,044 bytes). The extracted payload passed isolated install/overwrite/uninstall-first/uninstall with six synthetic data categories preserved. Shipping Setup UI, actual running-app stop/upgrade, real user-profile migration, remote CI, live playback and packaged visual acceptance remain open. No release was published or pushed.",
       "direction": "修复后在同一候选提交运行类型/lint/架构/正式测试/构建和上述验收，隔离目录制作唯一的本地安装包，记录 hash/尺寸/版本/提交。遵守用户不发布小版本、不创建多工作区的要求。",
       "acceptance": "所有必需任务有实现与验收链接；旧绿灯不代替当前结果；本地 Setup 在干净目录安装运行通过；保留数据及产物来源可查；不发布 Release，审计/修复改动分步提交，临时目录清理。",
       "estimateEngineerHours": {
@@ -1994,7 +1994,7 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "0119e76",
-        "verification": "Latest recorded Setup hash/size are in current-candidate-2026-10-29.json, but the package predates production CSS commits 7e83ea84 and 3b854d96 and must be rebuilt. Installer regression is 12/12, V05 synthetic budget gate passed, and full source gates plus isolated payload acceptance remain recorded in v06-followup-2026-10-29.json. Shipping Setup interactive install, running-app upgrade, real-profile preservation, remote CI, live-source playback and full-screen visual checks remain open.",
+        "verification": "2026-10-29: current 1.27.1 Setup rebuilt from source through commit 3b854d969270eb5b86f0bb955331ab1a771bb7c3 and isolated payload acceptance passed (451 files, six synthetic data files preserved). This does not validate shipping Setup UI or stopping a running Win-Box process. Remote CI, live playback, full packaged UI and real-profile migration remain unverified; package remains local, unpublished and unpushed.",
         "latestImplementationCommits": [
           "48105537",
           "129f566a65d07c3c3f7b5a0849226eef141aec16",
@@ -2002,14 +2002,14 @@
         ],
         "evidence": "architecture-audit/evidence/current-candidate-2026-10-29.json",
         "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json",
-        "latestVerification": "Latest recorded Setup hash/size are in current-candidate-2026-10-29.json, but the package predates production CSS commits 7e83ea84 and 3b854d96 and must be rebuilt. Installer regression is 12/12, V05 synthetic budget gate passed, and full source gates plus isolated payload acceptance remain recorded in v06-followup-2026-10-29.json. Shipping Setup interactive install, running-app upgrade, real-profile preservation, remote CI, live-source playback and full-screen visual checks remain open."
+        "latestVerification": "2026-10-29: current 1.27.1 Setup rebuilt from source through commit 3b854d969270eb5b86f0bb955331ab1a771bb7c3 and isolated payload acceptance passed (451 files, six synthetic data files preserved). This does not validate shipping Setup UI or stopping a running Win-Box process. Remote CI, live playback, full packaged UI and real-profile migration remain unverified; package remains local, unpublished and unpushed."
       },
       "latestImplementationCommits": [
         "48105537",
         "129f566a65d07c3c3f7b5a0849226eef141aec16",
         "88fd7c666c6fb62bd70747883aab53d323d30250"
       ],
-      "latestVerification": "Two production CSS fixes are committed after the latest recorded Setup build; rebuild required. Installer suite 12/12 and V05 synthetic gate pass. Shipping Setup interactive install, live playback, full packaged UI, real-profile migration, running-app upgrade and remote CI remain unverified. No release published or branch pushed.",
+      "latestVerification": "2026-10-29: current 1.27.1 Setup rebuilt from source through commit 3b854d969270eb5b86f0bb955331ab1a771bb7c3 and isolated payload acceptance passed (451 files, six synthetic data files preserved). This does not validate shipping Setup UI or stopping a running Win-Box process. Remote CI, live playback, full packaged UI and real-profile migration remain unverified; package remains local, unpublished and unpushed.",
       "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json"
     },
     {
@@ -2195,7 +2195,7 @@
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
   "latestProgress": {
-    "recordedAt": "2026-10-28T17:58:16Z",
+    "recordedAt": "2026-10-29T14:24:16Z",
     "requiredTaskCount": 36,
     "completedTaskIds": [
       "B01",
@@ -2271,12 +2271,12 @@
       "bb12488d"
     ],
     "localInstallerPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-    "installerSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
+    "installerSha256": "A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06",
     "localCommitsUnpushed": true,
     "releasePublished": false,
     "preservedUncommittedUserFile": "libnc.so",
-    "localInstallerBytes": 228695919,
-    "localAppDirectoryBytes": 533313618,
+    "localInstallerBytes": 228684730,
+    "localAppDirectoryBytes": 533336044,
     "localReleaseDirectories": [
       "release1.27.1"
     ],
@@ -2285,8 +2285,8 @@
       "src/renderer/components/SourcePicker.tsx"
     ],
     "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json",
-    "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
-    "applicationBuildAt": "2026-10-28T13:50:08.827Z",
+    "applicationBuildCommit": "3b854d969270eb5b86f0bb955331ab1a771bb7c3",
+    "applicationBuildAt": "2026-10-29T14:16:29.4929769Z",
     "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json",
     "requiredCompletedCount": 31,
     "optionalOpenTaskIds": [
@@ -2306,7 +2306,17 @@
     "latestPerformanceEvidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
     "latestNativeUiEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
     "temporaryAcceptanceArtifactsCleaned": true,
-    "temporaryAcceptanceCleanup": "PASS for this PotPlayer follow-up: disposable candidate and both run artifact directories were removed after evidence was preserved; pre-existing .tmp entries were not touched.",
-    "latestInstallerEvidence": "architecture-audit/evidence/installer-regression-2026-10-29.json"
+    "temporaryAcceptanceCleanup": "PASS for the latest isolated payload acceptance; its generated JSON report was removed after verification, and pre-existing .tmp entries were not touched.",
+    "latestInstallerEvidence": "architecture-audit/evidence/installer-regression-2026-10-29.json",
+    "productionChangesAfterBuild": false,
+    "latestValidatedSourceCommits": [
+      "8270cbb4",
+      "123a50bb",
+      "b8597d44",
+      "cce91e7a",
+      "7e83ea84",
+      "3b854d96"
+    ],
+    "packagePayloadAcceptance": "PASS: install/overwrite/uninstall-first/uninstall, 451 files, six synthetic user-data files; isolated artifacts cleaned; running-process stop NOT_RUN."
   }
 }

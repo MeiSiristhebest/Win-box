@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-29T14:13:31Z",
+  "recordedAt": "2026-10-29T14:24:16Z",
   "scope": "V03 UI readability, interaction states, player pause feedback, and danmaku trail follow-up",
   "codeChanges": [
     {
@@ -97,7 +97,33 @@
   },
   "remaining": [
     "Capture visible packaged-app screenshots for the full route/theme/focus matrix at 100%, 125%, and 150% DPI and narrow layouts.",
-    "Verify the reported danmaku trail during actual video playback, including pause/resume and dense-comment conditions.",
-    "Rebuild the local Setup after commits 7e83ea84 and 3b854d96, then capture the packaged full-window controls at representative DPI; this workspace-path launch did not produce a visible window."
-  ]
+    "Verify the reported danmaku trail during actual video playback, including pause/resume and dense-comment conditions."
+  ],
+  "packageRebuild": {
+    "version": "1.27.1",
+    "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "setupBytes": 228684730,
+    "setupSha256": "A841EEA167786F8638E860BE88BC33C1B7F1CB7198571A3199D131D270204B06",
+    "winBoxExeBytes": 247366656,
+    "winBoxExeSha256": "98AA72104DEBC7F7008443F025D64EC60C2B3803C1195CBD57D412D4D498F07D",
+    "appAsarBytes": 24903386,
+    "appAsarSha256": "3A3F69B047F4E85852DC2699379790831EF2982D50A504DA1E95A39351322779",
+    "payloadFiles": 451,
+    "payloadBytes": 533336044,
+    "builtAt": "2026-10-29T14:16:29.4929769Z",
+    "releaseFolders": [
+      "release1.27.1"
+    ],
+    "published": false,
+    "pushed": false,
+    "applicationBuildCommit": "3b854d969270eb5b86f0bb955331ab1a771bb7c3",
+    "result": "PASS",
+    "command": "pnpm dist",
+    "sourceChanges": [
+      "7e83ea84",
+      "3b854d96"
+    ],
+    "visualAcceptance": "NOT_VERIFIED",
+    "workspaceLaunch": "No targetable window; prior 0x80000003 workspace-path launch observation remains documented."
+  }
 }
