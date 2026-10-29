@@ -18,12 +18,14 @@ export function HomeMediaCardView({
   onOpen: () => void;
   onImageError: (event: SyntheticEvent<HTMLImageElement>) => void;
 }) {
+  const accessibleName = `${folder ? '打开文件夹' : '打开条目'}：${title}${sourceLabel ? `，来源：${sourceLabel}` : ''}`;
+
   return (
-    <button type="button" className="card-media ui-action card-media-button" aria-label={`打开 ${title}`} onClick={onOpen}>
+    <button type="button" className="card-media ui-action card-media-button" aria-label={accessibleName} onClick={onOpen}>
       <div className="card">
         <div className="media-poster">
           {pic
-            ? <img src={pic} alt={title} onError={onImageError} loading="lazy" decoding="async" />
+            ? <img src={pic} alt="" onError={onImageError} loading="lazy" decoding="async" />
             : <div className="no-cover">暂无封面</div>}
           {remarks && <span className="badge">{remarks}</span>}
         </div>

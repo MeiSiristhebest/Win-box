@@ -185,18 +185,19 @@
   :root[data-ui='desktop'] .desktop-main button.card-media-button,
   :root[data-ui='desktop'] .desktop-main button.card-media-button:hover,
   :root[data-ui='desktop'] .desktop-main button.card-media-button:active { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; text-align: left; transform: none; }
-:root[data-ui='desktop'] .desktop-main button.card-media-button { cursor: pointer; }
+  :root[data-ui='desktop'] .desktop-main button.card-media-button { display: block; width: 100%; min-width: 0; cursor: pointer; }
   :root[data-ui='desktop'] .desktop-main .card-media .card,
   :root[data-ui='desktop'] .desktop-main .card-media:hover .card { border: 0; background: transparent; border-radius: var(--radius-media); overflow: visible; box-shadow: none; transform: none; }
-  :root[data-ui='desktop'] .desktop-main .card-media .card img { display: block; width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: var(--radius-media); transition: outline-color .18s ease; }
+  :root[data-ui='desktop'] .desktop-main .card-media .card img { display: block; width: 100%; aspect-ratio: 2/3; object-fit: cover; border-radius: var(--radius-media); transition: outline-color var(--dur-state) ease; }
   :root[data-ui='desktop'] .card-media .card > :first-child::before,
   :root[data-ui='desktop'] .card-media .card > :first-child::after { content: none; }
-  :root[data-ui='desktop'] .desktop-main .media-poster { position: relative; width: 100%; aspect-ratio: 2/3; overflow: hidden; border-radius: var(--radius-media); background: var(--surface-elevated); outline: 1px solid var(--border-soft); outline-offset: -1px; box-shadow: none; transition: outline-color .12s ease; }
+  :root[data-ui='desktop'] .desktop-main .media-poster { position: relative; width: 100%; aspect-ratio: 2/3; overflow: hidden; border-radius: var(--radius-media); background: var(--surface-elevated); outline: 1px solid var(--border-soft); outline-offset: -1px; box-shadow: none; transition: outline-color var(--dur-state) ease; }
   :root[data-ui='desktop'] .desktop-main .media-poster > img { width: 100%; height: 100%; aspect-ratio: auto; object-fit: cover; }
   :root[data-ui='desktop'] .desktop-main .card-media:hover .media-poster { outline-color: color-mix(in srgb, var(--color-accent) 62%, var(--border-soft)); }
   :root[data-ui='desktop'] .desktop-main .card-media:focus-visible .media-poster { outline-color: var(--focus-ring-color); }
+  :root[data-ui='desktop'] .desktop-main .card-media:is(:hover, :focus-visible) .name { color: var(--text-accent); }
   :root[data-ui='desktop'] .desktop-main .card-media .meta { padding: 10px 2px 0; }
-  :root[data-ui='desktop'] .desktop-main .card-media .name { display: -webkit-box; min-height: 2.8em; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--text-primary); font-size: 14px; font-weight: 600; line-height: 1.4; }
+  :root[data-ui='desktop'] .desktop-main .card-media .name { display: -webkit-box; min-height: 2.8em; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; color: var(--text-primary); font-size: 14px; font-weight: 600; line-height: 1.4; transition: color var(--dur-state) ease; }
   :root[data-ui='desktop'] .desktop-main .card-media .remarks { margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
   :root[data-ui='desktop'] .desktop-main .card-media .badge { background: #0b0f14ed; color: #f6f8fb; border: 1px solid #ffffff35; border-radius: 5px; font-size: 12px; font-weight: 600; box-shadow: none; backdrop-filter: none; }
   :root[data-ui='desktop'] .desktop-main .no-cover { border-radius: var(--radius-media); background: var(--surface-elevated); color: var(--text-secondary); font-size: 12px; }
@@ -211,6 +212,68 @@
   :root[data-ui='desktop'] .desktop-main .home-filter-btn { border-radius: 6px; margin: 4px 0 0 auto; min-height: 32px; }
   :root[data-ui='desktop'] .desktop-main .home-filter-btn.active { background: var(--accent-soft); color: var(--text-accent); }
   :root[data-ui='desktop'] .desktop-main .home-filters-more { margin-bottom: 20px; padding: 12px 14px; border-radius: 8px; background: var(--surface-raised); border: 1px solid var(--border-subtle); }
+  :root[data-ui='desktop'] .detail-page-content .detail-playback-section {
+    margin-top: 24px;
+    padding: 16px;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--surface-1);
+  }
+  :root[data-ui='desktop'] .detail-page-content .detail-source-row {
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 18px;
+    padding: 0 0 14px;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  :root[data-ui='desktop'] .detail-page-content .detail-source-row > .muted { color: var(--text-primary); font-size: 13px; font-weight: 650; }
+  :root[data-ui='desktop'] .detail-page-content .detail-episodes-heading {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    margin: 0 0 12px;
+    color: var(--text-primary);
+    font-size: 17px;
+    font-weight: 650;
+    line-height: 1.4;
+  }
+  :root[data-ui='desktop'] .detail-page-content .detail-episodes-count { color: var(--text-secondary); font-size: 12px; font-weight: 500; }
+  :root[data-ui='desktop'] .detail-page-content .detail-playback-section .ep-list { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+  :root[data-ui='desktop'] .detail-page-content .detail-playback-section .ep {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 38px;
+    padding: 7px 10px;
+    color: var(--text-primary);
+    font-size: 13px;
+    text-align: left;
+    transition: background-color var(--dur-state) ease, border-color var(--dur-state) ease, color var(--dur-state) ease;
+  }
+  :root[data-ui='desktop'] .detail-page-content .detail-playback-section .ep[aria-pressed='true'] {
+    border-color: var(--color-accent);
+    background: var(--accent-soft);
+    color: var(--text-primary);
+    font-weight: 650;
+  }
+  :root[data-ui='desktop'] .detail-page-content .detail-playback-section .ep[aria-pressed='true']::after { content: '✓'; flex: 0 0 auto; color: var(--text-accent); font-size: 12px; font-weight: 700; }
+  :root[data-ui='desktop'] .detail-page-content .detail-play-actions {
+    align-items: center;
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  :root[data-ui='desktop'] .detail-page-content .detail-play-actions > .primary { min-height: 44px; padding-inline: 20px; font-weight: 650; }
+  :root[data-ui='desktop'] .detail-page-content .detail-no-source-actions {
+    gap: 10px;
+    margin-top: 20px;
+    padding: 14px;
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+    background: var(--surface-1);
+  }
   :root[data-ui='desktop'] .desktop-main .empty { background: transparent; border: 0; padding: 48px 20px; color: var(--text-secondary); font-size: 14px; }
   :root[data-ui='desktop'] .desktop-main .empty h2 { font-size: 20px; font-weight: 600; color: var(--text-primary); margin: 0 0 10px; }
   :root[data-ui='desktop'] .desktop-main .empty p { margin: 0 0 18px; }

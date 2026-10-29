@@ -130,7 +130,6 @@ export interface DetailPresentationView {
     introStyle: CSSProperties;
     remarksClass: string;
     remarksStyle?: CSSProperties;
-    showSectionHeading: boolean;
     sectionHeadingClass: string;
   };
   playButtonClass: string;
@@ -169,7 +168,7 @@ export const DETAIL_PRESENTATION_VIEWS = {
       noCoverClass: '', noCoverStyle: standardNoCover, infoClass: '', infoStyle: { flex: 1, minWidth: 0 },
       titleClass: '', titleStyle: { margin: '0 0 8px' }, introClass: 'muted', introStyle: standardIntro,
       remarksClass: '', remarksStyle: { color: 'var(--accent-2)', marginBottom: 4 },
-      showSectionHeading: false, sectionHeadingClass: '',
+      sectionHeadingClass: '',
     },
     playButtonClass: 'primary',
   },
@@ -181,7 +180,7 @@ export const DETAIL_PRESENTATION_VIEWS = {
       noCoverClass: '', noCoverStyle: standardNoCover, infoClass: '', infoStyle: { flex: 1, minWidth: 0 },
       titleClass: '', titleStyle: { margin: '0 0 8px' }, introClass: 'muted', introStyle: standardIntro,
       remarksClass: '', remarksStyle: { color: 'var(--accent-2)', marginBottom: 4 },
-      showSectionHeading: false, sectionHeadingClass: '',
+      sectionHeadingClass: '',
     },
     playButtonClass: 'primary nf-play-btn',
   },
@@ -193,7 +192,7 @@ export const DETAIL_PRESENTATION_VIEWS = {
       noCoverClass: '', noCoverStyle: standardNoCover, infoClass: '', infoStyle: { flex: 1, minWidth: 0 },
       titleClass: '', titleStyle: { margin: '0 0 8px' }, introClass: 'muted', introStyle: standardIntro,
       remarksClass: '', remarksStyle: { color: 'var(--accent-2)', marginBottom: 4 },
-      showSectionHeading: false, sectionHeadingClass: '',
+      sectionHeadingClass: '',
     },
     playButtonClass: 'primary',
   },
@@ -211,7 +210,6 @@ export const DETAIL_PRESENTATION_VIEWS = {
       introStyle: doubanIntro,
       introClass: 'muted db-hero-intro',
       remarksClass: 'db-remark-pill',
-      showSectionHeading: true,
       sectionHeadingClass: 'db-sec-title',
     },
     playButtonClass: 'primary',

@@ -196,7 +196,7 @@ export default function DetailPage({
           <span className="muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pageChrome.title}</span>
         </div>
       )}
-      <div className={['content', presentation.contentClass].filter(Boolean).join(' ')} ref={contentRef}>
+      <div className={['content', 'detail-page-content', presentation.contentClass].filter(Boolean).join(' ')} ref={contentRef}>
         <PluginSlot slot="detail" />
         {loading ? (
           <div className="empty"><span className="spinner" aria-hidden="true" />加载中…</div>
@@ -257,17 +257,17 @@ export default function DetailPage({
                 该源没有可播剧集（豆瓣类/搜索聚合源/源侧 jar 自校验失败）→ **问一句**是否进入聚合搜索
                 （此前是 1.2s 后自动跳转，现已改为用户确认，避免"莫名其妙被换页"）。 */}
             {detail.flags.length > 0 && !detailIsEmpty(detail) ? (
-              <>
-                <div className="row" style={{ marginBottom: 10 }}>
+              <section className="detail-playback-section" aria-label="播放源与选集">
+                <div className="row detail-source-row">
                   <span className="muted">播放源：</span>
                   {detail.flags.map((f) => (
                     <SelectionButton type="button" key={f} className="detail-source-choice" selected={f === flag} onClick={() => chooseFlag(f)}>{f}</SelectionButton>
                   ))}
                 </div>
                 {/* 每组至多 50 集，直接选择区间；浏览区间不会改变当前选中集。 */}
-                {presentation.hero.showSectionHeading && (
-                  <div className={presentation.hero.sectionHeadingClass}>选集</div>
-                )}
+                <div className={['detail-episodes-heading', presentation.hero.sectionHeadingClass].filter(Boolean).join(' ')}>
+                  <span>选集</span><span className="detail-episodes-count">{epAll.length} 集</span>
+                </div>
                 <DetailEpisodeList
                   episodes={epAll}
                   page={epPage}
@@ -276,15 +276,15 @@ export default function DetailPage({
                   onChooseEpisode={chooseEp}
                   onPlayEpisode={(index) => { void play(index); }}
                 />
-                <div className="row" style={{ marginTop: 14, alignItems: 'center' }}>
+                <div className="row detail-play-actions">
                   <button className={presentation.playButtonClass} disabled={busy} onClick={() => { void play(); }}>
                     {busy ? '正在解析播放地址…' : '▶ 播放选中'}
                   </button>
                   {favoriteBtn}
                 </div>
-              </>
+              </section>
             ) : (
-              <div className="row" style={{ marginTop: 12, flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              <div className="row detail-no-source-actions">
                 <span style={{ fontSize: 13 }}>该源没有「{detailName || detail.name || ''}」的资源，是否进入聚合搜索？</span>
                 <button className={presentation.playButtonClass} onClick={() => goSearch(detailName || detail.name || '')}>
                   进入聚合搜索
