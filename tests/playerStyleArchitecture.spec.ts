@@ -67,6 +67,7 @@ describe('player control style architecture', () => {
     const rule = readRule(css, selector);
     const feedbackStyle = await readFile(new URL('../src/renderer/styles/player-feedback.css', import.meta.url), 'utf8');
     const statusOverlay = await readFile(new URL('../src/renderer/features/playback/PlayerStatusOverlays.tsx', import.meta.url), 'utf8');
+    const icon = readRule(css, ':root[data-theme] .vplayer > .vp-big svg');
 
     expect(imports.at(-2)).toBe('player-feedback.css');
     expect(feedbackStyle.replace(/\/\*[\s\S]*?\*\//g, '').trimStart()).not.toMatch(/^@layer\b/);
@@ -74,6 +75,9 @@ describe('player control style architecture', () => {
     expect(css).not.toMatch(/(?:^|\n)\s*\.vplayer > \.vp-big\s*\{/);
     expect(statusOverlay).toMatch(/paused\s*&&\s*!mini\s*&&\s*!episodePanelOpen/);
     expect(statusOverlay).toContain('className="vp-big"');
+    expect(statusOverlay).toContain('<svg width="14" height="14"');
+    expect(icon).toMatch(/\bwidth\s*:\s*14px\s*;/);
+    expect(icon).toMatch(/\bheight\s*:\s*14px\s*;/);
     expect(statusOverlay).toContain('d="M8 5.5v13l11-6.5z"');
     expect(rule).toMatch(/\bwidth\s*:\s*28px\s*;/);
     expect(rule).toMatch(/\bheight\s*:\s*28px\s*;/);

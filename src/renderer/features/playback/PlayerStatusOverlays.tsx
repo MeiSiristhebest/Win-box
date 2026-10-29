@@ -55,7 +55,7 @@ export function PlayerStatusOverlays(props: PlayerStatusOverlaysProps) {
       )}
       {!loading && !error && !mpvError && paused && !mini && !episodePanelOpen && (
         <button type="button" className="vp-big" onClick={onPlay} onMouseDown={onPlayMouseDown} title="播放" aria-label="播放">
-          <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor" /></svg>
         </button>
       )}
       {driveProvider && (

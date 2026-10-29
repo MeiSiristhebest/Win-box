@@ -43,8 +43,8 @@
 :root[data-theme] .vplayer > .vp-big svg {
   display: block;
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: 14px;
+  height: 14px;
 }
 
 :root[data-theme] .vplayer > .vp-big:hover {
