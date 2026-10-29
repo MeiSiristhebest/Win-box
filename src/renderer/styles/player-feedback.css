@@ -12,12 +12,12 @@
   box-sizing: border-box;
   flex: none;
   overflow: hidden;
-  width: 28px;
-  min-width: 28px;
-  max-width: 28px;
-  height: 28px;
-  min-height: 28px;
-  max-height: 28px;
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
   margin: 0;
   padding: 0;
   border: 1px solid rgba(255, 255, 255, .58);
@@ -43,8 +43,8 @@
 :root[data-theme] .vplayer > .vp-big svg {
   display: block;
   flex: none;
-  width: 14px;
-  height: 14px;
+  width: 20px;
+  height: 20px;
 }
 
 :root[data-theme] .vplayer > .vp-big:hover {

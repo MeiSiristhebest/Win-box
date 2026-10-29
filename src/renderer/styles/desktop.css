@@ -203,14 +203,14 @@
   :root[data-ui='desktop'] .desktop-main .no-cover { border-radius: var(--radius-media); background: var(--surface-elevated); color: var(--text-secondary); font-size: 12px; }
   :root[data-ui='desktop'] .desktop-main .tag { border: 1px solid transparent; border-radius: 5px; padding: 5px 10px; min-height: 30px; background: transparent; font-size: 13px; color: var(--text-secondary); box-shadow: none; }
   :root[data-ui='desktop'] .desktop-main .tag:hover { background: var(--surface-elevated); color: var(--text-primary); }
-  :root[data-ui='desktop'] .desktop-main .tag.active { display: inline-flex; align-items: center; gap: 6px; background: var(--accent-soft); border-color: var(--color-accent); color: var(--text-primary); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 28%, transparent); font-weight: 650; }
+  :root[data-ui='desktop'] .desktop-main .tag:is(.active, [aria-pressed='true'], [aria-selected='true']) { display: inline-flex; align-items: center; gap: 7px; background: var(--accent-soft); border-color: var(--color-accent); color: var(--text-primary); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 28%, transparent); font-weight: 650; }
   :root[data-ui='desktop'] .desktop-main .browse-tabs [role='tab'][aria-selected='true'] { color: var(--text-primary); background: var(--accent-soft); border: 1px solid var(--color-accent); border-bottom-width: 2px; border-radius: var(--radius-control); font-weight: 700; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 22%, transparent); }
   :root[data-ui='desktop'] .desktop-main .cascade { padding: 0; margin: 0; background: none; border: 0; box-shadow: none; }
   :root[data-ui='desktop'] .desktop-main .cascade-row { min-height: 34px; padding: 4px 0; gap: 5px; border: 0; }
   :root[data-ui='desktop'] .desktop-main .cascade-label { font-size: 12px; color: var(--text-secondary); min-width: 40px; }
   :root[data-ui='desktop'] .desktop-main .home-filter-row { align-items: flex-start; gap: 12px; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border-subtle); }
   :root[data-ui='desktop'] .desktop-main .home-filter-btn { border-radius: 6px; margin: 4px 0 0 auto; min-height: 32px; }
-  :root[data-ui='desktop'] .desktop-main .home-filter-btn.active { background: var(--accent-soft); color: var(--text-accent); }
+  :root[data-ui='desktop'] .desktop-main .home-filter-btn.active { background: var(--accent-soft); color: var(--text-primary); border-color: var(--color-accent); font-weight: 650; }
   :root[data-ui='desktop'] .desktop-main .home-filters-more { margin-bottom: 20px; padding: 12px 14px; border-radius: 8px; background: var(--surface-raised); border: 1px solid var(--border-subtle); }
   :root[data-ui='desktop'] .detail-page-content .detail-playback-section {
     margin-top: 24px;
@@ -257,7 +257,6 @@
     color: var(--text-primary);
     font-weight: 650;
   }
-  :root[data-ui='desktop'] .detail-page-content .detail-playback-section .ep[aria-pressed='true']::after { content: '✓'; flex: 0 0 auto; color: var(--text-accent); font-size: 12px; font-weight: 700; }
   :root[data-ui='desktop'] .detail-page-content .detail-play-actions {
     align-items: center;
     gap: 10px;
@@ -277,7 +276,7 @@
   :root[data-ui='desktop'] .desktop-main .empty { background: transparent; border: 0; padding: 48px 20px; color: var(--text-secondary); font-size: 14px; }
   :root[data-ui='desktop'] .desktop-main .empty h2 { font-size: 20px; font-weight: 600; color: var(--text-primary); margin: 0 0 10px; }
   :root[data-ui='desktop'] .desktop-main .empty p { margin: 0 0 18px; }
-  :root[data-ui='desktop'] .desktop-main .banner { display: block; background: var(--surface-raised); border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--text-secondary); font-size: 13px; }
+  :root[data-ui='desktop'] .desktop-main .banner { display: block; background: color-mix(in srgb, var(--text-warn) 10%, var(--surface-raised)); border: 1px solid color-mix(in srgb, var(--text-warn) 42%, var(--border)); border-radius: 6px; color: var(--text-warn); font-size: 13px; line-height: 1.55; }
   :root[data-ui='desktop'] .desktop-main .about { max-width: 1000px; width: 100%; column-count: auto; column-width: auto; }
   :root[data-ui='desktop'] .desktop-main .about-sec { margin: 0; padding: 20px 0; border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; background: transparent; box-shadow: none; }
   :root[data-ui='desktop'] .desktop-main .about-sec h3 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }
@@ -398,7 +397,7 @@
   :root[data-ui='desktop'] .theme-preview[data-mode='dark'] { --preview-bg: #101318; --preview-side: #141922; --preview-line: #303946; --preview-tile: #242c38; --preview-bar: #191f28; }
   :root[data-ui='desktop'] .vplayer { background: #000; color: #f0f0f2; }
   :root[data-ui='desktop'] .app-dialog { background: var(--surface-elevated); border: 1px solid var(--border); box-shadow: var(--shadow-lg); border-radius: 16px; }
-  :root[data-ui='desktop'] .app-dialog::backdrop { background: rgba(7, 9, 14, .58); backdrop-filter: none; -webkit-backdrop-filter: none; }
+  :root[data-ui='desktop'] .app-dialog::backdrop { background: rgba(7, 9, 14, .68); backdrop-filter: none; -webkit-backdrop-filter: none; }
   :root[data-ui='desktop'] .app-dialog-mark { display: none; }
   :root[data-ui='desktop'] .app-dialog-heading h2 { font-size: 20px; font-weight: 600; }
   :root[data-ui='desktop'] :is(.desktop-main, .app-dialog) button[aria-pressed='true']:not(.browse-tab):not(.tag) { background: var(--accent-soft); color: var(--text-accent); border-color: var(--color-accent); }

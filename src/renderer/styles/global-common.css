@@ -198,8 +198,8 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
 /* ---- 通用组件 ---- */
 .card { background: linear-gradient(180deg, var(--surface-2), var(--surface-1)); border: 1px solid color-mix(in srgb, var(--border) 72%, var(--text) 28%);
   border-radius: var(--radius); box-shadow: var(--shadow); }
-.banner { background: rgba(255,194,94,.08); border: 1px solid rgba(255,194,94,.25); border-radius: var(--radius-sm);
-  padding: 9px 12px; margin: 8px 0; color: var(--text-warn); font-size: 12px; }
+.banner { background: color-mix(in srgb, var(--text-warn) 10%, var(--surface-2)); border: 1px solid color-mix(in srgb, var(--text-warn) 42%, var(--border)); border-radius: var(--radius-sm);
+  padding: 9px 12px; margin: 8px 0; color: var(--text-warn); font-size: 12px; line-height: 1.55; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .muted { color: var(--text-dim); }
 .err { color: var(--text-danger); }
