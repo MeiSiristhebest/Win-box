@@ -1,26 +1,28 @@
 {
   "schemaVersion": 1,
   "taskId": "V04",
-  "recordedAt": "2026-10-28T17:45:52.502Z",
-  "command": "pnpm --dir D:/developWorkPlaces/win-box run test:installer",
+  "recordedAt": "2026-10-29T13:46:04Z",
+  "command": "pnpm run test:installer",
   "exitCode": 0,
-  "durationMs": 93801,
+  "durationMs": 81358,
+  "testCommit": "wvv",
   "summary": {
-    "tests": 11,
-    "passed": 11,
+    "tests": 12,
+    "passed": 12,
     "failed": 0,
     "skipped": 0
   },
   "candidate": {
     "version": "1.27.1",
     "sourcePayload": "release1.27.1/win-unpacked",
-    "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
+    "applicationBuildCommit": "cce91e7a4bdce8973f690975f7e407ae0186a6ac",
     "published": false
   },
   "passingScenarios": [
     "Production uninstall enumerates packaged files and preserves data and other installations",
+    "Transient packaged-file locks retry internally for five seconds before a clear cancel",
     "Running app offers update-in-place or data-preserving uninstall and reinstall",
-    "Preflights every existing packaged file before overwrite and avoids retry prompts",
+    "Preflights every existing packaged file before overwrite through the shared lock checker and avoids retry prompts",
     "Uninstall-first stops app and preflights files before invoking the old uninstaller",
     "Isolated acceptance has no desktop shortcut or registry writes",
     "Isolated integration acceptance redirects registry and shortcut writes to temporary targets",
@@ -33,7 +35,7 @@
   "runningProcessStopFixture": {
     "status": "PASS",
     "process": "node.exe copied as Win-Box.exe",
-    "stopDurationMs": 5279,
+    "stopDurationMs": 3998,
     "scope": "Harness fixture only; not the packaged Win-Box process."
   },
   "preservedSyntheticDataDomains": [
@@ -44,7 +46,7 @@
     "watch history",
     "favorites"
   ],
-  "temporaryArtifacts": "No new workspace .tmp entries were observed after this run; the test suite reports its preflight temp workspace cleanup assertion passed.",
+  "temporaryArtifacts": "The suite's preflight temp workspace cleanup assertion passed.",
   "limitations": [
     "Did not install the shipping Setup.exe over the user installation.",
     "Did not stop the actual packaged Win-Box.exe while playing or hidden.",

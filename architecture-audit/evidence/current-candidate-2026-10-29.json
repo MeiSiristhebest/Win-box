@@ -111,12 +111,13 @@
       "evidence": "architecture-audit/evidence/v04-followup-2026-10-29.json",
       "installerRegression": {
         "evidence": "architecture-audit/evidence/installer-regression-2026-10-29.json",
-        "tests": 11,
-        "passed": 11,
+        "testCommit": "wvv",
+        "tests": 12,
+        "passed": 12,
         "failed": 0,
         "skipped": 0,
-        "durationMs": 83675,
-        "processStopFixtureMs": 4077
+        "durationMs": 81358,
+        "processStopFixtureMs": 3998
       },
       "isolatedPayloadLifecycle": "Safe ACL baseline: install, overwrite, uninstall-first, uninstall, 451 packaged files, six synthetic data categories, registry and shortcuts passed.",
       "notVerified": [
