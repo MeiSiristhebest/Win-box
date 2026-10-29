@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-10-29T13:06:50.768Z",
+  "recordedAt": "2026-10-29T13:29:36Z",
   "scope": "V06 local validation of the current shared checkout after O01 implementation and playback diagnostics",
   "branch": "codex/architecture-cleanup-20261025",
   "policy": {
@@ -104,6 +104,28 @@
         "Running Win-Box process stop not run in this pass; prior packaged-process attempt stopped the process but installer returned NSIS 22.",
         "This invokes generated isolated installers from the current payload, not the shipping Setup.exe."
       ]
+    },
+    {
+      "command": "pnpm exec node --test --test-name-pattern='retries transient locks' scripts/installer-script.check.mjs",
+      "result": "passed",
+      "summary": "1/1 targeted generated-script test passed; all other tests, including process termination fixtures, were excluded."
+    },
+    {
+      "command": "pnpm dist after installer retry refactor",
+      "result": "passed",
+      "summary": "NSIS compiled and rebuilt version 1.27.1. Shared retry helper reduced Setup.exe from 228,710,977 to 228,684,789 bytes; payload remains 451 files / 533,335,590 bytes.",
+      "warnings": [
+        "MPV and external FFmpeg binaries remain optional and are not included; Chromium ffmpeg.dll remains part of Electron.",
+        "Vite reported the HLS chunk at 574.41 kB above the 500 kB advisory threshold."
+      ]
+    },
+    {
+      "command": "pnpm run acceptance:install 'release1.27.1/win-unpacked' after installer retry refactor",
+      "result": "passed",
+      "summary": "Isolated install, overwrite, uninstall-first, uninstall; 451 files verified; six synthetic user-data files preserved; registry/shortcuts passed; acceptance workspace and result JSON cleaned.",
+      "limitations": [
+        "Running-process stop was not run in this pass; the prior packaged-process attempt returned NSIS 22 after the app exited."
+      ]
     }
   ],
   "remoteCi": {
@@ -113,7 +135,7 @@
   },
   "openValidationItems": [
     "Shipping Setup.exe has not been installed over an existing or real installation; user installation remains untouched.",
-    "Successful stop-running upgrade remains open: packaged process exited but current acceptance returned NSIS 22 after CheckInstallFiles.",
+    "Successful stop-running upgrade remains open: the latest retry fix has only been verified on a non-running payload; the prior packaged-process attempt returned NSIS 22 after the app exited.",
     "Remote CI has not run because this branch is unpushed.",
     "V02 live third-party playback and V03 full desktop UI acceptance remain open."
   ],
@@ -196,22 +218,22 @@
     "otherAgentOrUserChangesModified": false
   },
   "currentSourcePackageRebuild": {
-    "recordedAt": "2026-10-29T13:06:50.768Z",
+    "recordedAt": "2026-10-29T13:24:34Z",
     "command": "pnpm dist",
     "result": "PASS",
     "version": "1.27.1",
     "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-    "setupBytes": 228700177,
-    "setupSha256": "2c229244c5483a4515fa89d0ed3698752db4f57cc410b754a7ba71394eaa1937",
-    "winBoxExeSha256": "5856b96ae59c13c7a09a336f3baad851fe6a40e13cc440e2e4a50b90c047b78a",
+    "setupBytes": 228684789,
+    "setupSha256": "12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc",
+    "winBoxExeSha256": "60ce491cd5a9732830cae00cd05a4ef3991303acedca19d6f3819bfffb05d9ee",
     "payload": {
       "files": 451,
       "bytes": 533335590
     },
     "previousArtifactDelta": {
-      "installerBytes": 4258,
-      "appDirectoryBytes": 21852,
-      "appAsarBytes": 21972
+      "installerBytes": -26188,
+      "appDirectoryBytes": 0,
+      "appAsarBytes": 0
     },
     "releaseFolders": [
       "release1.27.1"
@@ -221,7 +243,9 @@
     "sourceScope": {
       "latestValidatedSourceChanges": [
         "8270cbb4",
-        "123a50bb"
+        "123a50bb",
+        "b8597d44",
+        "cce91e7a"
       ],
       "workingTreeIncludedUncommittedChanges": [
         "deleted src/renderer/components/SourcePicker.tsx",
@@ -234,7 +258,7 @@
     ]
   },
   "currentSourcePayloadAcceptance": {
-    "recordedAt": "2026-10-29T12:57:40.178Z",
+    "recordedAt": "2026-10-29T13:25:07.189Z",
     "command": "pnpm run acceptance:install 'release1.27.1/win-unpacked'",
     "result": {
       "install": "PASS",

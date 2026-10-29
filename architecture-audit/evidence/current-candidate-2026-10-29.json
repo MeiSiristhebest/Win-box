@@ -1,26 +1,28 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-29T13:06:50.768Z",
+  "recordedAt": "2026-10-29T13:29:36Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
-    "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
+    "applicationBuildCommit": "cce91e7a4bdce8973f690975f7e407ae0186a6ac",
     "version": "1.27.1",
     "productionChangesAfterBuild": false,
-    "latestValidatedSourceCommits": ["8270cbb4", "123a50bb"],
+    "latestValidatedSourceCommits": ["8270cbb4", "123a50bb", "b8597d44", "cce91e7a"],
     "published": false,
     "pushed": false,
     "localAcceptanceCommits": [
       "617de7b4",
       "4a5ac726",
       "15fb29f2",
-      "863c41f6"
+      "863c41f6",
+      "b8597d44",
+      "cce91e7a"
     ]
   },
   "package": {
     "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-    "setupBytes": 228700177,
-    "setupSha256": "2c229244c5483a4515fa89d0ed3698752db4f57cc410b754a7ba71394eaa1937",
-    "winBoxExeSha256": "5856b96ae59c13c7a09a336f3baad851fe6a40e13cc440e2e4a50b90c047b78a",
+    "setupBytes": 228684789,
+    "setupSha256": "12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc",
+    "winBoxExeSha256": "60ce491cd5a9732830cae00cd05a4ef3991303acedca19d6f3819bfffb05d9ee",
     "originalBuildPayload": {
       "fileCount": 451,
       "bytes": 533313618
@@ -28,19 +30,16 @@
     "currentUnpackedDirectory": {
       "observedFileCount": 451,
       "observedBytes": 533335590,
-      "explanation": "Rebuilt from current source by pnpm dist on 2026-10-29; package size report records +21,852 unpacked bytes and +4,258 installer bytes versus the previous candidate. The data marker directory is no longer in the package."
+      "explanation": "Rebuilt from current source by pnpm dist on 2026-10-29; payload remains 21,852 bytes above the earlier baseline. Factoring the lock retry into one shared NSIS function reduced the installer by 26,188 bytes versus the immediately preceding candidate. The data marker directory is not in the package."
     },
     "localCurrentSourceBuild": {
       "version": "1.27.1",
       "command": "pnpm dist",
-      "sourceChanges": [
-        "8270cbb4",
-        "123a50bb"
-      ],
+      "sourceChanges": ["8270cbb4", "123a50bb", "b8597d44", "cce91e7a"],
       "installerBuilt": true,
-      "installerHash": "2c229244c5483a4515fa89d0ed3698752db4f57cc410b754a7ba71394eaa1937",
-      "installerBytes": 228700177,
-      "exeHash": "5856b96ae59c13c7a09a336f3baad851fe6a40e13cc440e2e4a50b90c047b78a",
+      "installerHash": "12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc",
+      "installerBytes": 228684789,
+      "exeHash": "60ce491cd5a9732830cae00cd05a4ef3991303acedca19d6f3819bfffb05d9ee",
       "releaseFolders": [
         "release1.27.1"
       ],
@@ -137,6 +136,13 @@
         "installerExitCode": 22,
         "overwriteCompleted": false,
         "meaning": "The process-stop attempt is not an acceptance pass: NSIS aborted at install_section_abort after CheckInstallFiles reported failure; exact blocked file remains unknown."
+      },
+      "lockRetryFix": {
+        "commits": ["b8597d44", "cce91e7a"],
+        "change": "CheckInstallFiles now retries each temporarily unavailable package file for up to five seconds and calls one shared installer/uninstaller function; persistent locks still cancel with a clear message.",
+        "targetedTest": "scripts/installer-script.check.mjs: retries transient locks during packaged-file preflight before cancelling (passed)",
+        "currentPayloadLifecycle": "PASS: install, overwrite, uninstall-first, uninstall; 451 files verified; six synthetic data files preserved; registry and shortcuts passed.",
+        "currentPayloadStopRunning": "NOT_RUN; the previous packaged-process run exited with NSIS 22, and the new retry change has not yet been rechecked with a running process."
       }
     },
     "V05": {
@@ -175,7 +181,7 @@
     "V06": {
       "status": "PARTIAL",
       "evidence": "architecture-audit/evidence/v06-followup-2026-10-29.json",
-      "latestLocalGates": "Full suite 4,176 passed/7 skipped; typecheck, lint, build, installer 11/11, release assets 17/17, package policy 12/12, acceptance tools 20/20, dev 3/3, native bridge 39 assertions, subscription import 9/9; current pnpm dist and isolated payload acceptance passed.",
+      "latestLocalGates": "Full suite 4,176 passed/7 skipped before the latest installer-only change; latest installer retry generation test passed, pnpm dist compiled, and current isolated payload acceptance passed.",
       "notVerified": [
         "Shipping Setup.exe installation/upgrade itself",
         "Successful stop-running overwrite after the packaged process exits (prior run returned NSIS 22)",
@@ -185,11 +191,12 @@
       ],
       "currentSourcePackageAcceptance": {
         "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-        "setupSha256": "2c229244c5483a4515fa89d0ed3698752db4f57cc410b754a7ba71394eaa1937",
-        "setupBytes": 228700177,
+        "setupSha256": "12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc",
+        "setupBytes": 228684789,
         "payloadFiles": 451,
         "payloadBytes": 533335590,
         "installOverwriteUninstall": "PASS",
+        "uninstallFirst": "PASS",
         "dataFilesPreserved": 6,
         "shippingSetupExeInstalled": false,
         "userInstallationTouched": false
