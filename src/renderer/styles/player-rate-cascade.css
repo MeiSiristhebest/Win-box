@@ -1,10 +1,17 @@
 /*
  * Playback rate options are a menu control, not ordinary shell buttons.
- * Shell button rules share the legacy layer. Keep this narrow override in that
- * same layer, after the shell imports, so option text, selected state, and
- * keyboard focus retain their semantic contrast without escaping the cascade.
+ * Shell/player button rules can be unlayered or live in later cascade layers.
+ * Keep this narrowly scoped menu treatment unlayered so the options retain
+ * readable foregrounds and explicit state surfaces in the packaged Electron UI.
  */
-@layer legacy {
+:root[data-shell] .vplayer .vp-rate-menu {
+  color: var(--text-primary, var(--text));
+  background: var(--surface-elevated, var(--surface-3));
+  border-color: var(--border-strong, var(--border));
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 :root[data-shell] .vp-rate-menu button.vp-rate-option {
   appearance: none;
   box-sizing: border-box;
@@ -42,5 +49,4 @@
 :root[data-shell] .vp-rate-menu button.vp-rate-option:focus-visible {
   outline: 2px solid var(--focus-ring-color, var(--color-accent, var(--accent)));
   outline-offset: 1px;
-}
 }

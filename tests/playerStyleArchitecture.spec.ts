@@ -63,6 +63,7 @@ describe('player control style architecture', () => {
 
   it('uses semantic contrast tokens for the playback-rate menu in every theme', async () => {
     const { css } = await readGlobalStyleComposition();
+    const rateCascade = await readFile(new URL('../src/renderer/styles/player-rate-cascade.css', import.meta.url), 'utf8');
     const trigger = readRule(css, '.vp-ctl.vp-rate');
     const menu = readRule(css, '.vp-rate-menu');
     const option = readRule(css, '.vp-rate-option');
@@ -90,6 +91,12 @@ describe('player control style architecture', () => {
     expect(themedSelected).toMatch(/color:\s*var\(--on-accent\)/);
     expect(themedSelected).toMatch(/background:\s*var\(--color-accent/);
     expect(themedFocus).toMatch(/outline:\s*2px solid var\(--focus-ring-color/);
+
+    const unlayeredRateCascade = rateCascade.replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(unlayeredRateCascade).not.toMatch(/@layer\b/);
+    expect(unlayeredRateCascade).toMatch(/:root\[data-shell\] \.vplayer \.vp-rate-menu\s*\{[^}]*color:\s*var\(--text-primary/);
+    expect(unlayeredRateCascade).toMatch(/:root\[data-shell\] \.vplayer \.vp-rate-menu\s*\{[^}]*background:\s*var\(--surface-elevated/);
+    expect(unlayeredRateCascade).toMatch(/:root\[data-shell\] \.vp-rate-menu button\.vp-rate-option\s*\{[^}]*color:\s*var\(--text-primary/);
   });
 
   it('keeps media loading text readable over the brightest video frame', async () => {
@@ -161,6 +168,7 @@ describe('player control style architecture', () => {
   it('centers the volume thumb on the rotated vertical track', async () => {
     const { css } = await readGlobalStyleComposition();
     const range = readRule(css, '.vp-vtrack');
+    const shellSafeRange = readRule(css, '.vplayer .vp-vol .vp-vpanel input.vp-vtrack');
     const track = readRule(css, '.vp-vtrack::-webkit-slider-runnable-track');
     const thumb = readRule(css, '.vp-vtrack::-webkit-slider-thumb');
     const trackHeight = Number(track.match(/\bheight\s*:\s*([\d.]+)px/)?.[1]);
@@ -172,6 +180,9 @@ describe('player control style architecture', () => {
     expect(range).toMatch(/\bleft\s*:\s*50%/);
     expect(range).toMatch(/\btop\s*:\s*50%/);
     expect(range).toMatch(/\btransform\s*:\s*translate\(-50%,\s*-50%\) rotate\(-90deg\)/);
+    expect(shellSafeRange).toMatch(/\bbackground\s*:\s*transparent/);
+    expect(shellSafeRange).toMatch(/\bborder\s*:\s*0/);
+    expect(shellSafeRange).toMatch(/\bbox-shadow\s*:\s*none/);
     expect(track).toMatch(/\bwidth\s*:\s*100%\s*;/);
     expect(trackHeight).toBeGreaterThan(0);
     expect(thumbHeight).toBeGreaterThan(trackHeight);

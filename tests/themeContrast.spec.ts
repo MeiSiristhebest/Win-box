@@ -218,7 +218,9 @@ describe('interactive state contrast combinations', () => {
       const elevated = composite(elevatedSurface!, baseSurface!);
       const primaryText = composite(text!, raised);
       const menuHover = mixSrgb(accent!, elevated, 0.16);
+      expect(contrastRatio(primaryText, elevated), `${theme.name}: playback-rate option`).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(primaryText, menuHover), `${theme.name}: playback-rate hover`).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(onAccent!, accent!), `${theme.name}: selected playback-rate option`).toBeGreaterThanOrEqual(4.5);
 
       const accentSoft = parseColor(tokens['--accent-soft']);
       const accentText = parseColor(tokens['--text-accent']);
