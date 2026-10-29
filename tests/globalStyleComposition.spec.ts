@@ -21,6 +21,7 @@ describe('global stylesheet composition', () => {
       'player-rate-cascade.css',
       'drive-account-cascade.css',
       'player-feedback.css',
+      'player-toolbar-cascade.css',
     ]);
     expect(css).toContain('@layer reset, legacy, tokens, base, components, layouts, utilities, desktop;');
     expect(css.indexOf('@layer legacy {')).toBeLessThan(css.indexOf('@layer tokens {'));
@@ -38,7 +39,7 @@ describe('global stylesheet composition', () => {
     const ruleEnd = css.indexOf('}', ruleStart);
     const pauseRule = css.slice(ruleStart, ruleEnd);
 
-    expect(imports.at(-1)).toBe('player-feedback.css');
+    expect(imports.at(-2)).toBe('player-feedback.css');
     expect(ruleStart).toBeGreaterThan(componentStart);
     expect(pauseRule).toContain('width: 28px;');
     expect(pauseRule).toContain('height: 28px;');

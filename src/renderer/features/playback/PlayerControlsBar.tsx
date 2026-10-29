@@ -98,7 +98,7 @@ export function PlayerControlsBar({
               <>
                 <button
                   type="button"
-                  className={'vp-ctl' + (kernelTools.statsOpen ? ' vp-on' : '')}
+                  className={'vp-ctl vp-ctl-label' + (kernelTools.statsOpen ? ' vp-on' : '')}
                   title="播放统计"
                   aria-label="播放统计"
                   aria-pressed={kernelTools.statsOpen}
@@ -108,7 +108,7 @@ export function PlayerControlsBar({
                 </button>
                 <button
                   type="button"
-                  className={'vp-ctl' + (kernelTools.keysOpen ? ' vp-on' : '')}
+                  className={'vp-ctl vp-ctl-label' + (kernelTools.keysOpen ? ' vp-on' : '')}
                   title="快捷键一览"
                   aria-label="快捷键一览"
                   aria-pressed={kernelTools.keysOpen}

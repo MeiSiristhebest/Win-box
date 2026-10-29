@@ -20,6 +20,28 @@ function readRule(css: string, selector: string): string {
 }
 
 describe('player control style architecture', () => {
+  it('keeps MPV mode labels and the playback clock from collapsing in a full toolbar', async () => {
+    const { imports, css } = await readGlobalStyleComposition();
+    const toolbar = await readFile(new URL('../src/renderer/features/playback/PlayerControlsBar.tsx', import.meta.url), 'utf8');
+    const kernelControl = await readFile(new URL('../src/renderer/features/playback/PlayerKernelControl.tsx', import.meta.url), 'utf8');
+    const controls = readRule(css, ':root[data-shell] .vplayer .vp-ctl.vp-kernel,\n:root[data-shell] .vplayer .vp-ctl.vp-ctl-label');
+    const label = readRule(css, ':root[data-shell] .vplayer .vp-kernel-tag');
+    const time = readRule(css, ':root[data-shell] .vplayer .vp-bar .vp-time');
+    const compactToolbar = readRule(css, ':root[data-shell] .vplayer .vp-bar');
+
+    expect(imports.at(-1)).toBe('player-toolbar-cascade.css');
+    expect(controls).toMatch(/flex:\s*0 0 auto/);
+    expect(controls).toMatch(/width:\s*auto/);
+    expect(controls).toMatch(/min-width:\s*34px/);
+    expect(controls).toMatch(/white-space:\s*nowrap/);
+    expect(label).toMatch(/white-space:\s*nowrap/);
+    expect(time).toMatch(/flex:\s*0 0 auto/);
+    expect(time).toMatch(/white-space:\s*nowrap/);
+    expect(compactToolbar).toMatch(/gap:\s*5px/);
+    expect(kernelControl).toContain("className={'vp-ctl vp-kernel'");
+    expect(toolbar.match(/className=\{'vp-ctl vp-ctl-label/g) ?? []).toHaveLength(2);
+  });
+
   it('keeps paused play feedback compact and immune to global shell button styles', async () => {
     const { imports, css } = await readGlobalStyleComposition();
     const selector = ':root[data-theme] .vplayer > .vp-big';
@@ -27,7 +49,7 @@ describe('player control style architecture', () => {
     const feedbackStyle = await readFile(new URL('../src/renderer/styles/player-feedback.css', import.meta.url), 'utf8');
     const statusOverlay = await readFile(new URL('../src/renderer/features/playback/PlayerStatusOverlays.tsx', import.meta.url), 'utf8');
 
-    expect(imports.at(-1)).toBe('player-feedback.css');
+    expect(imports.at(-2)).toBe('player-feedback.css');
     expect(feedbackStyle.replace(/\/\*[\s\S]*?\*\//g, '').trimStart()).not.toMatch(/^@layer\b/);
     expect(css.match(/:root\[data-theme\] \.vplayer > \.vp-big\s*\{/g) ?? []).toHaveLength(1);
     expect(css).not.toMatch(/(?:^|\n)\s*\.vplayer > \.vp-big\s*\{/);

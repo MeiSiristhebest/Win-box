@@ -1,0 +1,29 @@
+/* Keep compact text controls and the playback clock readable when all player
+   tools are present. Shell themes size generic controls independently, so this
+   final, scoped cascade prevents flex shrink from turning labels into columns. */
+:root[data-shell] .vplayer .vp-ctl.vp-kernel,
+:root[data-shell] .vplayer .vp-ctl.vp-ctl-label {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 34px;
+  padding-inline: 6px;
+  white-space: nowrap;
+}
+
+:root[data-shell] .vplayer .vp-kernel-tag {
+  display: inline-block;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+:root[data-shell] .vplayer .vp-bar .vp-time {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  :root[data-shell] .vplayer .vp-bar {
+    gap: 5px;
+  }
+}

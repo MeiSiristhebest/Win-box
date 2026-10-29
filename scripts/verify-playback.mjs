@@ -295,8 +295,37 @@ export async function verifyPlayback({ packagedAppDirectory = null, potplayerPat
     const mpv = await player.evaluate(() => window.__acceptanceMpvState);
     assert.ok(mpv.state.videoW === 320 && mpv.state.videoH === 180 && mpv.state.time > 3);
     assert.ok(mpv.state.time > mpvPausedAt + 0.5, 'MPV did not resume and advance after pause');
+    const mpvToolbarLayout = await player.locator('.vp-bar').evaluate(bar => {
+      const barRect = bar.getBoundingClientRect();
+      const labels = Array.from(bar.querySelectorAll('.vp-kernel-tag'), element => {
+        const labelRect = element.getBoundingClientRect();
+        const buttonRect = element.closest('button')?.getBoundingClientRect();
+        return {
+          text: element.textContent?.trim() ?? '',
+          whiteSpace: getComputedStyle(element).whiteSpace,
+          labelWidth: labelRect.width,
+          buttonWidth: buttonRect?.width ?? 0,
+          labelScrollWidth: element.scrollWidth,
+          labelClientWidth: element.clientWidth,
+        };
+      });
+      const clock = bar.querySelector('.vp-time');
+      return {
+        width: barRect.width,
+        scrollWidth: bar.scrollWidth,
+        labels,
+        clockWhiteSpace: clock ? getComputedStyle(clock).whiteSpace : null,
+      };
+    });
+    console.log(`MPV toolbar layout: ${JSON.stringify(mpvToolbarLayout)}`);
     await player.screenshot({ path: mpvScreenshotPath });
+    assert.deepEqual(mpvToolbarLayout.labels.map(label => label.text), ['兼容', '统计', '键位', '超分']);
+    assert.ok(mpvToolbarLayout.labels.every(label => label.whiteSpace === 'nowrap' && label.labelWidth > 12 && label.buttonWidth >= label.labelWidth), 'MPV toolbar labels must stay on one line without flex collapse');
+    assert.ok(mpvToolbarLayout.labels.every(label => label.labelScrollWidth <= label.labelClientWidth + 1), 'MPV toolbar label text must not clip');
+    assert.ok(mpvToolbarLayout.scrollWidth <= mpvToolbarLayout.width + 2, 'MPV toolbar controls must fit without horizontal overflow');
+    assert.equal(mpvToolbarLayout.clockWhiteSpace, 'nowrap', 'Playback time must stay on one line');
     record('mpv-real-decode-seek-time-progress-pause-resume', { session: mpv.session, time: mpv.state.time, resumedFrom: mpvPausedAt, width: mpv.state.videoW, height: mpv.state.videoH, paused: mpv.state.paused });
+    record('mpv-toolbar-labels-remain-readable', mpvToolbarLayout);
     await selectKernel(player, '自动选择（推荐）');
     await player.waitForFunction(() => JSON.parse(localStorage.getItem('winbox-player-prefs') || '{}').kernel === 'auto');
     await player.waitForFunction(() => { const video = document.querySelector('video'); return video?.videoWidth === 320 && video.paused && video.currentTime > 2; });
