@@ -1,0 +1,179 @@
+{
+  "recordedAt": "2026-10-29",
+  "scope": "V06 local validation of the current shared checkout after O01 implementation and playback diagnostics",
+  "branch": "codex/architecture-cleanup-20261025",
+  "policy": {
+    "published": false,
+    "pushed": false,
+    "setupArtifactBuilt": false,
+    "release1271Touched": false,
+    "userInstallationTouched": false,
+    "installerTestsUsedIsolatedTemporaryLocations": true
+  },
+  "toolchain": {
+    "nodeViaPnpm": "v26.12.0",
+    "directNode": "v26.5.0",
+    "pnpm": "12.14.0",
+    "nodeEngineRequirement": ">=26.12.0",
+    "engineRequirementSatisfiedByPackageRuntime": true
+  },
+  "checks": [
+    {
+      "command": "pnpm test",
+      "result": "passed",
+      "summary": "508 passed test files, 4 skipped test files (512 total); 4,171 passed tests and 7 skipped tests (4,178 total).",
+      "limitations": [
+        "Two V05 aggregate-search tests are gated by V05_SEARCH_RUN=1 (tests/v05AggregateSearch.spec.ts:27); the V05 agent separately ran the workload driver.",
+        "The preserved full-suite output does not identify the other skipped tests by name."
+      ]
+    },
+    {
+      "command": "pnpm typecheck",
+      "result": "passed",
+      "summary": "typecheck:main, typecheck:renderer, and typecheck:test passed."
+    },
+    {
+      "command": "pnpm lint",
+      "result": "passed",
+      "summary": "Full oxlint checks passed, including architecture boundaries, renderer React/performance rules, and jsx-a11y."
+    },
+    {
+      "command": "pnpm run test:release-assets",
+      "result": "passed",
+      "summary": "17/17 checks passed."
+    },
+    {
+      "command": "pnpm run test:package-app-policy",
+      "result": "passed",
+      "summary": "12/12 checks passed."
+    },
+    {
+      "command": "pnpm run test:acceptance-tools",
+      "result": "passed",
+      "summary": "20/20 checks passed.",
+      "limitations": [
+        "The 'PASS external source: MacCMS sample' line is emitted by a check module; this command does not perform live source playback."
+      ]
+    },
+    {
+      "command": "pnpm run test:installer",
+      "result": "passed",
+      "summary": "11/11 checks passed in about 80.6 seconds. Real NSIS install, overwrite, and uninstall exercised isolated temporary locations. The overwrite fixture process was stopped in 3,769 ms and install data was preserved.",
+      "limitations": [
+        "This validates the installer script against its test fixtures; it is not a clean-install test of a newly rebuilt Setup artifact."
+      ]
+    },
+    {
+      "command": "pnpm run test:dev",
+      "result": "passed",
+      "summary": "3/3 checks passed."
+    },
+    {
+      "command": "pnpm run test:native-bridge",
+      "result": "passed",
+      "summary": "1/1 checks passed with 39 assertions."
+    },
+    {
+      "command": "pnpm run test:subscription-import",
+      "result": "passed",
+      "summary": "9/9 checks passed."
+    },
+    {
+      "command": "pnpm build",
+      "result": "passed",
+      "summary": "Main and renderer bundles built successfully; generated the normal ignored dist/ output only.",
+      "warnings": [
+        "Vite reported an HLS chunk of 574.41 kB, above the 500 kB warning threshold.",
+        "The output also listed index at 481.87 kB and mpegts at 272.40 kB."
+      ]
+    }
+  ],
+  "remoteCi": {
+    "command": "gh run list --branch codex/architecture-cleanup-20261025 --limit 10 --json databaseId,headSha,headBranch,status,conclusion,event,workflowName,createdAt,url",
+    "result": "no runs returned",
+    "interpretation": "No remote CI run exists for the queried unpushed branch. No push was performed."
+  },
+  "openValidationItems": [
+    "No current-source Setup installer was rebuilt or installed in this V06 run; V04 is separately checking packaged candidate files in an isolated temporary path.",
+    "V02 actual playback acceptance remains separate.",
+    "V03 full GUI acceptance matrix remains separate.",
+    "Remote CI has not run because this branch is unpushed."
+  ],
+  "postO01Validation": {
+    "recordedAt": "2026-10-29",
+    "checks": [
+      {
+        "command": "pnpm test",
+        "result": "passed",
+        "summary": "509 passed test files, 4 skipped (513 total); 4,176 passed tests and 7 skipped tests (4,183 total)."
+      },
+      {
+        "command": "pnpm typecheck",
+        "result": "passed",
+        "summary": "Main, renderer, and test TypeScript projects passed."
+      },
+      {
+        "command": "pnpm lint",
+        "result": "passed",
+        "summary": "Oxlint, architecture boundaries, React performance, and jsx-a11y checks passed."
+      },
+      {
+        "command": "pnpm build",
+        "result": "passed",
+        "summary": "Main and renderer bundles built successfully."
+      },
+      {
+        "command": "pnpm run test:release-assets",
+        "result": "passed",
+        "summary": "17/17 checks passed."
+      },
+      {
+        "command": "pnpm run test:package-app-policy",
+        "result": "passed",
+        "summary": "12/12 checks passed."
+      },
+      {
+        "command": "pnpm run test:acceptance-tools",
+        "result": "passed",
+        "summary": "20/20 checks passed; the printed MacCMS line comes from a fixture and is not live playback."
+      },
+      {
+        "command": "pnpm run test:installer",
+        "result": "passed",
+        "summary": "11/11 checks passed; isolated NSIS overwrite stopped its fixture process in 4,077 ms and preserved the test user data."
+      },
+      {
+        "command": "pnpm run test:dev",
+        "result": "passed",
+        "summary": "3/3 checks passed."
+      },
+      {
+        "command": "pnpm run test:native-bridge",
+        "result": "passed",
+        "summary": "39 runtime assertions passed."
+      },
+      {
+        "command": "pnpm run test:subscription-import",
+        "result": "passed",
+        "summary": "9/9 checks passed."
+      }
+    ],
+    "buildWarnings": [
+      "The generated HLS chunk is 574.41 kB, above Vite's 500 kB advisory threshold.",
+      "Rolldown reports the Babel transform plugin used 7.0 seconds (92% of 7.6 seconds) across 579 calls."
+    ],
+    "limits": [
+      "This is local source validation, not a rebuilt Setup installer or install over an existing app.",
+      "Remote CI was not run because the branch remains unpushed.",
+      "Live third-party playback and full desktop UI acceptance remain open."
+    ]
+  },
+  "workspaceEffects": {
+    "createdByThisRun": [
+      "Ignored generated dist/ output from pnpm build."
+    ],
+    "longRunningCommandsAtCompletion": false,
+    "installerTemporaryLocationsCleanedByTests": true,
+    "otherAgentOrUserChangesModified": false
+  }
+}
