@@ -1933,9 +1933,17 @@
         {
           "path": "architecture-audit/evidence/current-build-2026-10-28.json",
           "symbol": "current test, typecheck, lint, build gates"
+        },
+        {
+          "path": "architecture-audit/evidence/current-candidate-2026-10-29.json",
+          "symbol": "latest local package and acceptance summary"
+        },
+        {
+          "path": "architecture-audit/evidence/installer-regression-2026-10-29.json",
+          "symbol": "current installer regression suite"
         }
       ],
-      "gap": "Latest local candidate was built from production source commit 292f8150d63ceb89df36d19fd1e8a1b69f0249c7; full Vitest 507 files/4,169 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17, acceptance tools 20/20, package policy 12/12 and installer 10/10 pass. Installer 228695919 bytes SHA-256 cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a. Packaged HTML5/MPV and Java/Python spider probes pass; ten-cycle local playback evidence recorded. Interactive upgrade over the user install, live sources, MPV desktop pixels and remote CI remain open; not published/pushed.",
+      "gap": "The current local 1.27.1 Setup was rebuilt from validated application source commit cce91e7a (SHA-256 12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc; 228,684,789 bytes). Full source gates and isolated payload lifecycle acceptance are recorded; the latest installer regression suite passes 12/12, and V05 synthetic budget gate passes. The shipping Setup has not been installed interactively in a clean location; actual running-app stop/upgrade, real user-profile migration, remote CI, live playback, and full desktop visual acceptance remain open. No release was published or pushed.",
       "direction": "修复后在同一候选提交运行类型/lint/架构/正式测试/构建和上述验收，隔离目录制作唯一的本地安装包，记录 hash/尺寸/版本/提交。遵守用户不发布小版本、不创建多工作区的要求。",
       "acceptance": "所有必需任务有实现与验收链接；旧绿灯不代替当前结果；本地 Setup 在干净目录安装运行通过；保留数据及产物来源可查；不发布 Release，审计/修复改动分步提交，临时目录清理。",
       "estimateEngineerHours": {
@@ -1982,23 +1990,23 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "0119e76",
-        "verification": "当前代码完整 Vitest 507 文件/4162 测试（3 files/5 tests skipped）、main/renderer/test typecheck、lint/architecture、dist、package runtime closure、installer 9/9、acceptance tools 20/20、JRE version、packaged local HTML5/MPV playback 与 pause feedback screenshot 均通过。远端 CI 未运行，安装器 Setup 未交互执行。",
+        "verification": "Current local 1.27.1 package hash and size are recorded in current-candidate-2026-10-29.json. Latest installer regression: 12/12, no skips (2026-10-29); V05 budgeted synthetic gate passed with explicit synthetic-only thresholds. Full source test/typecheck/lint/build and isolated payload acceptance results remain in v06-followup-2026-10-29.json. The actual shipping Setup has not been installed interactively, remote CI was not run because the branch is unpushed, and running-app upgrade/live-source/full-screen visual acceptance remain open.",
         "latestImplementationCommits": [
           "48105537",
           "129f566a65d07c3c3f7b5a0849226eef141aec16",
           "88fd7c666c6fb62bd70747883aab53d323d30250"
         ],
-        "evidence": "architecture-audit/evidence/current-build-2026-10-28.json",
+        "evidence": "architecture-audit/evidence/current-candidate-2026-10-29.json",
         "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json",
-        "latestVerification": "Local package hashes were rechecked and the final V05 synthetic aggregate-search run passed. The shipping setup was not installed interactively; remote CI, real user-install upgrade, live-source playback, and desktop-visible MPV pixels remain open. No release was published or pushed."
+        "latestVerification": "Current local 1.27.1 package hash and size are recorded in current-candidate-2026-10-29.json. Latest installer regression: 12/12, no skips (2026-10-29); V05 budgeted synthetic gate passed with explicit synthetic-only thresholds. Full source test/typecheck/lint/build and isolated payload acceptance results remain in v06-followup-2026-10-29.json. The actual shipping Setup has not been installed interactively, remote CI was not run because the branch is unpushed, and running-app upgrade/live-source/full-screen visual acceptance remain open."
       },
       "latestImplementationCommits": [
         "48105537",
         "129f566a65d07c3c3f7b5a0849226eef141aec16",
         "88fd7c666c6fb62bd70747883aab53d323d30250"
       ],
-      "latestVerification": "Latest local candidate was built from production source commit 292f8150d63ceb89df36d19fd1e8a1b69f0249c7; full Vitest 507 files/4,169 passed/5 skipped, typecheck/lint/architecture, release-assets 17/17, acceptance tools 20/20, package policy 12/12 and installer 10/10 pass. Installer 228695919 bytes SHA-256 cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a. Packaged HTML5/MPV and Java/Python spider probes pass; ten-cycle local playback evidence recorded. Interactive upgrade over the user install, live sources, MPV desktop pixels and remote CI remain open; not published/pushed.",
-      "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-28.json"
+      "latestVerification": "Local 1.27.1 Setup rebuilt and hashed; installer suite 12/12 and V05 synthetic resource gate passed. Existing full source gates and isolated payload install/overwrite/uninstall results are recorded. Shipping Setup interactive install, live playback, visible full-window UI, real-profile preservation, running-app upgrade and remote CI remain unverified. No release published or branch pushed.",
+      "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json"
     },
     {
       "id": "O01",
