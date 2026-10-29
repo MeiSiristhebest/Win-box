@@ -53,7 +53,7 @@ export function AppearanceSectionView({ model, actions }: AppearanceSectionViewP
                 checked={model.motion === value}
                 onChange={() => actions.changeMotion(value)}
               />
-              <span>{label}{model.motion === value ? ' ✓' : ''}</span>
+              <span>{label}{model.motion === value ? <small>已选</small> : null}</span>
             </label>
           ))}
         </div>
@@ -86,7 +86,7 @@ export function AppearanceSectionView({ model, actions }: AppearanceSectionViewP
                 checked={model.uiScale.pref === option.value}
                 onChange={() => actions.changeUiScale(option.value)}
               />
-              <span>{option.value === 'auto' ? `跟随屏幕（当前 ${Math.round(model.uiScale.scale * 100)}%）` : option.label}</span>
+              <span>{option.value === 'auto' ? `跟随屏幕（当前 ${Math.round(model.uiScale.scale * 100)}%）` : option.label}{model.uiScale.pref === option.value ? <small>已选</small> : null}</span>
             </label>
           ))}
         </div>
@@ -102,7 +102,7 @@ export function AppearanceSectionView({ model, actions }: AppearanceSectionViewP
           {(['inline', 'window'] as const).map((value) => (
             <label key={value} className={`tag ${styles.radioOption} ${model.navMode === value ? 'active' : ''}`}>
               <input className={styles.radioInput} type="radio" name="nav-mode" value={value} checked={model.navMode === value} onChange={() => actions.changeNavMode(value)} />
-              <span>{value === 'inline' ? '本页内' : '独立窗口'}</span>
+              <span>{value === 'inline' ? '本页内' : '独立窗口'}{model.navMode === value ? <small>已选</small> : null}</span>
             </label>
           ))}
         </div>
@@ -113,7 +113,7 @@ export function AppearanceSectionView({ model, actions }: AppearanceSectionViewP
           {[false, true].map((value) => (
             <label key={String(value)} className={`tag ${styles.radioOption} ${model.waterfall === value ? 'active' : ''}`}>
               <input className={styles.radioInput} type="radio" name="home-browse" value={String(value)} checked={model.waterfall === value} onChange={() => actions.changeWaterfall(value)} />
-              <span>{value ? '瀑布模式' : '逐页翻页'}</span>
+              <span>{value ? '瀑布模式' : '逐页翻页'}{model.waterfall === value ? <small>已选</small> : null}</span>
             </label>
           ))}
         </div>

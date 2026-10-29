@@ -23,6 +23,22 @@
     cursor: pointer;
   }
 
+  .radioOption > span:last-child {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .radioOption small {
+    flex: 0 0 auto;
+    color: var(--text-accent);
+    font-size: 12px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+
   .radioInput {
     clip: rect(0, 0, 0, 0);
     height: 1px;

@@ -43,7 +43,10 @@ export function ProfileSwitcher({ port }: ProfileSwitcherProps) {
         {filtered.map(item => {
           const current = item.profileId === config?.activeProfileId;
           return <button key={item.id} ref={current ? currentChoice : undefined} type="button" className={styles.choice} aria-pressed={current} disabled={switching || !item.restorable} onClick={() => { if (item.profileId) void actions.activate(item.profileId).then(activated => { if (activated) setOpen(false); }); }}>
-            <span className={styles.choiceName}>{item.name}{current ? ' · 当前' : ''}</span>
+            <span className={styles.choiceHeading}>
+              <span className={styles.choiceName}>{item.name}</span>
+              {current && <span className={styles.currentBadge}>✓ 当前</span>}
+            </span>
             <span className={styles.meta}>{item.groupName} · {item.sourceCount} 个站点 · {item.liveCount} 条直播</span>
             {item.reason && <span className={styles.reason}>{item.reason}</span>}
           </button>;
