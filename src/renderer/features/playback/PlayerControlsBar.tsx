@@ -83,74 +83,82 @@ export function PlayerControlsBar({
             </div>
           )}
           <div className="vp-bar">
-            <PlayerTransportControls {...transport} mini={false} />
-            <span className="vp-time">
-              {isLive ? <span className="vp-live">● 直播</span> : formatPlaybackTime(currentTime) + ' / ' + formatPlaybackTime(duration)}
-            </span>
-            <PlayerVolumeControl {...volume} />
-            <DlnaCastControl {...dlna} />
-            <SubtitlePanel {...subtitle} />
-            <DanmakuPanel {...danmaku} />
-            {skipSegments && <SkipSegmentsControl {...skipSegments} />}
-            <PlayerRateControl {...rate} />
-            {kernel && <PlayerKernelControl {...kernel} />}
-            {kernelTools && (
-              <>
+            <div className="vp-bar-group" role="group" aria-label="播放控制">
+              <PlayerTransportControls {...transport} mini={false} />
+              <span className="vp-time">
+                {isLive ? <span className="vp-live">● 直播</span> : formatPlaybackTime(currentTime) + ' / ' + formatPlaybackTime(duration)}
+              </span>
+            </div>
+            <div className="vp-bar-group" role="group" aria-label="声音、投屏、字幕和跳过">
+              <PlayerVolumeControl {...volume} />
+              <DlnaCastControl {...dlna} />
+              <SubtitlePanel {...subtitle} />
+              <DanmakuPanel {...danmaku} />
+              {skipSegments && <SkipSegmentsControl {...skipSegments} />}
+            </div>
+            <div className="vp-bar-group" role="group" aria-label="播放选项">
+              <PlayerRateControl {...rate} />
+              {kernel && <PlayerKernelControl {...kernel} />}
+              {kernelTools && (
+                <>
+                  <button
+                    type="button"
+                    className={'vp-ctl vp-ctl-label' + (kernelTools.statsOpen ? ' vp-on' : '')}
+                    title="播放统计"
+                    aria-label="播放统计"
+                    aria-pressed={kernelTools.statsOpen}
+                    onClick={kernelTools.onToggleStats}
+                  >
+                    <span className="vp-kernel-tag">统计</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={'vp-ctl vp-ctl-label' + (kernelTools.keysOpen ? ' vp-on' : '')}
+                    title="快捷键一览"
+                    aria-label="快捷键一览"
+                    aria-pressed={kernelTools.keysOpen}
+                    onClick={kernelTools.onToggleKeys}
+                  >
+                    <span className="vp-kernel-tag">键位</span>
+                  </button>
+                </>
+              )}
+              <PlayerSuperResolutionControl {...superResolution} />
+            </div>
+            <div className="vp-bar-spacer" aria-hidden="true" />
+            <div className="vp-bar-group" role="group" aria-label="画面和播放列表">
+              <PlayerAudioControl {...audio} />
+              <PlayerFitControl {...fit} />
+              {episodes && (
                 <button
                   type="button"
-                  className={'vp-ctl vp-ctl-label' + (kernelTools.statsOpen ? ' vp-on' : '')}
-                  title="播放统计"
-                  aria-label="播放统计"
-                  aria-pressed={kernelTools.statsOpen}
-                  onClick={kernelTools.onToggleStats}
+                  className={'vp-ctl' + (episodes.open ? ' vp-on' : '')}
+                  title="选集"
+                  aria-label="选集"
+                  aria-pressed={episodes.open}
+                  onClick={episodes.onToggle}
                 >
-                  <span className="vp-kernel-tag">统计</span>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
+                    <path d="M9 8h7M9 12h7M9 16h5" />
+                    <path d="M6.5 8h.01M6.5 12h.01M6.5 16h.01" strokeWidth="2.4" />
+                  </svg>
                 </button>
-                <button
-                  type="button"
-                  className={'vp-ctl vp-ctl-label' + (kernelTools.keysOpen ? ' vp-on' : '')}
-                  title="快捷键一览"
-                  aria-label="快捷键一览"
-                  aria-pressed={kernelTools.keysOpen}
-                  onClick={kernelTools.onToggleKeys}
-                >
-                  <span className="vp-kernel-tag">键位</span>
-                </button>
-              </>
-            )}
-            <PlayerSuperResolutionControl {...superResolution} />
-            <div style={{ flex: 1 }} />
-            <PlayerAudioControl {...audio} />
-            <PlayerFitControl {...fit} />
-            {episodes && (
+              )}
               <button
                 type="button"
-                className={'vp-ctl' + (episodes.open ? ' vp-on' : '')}
-                title="选集"
-                aria-label="选集"
-                aria-pressed={episodes.open}
-                onClick={episodes.onToggle}
+                className="vp-ctl"
+                title={fullscreen.active ? '退出全屏' : '全屏'}
+                aria-label={fullscreen.active ? '退出全屏' : '全屏'}
+                onClick={fullscreen.onToggle}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <rect x="3.5" y="4" width="17" height="16" rx="2.5" />
-                  <path d="M9 8h7M9 12h7M9 16h5" />
-                  <path d="M6.5 8h.01M6.5 12h.01M6.5 16h.01" strokeWidth="2.4" />
-                </svg>
+                {fullscreen.active ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                )}
               </button>
-            )}
-            <button
-              type="button"
-              className="vp-ctl"
-              title={fullscreen.active ? '退出全屏' : '全屏'}
-              aria-label={fullscreen.active ? '退出全屏' : '全屏'}
-              onClick={fullscreen.onToggle}
-            >
-              {fullscreen.active ? (
-                <svg width="18" height="18" viewBox="0 0 24 24"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-              ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-              )}
-            </button>
+            </div>
           </div>
         </>
       )}
