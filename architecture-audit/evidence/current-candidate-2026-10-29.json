@@ -1,12 +1,19 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-29T13:29:36Z",
+  "recordedAt": "2026-10-29T14:13:31Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "cce91e7a4bdce8973f690975f7e407ae0186a6ac",
     "version": "1.27.1",
-    "productionChangesAfterBuild": false,
-    "latestValidatedSourceCommits": ["8270cbb4", "123a50bb", "b8597d44", "cce91e7a"],
+    "productionChangesAfterBuild": true,
+    "latestValidatedSourceCommits": [
+      "8270cbb4",
+      "123a50bb",
+      "b8597d44",
+      "cce91e7a",
+      "7e83ea84",
+      "3b854d96"
+    ],
     "published": false,
     "pushed": false,
     "localAcceptanceCommits": [
@@ -15,7 +22,9 @@
       "15fb29f2",
       "863c41f6",
       "b8597d44",
-      "cce91e7a"
+      "cce91e7a",
+      "7e83ea84",
+      "3b854d96"
     ]
   },
   "package": {
@@ -35,7 +44,12 @@
     "localCurrentSourceBuild": {
       "version": "1.27.1",
       "command": "pnpm dist",
-      "sourceChanges": ["8270cbb4", "123a50bb", "b8597d44", "cce91e7a"],
+      "sourceChanges": [
+        "8270cbb4",
+        "123a50bb",
+        "b8597d44",
+        "cce91e7a"
+      ],
       "installerBuilt": true,
       "installerHash": "12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc",
       "installerBytes": 228684789,
@@ -45,6 +59,18 @@
       ],
       "published": false,
       "pushed": false
+    },
+    "productionSourceChangesAfterBuild": {
+      "commits": [
+        "7e83ea84",
+        "3b854d96"
+      ],
+      "files": [
+        "src/renderer/styles/player-rate-cascade.css",
+        "src/renderer/styles/global-player.css"
+      ],
+      "requiresRebuild": true,
+      "packagePath": "release1.27.1/Win-Box.Setup.1.27.1.exe"
     }
   },
   "acceptance": {
@@ -96,7 +122,12 @@
         "status": "IMPLEMENTED_AND_TESTED",
         "commit": "8270cbb4",
         "test": "tests/relayFailure.spec.ts: 41/41 passed",
-        "addedFields": ["redacted final URL", "content type", "content length", "content range"],
+        "addedFields": [
+          "redacted final URL",
+          "content type",
+          "content length",
+          "content range"
+        ],
         "limitation": "This improves diagnosis of upstream HTML/JSON/error responses; representative live-source playback has not yet been repeated."
       }
     },
@@ -104,7 +135,32 @@
       "status": "PARTIAL",
       "evidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
       "priorUiRegressions": "Theme and player style regression checks passed; live full-window route/theme/DPI and danmaku-trail capture remain unverified.",
-      "latestPlayerRecheck": "HTML5 visual frame and player controls are present in the packaged screenshot; MPV decode was confirmed by state and time progression, but native child-window pixels are not captured."
+      "latestPlayerRecheck": "HTML5 visual frame and player controls are present in the packaged screenshot; MPV decode was confirmed by state and time progression, but native child-window pixels are not captured.",
+      "latestControlStyleFixes": {
+        "status": "PASS_FOCUSED_AUTOMATED",
+        "commits": [
+          "7e83ea84",
+          "3b854d96"
+        ],
+        "checks": [
+          {
+            "command": "pnpm exec vitest run tests/playerStyleArchitecture.spec.ts tests/themeContrast.spec.ts",
+            "passed": 60
+          },
+          {
+            "command": "pnpm exec vitest run tests/playerStyleArchitecture.spec.ts",
+            "passed": 12
+          }
+        ],
+        "notInCurrentPackage": true,
+        "remaining": "Full packaged visual verification is still required after rebuilding the Setup."
+      },
+      "workspaceWindowCaptureAttempt": {
+        "status": "NOT_VERIFIED",
+        "target": "release1.27.1/win-unpacked/Win-Box.exe",
+        "observation": "No targetable Win-Box window appeared. Windows Application Error/Windows Error Reporting recorded Win-Box 1.27.1.0, exception 0x80000003, offset 0x073d6749 after direct launch from the workspace package path.",
+        "interpretation": "Consistent with the previously recorded AppContainer install-directory ACL issue; this is not evidence that playback itself failed. No isolated-installed package or live source was tested in this attempt."
+      }
     },
     "V04": {
       "status": "PARTIAL",
@@ -139,7 +195,10 @@
         "meaning": "The process-stop attempt is not an acceptance pass: NSIS aborted at install_section_abort after CheckInstallFiles reported failure; exact blocked file remains unknown."
       },
       "lockRetryFix": {
-        "commits": ["b8597d44", "cce91e7a"],
+        "commits": [
+          "b8597d44",
+          "cce91e7a"
+        ],
         "change": "CheckInstallFiles now retries each temporarily unavailable package file for up to five seconds and calls one shared installer/uninstaller function; persistent locks still cancel with a clear message.",
         "targetedTest": "scripts/installer-script.check.mjs: retries transient locks during packaged-file preflight before cancelling (passed)",
         "currentPayloadLifecycle": "PASS: install, overwrite, uninstall-first, uninstall; 451 files verified; six synthetic data files preserved; registry and shortcuts passed.",
@@ -153,8 +212,16 @@
         "evidence": "architecture-audit/evidence/v05-budget-gate-2026-10-29.json",
         "harnessCommit": "uus",
         "status": "PASS",
-        "budgets": { "workingSetMiB": 500, "privateBytesMiB": 700, "cpuP95Percent": 180 },
-        "observed": { "workingSetPeakMiB": 344.9, "privateBytesPeakMiB": 414.7, "cpuP95Percent": 131.7 },
+        "budgets": {
+          "workingSetMiB": 500,
+          "privateBytesMiB": 700,
+          "cpuP95Percent": 180
+        },
+        "observed": {
+          "workingSetPeakMiB": 344.9,
+          "privateBytesPeakMiB": 414.7,
+          "cpuP95Percent": 131.7
+        },
         "scope": "10 x 1,000-source synthetic loopback CMS cycles; sampled process tree is Node/Vitest, not Win-Box.exe."
       },
       "independentRecheck": {

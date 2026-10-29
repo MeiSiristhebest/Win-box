@@ -1729,9 +1729,13 @@
         {
           "path": "architecture-audit/evidence/player-contrast-regressions-2026-10-28.json",
           "symbol": "measured player overlay contrast regressions"
+        },
+        {
+          "path": "architecture-audit/evidence/v03-followup-2026-10-29.json",
+          "symbol": "latest player controls and V03 acceptance evidence"
         }
       ],
-      "gap": "Fresh packaged-player screenshot confirms HTML5 visual playback and pause feedback remains 28x28, centered, sharp and unblurred; MPV state/time tests pass but Playwright does not capture its native child HWND. Full route/theme/focus/DPI/narrow-layout matrix and live danmaku-trail validation remain incomplete.",
+      "gap": "Playback-rate menu contrast and volume slider input cascade defects are fixed and covered by focused style/contrast checks. Full packaged route/theme/DPI/focus screenshot acceptance and the reported live danmaku trail remain open. The latest local Setup still predates these CSS commits.",
       "direction": "按窗口×组件状态×主题/外壳×DPI 建立检查矩阵；复用已有 showcase，计算最终样式并用真实 Electron 窗口复核；业务功能清单作回归对照。",
       "acceptance": "主/详情/搜索/播放器/全局账号/设置/历史/直播/存储均有记录；100/125/150% DPI 与窄宽布局；沿用仓库普通文本4.5:1/功能边界3:1口径；键盘焦点、selected 语义、弹幕拖影和暂停无模糊逐项关闭。",
       "estimateEngineerHours": {
@@ -1754,12 +1758,12 @@
         "verification": "播放器样式 9/9 测试和音量滑块 6 项静态几何检查通过；全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过），三套 typecheck、lint/架构边界和生产 build 通过。仍缺最终 Electron 截图复核。",
         "evidence": "architecture-audit/evidence/player-controls-followup-2026-10-28.json",
         "latestImplementationCommit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
-        "latestVerification": "Theme and player style regression tests: 59/59 pass; Oxlint passes. The isolated Win-Box window now opens after the scoped ACL grant, but the firewall permission dialog blocks visual validation; full-window route/theme/DPI matrix, actual-player pixels, and danmaku trail capture remain unverified.",
-        "latestEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json"
+        "latestVerification": "2026-10-29: playback-rate menu and theme contrast checks pass 60/60; volume slider cascade checks pass 12/12, including the higher-priority desktop base layer. Source fixes are committed as 7e83ea84 and 3b854d96. Packaged visual checks remain open; the workspace-path Win-Box launch produced no targetable window and a 0x80000003 error consistent with the previously documented workspace ACL issue.",
+        "latestEvidence": "architecture-audit/evidence/v03-followup-2026-10-29.json"
       },
       "latestImplementationCommit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
-      "latestVerification": "Theme and player style regression tests: 59/59 pass; Oxlint passes. Six themes cover the relevant selected/unselected provider tab and disabled states; no live full-window route/theme/DPI matrix or danmaku trail capture.",
-      "latestEvidence": "tests/themeContrast.spec.ts"
+      "latestVerification": "2026-10-29: playback-rate menu and theme contrast checks pass 60/60; volume slider cascade checks pass 12/12, including the higher-priority desktop base layer. Source fixes are committed as 7e83ea84 and 3b854d96. Packaged visual checks remain open; the workspace-path Win-Box launch produced no targetable window and a 0x80000003 error consistent with the previously documented workspace ACL issue.",
+      "latestEvidence": "architecture-audit/evidence/v03-followup-2026-10-29.json"
     },
     {
       "id": "V04",
@@ -1943,7 +1947,7 @@
           "symbol": "current installer regression suite"
         }
       ],
-      "gap": "The current local 1.27.1 Setup was rebuilt from validated application source commit cce91e7a (SHA-256 12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc; 228,684,789 bytes). Full source gates and isolated payload lifecycle acceptance are recorded; the latest installer regression suite passes 12/12, and V05 synthetic budget gate passes. The shipping Setup has not been installed interactively in a clean location; actual running-app stop/upgrade, real user-profile migration, remote CI, live playback, and full desktop visual acceptance remain open. No release was published or pushed.",
+      "gap": "The latest recorded local 1.27.1 Setup was built from application source cce91e7a (SHA-256 12a274384422379bd768871350f6b052f95b0db24388b3b322b2638c26e1d0fc; 228,684,789 bytes). Two later production CSS commits (7e83ea84 and 3b854d96) now require a package rebuild. The latest installer regression suite passes 12/12 and the V05 synthetic budget gate passes. Shipping Setup installation, real user-profile migration, running-app stop/upgrade, remote CI, live playback and packaged visual acceptance remain open. No release was published or pushed.",
       "direction": "修复后在同一候选提交运行类型/lint/架构/正式测试/构建和上述验收，隔离目录制作唯一的本地安装包，记录 hash/尺寸/版本/提交。遵守用户不发布小版本、不创建多工作区的要求。",
       "acceptance": "所有必需任务有实现与验收链接；旧绿灯不代替当前结果；本地 Setup 在干净目录安装运行通过；保留数据及产物来源可查；不发布 Release，审计/修复改动分步提交，临时目录清理。",
       "estimateEngineerHours": {
@@ -1990,7 +1994,7 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "0119e76",
-        "verification": "Current local 1.27.1 package hash and size are recorded in current-candidate-2026-10-29.json. Latest installer regression: 12/12, no skips (2026-10-29); V05 budgeted synthetic gate passed with explicit synthetic-only thresholds. Full source test/typecheck/lint/build and isolated payload acceptance results remain in v06-followup-2026-10-29.json. The actual shipping Setup has not been installed interactively, remote CI was not run because the branch is unpushed, and running-app upgrade/live-source/full-screen visual acceptance remain open.",
+        "verification": "Latest recorded Setup hash/size are in current-candidate-2026-10-29.json, but the package predates production CSS commits 7e83ea84 and 3b854d96 and must be rebuilt. Installer regression is 12/12, V05 synthetic budget gate passed, and full source gates plus isolated payload acceptance remain recorded in v06-followup-2026-10-29.json. Shipping Setup interactive install, running-app upgrade, real-profile preservation, remote CI, live-source playback and full-screen visual checks remain open.",
         "latestImplementationCommits": [
           "48105537",
           "129f566a65d07c3c3f7b5a0849226eef141aec16",
@@ -1998,14 +2002,14 @@
         ],
         "evidence": "architecture-audit/evidence/current-candidate-2026-10-29.json",
         "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json",
-        "latestVerification": "Current local 1.27.1 package hash and size are recorded in current-candidate-2026-10-29.json. Latest installer regression: 12/12, no skips (2026-10-29); V05 budgeted synthetic gate passed with explicit synthetic-only thresholds. Full source test/typecheck/lint/build and isolated payload acceptance results remain in v06-followup-2026-10-29.json. The actual shipping Setup has not been installed interactively, remote CI was not run because the branch is unpushed, and running-app upgrade/live-source/full-screen visual acceptance remain open."
+        "latestVerification": "Latest recorded Setup hash/size are in current-candidate-2026-10-29.json, but the package predates production CSS commits 7e83ea84 and 3b854d96 and must be rebuilt. Installer regression is 12/12, V05 synthetic budget gate passed, and full source gates plus isolated payload acceptance remain recorded in v06-followup-2026-10-29.json. Shipping Setup interactive install, running-app upgrade, real-profile preservation, remote CI, live-source playback and full-screen visual checks remain open."
       },
       "latestImplementationCommits": [
         "48105537",
         "129f566a65d07c3c3f7b5a0849226eef141aec16",
         "88fd7c666c6fb62bd70747883aab53d323d30250"
       ],
-      "latestVerification": "Local 1.27.1 Setup rebuilt and hashed; installer suite 12/12 and V05 synthetic resource gate passed. Existing full source gates and isolated payload install/overwrite/uninstall results are recorded. Shipping Setup interactive install, live playback, visible full-window UI, real-profile preservation, running-app upgrade and remote CI remain unverified. No release published or branch pushed.",
+      "latestVerification": "Two production CSS fixes are committed after the latest recorded Setup build; rebuild required. Installer suite 12/12 and V05 synthetic gate pass. Shipping Setup interactive install, live playback, full packaged UI, real-profile migration, running-app upgrade and remote CI remain unverified. No release published or branch pushed.",
       "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-29.json"
     },
     {

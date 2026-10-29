@@ -1,8 +1,26 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-29",
+  "recordedAt": "2026-10-29T14:13:31Z",
   "scope": "V03 UI readability, interaction states, player pause feedback, and danmaku trail follow-up",
-  "codeChanges": [],
+  "codeChanges": [
+    {
+      "commit": "7e83ea84",
+      "files": [
+        "src/renderer/styles/player-rate-cascade.css",
+        "tests/playerStyleArchitecture.spec.ts",
+        "tests/themeContrast.spec.ts"
+      ],
+      "summary": "Move playback-rate menu surface/foreground rules out of the low-priority legacy layer; retain explicit readable hover, selected and focus states."
+    },
+    {
+      "commit": "3b854d96",
+      "files": [
+        "src/renderer/styles/global-player.css",
+        "tests/playerStyleArchitecture.spec.ts"
+      ],
+      "summary": "Reset the rotated volume range in legacy and desktop layers, including desktop min-height:0, so generic form styles cannot distort the thumb/track alignment."
+    }
+  ],
   "review": {
     "pauseFeedback": {
       "status": "PASS_AUTOMATED_STYLE_CONTRACT",
@@ -29,6 +47,29 @@
     "routeDpiFocusMatrix": {
       "status": "PARTIAL",
       "note": "Existing source-level and component tests ran; this subtask did not exercise every route/theme at 100%, 125%, and 150% DPI, narrow widths, and keyboard-only focus in the packaged desktop app."
+    },
+    "playbackRateMenu": {
+      "status": "PASS_FOCUSED_AUTOMATED",
+      "issue": "Its foreground and surface rules were previously in the legacy cascade layer and could lose to later shell/button rules.",
+      "fix": "Use a scoped unlayered rule with opaque elevated surface and explicit primary text; preserve semantic hover, selected and focus states.",
+      "verification": "60/60 across playerStyleArchitecture and themeContrast."
+    },
+    "volumeSlider": {
+      "status": "PASS_FOCUSED_AUTOMATED",
+      "issue": "Generic desktop form styles also matched input[type=range] in a higher-priority base layer, applying a 40px min-height and form surface to the rotated slider.",
+      "fix": "Add a narrow desktop-layer player range reset with min-height:0, transparent background, no border and no shadow; retain a high-specificity legacy reset for other shells.",
+      "verification": "playerStyleArchitecture 12/12."
+    },
+    "workspaceWindowCaptureAttempt": {
+      "status": "NOT_VERIFIED",
+      "target": "release1.27.1/win-unpacked/Win-Box.exe",
+      "windowsError": {
+        "application": "Win-Box 1.27.1.0",
+        "exceptionCode": "0x80000003",
+        "faultOffset": "0x073d6749"
+      },
+      "observation": "The workspace package launch produced no targetable window.",
+      "interpretation": "Consistent with the previously documented AppContainer ACL issue on workspace install paths; not evidence of a playback failure. No second launch was attempted."
     }
   },
   "verification": {
@@ -42,10 +83,21 @@
       "tests/globalStyleComposition.spec.ts": 3,
       "tests/themeContrast.spec.ts": 48,
       "tests/playerStyleArchitecture.spec.ts": 12
+    },
+    "latestFocused": {
+      "commands": [
+        "pnpm exec vitest run tests/playerStyleArchitecture.spec.ts tests/themeContrast.spec.ts",
+        "pnpm exec vitest run tests/playerStyleArchitecture.spec.ts"
+      ],
+      "filesPassed": 2,
+      "testsPassed": 60,
+      "failures": 0,
+      "details": "The second playerStyleArchitecture run was after the desktop-layer slider correction (12/12); the earlier two-file run covered rate menu and theme contrast (60/60)."
     }
   },
   "remaining": [
     "Capture visible packaged-app screenshots for the full route/theme/focus matrix at 100%, 125%, and 150% DPI and narrow layouts.",
-    "Verify the reported danmaku trail during actual video playback, including pause/resume and dense-comment conditions."
+    "Verify the reported danmaku trail during actual video playback, including pause/resume and dense-comment conditions.",
+    "Rebuild the local Setup after commits 7e83ea84 and 3b854d96, then capture the packaged full-window controls at representative DPI; this workspace-path launch did not produce a visible window."
   ]
 }
