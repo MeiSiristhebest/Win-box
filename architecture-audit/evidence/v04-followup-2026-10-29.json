@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-28T18:42:12.687Z",
+  "recordedAt": "2026-10-29T12:52:36.124Z",
   "area": "V04 installer acceptance",
   "candidate": {
     "sourceDirectory": "release1.27.1/win-unpacked",
@@ -66,47 +66,99 @@
     "conclusion": "The actual packaged application did not remain running in an isolated install even after removing all startup flags. The live-process installer check was stopped as instructed; this is a candidate-app startup failure, not evidence that installer process shutdown passed or failed."
   },
   "readOnlyCrashAddressInvestigation": {
-    "recordedAt": "2026-10-29",
+    "recordedAt": "2026-10-29T12:52:36.124Z",
     "werEvents": {
-      "matchingIsolatedRuns": 2,
-      "sameException": "0x80000003",
-      "sameFaultOffset": "0x00000000073d6749",
+      "matchingRuns": 2,
+      "exceptionCode": "0x80000003",
+      "faultOffset": "0x00000000073d6749",
       "faultingModule": "Win-Box.exe",
-      "applicationVersion": "1.27.1.0",
-      "candidateImageSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30",
-      "reportArchiveContents": ["Report.wer"],
-      "temporaryWerDumpPathExists": false
+      "candidateImageSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30"
     },
-    "peAddressMapping": {
-      "imageBase": "0x0000000140000000",
-      "sizeOfImage": "0x0ED44000",
-      "faultOffsetInterpretedAsRva": "0x073D6749",
-      "section": ".text",
-      "fileOffset": "0x073D5D49",
-      "codeViewPdb": "electron.exe.pdb",
-      "codeViewGuid": "08ff5a82-7ac8-2169-4c4c-44205044422e",
-      "codeViewAge": 1,
-      "matchingPdbAvailableLocally": false
+    "dumpAnalysis": {
+      "dumpPath": "C:/Users/Mei/AppData/Local/CrashDumps/Win-Box.exe.35716.dmp",
+      "exceptionAddress": "0x00007ff7cef46749",
+      "moduleBase": "0x00007ff7c7b70000",
+      "moduleRva": "0x073d6749",
+      "pdbGuid": "08ff5a82-7ac8-2169-4c4c-44205044422e",
+      "symbolication": "Matched Electron v44.8.0 PDB symbols; archive SHA-256 verified against official release checksum.",
+      "stack": [
+        "logging::LogMessage::HandleFatal",
+        "logging::LogMessage::Flush",
+        "logging::LogMessageFatal::~LogMessageFatal",
+        "electron::CheckSandboxedProcessesCanReadInstallDir() at install_dir_access.cc:51",
+        "electron::ElectronBrowserMainParts::PreCreateThreads()"
+      ]
     },
-    "debuggingTools": {
-      "windbg": false,
-      "cdb": false,
-      "dumpchk": false
+    "aclCorrelation": {
+      "workspacePackage": "Sandboxed package directory contains an AppContainer package SID ACE but lacks ALL APPLICATION PACKAGES read access; Electron exits before creating a window.",
+      "defaultLikeProgramsPath": "Does not carry that package SID ACE; packaged process-start fixture runs there.",
+      "priorDiagnosticEvidence": "architecture-audit/evidence/playback-acl-path-diagnostics-2026-10-28.json"
     },
-    "environmentalLead": "The WER module list includes Tencent WeType input-method DLLs. This is recorded only as process context; the report provides no evidence that they caused the breakpoint.",
-    "conclusion": "The failure is confirmed inside the packaged Win-Box.exe text section, but the WER archive has no dump and the matching PDB is absent. The exact function and root cause cannot be identified from the available evidence.",
-    "nextDiagnosticStep": "Capture a full dump for the exact candidate build and obtain its matching PDB or linker map, then resolve the call stack before changing installer behavior or declaring V04 complete."
+    "conclusion": "The earlier 0x80000003 was the Electron sandbox install-directory ACL check on the test/workspace package path, not evidence of a playback or installer product crash. A matching minidump and symbols resolve the call stack. The safe-path process-stop overwrite still fails later with installer code 22 and remains a separate open issue.",
+    "nextDiagnosticStep": "The safe-path test stopped the packaged process but NSIS aborted in CheckInstallFiles. A diagnostic run that can identify the exact locked/unwritable file is still required before changing lock handling."
   },
   "notVerified": [
-    "Upgrade over the user's existing installation",
-    "Stopping the actual packaged Win-Box while playing or hidden (the isolated candidate crashed before an upgrade attempt)",
-    "Interactive Cancel/Back/UAC behavior",
-    "Preservation of a real user's profile"
+    "Successful in-place overwrite after stopping the packaged Win-Box process (the current attempt stopped the process but installer exited 22)",
+    "Interactive stop/continue prompts and Cancel/Back behavior",
+    "Shipping Setup.exe upgrade over a real existing installation",
+    "Preservation of a real user's profile",
+    "Elevation/UAC behavior"
   ],
   "cleanup": {
     "systemTemporaryAcceptanceWorkspace": "PASS; verifyInstallation returned cleaned=true",
     "workspaceCandidateCopy": "PASS; removed .tmp/v04-clean-package-lguMpe after evidence capture",
-    "actualApplicationTemporaryWorkspace": "PASS; read-only inspected temporary logs/Crashpad first, then removed .tmp/v04-real-app-xTYjPz and its temporary harness scripts"
+    "actualApplicationTemporaryWorkspace": "PASS; read-only inspected temporary logs/Crashpad first, then removed .tmp/v04-real-app-xTYjPz and its temporary harness scripts",
+    "latestFollowupArtifacts": {
+      "status": "PASS",
+      "removed": [
+        ".tmp/v04-safe-app-source-20261029",
+        ".tmp/v04-symbolication-20261029",
+        "%LOCALAPPDATA%/Programs/WinBox-ArchitectureAcceptance-20261029",
+        "generated winbox-installation-acceptance-1.27.1-8433c755-ab67-4d9c-ab29-644b94db9dbd.json"
+      ],
+      "noMatchingWinBoxProcessBeforeRemoval": true
+    }
   },
-  "interpretation": "This exercises the current NSIS installer with the complete non-runtime-data file set from the packaged Win-Box candidate. It proves isolated install/overwrite/uninstall and data preservation for that candidate payload, but does not claim an in-place upgrade over the user's real installation or process stop for the actual application."
+  "interpretation": "Default-like ACL baseline passes install/overwrite/uninstall and preserves six synthetic user-data categories. The packaged process exits during the stop-running acceptance, but the installer aborts with NSIS code 22 before overwrite finishes. Interactive GUI flow, current-source Setup rebuild, and upgrade over a real install remain unverified.",
+  "actualPackagedProcessAcceptance": {
+    "recordedAt": "2026-10-29T12:52:36.124Z",
+    "command": "pnpm run acceptance:install '<workspace>/.tmp/v04-safe-app-source-20261029' --stop-running",
+    "input": {
+      "packagedFiles": 451,
+      "bytes": 533313618,
+      "excludedRuntimeDataDirectory": true,
+      "isolatedInstallRoot": "%LOCALAPPDATA%/Programs/WinBox-ArchitectureAcceptance-20261029"
+    },
+    "result": {
+      "harnessExitCode": 1,
+      "nsisExitCode": 22,
+      "packagedWinBoxProcessStopped": true,
+      "stoppedWithinHarnessDeadlineMs": 15000,
+      "installOverwriteCompleted": false
+    },
+    "diagnosis": {
+      "nsisCode22": "installer-script.mjs install_section_abort after CheckInstallFiles reports a nonzero status",
+      "specificFileOrLockCause": "not identified; silent installer returns the section code without naming the failing file",
+      "interpretation": "The packaged process did exit during the overwrite attempt, but the installer then aborted before completing the file replacement. This is not a pass for smart-install/process-stop acceptance."
+    }
+  },
+  "safeAclBaselineAcceptance": {
+    "recordedAt": "2026-10-29T12:47:06.886Z",
+    "command": "pnpm run acceptance:install '<workspace>/.tmp/v04-safe-app-source-20261029'",
+    "result": {
+      "install": "PASS",
+      "overwrite": "PASS",
+      "uninstallFirst": "PASS",
+      "uninstall": "PASS",
+      "verifiedFiles": 451,
+      "userDataFilesPreserved": 6,
+      "dataPreserved": true,
+      "registryAndShortcuts": "PASS",
+      "isolated": true,
+      "cleaned": true,
+      "runningProcessStopped": "NOT_RUN"
+    },
+    "outputEvidence": "Result copied into this evidence record; the generated temporary JSON report was deleted after capture.",
+    "interpretation": "The ordinary install/overwrite/uninstall lifecycle passes with the real candidate payload and default-like ACLs. The remaining V04 failure is specific to overwriting while its packaged process is running."
+  }
 }

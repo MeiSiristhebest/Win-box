@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-29T17:15:00+08:00",
+  "recordedAt": "2026-10-29T12:52:36.124Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
@@ -102,15 +102,24 @@
         "durationMs": 83675,
         "processStopFixtureMs": 4077
       },
-      "isolatedPayloadLifecycle": "install, overwrite, uninstall-first, rollback, uninstall, 451 packaged files, and six synthetic data categories passed.",
+      "isolatedPayloadLifecycle": "Safe ACL baseline: install, overwrite, uninstall-first, uninstall, 451 packaged files, six synthetic data categories, registry and shortcuts passed.",
       "notVerified": [
-        "Actual packaged Win-Box process-stop during playback or hidden mode",
-        "Shipping Setup.exe upgrade over a real existing installation",
-        "Interactive Cancel/Back/elevation"
+        "Successful overwrite after stopping the actual packaged process",
+        "Interactive stop/continue and Cancel/Back behavior",
+        "Shipping Setup.exe upgrade over a real install",
+        "Interactive elevation/UAC",
+        "Real user-profile preservation"
       ],
       "crashAddressInvestigation": {
         "evidence": "architecture-audit/evidence/v04-followup-2026-10-29.json",
-        "result": "Same 0x80000003 at RVA 0x073D6749 in the candidate .text section; matching PDB and minidump unavailable, so the function/root cause remains unresolved."
+        "result": "Resolved to Electron CheckSandboxedProcessesCanReadInstallDir at startup. The old crash was caused by the sandboxed workspace/test install path ACL (AppContainer package SID without ALL APPLICATIONS read), not a playback crash."
+      },
+      "actualPackagedProcessFollowup": {
+        "evidence": "architecture-audit/evidence/v04-followup-2026-10-29.json",
+        "processStopped": true,
+        "installerExitCode": 22,
+        "overwriteCompleted": false,
+        "meaning": "The process-stop attempt is not an acceptance pass: NSIS aborted at install_section_abort after CheckInstallFiles reported failure; exact blocked file remains unknown."
       }
     },
     "V05": {
@@ -195,7 +204,7 @@
       "src/renderer/components/SourcePicker.tsx"
     ],
     "temporaryAcceptanceArtifactsCleaned": true,
-    "temporaryAcceptanceCleanup": "PASS for this follow-up: disposable candidate and both PotPlayer run artifact directories removed; pre-existing .tmp entries were not modified."
+    "temporaryAcceptanceCleanup": "PASS for this follow-up; only the isolated V04 source copy, symbolication cache, acceptance root, and generated acceptance report were removed. Pre-existing .tmp entries were not modified."
   },
   "releasePublished": false,
   "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json",
