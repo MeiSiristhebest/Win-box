@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-29T12:52:36.124Z",
+  "recordedAt": "2026-10-29T13:06:50.768Z",
   "source": {
     "branch": "codex/architecture-cleanup-20261025",
     "applicationBuildCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
     "version": "1.27.1",
-    "productionChangesAfterBuild": true,
+    "productionChangesAfterBuild": false,
     "latestValidatedSourceCommits": ["8270cbb4", "123a50bb"],
     "published": false,
     "pushed": false,
@@ -18,17 +18,34 @@
   },
   "package": {
     "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-    "setupBytes": 228695919,
-    "setupSha256": "cb6d90a667c8127afe05ba71bad82611900b21240a977bdeb79bdb0c95eccf5a",
-    "winBoxExeSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30",
+    "setupBytes": 228700177,
+    "setupSha256": "2c229244c5483a4515fa89d0ed3698752db4f57cc410b754a7ba71394eaa1937",
+    "winBoxExeSha256": "5856b96ae59c13c7a09a336f3baad851fe6a40e13cc440e2e4a50b90c047b78a",
     "originalBuildPayload": {
       "fileCount": 451,
       "bytes": 533313618
     },
     "currentUnpackedDirectory": {
-      "observedFileCount": 454,
-      "observedBytes": 533313738,
-      "explanation": "Three runtime/profile files appeared after the original payload measurement; see v02-v03-native-ui-2026-10-29.json. They are preserved and were not included in package hash claims."
+      "observedFileCount": 451,
+      "observedBytes": 533335590,
+      "explanation": "Rebuilt from current source by pnpm dist on 2026-10-29; package size report records +21,852 unpacked bytes and +4,258 installer bytes versus the previous candidate. The data marker directory is no longer in the package."
+    },
+    "localCurrentSourceBuild": {
+      "version": "1.27.1",
+      "command": "pnpm dist",
+      "sourceChanges": [
+        "8270cbb4",
+        "123a50bb"
+      ],
+      "installerBuilt": true,
+      "installerHash": "2c229244c5483a4515fa89d0ed3698752db4f57cc410b754a7ba71394eaa1937",
+      "installerBytes": 228700177,
+      "exeHash": "5856b96ae59c13c7a09a336f3baad851fe6a40e13cc440e2e4a50b90c047b78a",
+      "releaseFolders": [
+        "release1.27.1"
+      ],
+      "published": false,
+      "pushed": false
     }
   },
   "acceptance": {
@@ -158,14 +175,25 @@
     "V06": {
       "status": "PARTIAL",
       "evidence": "architecture-audit/evidence/v06-followup-2026-10-29.json",
-      "latestLocalGates": "Full suite 4,176 passed/7 skipped; typecheck, lint, build, installer 11/11, release assets 17/17, package policy 12/12, acceptance tools 20/20, dev 3/3, native bridge 39 assertions, subscription import 9/9 all passed after O01.",
+      "latestLocalGates": "Full suite 4,176 passed/7 skipped; typecheck, lint, build, installer 11/11, release assets 17/17, package policy 12/12, acceptance tools 20/20, dev 3/3, native bridge 39 assertions, subscription import 9/9; current pnpm dist and isolated payload acceptance passed.",
       "notVerified": [
-        "Current-source Setup installer rebuild and isolated install",
-        "Remote CI because this branch remains unpushed",
-        "interactive installation/upgrade over an existing installation",
-        "live third-party playback",
-        "desktop-visible MPV pixels"
-      ]
+        "Shipping Setup.exe installation/upgrade itself",
+        "Successful stop-running overwrite after the packaged process exits (prior run returned NSIS 22)",
+        "Remote CI because branch is unpushed",
+        "Live third-party playback",
+        "Desktop-visible MPV pixels"
+      ],
+      "currentSourcePackageAcceptance": {
+        "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+        "setupSha256": "2c229244c5483a4515fa89d0ed3698752db4f57cc410b754a7ba71394eaa1937",
+        "setupBytes": 228700177,
+        "payloadFiles": 451,
+        "payloadBytes": 533335590,
+        "installOverwriteUninstall": "PASS",
+        "dataFilesPreserved": 6,
+        "shippingSetupExeInstalled": false,
+        "userInstallationTouched": false
+      }
     }
   },
   "requiredTaskStatus": {
@@ -204,7 +232,7 @@
       "src/renderer/components/SourcePicker.tsx"
     ],
     "temporaryAcceptanceArtifactsCleaned": true,
-    "temporaryAcceptanceCleanup": "PASS for this follow-up; only the isolated V04 source copy, symbolication cache, acceptance root, and generated acceptance report were removed. Pre-existing .tmp entries were not modified."
+    "temporaryAcceptanceCleanup": "PASS; isolated acceptance workspaces and the generated result JSON were removed. Pre-existing .tmp entries were not modified."
   },
   "releasePublished": false,
   "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json",
