@@ -317,6 +317,10 @@
   border-radius: 8px; cursor: pointer; background: transparent; touch-action: none;
   transform: translate(-50%, -50%) rotate(-90deg); transform-origin: center;
 }
+/* Shell form rules style every input. Keep those borders/fills off the rotated player slider. */
+.vplayer .vp-vol .vp-vpanel input.vp-vtrack {
+  background: transparent; border: 0; border-radius: 8px; box-shadow: none; color: inherit;
+}
 .vp-vtrack:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
 .vp-vtrack::-webkit-slider-runnable-track {
   width: 100%; height: 6px; margin: 0; border-radius: 999px;
@@ -344,4 +348,10 @@
 .vplayer.vfull { cursor: default; }
 .vplayer:fullscreen:not(.vui),
 .vplayer.vfull:not(.vui) { cursor: none; }
+}
+/* desktop.css gives every non-checkbox input a 40px minimum height in @layer base. */
+@layer desktop {
+  :root[data-ui='desktop'] .vplayer .vp-vol .vp-vpanel input.vp-vtrack {
+    min-height: 0; background: transparent; border: 0; border-radius: 8px; box-shadow: none;
+  }
 }

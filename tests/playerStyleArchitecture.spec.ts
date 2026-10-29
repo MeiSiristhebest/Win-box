@@ -169,6 +169,7 @@ describe('player control style architecture', () => {
     const { css } = await readGlobalStyleComposition();
     const range = readRule(css, '.vp-vtrack');
     const shellSafeRange = readRule(css, '.vplayer .vp-vol .vp-vpanel input.vp-vtrack');
+    const desktopRange = readRule(css, ":root[data-ui='desktop'] .vplayer .vp-vol .vp-vpanel input.vp-vtrack");
     const track = readRule(css, '.vp-vtrack::-webkit-slider-runnable-track');
     const thumb = readRule(css, '.vp-vtrack::-webkit-slider-thumb');
     const trackHeight = Number(track.match(/\bheight\s*:\s*([\d.]+)px/)?.[1]);
@@ -183,6 +184,12 @@ describe('player control style architecture', () => {
     expect(shellSafeRange).toMatch(/\bbackground\s*:\s*transparent/);
     expect(shellSafeRange).toMatch(/\bborder\s*:\s*0/);
     expect(shellSafeRange).toMatch(/\bbox-shadow\s*:\s*none/);
+    expect(css).toMatch(/@layer reset,\s*legacy,\s*tokens,\s*base,\s*components,\s*layouts,\s*utilities,\s*desktop\s*;/);
+    expect(css).toMatch(/@layer desktop\s*\{\s*:root\[data-ui='desktop'\] \.vplayer \.vp-vol \.vp-vpanel input\.vp-vtrack\s*\{/);
+    expect(desktopRange).toMatch(/\bmin-height\s*:\s*0/);
+    expect(desktopRange).toMatch(/\bbackground\s*:\s*transparent/);
+    expect(desktopRange).toMatch(/\bborder\s*:\s*0/);
+    expect(desktopRange).toMatch(/\bbox-shadow\s*:\s*none/);
     expect(track).toMatch(/\bwidth\s*:\s*100%\s*;/);
     expect(trackHeight).toBeGreaterThan(0);
     expect(thumbHeight).toBeGreaterThan(trackHeight);
