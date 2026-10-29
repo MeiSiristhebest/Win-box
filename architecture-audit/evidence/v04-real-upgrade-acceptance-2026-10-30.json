@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-29T17:02:14Z",
+  "taskId": "V04",
+  "candidate": {
+    "version": "1.27.1",
+    "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "setupSha256": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0",
+    "installedPath": "E:/Win-Box",
+    "installedAppAsarSha256": "e7b3e3b7ee1a3d3e89ccc2dc03e90ad9cb0efabadaf0bf29c3c95034490aced0",
+    "candidateAppAsarSha256": "e7b3e3b7ee1a3d3e89ccc2dc03e90ad9cb0efabadaf0bf29c3c95034490aced0",
+    "setupBytes": 228685343
+  },
+  "command": "Run the shipping Setup.exe through the Windows UI and upgrade the existing E:/Win-Box installation",
+  "mechanism": "Visible real-machine upgrade of the shipping 1.27.1 installer. The old Win-Box process was running from E:/Win-Box. The installer initially prefilled the preceding isolated-test path because that path remained in InstallLocation; the target was manually changed to E:/Win-Box. The recommended stop-and-overwrite mode was selected. Setup closed the running app, completed installation, and the Run Win-Box checkbox was unchecked on the finish page. Win-Box.exe was then started manually from E:/Win-Box.",
+  "result": {
+    "shippingSetupGui": "PASS",
+    "samePathOverwrite": "PASS",
+    "runningAppStoppedByInstaller": "PASS",
+    "installationCompleted": "PASS",
+    "appStartedFromTarget": "PASS",
+    "installedPayloadMatchesCandidate": true,
+    "sourceGroupAndSiteVisibleAfterUpgrade": true,
+    "historyVisibleAfterUpgrade": {
+      "entries": 9,
+      "resumable": 2
+    },
+    "favoritesBaseline": "UNKNOWN",
+    "uninstallFirstMode": "NOT_RUN",
+    "cancelBackRollbackAndElevation": "NOT_RUN",
+    "installedAppAsarSha256MatchesCandidate": true,
+    "userDataSample": {
+      "scope": "regular user data files excluding cache, logs, and browser data; file contents were not printed or exported",
+      "before": {
+        "files": 56,
+        "bytes": 2511611,
+        "measuredWhileOldAppWasRunning": true
+      },
+      "after": {
+        "files": 56,
+        "bytes": 2511611
+      },
+      "contentDigestMatches": false,
+      "interpretation": "No byte-for-byte preservation conclusion: the baseline was collected while the old app was running; normal shutdown and first launch can persist state. Current source-group/site selection and viewing history were visible after upgrade. The prior favorites count was not recorded, so the empty favorites view does not establish data loss."
+    }
+  },
+  "observations": {
+    "initialInstallDirectory": "D:/developWorkPlaces/win-box/.tmp/smart-installer-ui-20261030",
+    "targetDirectoryChangedManuallyTo": "E:/Win-Box",
+    "installModeSelected": "stop-and-overwrite (recommended)",
+    "finishRunApplicationCheckbox": "unchecked before finishing",
+    "userDataDirectoryPolicy": "Existing E:/Win-Box/data was not removed by the selected in-place overwrite. App data was not inspected as plaintext."
+  },
+  "limitations": [
+    "Only the recommended same-path overwrite mode was exercised against the real installation.",
+    "The real uninstall-first path, Cancel/Back behavior, rollback after failed uninstall, and elevation were not exercised.",
+    "No pre-upgrade favorites count was captured; favorites retention cannot be compared.",
+    "The sampled non-cache profile digest changed, but file count and bytes matched and the baseline was taken while the app was running. The change cannot be attributed to installer data loss.",
+    "No release was published or remote branch pushed."
+  ]
+}

@@ -1803,9 +1803,13 @@
         {
           "path": "architecture-audit/evidence/installer-rollback-2026-10-28.json",
           "symbol": "old uninstaller failure rollback and six user-data files"
+        },
+        {
+          "path": "architecture-audit/evidence/v04-real-upgrade-acceptance-2026-10-30.json",
+          "symbol": "shipping Setup same-path upgrade and real-profile observation"
         }
       ],
-      "gap": "The latest payload lifecycle and a clean install using the shipping Setup.exe into an isolated temp directory passed; the packaged Win-Box.exe fixture stopped in 452 ms and six synthetic data categories were preserved. The Setup success page defaults to running Win-Box and was manually unchecked in the test. A same-path upgrade while the actual app is running, stop/continue/Cancel/Back/elevation, and real-profile preservation remain unverified.",
+      "gap": "The real shipping Setup.exe upgrade to E:/Win-Box passed after manually correcting a stale isolated-test InstallLocation. The running app was stopped; same-path overwrite completed; installed app.asar hash matches the candidate; source group, site, and 9 history entries (2 resumable) loaded. The sampled non-cache profile retained file count/bytes but its digest changed; baseline was taken while the old app was running, so byte-for-byte preservation and data-loss attribution are inconclusive. Real uninstall-first, cancel/back/rollback/elevation, and a favorites baseline remain unverified.",
       "direction": "将安装验收扩展到完整候选包的播放中和老板键隐藏场景，再核对取消安装保护及每个用户数据域迁移。",
       "acceptance": "正在播放/老板键隐藏/后台无主窗口时可一键停止继续；其它安装目录不受影响；配置、订阅、账号、历史、收藏重启后保留；取消不破坏旧版；注册表/快捷方式正确。",
       "estimateEngineerHours": {
@@ -1823,13 +1827,14 @@
         "commit": "3e3bd13",
         "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
         "verification": "最终候选包的 505 文件隔离安装/覆盖/卸载/数据保留记录见 installation-acceptance-2026-10-28.json。最新 installer-script.check.mjs 为 7/7 PASS；无窗口进程实测 4549ms 停止。该合成 fixture 不等于真实播放/隐藏窗口和取消保护验收，因此 V04 仍为 open。",
-        "latestVerification": "2026-10-29 UTC: acceptance:install passed install/overwrite/uninstall-first/uninstall with 451 files, six synthetic data files, registry/shortcuts, and a 452 ms packaged-process fixture. The exact shipping Setup.exe also completed a clean install into a separate .tmp path; the auto-run box was unchecked; the temp app was not started; the Desktop shortcut was restored; temp files were removed. This is not a same-path live upgrade or real-profile test.",
-        "latestEvidence": "architecture-audit/evidence/v04-stop-running-acceptance-2026-10-30.json",
-        "remaining": "Same-path shipping Setup upgrade and visible running-app stop/continue/Cancel/Back/elevation; real user profile preservation remain unverified."
+        "latestVerification": "2026-10-29T17:02:14Z: shipping Setup 1.27.1 completed a same-path recommended overwrite of E:/Win-Box while the old app process was running; installer stopped it, payload hash matched, app launched manually, current source/site and 9 history entries (2 resumable) loaded. Non-cache profile sample count/bytes matched but digest changed from an in-app-running baseline; no data-loss claim. Uninstall-first and rollback/cancel/back/elevation not run.",
+        "latestEvidence": "architecture-audit/evidence/v04-real-upgrade-acceptance-2026-10-30.json",
+        "remaining": "Real same-path recommended overwrite and runtime stop passed. Remaining: test real uninstall-first only with separate authorization; compare complete account/favorites/config baseline without exposing secrets; verify Cancel/Back/rollback/elevation and startup shortcut behavior."
       },
       "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
-      "latestVerification": "2026-10-29 UTC: acceptance:install passed install/overwrite/uninstall-first/uninstall with 451 files, six synthetic data files, registry/shortcuts, and a 452 ms packaged-process fixture. The exact shipping Setup.exe also completed a clean install into a separate .tmp path; the auto-run box was unchecked; the temp app was not started; the Desktop shortcut was restored; temp files were removed. This is not a same-path live upgrade or real-profile test.",
-      "latestEvidence": "architecture-audit/evidence/v04-stop-running-acceptance-2026-10-30.json"
+      "latestVerification": "2026-10-29T17:02:14Z: shipping Setup 1.27.1 completed a same-path recommended overwrite of E:/Win-Box while the old app process was running; installer stopped it, payload hash matched, app launched manually, current source/site and 9 history entries (2 resumable) loaded. Non-cache profile sample count/bytes matched but digest changed from an in-app-running baseline; no data-loss claim. Uninstall-first and rollback/cancel/back/elevation not run.",
+      "latestEvidence": "architecture-audit/evidence/v04-real-upgrade-acceptance-2026-10-30.json",
+      "remaining": "Real same-path recommended overwrite and runtime stop passed. Remaining: test real uninstall-first only with separate authorization; compare complete account/favorites/config baseline without exposing secrets; verify Cancel/Back/rollback/elevation and startup shortcut behavior."
     },
     {
       "id": "V05",
