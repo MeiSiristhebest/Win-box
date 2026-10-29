@@ -5,21 +5,28 @@ import { readGlobalStyleComposition } from './helpers/globalStyles';
 const DESKTOP_STYLES = new URL('../src/renderer/styles/desktop.css', import.meta.url);
 
 function readRule(css: string, selector: string): string {
-  const start = css.indexOf(`${selector} {`);
-  expect(start, `missing CSS rule: ${selector}`).toBeGreaterThanOrEqual(0);
+  const normalizedCss = css.replace(/\r\n?/g, '\n');
+  const normalizedSelector = selector.replace(/\r\n?/g, '\n');
+  const start = normalizedCss.indexOf(`${normalizedSelector} {`);
+  expect(start, `missing CSS rule: ${normalizedSelector}`).toBeGreaterThanOrEqual(0);
 
-  const bodyStart = css.indexOf('{', start) + 1;
+  const bodyStart = normalizedCss.indexOf('{', start) + 1;
   let depth = 1;
-  for (let index = bodyStart; index < css.length; index += 1) {
-    if (css[index] === '{') depth += 1;
-    if (css[index] === '}') depth -= 1;
-    if (depth === 0) return css.slice(bodyStart, index);
+  for (let index = bodyStart; index < normalizedCss.length; index += 1) {
+    if (normalizedCss[index] === '{') depth += 1;
+    if (normalizedCss[index] === '}') depth -= 1;
+    if (depth === 0) return normalizedCss.slice(bodyStart, index);
   }
 
-  throw new Error(`unterminated CSS rule: ${selector}`);
+  throw new Error(`unterminated CSS rule: ${normalizedSelector}`);
 }
 
 describe('player control style architecture', () => {
+  it('matches grouped selectors with Windows line endings', () => {
+    const css = '.first,\r\n.second {\r\n  color: red;\r\n}';
+    expect(readRule(css, '.first,\n.second')).toContain('color: red;');
+  });
+
   it('uses named native groups for the player toolbar without fieldset browser spacing', async () => {
     const { css } = await readGlobalStyleComposition();
     const toolbar = await readFile(new URL('../src/renderer/features/playback/PlayerControlsBar.tsx', import.meta.url), 'utf8');
