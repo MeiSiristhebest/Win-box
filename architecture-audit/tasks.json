@@ -2001,16 +2001,16 @@
           "129f566a65d07c3c3f7b5a0849226eef141aec16",
           "88fd7c666c6fb62bd70747883aab53d323d30250"
         ],
-        "evidence": "architecture-audit/evidence/current-candidate-2026-10-29.json",
+        "evidence": "architecture-audit/evidence/current-candidate-2026-10-30.json",
         "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-30.json",
-        "latestVerification": "2026-10-29/30: full pnpm test 509 files/4,177 tests passed, 4 files/7 tests skipped. Latest local 1.27.1 setup SHA-256 4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0, exact packaged HTML5/MPV fixture acceptance PASS; isolated payload install/overwrite/uninstall-first/uninstall PASS, packaged executable process fixture stopped in 452 ms, six synthetic data categories preserved. Remote CI and actual shipping Setup UI/real profile/live sources remain unverified. Nothing published or pushed."
+        "latestVerification": "2026-10-29/30: full pnpm test 509 files/4,177 tests passed, 4 files/7 tests skipped. Latest local 1.27.1 setup SHA-256 4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0; exact packaged HTML5/managed-MPV fixture acceptance passed. Isolated payload lifecycle and packaged-executable stop fixture passed (452 ms, six synthetic data categories preserved). The shipping Setup.exe also completed a clean install into a separate .tmp path; run-after-install was unchecked and the temporary copy was cleaned. Same-path live upgrade, real profile, live sources, full UI matrix, and remote CI remain unverified. Nothing published or pushed."
       },
       "latestImplementationCommits": [
         "48105537",
         "129f566a65d07c3c3f7b5a0849226eef141aec16",
         "88fd7c666c6fb62bd70747883aab53d323d30250"
       ],
-      "latestVerification": "2026-10-29/30: full pnpm test 509 files/4,177 tests passed, 4 files/7 tests skipped. Latest local 1.27.1 setup SHA-256 4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0, exact packaged HTML5/MPV fixture acceptance PASS; isolated payload install/overwrite/uninstall-first/uninstall PASS, packaged executable process fixture stopped in 452 ms, six synthetic data categories preserved. Remote CI and actual shipping Setup UI/real profile/live sources remain unverified. Nothing published or pushed.",
+      "latestVerification": "2026-10-29/30: full pnpm test 509 files/4,177 tests passed, 4 files/7 tests skipped. Latest local 1.27.1 setup SHA-256 4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0; exact packaged HTML5/managed-MPV fixture acceptance passed. Isolated payload lifecycle and packaged-executable stop fixture passed (452 ms, six synthetic data categories preserved). The shipping Setup.exe also completed a clean install into a separate .tmp path; run-after-install was unchecked and the temporary copy was cleaned. Same-path live upgrade, real profile, live sources, full UI matrix, and remote CI remain unverified. Nothing published or pushed.",
       "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-30.json"
     },
     {
@@ -2200,7 +2200,12 @@
       "architecture-audit/evidence/installation-acceptance-partial-2026-10-28.json",
       "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
       "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
-      "architecture-audit/evidence/current-candidate-2026-10-29.json"
+      "architecture-audit/evidence/current-candidate-2026-10-29.json",
+      "architecture-audit/evidence/current-candidate-2026-10-30.json",
+      "architecture-audit/evidence/o02-shader-poc-followup-2026-10-30.json",
+      "architecture-audit/evidence/o02-shader-render-chain-2026-10-30.json",
+      "architecture-audit/evidence/playback-acceptance-toolbar-2026-10-30.json",
+      "architecture-audit/evidence/v04-stop-running-acceptance-2026-10-30.json"
     ],
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
@@ -2279,7 +2284,9 @@
       "9dcaf166",
       "c61e741a",
       "bb12488d",
-      "uxy"
+      "uxy",
+      "qot",
+      "rkr"
     ],
     "localInstallerPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
     "installerSha256": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0",
