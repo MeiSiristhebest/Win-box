@@ -109,17 +109,25 @@ test('preflights every existing packaged file before overwrite and avoids retry 
   const path = await fixture();
   try {
     const script = await buildInstallerScript(options(path));
-    const installPreflight = script.indexOf('FileOpen $0 "$INSTDIR\\resources\\app.asar" a');
+    const installPreflight = script.indexOf('Function CheckInstallFiles\n');
+    const installPreflightEnd = script.indexOf('\nFunctionEnd', installPreflight);
+    const uninstallPreflight = script.indexOf('Function un.CheckInstallFiles\n');
+    const uninstallPreflightEnd = script.indexOf('\nFunctionEnd', uninstallPreflight);
     const installCall = script.indexOf('Call CheckInstallFiles');
     const extraction = script.indexOf('File /r ');
-    const uninstallPreflight = script.indexOf('FileOpen $0 "$INSTDIR\\resources\\app.asar" a', installPreflight + 1);
     const uninstallCall = script.indexOf('Call un.CheckInstallFiles');
     const deletion = script.indexOf('Delete "$INSTDIR\\resources\\app.asar"');
+    const packageFileCheck = 'StrCpy $R6 "$INSTDIR\\resources\\app.asar"';
 
-    assert.ok(installPreflight >= 0, 'installer checks the application archive for a conflicting file lock');
+    assert.ok(installPreflight >= 0 && installPreflightEnd > installPreflight, 'installer preflight function is present');
+    assert.ok(uninstallPreflight >= 0 && uninstallPreflightEnd > uninstallPreflight, 'uninstaller preflight function is present');
+    assert.ok(script.includes(packageFileCheck), 'installer routes the application archive through the shared file-lock check');
+    assert.ok(script.includes('FileOpen $0 "$R6" a'), 'shared preflight checks the current package path');
+    assert.ok(script.includes('Function un.CheckInstallFile'), 'uninstaller uses its matching shared file-lock check');
+    assert.ok(script.slice(installPreflight, installPreflightEnd).includes('Call CheckInstallFile'));
+    assert.ok(script.slice(uninstallPreflight, uninstallPreflightEnd).includes('Call un.CheckInstallFile'));
     assert.ok(installCall > installPreflight && extraction > installCall, 'installer runs all file-lock checks before copying application files');
-    assert.ok(uninstallPreflight > installPreflight && uninstallCall > uninstallPreflight, 'uninstaller runs its file-lock check');
-    assert.ok(deletion > uninstallCall, 'uninstaller checks locks before deleting application files');
+    assert.ok(uninstallCall > uninstallPreflight && deletion > uninstallCall, 'uninstaller checks locks before deleting application files');
     assert.ok(script.includes('程序文件无法安全替换（可能被占用或无写入权限）'));
     assert.ok(!script.includes('MB_RETRYCANCEL'));
     assert.ok(!script.includes('重试'));
@@ -135,14 +143,17 @@ test('uninstall-first stops the app and preflights files before invoking the old
     assert.ok(start >= 0 && end > start, 'installer preflight function is present');
     const check = script.slice(start, end);
     const closeApp = check.indexOf('Call CloseRunningWinBox');
-    const fileOpens = [...check.matchAll(/FileOpen \$0 "[^"]+" a/g)].map(match => match.index);
+    const executableCheck = check.indexOf('FileOpen $0 "$INSTDIR\\Win-Box.exe" a');
+    const packageChecks = [...check.matchAll(/Call CheckInstallFile/g)].map(match => match.index);
+    const archivePathCheck = check.indexOf('StrCpy $R6 "$INSTDIR\\resources\\app.asar"');
     const legacyPreflight = check.indexOf('Call CheckLegacyInstallFiles');
     const uninstallOld = check.indexOf('Call UninstallExisting');
 
-    assert.ok(closeApp >= 0 && closeApp < fileOpens[0], 'stop the same-directory app before checking files');
-    assert.ok(fileOpens.length > 1, 'check the app executable and every existing packaged file');
-    assert.ok(legacyPreflight > Math.max(...fileOpens) && legacyPreflight < uninstallOld, 'check legacy-only install files before invoking the old uninstaller');
-    assert.ok(uninstallOld > Math.max(...fileOpens), 'do not invoke an older uninstaller until the new installer has checked every file for locks');
+    assert.ok(closeApp >= 0 && closeApp < executableCheck, 'stop the same-directory app before checking files');
+    assert.ok(executableCheck >= 0 && packageChecks.length === 2, 'check the executable and each packaged file in the fixture through the shared checker');
+    assert.ok(archivePathCheck >= 0 && packageChecks.at(-1) > archivePathCheck, 'check the application archive before continuing');
+    assert.ok(legacyPreflight > packageChecks.at(-1) && legacyPreflight < uninstallOld, 'check legacy-only install files before invoking the old uninstaller');
+    assert.ok(uninstallOld > packageChecks.at(-1), 'do not invoke an older uninstaller until the new installer has checked every file for locks');
     assert.ok(check.includes('StrCmp $R3 "1"'), 'run uninstall-first only when the user selected that mode');
     assert.ok(script.includes('无法确认旧版程序文件都可安全卸载'), 'fail closed when a legacy file cannot be inspected');
   } finally { await rm(path, { recursive: true, force: true }); }
