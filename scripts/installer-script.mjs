@@ -28,28 +28,35 @@ function lockCheck(prefix, files) {
     const target = `$INSTDIR\\${quote(path.replaceAll('/', '\\'))}`;
     const label = `${prefix ? 'un_' : ''}lock_file_${index}`;
     return `  IfFileExists "${target}" 0 ${label}_next
-  StrCpy $R5 "0"
-  ${label}_retry:
-  ClearErrors
-  FileOpen $0 "${target}" a
-  IfErrors ${label}_busy
-  FileClose $0
-  Goto ${label}_next
-  ${label}_busy:
-  IntOp $R5 $R5 + 1
-  IntCmp $R5 50 ${label}_report_busy ${label}_retry_wait ${label}_report_busy
-  ${label}_retry_wait:
-  Sleep 100
-  Goto ${label}_retry
-  ${label}_report_busy:
-  IfSilent ${label}_silent
-  MessageBox MB_OK|MB_ICONSTOP "程序文件无法安全替换（可能被占用或无写入权限）：${target}。${verb}已取消；请关闭占用程序或检查目录权限后再运行。"
-  ${label}_silent:
-  StrCpy $R4 "1"
+  StrCpy $R6 "${target}"
+  Call ${prefix}CheckInstallFile
+  StrCmp $R4 "0" ${label}_next
   Return
   ${label}_next:`;
   }).join('\n');
-  return `Function ${prefix}CheckInstallFiles
+  return `Function ${prefix}CheckInstallFile
+  StrCpy $R5 "0"
+  lock_check_retry:
+  ClearErrors
+  FileOpen $0 "$R6" a
+  IfErrors lock_check_busy
+  FileClose $0
+  StrCpy $R4 "0"
+  Return
+  lock_check_busy:
+  IntOp $R5 $R5 + 1
+  IntCmp $R5 50 lock_check_report_busy lock_check_retry_wait lock_check_report_busy
+  lock_check_retry_wait:
+  Sleep 100
+  Goto lock_check_retry
+  lock_check_report_busy:
+  IfSilent lock_check_silent
+  MessageBox MB_OK|MB_ICONSTOP "程序文件无法安全替换（可能被占用或无写入权限）：$R6。${verb}已取消；请关闭占用程序或检查目录权限后再运行。"
+  lock_check_silent:
+  StrCpy $R4 "1"
+  Return
+FunctionEnd
+Function ${prefix}CheckInstallFiles
   IfFileExists "$INSTDIR\\Win-Box.exe" 0 check_remaining_files
   Call ${prefix}CloseRunningWinBox
   StrCmp $R4 "0" continue_after_close

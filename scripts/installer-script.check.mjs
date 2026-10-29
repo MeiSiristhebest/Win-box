@@ -41,10 +41,13 @@ test('retries transient locks during packaged-file preflight before cancelling',
   const path = await fixture();
   try {
     const script = await buildInstallerScript(options(path));
-    assert.ok(script.includes('lock_file_0_retry:\n  ClearErrors\n  FileOpen $0 "$INSTDIR\\Win-Box.exe" a'));
-    assert.ok(script.includes('IntCmp $R5 50 lock_file_0_report_busy lock_file_0_retry_wait lock_file_0_report_busy'));
-    assert.ok(script.includes('lock_file_0_retry_wait:\n  Sleep 100\n  Goto lock_file_0_retry'));
-    assert.ok(script.includes('lock_file_0_report_busy:\n  IfSilent lock_file_0_silent'));
+    assert.ok(script.includes('Function CheckInstallFile\n  StrCpy $R5 "0"\n  lock_check_retry:'));
+    assert.ok(script.includes('FileOpen $0 "$R6" a'));
+    assert.ok(script.includes('IntCmp $R5 50 lock_check_report_busy lock_check_retry_wait lock_check_report_busy'));
+    assert.ok(script.includes('lock_check_retry_wait:\n  Sleep 100\n  Goto lock_check_retry'));
+    assert.ok(script.includes('lock_check_report_busy:\n  IfSilent lock_check_silent'));
+    assert.ok(script.includes('Call CheckInstallFile'));
+    assert.ok(script.includes('Function un.CheckInstallFile'));
     assert.ok(!script.includes('MB_RETRYCANCEL'));
   } finally { await rm(path, { recursive: true, force: true }); }
 });
