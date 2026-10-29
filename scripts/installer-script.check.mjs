@@ -37,6 +37,18 @@ test('production uninstall enumerates packaged files and preserves data and othe
   } finally { await rm(path, { recursive: true, force: true }); }
 });
 
+test('retries transient locks during packaged-file preflight before cancelling', async () => {
+  const path = await fixture();
+  try {
+    const script = await buildInstallerScript(options(path));
+    assert.ok(script.includes('lock_file_0_retry:\n  ClearErrors\n  FileOpen $0 "$INSTDIR\\Win-Box.exe" a'));
+    assert.ok(script.includes('IntCmp $R5 50 lock_file_0_report_busy lock_file_0_retry_wait lock_file_0_report_busy'));
+    assert.ok(script.includes('lock_file_0_retry_wait:\n  Sleep 100\n  Goto lock_file_0_retry'));
+    assert.ok(script.includes('lock_file_0_report_busy:\n  IfSilent lock_file_0_silent'));
+    assert.ok(!script.includes('MB_RETRYCANCEL'));
+  } finally { await rm(path, { recursive: true, force: true }); }
+});
+
 test('running app offers update-in-place or data-preserving uninstall and reinstall', async () => {
   const path = await fixture();
   try {
