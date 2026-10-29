@@ -50,8 +50,8 @@ export function SavedProfilesSection({
                 const active = profile.id === activeProfileId;
                 const editing = renameId === profile.id;
                 return (
-                  <span key={profile.id} role="group" aria-label={`${profile.name}${active ? '，当前配置' : ''}`} aria-current={active ? 'true' : undefined} className={`tag ${active ? 'active' : ''}`}
-                    style={{ padding: '6px 10px', display: 'inline-flex', gap: 6, alignItems: 'center' }}
+                  <fieldset key={profile.id} aria-label={`${profile.name}${active ? '，当前配置' : ''}`} aria-current={active ? 'true' : undefined} className={`tag ${active ? 'active' : ''}`}
+                    style={{ padding: '6px 10px', margin: 0, minWidth: 0, display: 'inline-flex', gap: 6, alignItems: 'center' }}
                     title={profile.json ? `${profile.json.length} 字节可恢复数据` : '该档案由早期版本迁移，无原始数据'}>
                     {editing ? (
                       <>
@@ -76,7 +76,7 @@ export function SavedProfilesSection({
                         {<button type="button" className="linkbtn danger" onClick={() => void actions.deleteProfile(profile.id)}>删</button>}
                       </>
                     )}
-                  </span>
+                  </fieldset>
                 );
               })}
             </div>

@@ -44,7 +44,7 @@ describe('real inline aggregate entry', () => {
     vi.mocked(client.home).mockResolvedValue({ sourceKey: cfg.sources[0].key, sortClasses: [], items: [item], page: 1, pagecount: 1, total: 1 });
     const openDetail = vi.fn();
     render(<MemoryRouter initialEntries={['/home']}><Routes><Route path="/home" element={<HomePage onOpenDetail={openDetail} />} /><Route path="/movie" element={<DiscoverDetailPage />} /></Routes></MemoryRouter>);
-    fireEvent.click(await screen.findByRole('button', { name: '打开 跨仓影片' }));
+    fireEvent.click(await screen.findByRole('button', { name: '打开条目：跨仓影片' }));
     await screen.findByText('这是影片简介', {}, { timeout: 5000 });
     expect(client.searchAll).toHaveBeenCalledWith('跨仓影片', { profileIds: ['A'], refresh: false });
     expect(openDetail).not.toHaveBeenCalled();

@@ -23,6 +23,8 @@ describe('SavedProfilesSection', () => {
     render(<SavedProfilesSection profiles={profiles} activeProfileId="active" busy={false}
       onActivate={onActivate} onRefresh={onRefresh} managementPort={managementPort} />);
 
+    expect(screen.getByRole('group', { name: '当前订阅，当前配置' })).toBeTruthy();
+    expect(screen.getByRole('group', { name: '旧订阅' })).toBeTruthy();
     fireEvent.click(screen.getByText(/已保存配置/));
     fireEvent.click(screen.getByRole('button', { name: '切换' }));
     expect(onActivate).toHaveBeenCalledWith('other');

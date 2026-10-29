@@ -20,6 +20,18 @@ function readRule(css: string, selector: string): string {
 }
 
 describe('player control style architecture', () => {
+  it('uses named native groups for the player toolbar without fieldset browser spacing', async () => {
+    const { css } = await readGlobalStyleComposition();
+    const toolbar = await readFile(new URL('../src/renderer/features/playback/PlayerControlsBar.tsx', import.meta.url), 'utf8');
+    const group = readRule(css, '.vp-bar-group');
+
+    expect(toolbar.match(/<fieldset className="vp-bar-group" aria-label=/g) ?? []).toHaveLength(4);
+    expect(toolbar).not.toContain('role="group"');
+    expect(group).toMatch(/margin:\s*0/);
+    expect(group).toMatch(/padding:\s*0/);
+    expect(group).toMatch(/border:\s*0/);
+  });
+
   it('keeps MPV mode labels and the playback clock from collapsing in a full toolbar', async () => {
     const { imports, css } = await readGlobalStyleComposition();
     const toolbar = await readFile(new URL('../src/renderer/features/playback/PlayerControlsBar.tsx', import.meta.url), 'utf8');

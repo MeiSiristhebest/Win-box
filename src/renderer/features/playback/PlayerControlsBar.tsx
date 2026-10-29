@@ -83,20 +83,20 @@ export function PlayerControlsBar({
             </div>
           )}
           <div className="vp-bar">
-            <div className="vp-bar-group" role="group" aria-label="播放控制">
+            <fieldset className="vp-bar-group" aria-label="播放控制">
               <PlayerTransportControls {...transport} mini={false} />
               <span className="vp-time">
                 {isLive ? <span className="vp-live">● 直播</span> : formatPlaybackTime(currentTime) + ' / ' + formatPlaybackTime(duration)}
               </span>
-            </div>
-            <div className="vp-bar-group" role="group" aria-label="声音、投屏、字幕和跳过">
+            </fieldset>
+            <fieldset className="vp-bar-group" aria-label="声音、投屏、字幕和跳过">
               <PlayerVolumeControl {...volume} />
               <DlnaCastControl {...dlna} />
               <SubtitlePanel {...subtitle} />
               <DanmakuPanel {...danmaku} />
               {skipSegments && <SkipSegmentsControl {...skipSegments} />}
-            </div>
-            <div className="vp-bar-group" role="group" aria-label="播放选项">
+            </fieldset>
+            <fieldset className="vp-bar-group" aria-label="播放选项">
               <PlayerRateControl {...rate} />
               {kernel && <PlayerKernelControl {...kernel} />}
               {kernelTools && (
@@ -124,9 +124,9 @@ export function PlayerControlsBar({
                 </>
               )}
               <PlayerSuperResolutionControl {...superResolution} />
-            </div>
+            </fieldset>
             <div className="vp-bar-spacer" aria-hidden="true" />
-            <div className="vp-bar-group" role="group" aria-label="画面和播放列表">
+            <fieldset className="vp-bar-group" aria-label="画面和播放列表">
               <PlayerAudioControl {...audio} />
               <PlayerFitControl {...fit} />
               {episodes && (
@@ -158,7 +158,7 @@ export function PlayerControlsBar({
                   <svg width="18" height="18" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
                 )}
               </button>
-            </div>
+            </fieldset>
           </div>
         </>
       )}

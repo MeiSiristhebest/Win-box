@@ -67,7 +67,8 @@
   padding: 1px 6px; border-radius: 4px; font-size: 12px; color: #fff; white-space: nowrap;
   background: rgba(0,0,0,.82); box-shadow: 0 2px 8px rgba(0,0,0,.4); font-variant-numeric: tabular-nums; }
 .vp-bar { display: flex; align-items: center; gap: 10px; color: #fff; }
-.vp-bar-group { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 4px; min-width: 0; }
+.vp-bar-group { display: inline-flex; flex: 0 1 auto; align-items: center; gap: 4px; min-width: 0;
+  margin: 0; padding: 0; border: 0; }
 .vp-bar-spacer { flex: 1 1 12px; min-width: 8px; }
 /* 小窗口模式：控制条只保留 上/下集 + 播放暂停，居中 */
 .vplayer.vp-mini .vp-bar { justify-content: center; }
