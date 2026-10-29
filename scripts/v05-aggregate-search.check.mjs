@@ -7,6 +7,8 @@ import { parseV05SearchArgs, metricSet, summarizeV05Search } from './v05-aggrega
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 test('V05 search CLI only accepts isolated .tmp/v05-search output and ten or more cycles', () => {
+  const defaults = parseV05SearchArgs(['--output-dir', '.tmp/v05-search-defaults']);
+  assert.deepEqual(defaults.budgets, { workingSetMB: 500, privateBytesMB: 700, cpuP95Percent: 180 });
   const parsed = parseV05SearchArgs([
     '--cycles', '10', '--sources', '1000', '--output-dir', '.tmp/v05-search-check',
     '--budget-working-set-mb', '500', '--budget-private-bytes-mb', '700', '--budget-cpu-p95-percent', '180',
@@ -71,11 +73,23 @@ test('V05 summary requires and reports 1,001-source timeout, cancellation cleanu
     completion: 'completed',
     intervalMs: 250,
     sampler: { errors: [] },
-    summary: { sampleCount: 2, durationMs: 200, budgetStatus: 'NOT_CONFIGURED', budgetChecks: {}, samples: [sample, { ...sample, elapsedMs: 100 }] },
+    summary: {
+      sampleCount: 2,
+      durationMs: 200,
+      budgetStatus: 'PASS',
+      budgets: { workingSetMB: 500, privateBytesMB: 700, cpuP95Percent: 180 },
+      budgetChecks: {
+        workingSetMB: { status: 'PASS', limit: 500, actual: 10 },
+        privateBytesMB: { status: 'PASS', limit: 700, actual: 8 },
+        cpuP95Percent: { status: 'PASS', limit: 180, actual: 10 },
+      },
+      samples: [sample, { ...sample, elapsedMs: 100 }],
+    },
   };
 
   const summary = summarizeV05Search(workload, resourceReport, '.tmp/v05-search-check');
   assert.equal(summary.status, 'PASS');
+  assert.equal(summary.sampler.budgetStatus, 'PASS');
   assert.equal(summary.scope.resilienceLocalHttpRequests, 2050);
   assert.deepEqual(summary.performance.resilienceScenarios.map(item => item.name), [
     'mixed-success-timeout',
@@ -83,6 +97,9 @@ test('V05 summary requires and reports 1,001-source timeout, cancellation cleanu
     'recovery-after-cancel',
   ]);
   assert.equal(summary.performance.resilienceScenarios[1].activeRequestsAfterSettle, 0);
+
+  const unbudgeted = { ...resourceReport, summary: { ...resourceReport.summary, budgetStatus: 'NOT_CONFIGURED', budgets: {}, budgetChecks: {} } };
+  assert.equal(summarizeV05Search(workload, unbudgeted, '.tmp/v05-search-check').status, 'FAIL');
 
   resilienceScenarios[1].cancelledRequests = 0;
   assert.equal(summarizeV05Search(workload, resourceReport, '.tmp/v05-search-check').status, 'FAIL');

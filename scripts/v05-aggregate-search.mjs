@@ -35,13 +35,14 @@ const RESOURCE_BUDGET_FLAGS = [
   ['--budget-private-bytes-mb', 'privateBytesMB'],
   ['--budget-cpu-p95-percent', 'cpuP95Percent'],
 ];
+const DEFAULT_RESOURCE_BUDGETS = Object.freeze({ workingSetMB: 500, privateBytesMB: 700, cpuP95Percent: 180 });
 
 function resourceBudgetArgs(budgets) {
   return RESOURCE_BUDGET_FLAGS.flatMap(([flag, key]) => Number.isFinite(budgets[key]) ? [flag, String(budgets[key])] : []);
 }
 
 export function parseV05SearchArgs(args) {
-  const options = { cycles: 10, sources: 1000, outputDirectory: '', budgets: { workingSetMB: null, privateBytesMB: null, cpuP95Percent: null } };
+  const options = { cycles: 10, sources: 1000, outputDirectory: '', budgets: { ...DEFAULT_RESOURCE_BUDGETS } };
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
     const value = args[index + 1];
@@ -169,7 +170,7 @@ export function summarizeV05Search(workload, resourceReport, outputDirectory) {
     && (resourceReport?.sampler?.errors?.length ?? 1) === 0
     && (resourceReport?.summary?.sampleCount ?? 0) >= 2;
   const budgetStatus = resourceReport?.summary?.budgetStatus ?? 'NOT_CONFIGURED';
-  const budgetValid = budgetStatus === 'NOT_CONFIGURED' || budgetStatus === 'PASS';
+  const budgetValid = budgetStatus === 'PASS';
 
   return {
     schemaVersion: 1,
