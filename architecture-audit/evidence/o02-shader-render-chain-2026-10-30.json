@@ -1,0 +1,121 @@
+{
+  "frame-drop-count": 0,
+  "current-vo": "gpu-next",
+  "vo-passes": {
+    "redraw": [
+      {
+        "desc": "frame mixing (1 frame), color encoding, dithering (10 bits)",
+        "last": 0,
+        "avg": 0,
+        "peak": 0,
+        "count": 0,
+        "samples": []
+      }
+    ],
+    "fresh": [
+      {
+        "desc": "merging planes",
+        "last": 17408,
+        "avg": 17408,
+        "peak": 17408,
+        "count": 1,
+        "samples": [
+          17408
+        ]
+      },
+      {
+        "desc": "RAVU-Lite (step1, r4)",
+        "last": 137216,
+        "avg": 137216,
+        "peak": 137216,
+        "count": 1,
+        "samples": [
+          137216
+        ]
+      },
+      {
+        "desc": "RAVU-Lite (step2, r4)",
+        "last": 45996032,
+        "avg": 45996032,
+        "peak": 45996032,
+        "count": 1,
+        "samples": [
+          45996032
+        ]
+      },
+      {
+        "desc": "ortho (vert) upscaling (spline36)",
+        "last": 37888,
+        "avg": 37888,
+        "peak": 37888,
+        "count": 1,
+        "samples": [
+          37888
+        ]
+      },
+      {
+        "desc": "ortho (horiz) upscaling (spline36), color decoding",
+        "last": 0,
+        "avg": 0,
+        "peak": 0,
+        "count": 0,
+        "samples": []
+      }
+    ]
+  },
+  "video-params": {
+    "stereo-in": "mono",
+    "rotate": 0,
+    "alpha": "none",
+    "pixelformat": "rgb24",
+    "average-bpp": 24,
+    "dw": 640,
+    "dh": 360,
+    "crop-x": 0,
+    "crop-y": 0,
+    "crop-w": 640,
+    "crop-h": 360,
+    "aspect-name": "16:9",
+    "w": 640,
+    "h": 360,
+    "aspect": 1.777778,
+    "colormatrix": "rgb",
+    "colorlevels": "full",
+    "primaries": "bt.709",
+    "gamma": "srgb",
+    "sar": 1.777778,
+    "sig-peak": 0,
+    "light": "display",
+    "par": 1,
+    "chroma-location": "mpeg1/jpeg",
+    "sar-name": "16:9"
+  },
+  "video-out-params": {
+    "stereo-in": "mono",
+    "rotate": 0,
+    "alpha": "none",
+    "pixelformat": "yuv420p",
+    "average-bpp": 12,
+    "dw": 640,
+    "dh": 360,
+    "crop-x": 0,
+    "crop-y": 0,
+    "crop-w": 640,
+    "crop-h": 360,
+    "aspect-name": "16:9",
+    "w": 640,
+    "h": 360,
+    "aspect": 1.777778,
+    "colormatrix": "bt.601",
+    "colorlevels": "full",
+    "primaries": "bt.709",
+    "gamma": "srgb",
+    "sar": 1.777778,
+    "sig-peak": 0,
+    "light": "display",
+    "par": 1,
+    "chroma-location": "mpeg1/jpeg",
+    "sar-name": "16:9"
+  },
+  "estimated-vf-fps": 1
+}

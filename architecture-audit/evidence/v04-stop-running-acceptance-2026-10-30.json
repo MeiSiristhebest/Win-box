@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-29T16:36:50Z",
+  "taskId": "V04",
+  "candidate": {
+    "version": "1.27.1",
+    "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "setupSha256": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0",
+    "payloadFiles": 451,
+    "payloadBytes": 533336495
+  },
+  "command": "pnpm run acceptance:install release1.27.1/win-unpacked --stop-running",
+  "mechanism": "The acceptance harness generated and ran isolated NSIS installers from the latest unpacked payload. It did not execute the shipping Setup.exe GUI. The process fixture launches the packaged Win-Box.exe with a synthetic long-running argument, hidden in an isolated temp installation; it is not a visible player window and does not represent the real user's installation.",
+  "result": {
+    "install": "PASS",
+    "overwrite": "PASS",
+    "runningProcessStopped": "PASS",
+    "runningProcessStopDurationMs": 452,
+    "uninstallFirst": "PASS",
+    "uninstall": "PASS",
+    "verifiedFiles": 451,
+    "userDataFilesPreserved": 6,
+    "dataPreserved": true,
+    "registryAndShortcuts": "PASS",
+    "isolated": true,
+    "cleaned": true,
+    "failedUninstallerRollback": "NOT_RUN",
+    "legacyOnlyFileLockRejected": "NOT_RUN",
+    "shippingSetupGuiTempCleanInstall": "PASS",
+    "runAfterInstallDefaultChecked": true,
+    "runAfterInstallUncheckedBeforeFinish": true,
+    "tempAppStarted": false,
+    "tempInstallDirectoryRemoved": true,
+    "desktopShortcutRestored": true,
+    "uninstallerUi": "POLICY_BLOCKED_MANUAL_EXACT_DIRECTORY_CLEANUP"
+  },
+  "limitations": [
+    "The running-process fixture is the packaged executable with a synthetic long-running argument, not the normally launched app in playback or boss-key-hidden state.",
+    "The shipping Setup.exe GUI and its stop/continue/Cancel/Back/elevation workflow were not exercised in this pass.",
+    "Synthetic isolated data is not the user's actual profile; no real installation or profile was touched.",
+    "Rollback and legacy-only lock cases were not run in this pass; the prior installer regression suite covered those separately.",
+    "The shipping Setup.exe GUI was exercised only for a clean install into a separate temporary path. This does not verify same-path upgrade or running-app stop/continue behavior. The uninstaller UI was blocked by product policy, so the exact isolated directory was removed manually."
+  ],
+  "shippingSetupUiFollowup": {
+    "status": "PASS_ISOLATED_TEMP_CLEAN_INSTALL_ONLY",
+    "setupSha256": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0",
+    "target": ".tmp/smart-installer-ui-20261030",
+    "observations": [
+      "The shipping Setup.exe completed a clean install into the exact isolated repository .tmp target.",
+      "The existing E:\\Win-Box process remained open; the test never started the temporary Win-Box app.",
+      "The finish page defaulted to Run Win-Box checked; it was unchecked before Finish.",
+      "Setup changed the Desktop Win-Box shortcut to the isolated executable; the shortcut was restored to E:\\Win-Box\\Win-Box.exe and verified.",
+      "The product policy blocked launching the temporary Uninstall.exe; the exact temporary install directory was removed manually after confirming no process used it."
+    ],
+    "cleanup": {
+      "temporaryInstallDirectoryRemoved": true,
+      "desktopShortcutRestored": true,
+      "unrelatedTmpEntriesTouched": false
+    },
+    "notVerified": [
+      "Upgrade/overwrite through the shipping Setup.exe over an existing installation",
+      "A same-path running app stopped and installer continue/cancel/back choices",
+      "Real user-profile preservation and elevation flow"
+    ]
+  }
+}

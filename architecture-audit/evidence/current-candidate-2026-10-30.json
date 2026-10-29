@@ -1,0 +1,387 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-29T16:36:50Z",
+  "source": {
+    "branch": "codex/architecture-cleanup-20261025",
+    "applicationBuildCommit": "50699458217938c53cbfdd7a6fa3ab92d51130c8",
+    "version": "1.27.1",
+    "productionChangesAfterBuild": false,
+    "latestValidatedSourceCommits": [
+      "8270cbb4",
+      "123a50bb",
+      "b8597d44",
+      "cce91e7a",
+      "7e83ea84",
+      "3b854d96",
+      "50699458"
+    ],
+    "published": false,
+    "pushed": false,
+    "localAcceptanceCommits": [
+      "617de7b4",
+      "4a5ac726",
+      "15fb29f2",
+      "863c41f6",
+      "b8597d44",
+      "cce91e7a",
+      "7e83ea84",
+      "3b854d96"
+    ]
+  },
+  "package": {
+    "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "setupBytes": 228685343,
+    "setupSha256": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0",
+    "winBoxExeSha256": "127d4458c528b0996dff149229f750664e5cd2d6b4ecbd7459e7c373c2c0f717",
+    "originalBuildPayload": {
+      "fileCount": 451,
+      "bytes": 533313618
+    },
+    "currentUnpackedDirectory": {
+      "observedFileCount": 451,
+      "observedBytes": 533336495,
+      "explanation": "Latest local 1.27.1 package rebuild; built from the working-tree source represented by commit 50699458, then playback-tested in an isolated copy."
+    },
+    "localCurrentSourceBuild": {
+      "version": "1.27.1",
+      "command": "pnpm run dist",
+      "builtAt": "2026-10-29T15:54:46.251Z",
+      "applicationBuildCommit": "50699458217938c53cbfdd7a6fa3ab92d51130c8",
+      "installerBuilt": true,
+      "installerHash": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0",
+      "installerBytes": 228685343,
+      "exeHash": "127d4458c528b0996dff149229f750664e5cd2d6b4ecbd7459e7c373c2c0f717",
+      "exeBytes": 247366656,
+      "appAsarHash": "e7b3e3b7ee1a3d3e89ccc2dc03e90ad9cb0efabadaf0bf29c3c95034490aced0",
+      "appAsarBytes": 24903837,
+      "payloadFiles": 451,
+      "payloadBytes": 533336495,
+      "releaseFolders": [
+        "release1.27.1"
+      ],
+      "published": false,
+      "pushed": false,
+      "workingTreeIncludedUncommittedChanges": [
+        "deleted src/renderer/components/SourcePicker.tsx (pre-existing user change)",
+        "added libnc.so (pre-existing user change; absent from packaged output)"
+      ]
+    },
+    "productionSourceChangesAfterBuild": {
+      "commits": [],
+      "files": [],
+      "requiresRebuild": false,
+      "packagePath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+      "rebuiltAt": "2026-10-29T15:54:46.251Z",
+      "rebuiltSetupSha256": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0"
+    },
+    "winBoxExeBytes": 247366656,
+    "appAsarBytes": 24903837,
+    "appAsarSha256": "e7b3e3b7ee1a3d3e89ccc2dc03e90ad9cb0efabadaf0bf29c3c95034490aced0"
+  },
+  "acceptance": {
+    "V02": {
+      "status": "PARTIAL",
+      "evidence": "architecture-audit/evidence/playback-acceptance-toolbar-2026-10-30.json",
+      "priorLocalFixture": "HTML5 and managed MPV decode/progress/pause-resume pass. Two PotPlayer launch/process/full-fixture-fetch checks pass; PotPlayer decode/time/pause and desktop-visible MPV pixels remain unverified.",
+      "latestNativeLaunch": "PASS_TO_VISIBLE_WINDOW: isolated-copy AppContainer ACL grant processed 616 files; user handled the firewall prompt; window closed normally after inspection. Fresh packaged local HTML5/managed MPV fixture playback passed; see playback recheck evidence.",
+      "localPlaybackRecheck": {
+        "status": "PASS",
+        "evidence": "architecture-audit/evidence/playback-acceptance-packaged-recheck-2026-10-29.json",
+        "checks": [
+          "HTML5 VP8 decode/progress/pause/resume",
+          "managed MPV VP8 decode/seek/progress/pause/resume",
+          "compact centered sharp pause feedback"
+        ],
+        "limitations": [
+          "PotPlayer decode/progress/pause-resume not verified; see externalPlayerRecheck",
+          "live third-party sources not tested",
+          "MPV native child-window pixels not visible in Playwright capture"
+        ]
+      },
+      "externalPlayerRecheck": {
+        "status": "PARTIAL",
+        "evidence": "architecture-audit/evidence/playback-acceptance-potplayer-recheck-2026-10-29.json",
+        "checks": [
+          "Two packaged-candidate runs selected configured D:/PotPlayer/PotPlayerMini64.exe",
+          "PotPlayer process confirmed in both runs",
+          "Full local video/webm fixture fetched with HTTP 200 in both runs",
+          "newly started PotPlayer PIDs closed by harness"
+        ],
+        "notVerified": [
+          "PotPlayer decode/video-frame output",
+          "PotPlayer time progression",
+          "PotPlayer pause/resume",
+          "Live third-party source playback",
+          "PotPlayer desktop screenshot"
+        ],
+        "computerUseFollowUp": {
+          "status": "NOT_VERIFIED",
+          "detail": "Computer-use launch request timed out; refreshed app/window inventories contained no PotPlayer or Win-Box target window, so no visible decode frame was captured."
+        }
+      },
+      "visibleAppFollowUp": {
+        "status": "NOT_VERIFIED",
+        "detail": "The packaged Win-Box executable launch did not expose a targetable window; refreshed app/window inventories had no Win-Box/PotPlayer window, and no process remained afterward. No live-source playback was run."
+      },
+      "relayDiagnosticFollowUp": {
+        "status": "IMPLEMENTED_AND_TESTED",
+        "commit": "8270cbb4",
+        "test": "tests/relayFailure.spec.ts: 41/41 passed",
+        "addedFields": [
+          "redacted final URL",
+          "content type",
+          "content length",
+          "content range"
+        ],
+        "limitation": "This improves diagnosis of upstream HTML/JSON/error responses; representative live-source playback has not yet been repeated."
+      },
+      "latestPackageAfterRebuild": {
+        "status": "PASS_LOCAL_HTML5_AND_MANAGED_MPV_FIXTURE",
+        "setupSha256": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0",
+        "builtAt": "2026-10-29T15:54:46.251Z",
+        "evidence": "architecture-audit/evidence/playback-acceptance-toolbar-2026-10-30.json",
+        "checks": [
+          "HTML5 decode/time/progress/pause/resume",
+          "managed MPV decode/seek/time/progress/pause/resume",
+          "997 px toolbar labels no-wrap/no-clipping/no-overflow",
+          "pause feedback centered 28x28 px with no blur"
+        ],
+        "limitations": [
+          "PotPlayer decode/time/pause not verified",
+          "live third-party sources not tested",
+          "MPV native child-window pixels not captured by Playwright"
+        ]
+      },
+      "latestVerification": "The exact latest local package passed an isolated local VP8 fixture in HTML5 and managed MPV, including progress and pause/resume. PotPlayer decode/time/pause and live sources remain unverified; MPV native child-window pixels are not visible in the automated screenshot."
+    },
+    "V03": {
+      "status": "PARTIAL",
+      "evidence": "architecture-audit/evidence/playback-acceptance-toolbar-2026-10-30.json",
+      "priorUiRegressions": "Theme and player style regression checks passed; live full-window route/theme/DPI and danmaku-trail capture remain unverified.",
+      "latestPlayerRecheck": "HTML5 visual frame and player controls are present in the packaged screenshot; MPV decode was confirmed by state and time progression, but native child-window pixels are not captured.",
+      "latestControlStyleFixes": {
+        "status": "PASS_FOCUSED_AND_PACKAGED_LOCAL_FIXTURE",
+        "commits": [
+          "50699458"
+        ],
+        "checks": [
+          {
+            "command": "pnpm exec vitest run tests/playerStyleArchitecture.spec.ts tests/globalStyleComposition.spec.ts",
+            "passed": 16
+          },
+          {
+            "command": "acceptance:playback packaged harness",
+            "passed": "HTML5 and MPV fixture; 997 px toolbar geometry, pause feedback"
+          }
+        ],
+        "notInCurrentPackage": false,
+        "remaining": "Full route/theme/DPI/focus matrix and the user's reported live danmaku trails remain open.",
+        "packageBuild": {
+          "status": "BUILT_AND_FIXTURE_VERIFIED",
+          "builtAt": "2026-10-29T15:54:46.251Z",
+          "setupSha256": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0",
+          "sourceCommits": [
+            "50699458"
+          ],
+          "note": "Playback/toolbar fixture passed; this is not the full route/theme/DPI/focus screenshot matrix."
+        }
+      },
+      "workspaceWindowCaptureAttempt": {
+        "status": "NOT_VERIFIED",
+        "target": "release1.27.1/win-unpacked/Win-Box.exe",
+        "observation": "No targetable Win-Box window appeared. Windows Application Error/Windows Error Reporting recorded Win-Box 1.27.1.0, exception 0x80000003, offset 0x073d6749 after direct launch from the workspace package path.",
+        "interpretation": "Consistent with the previously recorded AppContainer install-directory ACL issue; this is not evidence that playback itself failed. No isolated-installed package or live source was tested in this attempt."
+      },
+      "latestPackagedToolbarEvidence": "architecture-audit/evidence/playback-acceptance-toolbar-2026-10-30.json"
+    },
+    "V04": {
+      "status": "PARTIAL",
+      "evidence": "architecture-audit/evidence/v04-followup-2026-10-29.json",
+      "installerRegression": {
+        "evidence": "architecture-audit/evidence/installer-regression-2026-10-29.json",
+        "testCommit": "wvv",
+        "tests": 12,
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0,
+        "durationMs": 81358,
+        "processStopFixtureMs": 3998
+      },
+      "isolatedPayloadLifecycle": "Safe ACL baseline: install, overwrite, uninstall-first, uninstall, 451 packaged files, six synthetic data categories, registry and shortcuts passed.",
+      "notVerified": [
+        "Shipping Setup.exe GUI upgrade over an existing installation",
+        "Visible or boss-key-hidden app process during playback",
+        "Interactive stop/continue/Cancel/Back/elevation",
+        "Real user-profile preservation"
+      ],
+      "crashAddressInvestigation": {
+        "evidence": "architecture-audit/evidence/v04-followup-2026-10-29.json",
+        "result": "Resolved to Electron CheckSandboxedProcessesCanReadInstallDir at startup. The old crash was caused by the sandboxed workspace/test install path ACL (AppContainer package SID without ALL APPLICATIONS read), not a playback crash."
+      },
+      "actualPackagedProcessFollowup": {
+        "evidence": "architecture-audit/evidence/v04-followup-2026-10-29.json",
+        "processStopped": true,
+        "installerExitCode": 22,
+        "overwriteCompleted": false,
+        "meaning": "The process-stop attempt is not an acceptance pass: NSIS aborted at install_section_abort after CheckInstallFiles reported failure; exact blocked file remains unknown."
+      },
+      "lockRetryFix": {
+        "commits": [
+          "b8597d44",
+          "cce91e7a"
+        ],
+        "change": "CheckInstallFiles now retries each temporarily unavailable package file for up to five seconds and calls one shared installer/uninstaller function; persistent locks still cancel with a clear message.",
+        "targetedTest": "scripts/installer-script.check.mjs: retries transient locks during packaged-file preflight before cancelling (passed)",
+        "currentPayloadLifecycle": "PASS: install, overwrite, uninstall-first, uninstall; 451 files verified; six synthetic data files preserved; registry and shortcuts passed.",
+        "currentPayloadStopRunning": "NOT_RUN; the previous packaged-process run exited with NSIS 22, and the new retry change has not yet been rechecked with a running process."
+      },
+      "latestStopRunningAcceptance": {
+        "status": "PASS_ISOLATED_PACKAGED_EXE_FIXTURE_ONLY",
+        "evidence": "architecture-audit/evidence/v04-stop-running-acceptance-2026-10-30.json",
+        "stopDurationMs": 452,
+        "verifiedFiles": 451,
+        "syntheticUserDataFilesPreserved": 6,
+        "limitation": "Generated NSIS installer from unpacked payload, not shipping Setup.exe GUI; hidden packaged executable with synthetic long-running arg, not visible playback or boss-key state."
+      },
+      "shippingSetupUiFollowup": {
+        "status": "PASS_ISOLATED_TEMP_CLEAN_INSTALL_ONLY",
+        "evidence": "architecture-audit/evidence/v04-stop-running-acceptance-2026-10-30.json",
+        "runAfterInstallDefaultChecked": true,
+        "uncheckedBeforeFinish": true,
+        "tempAppStarted": false,
+        "tempDirectoryRemoved": true,
+        "desktopShortcutRestored": true,
+        "notVerified": [
+          "same-path shipping Setup upgrade",
+          "stop-running existing app flow",
+          "real profile preservation",
+          "Cancel/Back/elevation"
+        ]
+      }
+    },
+    "V05": {
+      "status": "PARTIAL_SYNTHETIC_ONLY",
+      "evidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
+      "latestBudgetedSyntheticRun": {
+        "evidence": "architecture-audit/evidence/v05-budget-gate-2026-10-29.json",
+        "harnessCommit": "uus",
+        "status": "PASS",
+        "budgets": {
+          "workingSetMiB": 500,
+          "privateBytesMiB": 700,
+          "cpuP95Percent": 180
+        },
+        "observed": {
+          "workingSetPeakMiB": 344.9,
+          "privateBytesPeakMiB": 414.7,
+          "cpuP95Percent": 131.7
+        },
+        "scope": "10 x 1,000-source synthetic loopback CMS cycles; sampled process tree is Node/Vitest, not Win-Box.exe."
+      },
+      "independentRecheck": {
+        "cycles": 10,
+        "sourcesPerCycle": 1000,
+        "localHttpRequests": 12050,
+        "peakConcurrency": 48,
+        "cycleLatencyMs": {
+          "p50": 378.5,
+          "p95": 615.1
+        },
+        "throughputSourcesPerSecond": {
+          "p50": 2441.5,
+          "p95": 2945.9
+        },
+        "resilience": "1,001-source partial failure/timeout, cancel-after-first-result, and recovery scenarios passed; zero active requests after each settled.",
+        "resourceSample": {
+          "workingSetPeakMiB": 355.9,
+          "privateBytesPeakMiB": 416.5,
+          "cpuP95Percent": 129.9,
+          "processes": 2,
+          "budget": "NOT_CONFIGURED"
+        }
+      },
+      "notVerified": [
+        "Win-Box idle/search/playback process-tree metrics",
+        "1080p/4K playback and dense danmaku",
+        "Repeated profile/source/window changes",
+        "Product resource budgets"
+      ]
+    },
+    "V06": {
+      "status": "PARTIAL",
+      "evidence": "architecture-audit/evidence/current-candidate-2026-10-30.json",
+      "latestLocalGates": "Latest full Vitest run: 509 files/4,177 tests passed, 4 files/7 tests skipped. Main/renderer/test typecheck and lint passed on the preceding source validation; latest local Setup rebuilt and the exact package passed isolated HTML5/managed-MPV playback and player-toolbar acceptance. No Release was published or pushed.",
+      "notVerified": [
+        "Shipping Setup.exe GUI install over a real existing installation",
+        "Successful stop-running overwrite after the latest installer preflight retry changes",
+        "Remote CI because branch is unpushed",
+        "Live third-party playback and PotPlayer decode/pause",
+        "Full packaged UI route/theme/DPI/focus matrix and danmaku trails",
+        "Actual desktop-visible MPV native child window"
+      ],
+      "currentSourcePackageAcceptance": {
+        "version": "1.27.1",
+        "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+        "setupBytes": 228685343,
+        "setupSha256": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0",
+        "winBoxExeBytes": 247366656,
+        "winBoxExeSha256": "127d4458c528b0996dff149229f750664e5cd2d6b4ecbd7459e7c373c2c0f717",
+        "appAsarBytes": 24903837,
+        "appAsarSha256": "e7b3e3b7ee1a3d3e89ccc2dc03e90ad9cb0efabadaf0bf29c3c95034490aced0",
+        "payloadFiles": 451,
+        "payloadBytes": 533336495,
+        "builtAt": "2026-10-29T15:54:46.251Z",
+        "releaseFolders": [
+          "release1.27.1"
+        ],
+        "published": false,
+        "pushed": false,
+        "html5AndManagedMpvPlayback": "PASS",
+        "isolatedInstallOverwriteUninstallFirstUninstall": "PASS",
+        "packagedExeStopRunningFixtureMs": 452,
+        "syntheticDataFilesPreserved": 6,
+        "shippingSetupExeGui": "PASS_ISOLATED_TEMP_CLEAN_INSTALL_ONLY",
+        "realUserInstallationTouched": false,
+        "shippingSetupGuiUpgrade": "NOT_RUN"
+      }
+    }
+  },
+  "requiredTaskStatus": {
+    "completed": 31,
+    "total": 36,
+    "open": [
+      "V02",
+      "V03",
+      "V04",
+      "V05",
+      "V06"
+    ]
+  },
+  "optionalOpen": [],
+  "optionalStatus": {
+    "O01": {
+      "status": "COMPLETED_FUNCTIONAL_ACCEPTANCE",
+      "evidence": "architecture-audit/evidence/o01-followup-2026-10-29.json",
+      "tests": "5 files / 146 tests passed; main/test typecheck and architecture check passed",
+      "trustBoundary": "Explicit trusted-code consent; Worker/node:vm is not a malicious-code isolation boundary."
+    },
+    "O02": {
+      "status": "COMPLETED_RESEARCH_SCOPE",
+      "evidence": "architecture-audit/evidence/o02-shader-poc-followup-2026-10-30.json",
+      "renderPassEvidence": "architecture-audit/evidence/o02-shader-render-chain-2026-10-30.json",
+      "limitation": "Synthetic MPV/libplacebo RAVU Lite PoC only. Tiny PSNR change with MAE regression; measured overhead; no PotPlayer/WebView injection or productized universal shader plugin."
+    }
+  },
+  "workspace": {
+    "localCommitsUnpushed": true,
+    "preservedUncommittedUserChanges": [
+      "libnc.so",
+      "src/renderer/components/SourcePicker.tsx"
+    ],
+    "temporaryAcceptanceArtifactsCleaned": true,
+    "temporaryAcceptanceCleanup": "PASS: latest package harnesses, this turn's isolated Setup.exe install directory, and O02 raw logs/screenshots/GPU samples were removed after compact evidence was recorded; the Desktop shortcut was restored to E:\\Win-Box\\Win-Box.exe; unrelated .tmp entries were untouched."
+  },
+  "releasePublished": false,
+  "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-toolbar-2026-10-30.json",
+  "latestInstallerEvidence": "architecture-audit/evidence/v04-stop-running-acceptance-2026-10-30.json"
+}

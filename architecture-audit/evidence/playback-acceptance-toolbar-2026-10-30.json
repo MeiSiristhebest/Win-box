@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-29T15:57:30.728Z",
+  "taskIds": ["V02", "V03", "V06"],
+  "candidate": {
+    "version": "1.27.1",
+    "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "setupBytes": 228685343,
+    "setupSha256": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0",
+    "winBoxExeBytes": 247366656,
+    "winBoxExeSha256": "127d4458c528b0996dff149229f750664e5cd2d6b4ecbd7459e7c373c2c0f717",
+    "appAsarBytes": 24903837,
+    "appAsarSha256": "e7b3e3b7ee1a3d3e89ccc2dc03e90ad9cb0efabadaf0bf29c3c95034490aced0",
+    "payloadFiles": 451,
+    "payloadBytes": 533336495,
+    "releaseDirectories": ["release1.27.1"],
+    "published": false,
+    "pushed": false
+  },
+  "procedure": {
+    "command": "pnpm run acceptance:playback -- --packaged-app .tmp/latest-package-toolbar-final-20261029 --playback-only --artifact-dir .tmp/latest-package-toolbar-final-artifacts-20261029",
+    "testCandidate": "An isolated copy of the rebuilt packaged payload; AppContainer read/execute access was granted only to this copy.",
+    "userData": "APPDATA and LOCALAPPDATA redirected to a fresh temporary acceptance directory; no installed user data or real source configuration used.",
+    "fixture": "Locally generated 320x180 VP8 WebM, approximately 14 seconds; loopback HTTP fixture only."
+  },
+  "result": {
+    "status": "PASS",
+    "html5": {
+      "decodeAndTimeProgress": "PASS",
+      "pauseResume": "PASS",
+      "timeSeconds": 1.124338,
+      "resumedFromSeconds": 0.59552,
+      "frameSize": "320x180"
+    },
+    "managedMpv": {
+      "runtimeVersion": "0.41.0",
+      "archiveSha256": "4e197f729f5071c6772f35fffd96e0f36e3e8a044bd9479b136bb09b7c6a80ff",
+      "executableSha256": "6145e63f026451a764077d53fd60860ec9f5c2bc76dcd6e62a88967ac375453d",
+      "decodeSeekTimeProgress": "PASS",
+      "pauseResume": "PASS",
+      "timeSeconds": 3.577,
+      "resumedFromSeconds": 3.01,
+      "frameSize": "320x180"
+    },
+    "pauseFeedback": {
+      "status": "PASS",
+      "sizeCssPx": "28x28",
+      "iconCssPx": "14x14",
+      "centerOffsetCssPx": "0,0",
+      "backdropFilter": "none",
+      "boxShadow": "none"
+    },
+    "mpvToolbar": {
+      "status": "PASS",
+      "barWidthCssPx": 997.333,
+      "barScrollWidthCssPx": 997,
+      "labels": ["兼容", "统计", "键位", "超分"],
+      "labelsSingleLineAndUnclipped": true,
+      "playbackClockSingleLine": true,
+      "horizontalOverflowCssPx": 0
+    },
+    "rendererErrors": [],
+    "processExited": true,
+    "temporaryHarnessCleanup": "PASS"
+  },
+  "limitations": [
+    "PotPlayer decode, time progression, and pause/resume were not measured.",
+    "No live third-party source was tested.",
+    "The MPV video child surface is native and was not visible in Playwright screenshots; MPV decode and playback progress were confirmed through its state and time events.",
+    "This run does not close the full UI route/theme/DPI/focus matrix or the reported live danmaku trail issue."
+  ]
+}

@@ -1,0 +1,564 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-29T16:17:03Z",
+  "taskId": "O02",
+  "title": "MPV/libplacebo RAVU Lite shader proof of concept",
+  "status": "COMPLETE_FOR_RESEARCH_SCOPE",
+  "scope": "Measure one existing MPV/libplacebo shader plugin on a deterministic synthetic 2x upscaling fixture; do not imply product integration or support for arbitrary external players.",
+  "experiment": {
+    "runtime": {
+      "pinnedVersion": "0.41.0",
+      "reportedVersion": [
+        "mpv v0.41.0-dev-g41f6a6450 Copyright 漏 2000-2025 mpv/MPlayer/mplayer2 projects",
+        " built on Dec 21 2025 19:30:47",
+        "libplacebo version: v7.358.0"
+      ],
+      "officialSource": "https://github.com/mpv-player/mpv/releases/tag/v0.41.0",
+      "archiveUrl": "https://github.com/mpv-player/mpv/releases/download/v0.41.0/mpv-v0.41.0-x86_64-pc-windows-msvc.zip",
+      "archiveSha256": "4e197f729f5071c6772f35fffd96e0f36e3e8a044bd9479b136bb09b7c6a80ff",
+      "libplaceboVersion": "v7.358.0"
+    },
+    "host": {
+      "platform": "Windows-11-10.0.28000-SP0",
+      "machine": "AMD64"
+    },
+    "plugin": {
+      "id": "ravu-lite",
+      "version": "1.0.0",
+      "license": "LGPL-3.0-or-later",
+      "hookSha256": "46905b8a09a41867b351431ae1cb828e371ae1b64c4abe247e3f4acdc22c9704"
+    },
+    "method": {
+      "input": "original synthetic 640x360 PNG downscaled from deterministic 1280x720 geometric reference; perf source is FFmpeg lavfi testsrc2 640x360@30",
+      "output": "MPV gpu-next + D3D11 at 1280x720; RAVU-Lite step1/step2 hooks; no user config; isolated shader cache",
+      "framesPerPerfTrial": 1800,
+      "timing": "whole MPV process wall time and process CPU time divided by requested frame count; includes process/context setup, not isolated GPU timestamp per frame",
+      "limits": [
+        "synthetic patterns are not representative movie quality",
+        "PSNR/MAE are image differences, not a perceptual preference score",
+        "GPU usage is per-process dedicated allocation from Windows GPU Process Memory; this harness does not expose isolated GPU frame timestamps"
+      ]
+    },
+    "imageMetrics": {
+      "baselineVsReference": {
+        "width": 1280,
+        "height": 720,
+        "exactMatch": false,
+        "maeRgb": 7.080920500578704,
+        "mseRgb": 275.30089952256947,
+        "psnrDb": 23.73272730451514
+      },
+      "ravuVsReference": {
+        "width": 1280,
+        "height": 720,
+        "exactMatch": false,
+        "maeRgb": 7.211578776041667,
+        "mseRgb": 272.31579463252314,
+        "psnrDb": 23.780075292127986
+      },
+      "ravuVsBaseline": {
+        "width": 1280,
+        "height": 720,
+        "exactMatch": false,
+        "maeRgb": 2.401137152777778,
+        "mseRgb": 37.062895688657406,
+        "psnrDb": 32.44141013546199
+      },
+      "renderInfo": {
+        "baseline": {
+          "exitCode": 0,
+          "elapsedMs": 3262.776399998984,
+          "cpuMs": 2265.625,
+          "peakWorkingSetMiB": 154.95703125,
+          "peakPrivateBytesMiB": 186.3359375,
+          "gpuDedicatedMemorySamples": 1,
+          "dedicatedGpuPeakMiB": 37.546875,
+          "gpuCountersAvailable": true
+        },
+        "ravu": {
+          "exitCode": 0,
+          "elapsedMs": 3461.5537999998196,
+          "cpuMs": 2437.5,
+          "peakWorkingSetMiB": 162.37890625,
+          "peakPrivateBytesMiB": 196.92578125,
+          "gpuDedicatedMemorySamples": 1,
+          "dedicatedGpuPeakMiB": 41.96484375,
+          "gpuCountersAvailable": true
+        }
+      }
+    },
+    "performance": {
+      "baseline": {
+        "trials": [
+          {
+            "exitCode": 0,
+            "elapsedMs": 11518.12339999924,
+            "cpuMs": 3718.75,
+            "peakWorkingSetMiB": 94.6484375,
+            "peakPrivateBytesMiB": 124.28515625,
+            "gpuDedicatedMemorySamples": 9,
+            "dedicatedGpuPeakMiB": 26.67578125,
+            "gpuCountersAvailable": true,
+            "activeShaderPasses": [],
+            "videoOutParams": {
+              "dh": 360,
+              "crop-x": 0,
+              "crop-y": 0,
+              "crop-w": 640,
+              "crop-h": 360,
+              "aspect-name": "16:9",
+              "par": 1,
+              "sar": 1.777778,
+              "sar-name": "16:9",
+              "colormatrix": "bt.601",
+              "rotate": 0,
+              "colorlevels": "limited",
+              "w": 640,
+              "h": 360,
+              "aspect": 1.777778,
+              "alpha": "none",
+              "stereo-in": "mono",
+              "chroma-location": "mpeg2/4/h264",
+              "light": "display",
+              "sig-peak": 0,
+              "gamma": "bt.1886",
+              "pixelformat": "yuv420p",
+              "primaries": "bt.709",
+              "average-bpp": 12,
+              "dw": 640
+            },
+            "mode": "baseline",
+            "repetition": 1,
+            "framesRequested": 1800,
+            "wallMsPerRequestedFrame": 6.398957444444022,
+            "cpuMsPerRequestedFrame": 2.0659722222222223
+          },
+          {
+            "exitCode": 0,
+            "elapsedMs": 11574.644199999966,
+            "cpuMs": 3640.625,
+            "peakWorkingSetMiB": 94.6484375,
+            "peakPrivateBytesMiB": 124.59765625,
+            "gpuDedicatedMemorySamples": 9,
+            "dedicatedGpuPeakMiB": 26.67578125,
+            "gpuCountersAvailable": true,
+            "activeShaderPasses": [],
+            "videoOutParams": {
+              "crop-h": 360,
+              "aspect-name": "16:9",
+              "par": 1,
+              "sar": 1.777778,
+              "sar-name": "16:9",
+              "colormatrix": "bt.601",
+              "colorlevels": "limited",
+              "w": 640,
+              "h": 360,
+              "aspect": 1.777778,
+              "alpha": "none",
+              "primaries": "bt.709",
+              "rotate": 0,
+              "gamma": "bt.1886",
+              "stereo-in": "mono",
+              "sig-peak": 0,
+              "light": "display",
+              "pixelformat": "yuv420p",
+              "chroma-location": "mpeg2/4/h264",
+              "average-bpp": 12,
+              "dw": 640,
+              "dh": 360,
+              "crop-x": 0,
+              "crop-y": 0,
+              "crop-w": 640
+            },
+            "mode": "baseline",
+            "repetition": 2,
+            "framesRequested": 1800,
+            "wallMsPerRequestedFrame": 6.43035788888887,
+            "cpuMsPerRequestedFrame": 2.0225694444444446
+          },
+          {
+            "exitCode": 0,
+            "elapsedMs": 11517.81949999895,
+            "cpuMs": 3921.875,
+            "peakWorkingSetMiB": 97.74609375,
+            "peakPrivateBytesMiB": 124.42578125,
+            "gpuDedicatedMemorySamples": 9,
+            "dedicatedGpuPeakMiB": 26.67578125,
+            "gpuCountersAvailable": true,
+            "activeShaderPasses": [],
+            "videoOutParams": {
+              "light": "display",
+              "chroma-location": "mpeg2/4/h264",
+              "alpha": "none",
+              "stereo-in": "mono",
+              "w": 640,
+              "h": 360,
+              "pixelformat": "yuv420p",
+              "average-bpp": 12,
+              "dw": 640,
+              "dh": 360,
+              "crop-x": 0,
+              "crop-y": 0,
+              "crop-w": 640,
+              "crop-h": 360,
+              "aspect-name": "16:9",
+              "par": 1,
+              "sar": 1.777778,
+              "sar-name": "16:9",
+              "colormatrix": "bt.601",
+              "colorlevels": "limited",
+              "primaries": "bt.709",
+              "rotate": 0,
+              "gamma": "bt.1886",
+              "aspect": 1.777778,
+              "sig-peak": 0
+            },
+            "mode": "baseline",
+            "repetition": 3,
+            "framesRequested": 1800,
+            "wallMsPerRequestedFrame": 6.398788611110528,
+            "cpuMsPerRequestedFrame": 2.1788194444444446
+          }
+        ],
+        "summary": {
+          "repetitions": 3,
+          "wallMsPerRequestedFrame": [
+            6.398957444444022,
+            6.43035788888887,
+            6.398788611110528
+          ],
+          "medianWallMsPerRequestedFrame": 6.398957444444022,
+          "cpuMsPerRequestedFrame": [
+            2.0659722222222223,
+            2.0225694444444446,
+            2.1788194444444446
+          ],
+          "medianCpuMsPerRequestedFrame": 2.0659722222222223,
+          "peakWorkingSetMiB": 97.74609375,
+          "gpuDedicatedMemorySamples": [
+            9,
+            9,
+            9
+          ],
+          "dedicatedGpuPeakMiB": [
+            26.67578125,
+            26.67578125,
+            26.67578125
+          ]
+        }
+      },
+      "ravu": {
+        "trials": [
+          {
+            "exitCode": 0,
+            "elapsedMs": 11665.570600000137,
+            "cpuMs": 4734.375,
+            "peakWorkingSetMiB": 96.95703125,
+            "peakPrivateBytesMiB": 130,
+            "gpuDedicatedMemorySamples": 8,
+            "dedicatedGpuPeakMiB": 30.99609375,
+            "gpuCountersAvailable": true,
+            "activeShaderPasses": [
+              "RAVU-Lite (step1, r4)",
+              "RAVU-Lite (step2, r4)"
+            ],
+            "videoOutParams": {
+              "par": 1,
+              "sar": 1.777778,
+              "sar-name": "16:9",
+              "colormatrix": "bt.601",
+              "colorlevels": "limited",
+              "w": 640,
+              "h": 360,
+              "aspect": 1.777778,
+              "sig-peak": 0,
+              "light": "display",
+              "chroma-location": "mpeg2/4/h264",
+              "stereo-in": "mono",
+              "rotate": 0,
+              "alpha": "none",
+              "gamma": "bt.1886",
+              "pixelformat": "yuv420p",
+              "primaries": "bt.709",
+              "average-bpp": 12,
+              "dw": 640,
+              "dh": 360,
+              "crop-x": 0,
+              "crop-y": 0,
+              "crop-w": 640,
+              "crop-h": 360,
+              "aspect-name": "16:9"
+            },
+            "mode": "ravu",
+            "repetition": 1,
+            "framesRequested": 1800,
+            "wallMsPerRequestedFrame": 6.4808725555556315,
+            "cpuMsPerRequestedFrame": 2.6302083333333335
+          },
+          {
+            "exitCode": 0,
+            "elapsedMs": 11971.032200000991,
+            "cpuMs": 4703.125,
+            "peakWorkingSetMiB": 96.65234375,
+            "peakPrivateBytesMiB": 129.94140625,
+            "gpuDedicatedMemorySamples": 7,
+            "dedicatedGpuPeakMiB": 30.99609375,
+            "gpuCountersAvailable": true,
+            "activeShaderPasses": [
+              "RAVU-Lite (step1, r4)",
+              "RAVU-Lite (step2, r4)"
+            ],
+            "videoOutParams": {
+              "dh": 360,
+              "crop-x": 0,
+              "crop-y": 0,
+              "crop-w": 640,
+              "crop-h": 360,
+              "aspect-name": "16:9",
+              "par": 1,
+              "sar": 1.777778,
+              "w": 640,
+              "colormatrix": "bt.601",
+              "aspect": 1.777778,
+              "colorlevels": "limited",
+              "primaries": "bt.709",
+              "gamma": "bt.1886",
+              "sig-peak": 0,
+              "light": "display",
+              "chroma-location": "mpeg2/4/h264",
+              "stereo-in": "mono",
+              "rotate": 0,
+              "alpha": "none",
+              "h": 360,
+              "pixelformat": "yuv420p",
+              "sar-name": "16:9",
+              "average-bpp": 12,
+              "dw": 640
+            },
+            "mode": "ravu",
+            "repetition": 2,
+            "framesRequested": 1800,
+            "wallMsPerRequestedFrame": 6.650573444444995,
+            "cpuMsPerRequestedFrame": 2.6128472222222223
+          },
+          {
+            "exitCode": 0,
+            "elapsedMs": 12112.684300000183,
+            "cpuMs": 4843.75,
+            "peakWorkingSetMiB": 102.1953125,
+            "peakPrivateBytesMiB": 130.84765625,
+            "gpuDedicatedMemorySamples": 7,
+            "dedicatedGpuPeakMiB": 30.99609375,
+            "gpuCountersAvailable": true,
+            "activeShaderPasses": [
+              "RAVU-Lite (step1, r4)",
+              "RAVU-Lite (step2, r4)"
+            ],
+            "videoOutParams": {
+              "alpha": "none",
+              "pixelformat": "yuv420p",
+              "average-bpp": 12,
+              "dw": 640,
+              "dh": 360,
+              "crop-x": 0,
+              "crop-y": 0,
+              "crop-w": 640,
+              "crop-h": 360,
+              "aspect-name": "16:9",
+              "par": 1,
+              "sar": 1.777778,
+              "sar-name": "16:9",
+              "colormatrix": "bt.601",
+              "colorlevels": "limited",
+              "w": 640,
+              "h": 360,
+              "aspect": 1.777778,
+              "gamma": "bt.1886",
+              "sig-peak": 0,
+              "light": "display",
+              "chroma-location": "mpeg2/4/h264",
+              "stereo-in": "mono",
+              "primaries": "bt.709",
+              "rotate": 0
+            },
+            "mode": "ravu",
+            "repetition": 3,
+            "framesRequested": 1800,
+            "wallMsPerRequestedFrame": 6.729269055555657,
+            "cpuMsPerRequestedFrame": 2.6909722222222223
+          }
+        ],
+        "summary": {
+          "repetitions": 3,
+          "wallMsPerRequestedFrame": [
+            6.4808725555556315,
+            6.650573444444995,
+            6.729269055555657
+          ],
+          "medianWallMsPerRequestedFrame": 6.650573444444995,
+          "cpuMsPerRequestedFrame": [
+            2.6302083333333335,
+            2.6128472222222223,
+            2.6909722222222223
+          ],
+          "medianCpuMsPerRequestedFrame": 2.6302083333333335,
+          "peakWorkingSetMiB": 102.1953125,
+          "gpuDedicatedMemorySamples": [
+            8,
+            7,
+            7
+          ],
+          "dedicatedGpuPeakMiB": [
+            30.99609375,
+            30.99609375,
+            30.99609375
+          ]
+        }
+      }
+    },
+    "artifacts": {
+      "screenshots": {
+        "baseline": "temporary run screenshot; SHA-256 captured",
+        "ravu": "temporary run screenshot; SHA-256 captured",
+        "baselinePngSha256": "d8674441a25e3ae01869368419bbf86f18ace2423d1c2ad2e28e0e6d1d5eeefe",
+        "ravuPngSha256": "4b4d8b7dae41e5770fb19f1a09826465378c0814b4d3a47f7d18d633808e318d",
+        "referencePngSha256": "2676dc4a39fb0c1fe64a75c88f10685195ba524093ec60223e65c8723b7ea543"
+      },
+      "activeShaderReport": "architecture-audit/evidence/o02-shader-render-chain-2026-10-30.json",
+      "rawTrialLogs": "Original per-trial logs and GPU samples were kept through review, then the temporary run directory will be removed after committing this summary."
+    }
+  },
+  "renderPassEvidence": {
+    "frame-drop-count": 0,
+    "current-vo": "gpu-next",
+    "vo-passes": {
+      "redraw": [
+        {
+          "desc": "frame mixing (1 frame), color encoding, dithering (10 bits)",
+          "last": 0,
+          "avg": 0,
+          "peak": 0,
+          "count": 0,
+          "samples": []
+        }
+      ],
+      "fresh": [
+        {
+          "desc": "merging planes",
+          "last": 17408,
+          "avg": 17408,
+          "peak": 17408,
+          "count": 1,
+          "samples": [
+            17408
+          ]
+        },
+        {
+          "desc": "RAVU-Lite (step1, r4)",
+          "last": 137216,
+          "avg": 137216,
+          "peak": 137216,
+          "count": 1,
+          "samples": [
+            137216
+          ]
+        },
+        {
+          "desc": "RAVU-Lite (step2, r4)",
+          "last": 45996032,
+          "avg": 45996032,
+          "peak": 45996032,
+          "count": 1,
+          "samples": [
+            45996032
+          ]
+        },
+        {
+          "desc": "ortho (vert) upscaling (spline36)",
+          "last": 37888,
+          "avg": 37888,
+          "peak": 37888,
+          "count": 1,
+          "samples": [
+            37888
+          ]
+        },
+        {
+          "desc": "ortho (horiz) upscaling (spline36), color decoding",
+          "last": 0,
+          "avg": 0,
+          "peak": 0,
+          "count": 0,
+          "samples": []
+        }
+      ]
+    },
+    "video-params": {
+      "stereo-in": "mono",
+      "rotate": 0,
+      "alpha": "none",
+      "pixelformat": "rgb24",
+      "average-bpp": 24,
+      "dw": 640,
+      "dh": 360,
+      "crop-x": 0,
+      "crop-y": 0,
+      "crop-w": 640,
+      "crop-h": 360,
+      "aspect-name": "16:9",
+      "w": 640,
+      "h": 360,
+      "aspect": 1.777778,
+      "colormatrix": "rgb",
+      "colorlevels": "full",
+      "primaries": "bt.709",
+      "gamma": "srgb",
+      "sar": 1.777778,
+      "sig-peak": 0,
+      "light": "display",
+      "par": 1,
+      "chroma-location": "mpeg1/jpeg",
+      "sar-name": "16:9"
+    },
+    "video-out-params": {
+      "stereo-in": "mono",
+      "rotate": 0,
+      "alpha": "none",
+      "pixelformat": "yuv420p",
+      "average-bpp": 12,
+      "dw": 640,
+      "dh": 360,
+      "crop-x": 0,
+      "crop-y": 0,
+      "crop-w": 640,
+      "crop-h": 360,
+      "aspect-name": "16:9",
+      "w": 640,
+      "h": 360,
+      "aspect": 1.777778,
+      "colormatrix": "bt.601",
+      "colorlevels": "full",
+      "primaries": "bt.709",
+      "gamma": "srgb",
+      "sar": 1.777778,
+      "sig-peak": 0,
+      "light": "display",
+      "par": 1,
+      "chroma-location": "mpeg1/jpeg",
+      "sar-name": "16:9"
+    },
+    "estimated-vf-fps": 1
+  },
+  "interpretation": {
+    "shaderExecution": "PASS: live vo-passes reports both RAVU-Lite step1 and step2 in all three performance trials; YUV420P output.",
+    "imageQuality": "Not a meaningful improvement claim. PSNR improves by 0.047 dB while RGB MAE worsens slightly; synthetic geometry is not representative content and PSNR is not a perceptual score.",
+    "performance": "Median wall time/requested frame 6.399→6.651 ms (+3.9%); CPU 2.066→2.630 ms/frame (+27.3%); peak working set 97.75→102.20 MiB; dedicated GPU allocation 26.68→31.00 MiB (+4.32 MiB). These include process/context startup and are not isolated GPU frame timestamps.",
+    "supportBoundary": "Proves RAVU Lite executes in the tested MPV 0.41.0-dev/libplacebo 7.358.0 gpu-next+D3D11 setup on RTX 3060 Laptop. Does not establish PotPlayer injection, WebView support, or general kernel-agnostic plugins.",
+    "retainedImageDigests": {
+      "baselinePngSha256": "d8674441a25e3ae01869368419bbf86f18ace2423d1c2ad2e28e0e6d1d5eeefe",
+      "ravuPngSha256": "4b4d8b7dae41e5770fb19f1a09826465378c0814b4d3a47f7d18d633808e318d",
+      "referencePngSha256": "2676dc4a39fb0c1fe64a75c88f10685195ba524093ec60223e65c8723b7ea543"
+    },
+    "cleanup": "After storing metric JSON and shader pass metadata, temporary MPV executables, logs, GPU samples, and PNGs can be deleted; their data was generated in .tmp and does not contain user profile data."
+  }
+}
