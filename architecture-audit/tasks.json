@@ -1860,11 +1860,15 @@
         {
           "path": "architecture-audit/evidence/memory-probe-privacy-2026-10-28.json",
           "symbol": "isolatedSamplerFixture"
+        },
+        {
+          "path": "architecture-audit/evidence/v05-budget-gate-2026-10-29.json",
+          "symbol": "budgeted synthetic aggregate-search regression run"
         }
       ],
-      "gap": "Ten isolated cycles on the latest packaged candidate pass local 320x180 VP8 HTML5/MPV decode, progress, seek, pause/resume and cleanup. Per-executable memory/CPU percentiles are recorded and the acceptance driver is separately attributed. No resource budgets are configured; aggregate-search load, 1080p/4K, dense danmaku, live sources and same-process profile switching remain unmeasured.",
+      "gap": "A budget-gated synthetic aggregate-search benchmark now passes on a local loopback fixture, including cancellation cleanup and recovery. Its process sample is the Node/Vitest acceptance tree, not Win-Box. Real third-party sources, user profiles and Spider/JAR/Python workloads, UI responsiveness, video playback, 1080p/4K and dense danmaku remain unmeasured; product resource budgets are not established.",
       "direction": "固定机器/数据/窗口/冷热缓存条件，记录完整进程树与私有内存/工作集、CPU、搜索首个结果/总耗时、帧时间和关闭后资源恢复。根据数据再调并发与保留策略。",
-      "acceptance": "空闲、1000级源搜索、1080p/高分辨率播放、弹幕开关/高密度、连续10轮切源/窗口关闭有可重复报告；无单调增长；先基线后定数值预算，不虚报节省百分比。",
+      "acceptance": "Record reproducible application-only resource and responsiveness measurements for idle, large-source search, 1080p/4K playback, danmaku and repeated source/window changes; define product budgets from representative measurements and verify no monotonic resource growth. The synthetic loopback gate is supplementary and cannot close V05 by itself.",
       "estimateEngineerHours": {
         "min": 5,
         "max": 8
@@ -1884,15 +1888,16 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "040d1885e8a1debfe5ce07ac9380ae14cca91068",
-        "verification": "V05 independent synthetic aggregate-search recheck: 10 x 1,000-source cycles, 12,050 loopback requests, peak concurrency 48; 1,001-source partial-failure/timeout, cancellation cleanup, and recovery all passed. Median cycle 378.5 ms, p95 615.1 ms; median throughput 2,441.5 sources/s. Regression self-check 4/4, test typecheck, and changed-source lint passed. No real source/user profile/spider workload or configured performance budget was exercised.",
-        "evidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
-        "remaining": "Keep V05 open until real third-party sources, user profiles and spider/JAR/Python workloads, UI responsiveness, 1080p/4K and dense-danmaku workloads are measured against explicit performance and memory budgets.",
-        "latestVerification": "Final root recheck on 2026-10-28 UTC: 10/10 cycles, 2/2 synthetic workload tests, 4/4 regression checks, test typecheck and changed-source Oxlint pass; output artifacts cleaned. The process sampler measured the Node acceptance/Vitest process tree (peak working set 355.9 MiB, private bytes 416.5 MiB), not Win-Box. V05 remains partial.",
-        "latestEvidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json"
+        "verification": "2026-10-29 budgeted synthetic recheck: 10 x 1,000-source loopback cycles, 12,050 requests, peak concurrency 48; cycle latency p50/p95 465.4/621.4 ms; request latency p50/p95 20.1/34.6 ms; throughput p50/p95 1,968.8/3,299 sources/s. Node/Vitest process tree working-set peak 344.9 MiB, private bytes peak 414.7 MiB and CPU p95 131.7%, within synthetic-only guardrails of 500 MiB, 700 MiB and 180%. Timeout/partial failure, cancel cleanup, and recovery passed; 0 active requests after settling. V05 remains open because this is not an application process or real-source/video workload measurement.",
+        "evidence": "architecture-audit/evidence/v05-budget-gate-2026-10-29.json",
+        "remaining": "Measure Win-Box-only and representative real source/profile/spider workloads, UI responsiveness, 1080p/4K and dense danmaku against explicit product budgets before closing V05.",
+        "latestVerification": "2026-10-29 budgeted synthetic recheck: 10 x 1,000-source loopback cycles, 12,050 requests, peak concurrency 48; cycle latency p50/p95 465.4/621.4 ms; request latency p50/p95 20.1/34.6 ms; throughput p50/p95 1,968.8/3,299 sources/s. Node/Vitest process tree working-set peak 344.9 MiB, private bytes peak 414.7 MiB and CPU p95 131.7%, within synthetic-only guardrails of 500 MiB, 700 MiB and 180%. Timeout/partial failure, cancel cleanup, and recovery passed; 0 active requests after settling. V05 remains open because this is not an application process or real-source/video workload measurement.",
+        "latestEvidence": "architecture-audit/evidence/v05-budget-gate-2026-10-29.json",
+        "budgetHarnessCommit": "uus"
       },
       "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
-      "latestVerification": "V05 harness checks 3/3 pass. Ten packaged local playback cycles pass, each 21.7–23.3 s; 183 one-second process-tree samples. Win-Box image-group working set p50/p95/peak 517.1/704.8/714.5 MiB; private 415.9/526.5/538.6 MiB. MPV peaks 122.6/155.1 MiB; Node acceptance driver peaks 682.1/777.6 MiB and is excluded from app memory. No budgets configured; search/1080p/danmaku not measured.",
-      "latestEvidence": "architecture-audit/evidence/repeated-playback-10cycle-2026-10-28.json"
+      "latestVerification": "Budgeted synthetic-only recheck (2026-10-29): 10 x 1,000-source cycles, 12,050 loopback requests, concurrency 48; cycle latency p50/p95 465.4/621.4 ms; Node/Vitest working-set/private-memory peaks 344.9/414.7 MiB; CPU p95 131.7%. Synthetic guardrails pass; app/video/real-source performance remains unmeasured, so V05 stays open.",
+      "latestEvidence": "architecture-audit/evidence/v05-budget-gate-2026-10-29.json"
     },
     {
       "id": "V06",

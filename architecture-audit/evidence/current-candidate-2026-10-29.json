@@ -149,6 +149,14 @@
     "V05": {
       "status": "PARTIAL_SYNTHETIC_ONLY",
       "evidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
+      "latestBudgetedSyntheticRun": {
+        "evidence": "architecture-audit/evidence/v05-budget-gate-2026-10-29.json",
+        "harnessCommit": "uus",
+        "status": "PASS",
+        "budgets": { "workingSetMiB": 500, "privateBytesMiB": 700, "cpuP95Percent": 180 },
+        "observed": { "workingSetPeakMiB": 344.9, "privateBytesPeakMiB": 414.7, "cpuP95Percent": 131.7 },
+        "scope": "10 x 1,000-source synthetic loopback CMS cycles; sampled process tree is Node/Vitest, not Win-Box.exe."
+      },
       "independentRecheck": {
         "cycles": 10,
         "sourcesPerCycle": 1000,

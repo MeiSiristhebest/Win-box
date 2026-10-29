@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "taskId": "V05",
+  "recordedAt": "2026-10-29T13:49:43Z",
+  "command": "pnpm exec node scripts/v05-aggregate-search.mjs --output-dir .tmp/v05-search-20261029-budget-gate",
+  "harnessCommit": "uus",
+  "status": "PASS",
+  "syntheticWorkload": {
+    "cycles": 10,
+    "sourcesPerCycle": 1000,
+    "profiles": 3,
+    "totalLoopbackRequests": 12050,
+    "maxConcurrency": 48,
+    "externalSources": "NOT_ACCESSED",
+    "userConfiguration": "NOT_ACCESSED"
+  },
+  "searchPerformance": {
+    "cycleLatencyMs": { "p50": 465.4, "p95": 621.4, "peak": 621.4 },
+    "requestLatencyMs": { "p50": 20.1, "p95": 34.6, "peak": 84.8 },
+    "throughputSourcesPerSecond": { "p50": 1968.8, "p95": 3299, "peak": 3299 },
+    "maxConcurrentRequests": 48
+  },
+  "sampledProcessTree": {
+    "identity": "Two node.exe processes for the Vitest acceptance driver and local fixture; not Win-Box.exe.",
+    "samples": 27,
+    "durationMs": 11175,
+    "workingSetMiB": { "p50": 344.4, "p95": 344.8, "peak": 344.9 },
+    "privateBytesMiB": { "p50": 414.3, "p95": 414.5, "peak": 414.7 },
+    "cpuPercent": { "p50": 7.3, "p95": 131.7, "peak": 146.9 }
+  },
+  "syntheticRegressionBudgets": {
+    "workingSetMiB": { "limit": 500, "observedPeak": 344.9, "status": "PASS" },
+    "privateBytesMiB": { "limit": 700, "observedPeak": 414.7, "status": "PASS" },
+    "cpuP95Percent": { "limit": 180, "observed": 131.7, "status": "PASS" }
+  },
+  "resilience": [
+    { "name": "mixed-success-timeout", "status": "PASS", "sources": 1001, "firstResultMs": 29.9, "timeoutCount": 1, "fixtureFailures": 12, "activeRequestsAfterSettle": 0 },
+    { "name": "cancel-after-first-result", "status": "PASS", "sources": 1001, "firstResultMs": 24.5, "cancelledRequests": 45, "activeRequestsAfterSettle": 0 },
+    { "name": "recovery-after-cancel", "status": "PASS", "sources": 1001, "activeRequestsAfterSettle": 0 }
+  ],
+  "limitations": [
+    "Budgets are calibrated guardrails for this synthetic loopback search harness, not product memory or CPU limits.",
+    "No live third-party sources, user profiles, Spider/JAR/Python workloads, UI responsiveness, video playback, or danmaku were measured.",
+    "V05 remains open pending application-only measurements and the real workloads above."
+  ],
+  "temporaryArtifacts": "The unique benchmark output directory was removed after recording results; pre-existing .tmp entries were not modified."
+}
