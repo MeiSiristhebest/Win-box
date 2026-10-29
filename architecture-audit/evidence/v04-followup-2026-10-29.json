@@ -65,6 +65,38 @@
     "upgradeAttempted": false,
     "conclusion": "The actual packaged application did not remain running in an isolated install even after removing all startup flags. The live-process installer check was stopped as instructed; this is a candidate-app startup failure, not evidence that installer process shutdown passed or failed."
   },
+  "readOnlyCrashAddressInvestigation": {
+    "recordedAt": "2026-10-29",
+    "werEvents": {
+      "matchingIsolatedRuns": 2,
+      "sameException": "0x80000003",
+      "sameFaultOffset": "0x00000000073d6749",
+      "faultingModule": "Win-Box.exe",
+      "applicationVersion": "1.27.1.0",
+      "candidateImageSha256": "dec526d1af5bb22841fa559455659c14307ffd56b5a18144cf6aeebbe06b7a30",
+      "reportArchiveContents": ["Report.wer"],
+      "temporaryWerDumpPathExists": false
+    },
+    "peAddressMapping": {
+      "imageBase": "0x0000000140000000",
+      "sizeOfImage": "0x0ED44000",
+      "faultOffsetInterpretedAsRva": "0x073D6749",
+      "section": ".text",
+      "fileOffset": "0x073D5D49",
+      "codeViewPdb": "electron.exe.pdb",
+      "codeViewGuid": "08ff5a82-7ac8-2169-4c4c-44205044422e",
+      "codeViewAge": 1,
+      "matchingPdbAvailableLocally": false
+    },
+    "debuggingTools": {
+      "windbg": false,
+      "cdb": false,
+      "dumpchk": false
+    },
+    "environmentalLead": "The WER module list includes Tencent WeType input-method DLLs. This is recorded only as process context; the report provides no evidence that they caused the breakpoint.",
+    "conclusion": "The failure is confirmed inside the packaged Win-Box.exe text section, but the WER archive has no dump and the matching PDB is absent. The exact function and root cause cannot be identified from the available evidence.",
+    "nextDiagnosticStep": "Capture a full dump for the exact candidate build and obtain its matching PDB or linker map, then resolve the call stack before changing installer behavior or declaring V04 complete."
+  },
   "notVerified": [
     "Upgrade over the user's existing installation",
     "Stopping the actual packaged Win-Box while playing or hidden (the isolated candidate crashed before an upgrade attempt)",
