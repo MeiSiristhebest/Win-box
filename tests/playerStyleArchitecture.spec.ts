@@ -91,7 +91,7 @@ describe('player control style architecture', () => {
     expect(button).toMatch(/font:\s*600 14px/);
     expect(button).toMatch(/min-height:\s*36px/);
     expect(selected).toMatch(/border:\s*2px solid/);
-    expect(selected).not.toMatch(/content:\s*[\"']✓/);
+    expect(selected).not.toMatch(/content:\s*["']✓/);
     expect(message).toMatch(/text-overflow:\s*ellipsis/);
     expect(primary).toMatch(/background:\s*var\(--color-accent/);
   });
