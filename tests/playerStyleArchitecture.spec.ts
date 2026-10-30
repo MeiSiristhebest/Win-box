@@ -63,37 +63,83 @@ describe('player control style architecture', () => {
 
   it('keeps player titlebar icons visible and playback hit targets stable when selected', async () => {
     const { imports, css } = await readGlobalStyleComposition();
+    const titlebarView = await readFile(new URL('../src/renderer/components/TitleBarView.tsx', import.meta.url), 'utf8');
     const titlebar = readRule(css, ':root[data-theme][data-theme] .app.pwin.pvwin .player-titlebar .tb-controls .tb-btn');
+    const titlebarIcon = readRule(css, ':root[data-theme][data-theme] .app.pwin.pvwin .player-titlebar .tb-controls .tb-btn > svg');
     const toolbarIcon = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-bar-group .vp-ctl:not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel)');
+    const toolbarGlyph = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-bar-group .vp-ctl:not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) > svg');
+    const selectedToolbarIcon = readRule(css, ":root[data-theme][data-theme] .vplayer .vp-bar-group .vp-ctl:is(.vp-on, [aria-expanded='true'], [aria-pressed='true']):not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel)");
+    const skinSafeTitlebar = readRule(css, ':root[data-theme] .app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn');
+    const skinSafeTitlebarIcon = readRule(css, ':root[data-theme] .app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn > svg');
+    const skinSafeToolbar = readRule(css, ':root[data-theme] .vplayer .vp-bar-group .vp-ctl:not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel)');
+    const skinSafeToolbarIcon = readRule(css, ':root[data-theme] .vplayer .vp-bar-group .vp-ctl:not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) > svg');
 
     expect(imports.at(-1)).toBe('player-toolbar-cascade.css');
     expect(titlebar).toMatch(/background:\s*rgb\(24 28 35 \/ 96%\)/);
     expect(titlebar).toMatch(/color:\s*#f4f6fa/);
     expect(titlebar).toMatch(/flex:\s*0 0 38px/);
     expect(titlebar).not.toMatch(/:not\(\[data-mpv\]\)/);
+    expect(titlebarIcon).toMatch(/display:\s*block/);
+    expect(titlebarIcon).toMatch(/visibility:\s*visible/);
+    expect(titlebarIcon).toMatch(/opacity:\s*1/);
+    expect(titlebarIcon).toMatch(/color:\s*inherit/);
+    expect(titlebarView).toContain("? { width: 22, height: 22, minWidth: 22, minHeight: 22, flex: '0 0 22px', display: 'block' }");
+    expect(titlebarView).toContain('className="tb-btn tb-close"');
+    expect(titlebarView).toContain('stroke="currentColor"');
     expect(toolbarIcon).toMatch(/flex:\s*0 0 36px/);
     expect(toolbarIcon).toMatch(/min-width:\s*36px/);
-    expect(css).toContain(':root[data-theme][data-theme] .vplayer .vp-bar-group .vp-ctl:is(.vp-on, [aria-expanded=\'true\'], [aria-pressed=\'true\']):not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel)');
+    expect(toolbarGlyph).toMatch(/display:\s*block/);
+    expect(toolbarGlyph).toMatch(/flex:\s*0 0 18px/);
+    expect(toolbarGlyph).toMatch(/width:\s*18px/);
+    expect(toolbarGlyph).toMatch(/height:\s*18px/);
+    expect(selectedToolbarIcon).toMatch(/flex:\s*0 0 36px/);
+    expect(selectedToolbarIcon).toMatch(/width:\s*36px/);
+    expect(selectedToolbarIcon).toMatch(/height:\s*36px/);
+    expect(selectedToolbarIcon).toMatch(/background:\s*var\(--color-accent/);
+    expect(selectedToolbarIcon).toMatch(/color:\s*var\(--on-accent/);
+    expect(skinSafeTitlebar).toMatch(/background:\s*rgb\(24 28 35 \/ 96%\) !important/);
+    expect(skinSafeTitlebar).toMatch(/width:\s*38px !important/);
+    expect(skinSafeTitlebar).toMatch(/color:\s*#f4f6fa !important/);
+    expect(skinSafeTitlebarIcon).toMatch(/width:\s*22px !important/);
+    expect(skinSafeTitlebarIcon).toMatch(/visibility:\s*visible !important/);
+    expect(skinSafeToolbar).toMatch(/flex:\s*0 0 38px !important/);
+    expect(skinSafeToolbar).toMatch(/height:\s*38px !important/);
+    expect(skinSafeToolbarIcon).toMatch(/width:\s*22px !important/);
+    expect(skinSafeToolbarIcon).toMatch(/height:\s*22px !important/);
   });
 
   it('gives the danmaku settings panel readable labels, text and selected controls', async () => {
     const { css } = await readGlobalStyleComposition();
+    const danmakuPanel = await readFile(new URL('../src/renderer/features/playback/DanmakuPanel.tsx', import.meta.url), 'utf8');
     const row = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-row');
     const label = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-label');
     const button = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn,\n:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle');
     const selected = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:is(.active, [aria-pressed=\'true\']),\n:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle[aria-pressed=\'true\']');
     const message = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-message');
     const primary = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn.primary');
+    const skinSafeLabel = readRule(css, ':root[data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-label');
+    const skinSafeButtons = readRule(css, ':root[data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn,\n:root[data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle');
+    const hover = readRule(css, ":root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:hover:not(:disabled):not(.primary):not(.active):not([aria-pressed='true']),\n:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle:hover:not([aria-pressed='true'])");
 
     expect(row).toMatch(/flex-wrap:\s*nowrap/);
-    expect(label).toMatch(/flex:\s*0 0 56px/);
+    expect(label).toMatch(/flex:\s*0 0 64px/);
+    expect(label).toMatch(/display:\s*inline-flex/);
     expect(label).toMatch(/white-space:\s*nowrap/);
+    expect(label).toMatch(/word-break:\s*keep-all/);
     expect(button).toMatch(/font:\s*600 14px/);
     expect(button).toMatch(/min-height:\s*36px/);
+    expect(skinSafeLabel).toMatch(/flex:\s*0 0 72px !important/);
+    expect(skinSafeLabel).toMatch(/white-space:\s*nowrap !important/);
+    expect(skinSafeButtons).toMatch(/min-height:\s*38px !important/);
+    expect(skinSafeButtons).toMatch(/font-size:\s*15px !important/);
     expect(selected).toMatch(/border:\s*2px solid/);
     expect(selected).not.toMatch(/content:\s*["']✓/);
     expect(message).toMatch(/text-overflow:\s*ellipsis/);
     expect(primary).toMatch(/background:\s*var\(--color-accent/);
+    expect(hover).toMatch(/color-mix\(in srgb, var\(--color-accent/);
+    expect(css).not.toContain(':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:hover:not(:disabled),');
+    expect(danmakuPanel).toContain('aria-expanded={open}');
+    expect(danmakuPanel).toContain('<svg width="18" height="18" viewBox="0 0 24 24">');
   });
 
   it('keeps paused play feedback compact and immune to global shell button styles', async () => {

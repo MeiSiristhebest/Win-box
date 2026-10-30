@@ -63,6 +63,14 @@
   outline-offset: 2px;
 }
 
+:root[data-theme][data-theme] .app.pwin.pvwin .player-titlebar .tb-controls .tb-btn > svg {
+  display: block;
+  flex: 0 0 auto;
+  color: inherit;
+  opacity: 1;
+  visibility: visible;
+}
+
 :root[data-theme][data-theme] .app.pwin.pvwin .player-titlebar .tb-controls .tb-btn.tb-pin-on {
   border-color: #a8c8ff;
   background: #263a53;
@@ -99,7 +107,13 @@
 }
 
 :root[data-theme][data-theme] .vplayer .vp-bar-group .vp-ctl:is(.vp-on, [aria-expanded='true'], [aria-pressed='true']):not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) {
+  flex: 0 0 36px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
   border: 1px solid rgb(255 255 255 / 58%);
+  border-radius: 8px;
   background: var(--color-accent, #315fc2);
   color: var(--on-accent, #fff);
   box-shadow: none;
@@ -119,13 +133,16 @@
 
 :root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-label {
   box-sizing: border-box;
-  flex: 0 0 56px;
-  width: 56px;
-  min-width: 56px;
+  display: inline-flex;
+  flex: 0 0 64px;
+  align-items: center;
+  width: 64px;
+  min-width: 64px;
   color: var(--text-secondary, var(--text-dim));
   font-size: 14px;
   line-height: 1.35;
   white-space: nowrap;
+  word-break: keep-all;
 }
 
 :root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn,
@@ -149,8 +166,8 @@
   cursor: pointer;
 }
 
-:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:hover:not(:disabled),
-:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle:hover {
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:hover:not(:disabled):not(.primary):not(.active):not([aria-pressed='true']),
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle:hover:not([aria-pressed='true']) {
   border-color: var(--color-accent, var(--accent));
   background: color-mix(in srgb, var(--color-accent, var(--accent)) 12%, var(--surface-raised, var(--surface-2)));
 }
@@ -245,5 +262,125 @@
     flex-basis: 100%;
     width: 100%;
     min-width: 0;
+  }
+}
+
+/* Some bundled skins ship button and SVG rules with higher priority (and a few
+   use !important). Reassert the player chrome at the player-window boundary so
+   theme selection cannot turn the title controls into white tiles or collapse
+   an expanded toolbar icon. */
+:root[data-theme] .app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn {
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  flex: 0 0 38px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 38px !important;
+  min-width: 38px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  border: 1px solid rgb(255 255 255 / 32%) !important;
+  border-radius: 10px !important;
+  background: rgb(24 28 35 / 96%) !important;
+  color: #f4f6fa !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+:root[data-theme] .app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn > svg {
+  display: block !important;
+  flex: 0 0 22px !important;
+  width: 22px !important;
+  min-width: 22px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  color: inherit !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+:root[data-theme] .app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn:hover {
+  border-color: rgb(255 255 255 / 62%) !important;
+  background: #343b46 !important;
+  color: #fff !important;
+}
+
+:root[data-theme] .app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn.tb-close:hover {
+  border-color: #ffb4ab !important;
+  background: #b3261e !important;
+}
+
+:root[data-theme] .vplayer .vp-bar-group .vp-ctl:not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) {
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  flex: 0 0 38px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 38px !important;
+  min-width: 38px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+
+:root[data-theme] .vplayer .vp-bar-group .vp-ctl:not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) > svg {
+  display: block !important;
+  flex: 0 0 22px !important;
+  width: 22px !important;
+  min-width: 22px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+:root[data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-label {
+  flex: 0 0 72px !important;
+  width: 72px !important;
+  min-width: 72px !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+:root[data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn,
+:root[data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle {
+  box-sizing: border-box !important;
+  flex: 0 0 auto !important;
+  min-height: 38px !important;
+  padding: 0 12px !important;
+  font-size: 15px !important;
+  line-height: 1.3 !important;
+  letter-spacing: normal !important;
+  white-space: nowrap !important;
+  transform: none !important;
+}
+
+:root[data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:is(.active, [aria-pressed='true']),
+:root[data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle[aria-pressed='true'] {
+  border-width: 2px !important;
+  font-weight: 700 !important;
+}
+
+:root[data-theme] .app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn.tb-pin-on {
+  border-color: #a8c8ff !important;
+  background: #263a53 !important;
+  color: #e6f0ff !important;
+}
+
+:root[data-theme] .vplayer .vp-bar-group .vp-ctl:is(.vp-on, [aria-expanded='true'], [aria-pressed='true']):not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) {
+  border-color: rgb(255 255 255 / 58%) !important;
+  background: var(--color-accent, #315fc2) !important;
+  color: var(--on-accent, #fff) !important;
+}
+
+@media (max-width: 560px) {
+  :root[data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-label {
+    flex-basis: 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
   }
 }

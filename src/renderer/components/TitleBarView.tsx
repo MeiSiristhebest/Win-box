@@ -33,7 +33,7 @@ export default function TitleBarView({
   onClose,
 }: TitleBarViewProps) {
   const playerWindowIconStyle: CSSProperties | undefined = showMini
-    ? { width: 32, height: 32, minWidth: 32, minHeight: 32, flex: '0 0 32px', display: 'block' }
+    ? { width: 22, height: 22, minWidth: 22, minHeight: 22, flex: '0 0 22px', display: 'block' }
     : undefined;
 
   if (variant === 'mac') {
