@@ -11,6 +11,7 @@ import { UserConfigApplicationService, USER_CONFIG_KEY, serializeImport } from '
 import { parseSubscriptionSourceOverrides } from '../src/main/store/subscriptionProfileMerge';
 import { parseSiteConfig } from '../src/engine/config/ApiConfigParser';
 import { NullLogger } from '../src/engine/util/logger';
+import { sourceConfigurationSignature } from '../src/shared/sourceConfigurationSignature';
 import type { SiteConfig, SourceBean, SourceUpdatePatch, LiveBean } from '../src/shared/types';
 import type { SubscriptionGroup, UserProfile } from '../src/shared/types';
 
@@ -105,6 +106,20 @@ describe('source deletions belong to one child profile', () => {
     expect(restarted.snapshot().deletedSourceKeys).toEqual(['shared']);
     restarted.activateProfile(first);
     expect(restarted.sources().map(item => item.key)).toContain('shared');
+  });
+
+  it('rejects stale cleanup when a source was edited under the same key', () => {
+    const manager = newUserConfigService(tmpDir());
+    manager.replaceFromImport(fullConfig([bean('same-key')]), 'https://a.test/config');
+    const profileId = manager.activeProfileId();
+    const auditedSignature = sourceConfigurationSignature(manager.sources());
+
+    manager.updateSource('same-key', { name: 'Edited after audit' } as SourceUpdatePatch);
+
+    expect(() => manager.deleteSources(['same-key'], profileId, auditedSignature))
+      .toThrow('线路列表已变化，请重新体检后再清理线路');
+    expect(manager.sources()).toHaveLength(1);
+    expect(manager.sources()[0].name).toBe('Edited after audit');
   });
 
   it('legacy global records migrate only to the saved active profile', () => {

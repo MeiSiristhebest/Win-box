@@ -9,6 +9,7 @@
 //     每条 source 用 parseSite 校验，坏的剔除并在日志说明（不静默保留坏数据）。
 // 本模块零 Electron 依赖（可单测）。
 import { parseSiteConfig } from '../../engine/config/ApiConfigParser';
+import { sourceConfigurationSignature } from '../../shared/sourceConfigurationSignature';
 import { filterDeletedProfileSources, sourceDeletionKeys, withSourceDeletionKeys } from './sourceDeletionScopes';
 import { normalizeUserConfigForCommit } from './userConfigCommitNormalization';
 import { UserConfigRepository } from './UserConfigRepository';
@@ -402,9 +403,12 @@ export class UserConfigApplicationService {
   }
 
   /** 批量删除源：一次持久化/一次内容变更，避免逐个删除造成 UI 与档案反复刷新。 */
-  deleteSources(keys: readonly string[], expectedProfileId?: string): string[] {
+  deleteSources(keys: readonly string[], expectedProfileId?: string, expectedSourceSignature?: string): string[] {
     if (expectedProfileId !== undefined && this.snap.activeProfileId !== expectedProfileId) {
       throw new Error('配置档案已切换，请重新体检后再清理线路');
+    }
+    if (expectedSourceSignature !== undefined && sourceConfigurationSignature(this.snap.sources) !== expectedSourceSignature) {
+      throw new Error('线路列表已变化，请重新体检后再清理线路');
     }
     const requested = new Set(keys.filter(Boolean));
     const removedKeys = this.snap.sources.filter((source) => requested.has(source.key)).map((source) => source.key);

@@ -8,7 +8,7 @@ export interface SourceConfigurationStorePort {
   sources(): SourceBean[];
   addSource(source: SourceBean): SourceBean;
   updateSource(key: string, patch: SourceUpdatePatch): SourceBean;
-  deleteSources(keys: readonly string[], expectedProfileId?: string): string[];
+  deleteSources(keys: readonly string[], expectedProfileId?: string, expectedSourceSignature?: string): string[];
   setGlobalSourceBlock(keys: readonly string[], blocked: boolean): void;
   moveSource(key: string, direction: SourceMoveDirection): void;
   setActiveSource(key: string): void;
@@ -51,9 +51,9 @@ export class SourceConfigurationApplicationService {
     this.deleteSources([key]);
   }
 
-  deleteSources(keys: readonly string[], expectedProfileId?: string): string[] {
+  deleteSources(keys: readonly string[], expectedProfileId?: string, expectedSourceSignature?: string): string[] {
     const before = this.options.configuration.snapshot();
-    const removed = this.options.configuration.deleteSources(keys, expectedProfileId);
+    const removed = this.options.configuration.deleteSources(keys, expectedProfileId, expectedSourceSignature);
     if (removed.length) this.cleanupRemovedLocalImports(before);
     return removed;
   }

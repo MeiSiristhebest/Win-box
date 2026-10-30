@@ -1,5 +1,6 @@
 // src/renderer/api/client.ts — window.api 的类型化封装 + IpcResult 解包
 import type { IpcResult } from '../../shared/ipc-result';
+import { MAX_SOURCE_CONFIGURATION_BATCH_SIZE } from '../../shared/sourceConfigurationSignature';
 import type {
   SourceBean,
   LiveGroup,
@@ -106,8 +107,26 @@ export const client = {
   cfgAddSource: (bean: SourceBean) => afterConfigMutation(window.api.config.addSource(bean)),
   cfgUpdateSource: (key: string, patch: SourceUpdatePatch) => afterConfigMutation(window.api.config.updateSource(key, patch)),
   cfgDeleteSource: (key: string) => afterConfigMutation(window.api.config.deleteSource(key)),
-  cfgDeleteSources: (keys: string[], expectedProfileId?: string) => afterConfigMutation(window.api.config.deleteSources(keys, expectedProfileId)),
-  cfgSetGlobalSourceBlock: (keys: string[], blocked: boolean) => afterConfigMutation(window.api.config.setGlobalSourceBlock(keys, blocked)),
+  cfgDeleteSources: async (keys: string[], expectedProfileId?: string, expectedSourceSignature?: string) => {
+    const uniqueKeys = [...new Set(keys)];
+    if (expectedSourceSignature !== undefined && uniqueKeys.length > MAX_SOURCE_CONFIGURATION_BATCH_SIZE) {
+      throw new Error('体检清理必须按批次校验线路列表，请重新体检后重试');
+    }
+    const deletedKeys: string[] = [];
+    for (let offset = 0; offset < uniqueKeys.length; offset += MAX_SOURCE_CONFIGURATION_BATCH_SIZE) {
+      const batch = uniqueKeys.slice(offset, offset + MAX_SOURCE_CONFIGURATION_BATCH_SIZE);
+      const deleted = await afterConfigMutation(window.api.config.deleteSources(batch, expectedProfileId, expectedSourceSignature));
+      deletedKeys.push(...deleted);
+    }
+    return deletedKeys;
+  },
+  cfgSetGlobalSourceBlock: async (keys: string[], blocked: boolean) => {
+    const uniqueKeys = [...new Set(keys)];
+    for (let offset = 0; offset < uniqueKeys.length; offset += MAX_SOURCE_CONFIGURATION_BATCH_SIZE) {
+      const batch = uniqueKeys.slice(offset, offset + MAX_SOURCE_CONFIGURATION_BATCH_SIZE);
+      await afterConfigMutation(window.api.config.setGlobalSourceBlock(batch, blocked));
+    }
+  },
   cfgMoveSource: (key: string, direction: SourceMoveDirection) => afterConfigMutation(window.api.config.moveSource(key, direction)),
   cfgSetActiveSource: (key: string) => afterConfigMutation(window.api.config.setActiveSource(key)),
   cfgSetActiveLive: (index: number) => afterConfigMutation(window.api.config.setActiveLive(index)),

@@ -2,6 +2,7 @@ import type { HttpClient, Logger, SourceBean, SourceDebugReport } from '../../sh
 import { auditSources, type SourceAuditHome } from '../../engine/vod/SourceAudit';
 import type { SourceAuditPorts } from '../../engine/vod/SourceAudit';
 import { sourceDebug } from './SourceDebugger';
+import { sourceConfigurationSignature } from '../../shared/sourceConfigurationSignature';
 
 /** Query capability owned by source diagnostics rather than by the spider host. */
 export interface SourceDiagnosticsCatalogPort {
@@ -30,16 +31,24 @@ export class SourceDiagnosticsApplicationService {
   constructor(private readonly ports: SourceDiagnosticsApplicationPorts) {}
 
   async auditAll(expectedProfileId?: string) {
-    const activeProfileId = this.ports.catalog.activeProfileId();
-    if (expectedProfileId !== undefined && activeProfileId !== expectedProfileId) {
+    const startedProfileId = this.ports.catalog.activeProfileId();
+    if (expectedProfileId !== undefined && startedProfileId !== expectedProfileId) {
       throw new Error('配置档案已切换，请重新体检');
     }
     const sources = [...this.ports.catalog.currentSources()];
-    return auditSources(sources, {
+    const expectedSourcesSignature = sourceConfigurationSignature(sources);
+    const results = await auditSources(sources, {
       loadHome: (source) => this.ports.gateway.home(source),
       withTimeout: this.ports.withTimeout,
       now: this.ports.now,
     });
+    if (this.ports.catalog.activeProfileId() !== startedProfileId) {
+      throw new Error('配置档案已切换，请重新体检');
+    }
+    if (sourceConfigurationSignature(this.ports.catalog.currentSources()) !== expectedSourcesSignature) {
+      throw new Error('线路列表已变化，请重新体检');
+    }
+    return results;
   }
 
   async debug(key: string): Promise<SourceDebugReport> {

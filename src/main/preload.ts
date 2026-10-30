@@ -40,7 +40,8 @@ const api = {
     addSource: (bean: SourceBean) => invoke<SourceBean>(IPC.CFG_ADD_SOURCE, bean),
     updateSource: (key: string, patch: SourceUpdatePatch) => invoke<SourceBean>(IPC.CFG_UPDATE_SOURCE, { key, patch }),
     deleteSource: (key: string) => invoke<void>(IPC.CFG_DELETE_SOURCE, key),
-    deleteSources: (keys: string[], expectedProfileId?: string) => invoke<string[]>(IPC.CFG_DELETE_SOURCES, keys, expectedProfileId),
+    deleteSources: (keys: string[], expectedProfileId?: string, expectedSourceSignature?: string) =>
+      invoke<string[]>(IPC.CFG_DELETE_SOURCES, keys, expectedProfileId, expectedSourceSignature),
     setGlobalSourceBlock: (keys: string[], blocked: boolean) => invoke<void>(IPC.CFG_GLOBAL_SOURCE_BLOCK, { keys, blocked }),
     moveSource: (key: string, direction: SourceMoveDirection) => invoke<void>(IPC.CFG_MOVE_SOURCE, { key, direction }),
     setActiveSource: (key: string) => invoke<void>(IPC.CFG_SET_ACTIVE_SOURCE, key),

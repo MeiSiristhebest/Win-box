@@ -64,4 +64,69 @@ describe('SourceDiagnosticsApplicationService', () => {
     await expect(service.auditAll('profile-a')).rejects.toThrow('配置档案已切换');
     expect(home).not.toHaveBeenCalled();
   });
+
+  it('discards results when the active profile changes while the audit is awaiting a source', async () => {
+    const homeResult = { items: [{ vod_id: '1' }], sortClasses: [{ type_id: '1' }] };
+    let releaseHome!: (value: typeof homeResult) => void;
+    let markHomeStarted!: () => void;
+    const homeStarted = new Promise<void>((resolve) => { markHomeStarted = resolve; });
+    let activeProfileId = 'profile-a';
+    const home = vi.fn(() => {
+      markHomeStarted();
+      return new Promise<typeof homeResult>((resolve) => { releaseHome = resolve; });
+    });
+    const service = new SourceDiagnosticsApplicationService({
+      catalog: {
+        currentSources: () => [source],
+        activeProfileId: () => activeProfileId,
+        findSource: (key) => key === source.key ? source : null,
+      },
+      gateway: { home },
+      http: { request: vi.fn() },
+      logger: { i: vi.fn(), w: vi.fn(), e: vi.fn() },
+      globalSpiderJar: () => '',
+      withTimeout: async (operation) => operation,
+      now: () => 100,
+    });
+
+    const audit = service.auditAll();
+    await homeStarted;
+    activeProfileId = 'profile-b';
+    releaseHome(homeResult);
+
+    await expect(audit).rejects.toThrow('配置档案已切换，请重新体检');
+  });
+
+  it('discards results when source settings change while the audit is awaiting a source', async () => {
+    const homeResult = { items: [{ vod_id: '1' }], sortClasses: [{ type_id: '1' }] };
+    let releaseHome!: (value: typeof homeResult) => void;
+    let markHomeStarted!: () => void;
+    const homeStarted = new Promise<void>((resolve) => { markHomeStarted = resolve; });
+    let currentSources: SourceBean[] = [source];
+    const service = new SourceDiagnosticsApplicationService({
+      catalog: {
+        currentSources: () => currentSources,
+        activeProfileId: () => 'profile-a',
+        findSource: (key) => key === source.key ? source : null,
+      },
+      gateway: {
+        home: vi.fn(() => {
+          markHomeStarted();
+          return new Promise<typeof homeResult>((resolve) => { releaseHome = resolve; });
+        }),
+      },
+      http: { request: vi.fn() },
+      logger: { i: vi.fn(), w: vi.fn(), e: vi.fn() },
+      globalSpiderJar: () => '',
+      withTimeout: async (operation) => operation,
+      now: () => 100,
+    });
+
+    const audit = service.auditAll('profile-a');
+    await homeStarted;
+    currentSources = [{ ...source, timeout: 45 }];
+    releaseHome(homeResult);
+
+    await expect(audit).rejects.toThrow('线路列表已变化，请重新体检');
+  });
 });

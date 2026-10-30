@@ -93,7 +93,7 @@ declare global {
         addSource: (bean: SourceBean) => Promise<IpcResult<SourceBean>>;
         updateSource: (key: string, patch: SourceUpdatePatch) => Promise<IpcResult<SourceBean>>;
         deleteSource: (key: string) => Promise<IpcResult<void>>;
-        deleteSources: (keys: string[], expectedProfileId?: string) => Promise<IpcResult<string[]>>;
+        deleteSources: (keys: string[], expectedProfileId?: string, expectedSourceSignature?: string) => Promise<IpcResult<string[]>>;
         setGlobalSourceBlock: (keys: string[], blocked: boolean) => Promise<IpcResult<void>>;
         moveSource: (key: string, direction: SourceMoveDirection) => Promise<IpcResult<void>>;
         setActiveSource: (key: string) => Promise<IpcResult<void>>;

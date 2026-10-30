@@ -24,6 +24,7 @@ const invoke = async (channel: string, ...args: unknown[]) => fixtures.handlers.
 function registerHost() {
   const sourceConfig = {
     addSource: vi.fn((source: unknown) => source),
+    deleteSources: vi.fn((keys: string[]) => keys),
     setGlobalSourceBlock: vi.fn(),
   };
   const reads = {
@@ -107,6 +108,24 @@ describe('configuration IPC adapter', () => {
     await expect(invoke(IPC.CFG_GLOBAL_SOURCE_BLOCK, { keys: ['source-a'], blocked: true }))
       .resolves.toEqual({ ok: true, data: undefined });
     expect(sourceConfig.setGlobalSourceBlock).toHaveBeenCalledWith(['source-a'], true);
+  });
+
+  it('validates source deletion batches and forwards the audit snapshot context', async () => {
+    const { sourceConfig } = registerHost();
+
+    await expect(invoke(IPC.CFG_DELETE_SOURCES, 'not-an-array'))
+      .resolves.toMatchObject({ ok: false, error: { code: 'HANDLER_ERROR', message: '批量删除线路参数无效' } });
+    await expect(invoke(IPC.CFG_DELETE_SOURCES, Array(1001).fill('source')))
+      .resolves.toMatchObject({ ok: false, error: { code: 'HANDLER_ERROR', message: '批量删除线路参数无效' } });
+    await expect(invoke(IPC.CFG_DELETE_SOURCES, ['source'], 42))
+      .resolves.toMatchObject({ ok: false, error: { code: 'HANDLER_ERROR', message: '配置档案标识无效' } });
+    await expect(invoke(IPC.CFG_DELETE_SOURCES, ['source'], 'profile-a', 42))
+      .resolves.toMatchObject({ ok: false, error: { code: 'HANDLER_ERROR', message: '线路列表版本无效' } });
+    expect(sourceConfig.deleteSources).not.toHaveBeenCalled();
+
+    await expect(invoke(IPC.CFG_DELETE_SOURCES, ['source-a'], 'profile-a', '[{"key":"source-a"}]'))
+      .resolves.toEqual({ ok: true, data: ['source-a'] });
+    expect(sourceConfig.deleteSources).toHaveBeenCalledWith(['source-a'], 'profile-a', '[{"key":"source-a"}]');
   });
 
   it('delegates profile switching without coupling job progress delivery to the IPC adapter', async () => {
