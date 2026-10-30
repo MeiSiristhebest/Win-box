@@ -51,7 +51,7 @@ export function ProfileSwitcher({ port }: ProfileSwitcherProps) {
             {item.reason && <span className={styles.reason}>{item.reason}</span>}
           </button>;
         })}
-        {!filtered.length && <p className="muted">{choices.length ? '没有匹配的可切换档案' : config?.subscriptionGroups.length ? '当前没有可切换档案；导入失败的成员可在“管理配置档案”中查看和清理。' : '尚未保存子仓配置，请先导入多仓订阅。'}</p>}
+        {!filtered.length && <p className="muted">{choices.length ? '没有匹配的可切换档案' : config?.subscriptionGroups.length ? '当前没有可切换档案；可在“管理配置档案”中查看各成员状态。' : '尚未保存子仓配置，请先导入多仓订阅。'}</p>}
       </div>
       <div className={`${styles.footer} app-dialog-actions`}><span className="muted">{switching ? '正在切换…' : `显示 ${filtered.length}/${choices.length} 个可切换档案`}</span><button className="app-dialog-action-secondary" type="button" disabled={switching} onClick={() => { setOpen(false); navigate('/config?section=profiles'); }}>管理配置档案</button></div>
     </AppModal>

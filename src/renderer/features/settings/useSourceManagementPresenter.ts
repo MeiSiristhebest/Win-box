@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { MAX_SOURCE_CONFIGURATION_BATCH_SIZE } from '../../../shared/sourceConfigurationSignature';
 import type { SourceBean } from '../../../shared/types';
 import type { SourceManagementPort } from './application/settingsSectionPorts';
 import { createSourceManagementDraft, toSourceUpdatePatch, type SourceManagementDraft } from './sourceManagementDraft';
@@ -16,6 +17,28 @@ interface SourceManagementPresenterOptions {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+async function runSourceKeyBatches<T>(
+  sourceKeys: readonly string[],
+  operation: (batch: string[]) => Promise<T>,
+): Promise<
+  | { completedKeys: string[]; results: T[]; failed: false }
+  | { completedKeys: string[]; results: T[]; failed: true; error: unknown }
+> {
+  const keys = [...new Set(sourceKeys)];
+  const completedKeys: string[] = [];
+  const results: T[] = [];
+  for (let offset = 0; offset < keys.length; offset += MAX_SOURCE_CONFIGURATION_BATCH_SIZE) {
+    const batch = keys.slice(offset, offset + MAX_SOURCE_CONFIGURATION_BATCH_SIZE);
+    try {
+      results.push(await operation(batch));
+      completedKeys.push(...batch);
+    } catch (error) {
+      return { completedKeys, results, failed: true, error };
+    }
+  }
+  return { completedKeys, results, failed: false };
 }
 
 export function useSourceManagementPresenter({
@@ -55,20 +78,22 @@ export function useSourceManagementPresenter({
     setNotice('');
   }, []);
 
-  const refreshAfterMutation = useCallback(async () => {
+  const refreshAfterMutation = useCallback(async (): Promise<string | null> => {
     try {
       await refresh();
+      return null;
     } catch (refreshError) {
-      setNotice(`操作已完成，但源列表刷新失败：${errorMessage(refreshError)}`);
+      return errorMessage(refreshError);
     }
   }, [refresh]);
 
-  const performMutation = useCallback(async (operation: () => Promise<void>, afterSuccess?: () => void) => {
+  const performMutation = useCallback(async <T,>(operation: () => Promise<T>, afterSuccess?: (result: T) => void) => {
     clearFeedback();
     try {
-      await operation();
-      afterSuccess?.();
-      await refreshAfterMutation();
+      const result = await operation();
+      afterSuccess?.(result);
+      const refreshError = await refreshAfterMutation();
+      if (refreshError) setNotice(`操作已完成，但源列表刷新失败：${refreshError}`);
     } catch (operationError) {
       setError(errorMessage(operationError));
     }
@@ -107,19 +132,28 @@ export function useSourceManagementPresenter({
     if (!accepted) return;
 
     setSourceDeleteBusy(true);
-    await performMutation(
-      () => sourcesPort.deleteSources(selected.map((source) => source.key)),
-      () => {
-        if (editingKey && selectedSourceKeys.has(editingKey)) {
-          setEditingKey(null);
-          setDraft(null);
-        }
-        setSelectedSourceKeys(new Set());
-        setNotice(`已删除 ${selected.length} 个源`);
-      },
-    );
-    setSourceDeleteBusy(false);
-  }, [confirmDangerousAction, editingKey, performMutation, selectedSourceKeys, sourceDeleteBusy, sources, sourcesPort]);
+    clearFeedback();
+    try {
+      const selectedKeys = selected.map((source) => source.key);
+      const result = await runSourceKeyBatches(selectedKeys, (batch) => sourcesPort.deleteSources(batch));
+      const requestedKeys = new Set(selectedKeys);
+      const removed = new Set(result.results.flatMap((keys) => keys).filter((key) => requestedKeys.has(key)));
+      if (editingKey && removed.has(editingKey)) {
+        setEditingKey(null);
+        setDraft(null);
+      }
+      setSelectedSourceKeys((previous) => new Set([...previous].filter((key) => !removed.has(key))));
+      const refreshError = removed.size > 0 ? await refreshAfterMutation() : null;
+      if (result.failed) {
+        setError(errorMessage(result.error));
+        if (removed.size > 0) setNotice(`已删除 ${removed.size} 个源；后续批次失败，剩余项仍保留在选择中。${refreshError ? ` 源列表刷新失败：${refreshError}` : ''}`);
+      } else {
+        setNotice(removed.size > 0 ? `已删除 ${removed.size} 个源${refreshError ? `；源列表刷新失败：${refreshError}` : ''}` : '所选源已不存在，无需删除');
+      }
+    } finally {
+      setSourceDeleteBusy(false);
+    }
+  }, [clearFeedback, confirmDangerousAction, editingKey, refreshAfterMutation, selectedSourceKeys, sourceDeleteBusy, sources, sourcesPort]);
 
   const setGlobalBlock = useCallback(async (keys: string[], blocked: boolean) => {
     if (keys.length === 0 || sourceDeleteBusy || busy) return;
@@ -133,15 +167,22 @@ export function useSourceManagementPresenter({
     }
 
     setSourceDeleteBusy(true);
-    await performMutation(
-      () => sourcesPort.setGlobalSourceBlock(keys, blocked),
-      () => {
-        setSelectedSourceKeys(new Set());
-        setNotice(blocked ? `已全局屏蔽 ${keys.length} 个源` : '已解除全局屏蔽');
-      },
-    );
-    setSourceDeleteBusy(false);
-  }, [busy, confirmDangerousAction, performMutation, sourceDeleteBusy, sourcesPort]);
+    clearFeedback();
+    try {
+      const result = await runSourceKeyBatches(keys, (batch) => sourcesPort.setGlobalSourceBlock(batch, blocked));
+      const completed = new Set(result.completedKeys);
+      setSelectedSourceKeys((previous) => new Set([...previous].filter((key) => !completed.has(key))));
+      const refreshError = completed.size > 0 ? await refreshAfterMutation() : null;
+      if (result.failed) {
+        setError(errorMessage(result.error));
+        if (completed.size > 0) setNotice(`已处理 ${completed.size} 个源；后续批次失败，剩余项仍保留在选择中。${refreshError ? ` 源列表刷新失败：${refreshError}` : ''}`);
+      } else {
+        setNotice(`${blocked ? '已全局屏蔽' : '已解除全局屏蔽'} ${completed.size} 个源${refreshError ? `；源列表刷新失败：${refreshError}` : ''}`);
+      }
+    } finally {
+      setSourceDeleteBusy(false);
+    }
+  }, [busy, clearFeedback, confirmDangerousAction, refreshAfterMutation, sourceDeleteBusy, sourcesPort]);
 
   const toggleSourcePick = useCallback((key: string) => {
     setSelectedSourceKeys((previous) => {

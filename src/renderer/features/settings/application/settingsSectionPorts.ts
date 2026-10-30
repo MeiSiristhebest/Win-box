@@ -35,7 +35,7 @@ export interface SourceDiagnosticsPort {
 export interface SourceManagementPort {
   activateSource(sourceKey: string): Promise<void>;
   deleteSource(sourceKey: string): Promise<void>;
-  deleteSources(sourceKeys: string[]): Promise<void>;
+  deleteSources(sourceKeys: string[]): Promise<string[]>;
   setGlobalSourceBlock(sourceKeys: string[], blocked: boolean): Promise<void>;
   moveSource(sourceKey: string, direction: SourceMoveDirection): Promise<void>;
   updateSource(sourceKey: string, patch: SourceUpdatePatch): Promise<void>;

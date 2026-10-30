@@ -10,12 +10,12 @@ import { profileConfig } from './fixtures/profileSwitchData';
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-function setup() {
+function setup(initialConfig?: UserConfig) {
   const a = profileConfig('A');
   const b = profileConfig('B', false);
-  let config = { ...a, profiles: [...a.profiles, ...b.profiles], subscriptionGroups: [{ id: 'group', name: '测试多仓', url: 'https://example.test/repos', status: 'partial' as const, createdAt: '', updatedAt: '', members: [{ id: 'a', name: 'A子仓', url: a.apiUrl, profileId: 'A', status: 'ready' as const }, { id: 'b', name: 'B子仓', url: b.apiUrl, profileId: 'B', status: 'ready' as const }, { id: 'failed', name: '失败子仓', url: 'https://example.test/missing', status: 'failed' as const, error: 'HTTP 404' }] }] };
+  let config: UserConfig = initialConfig ?? { ...a, profiles: [...a.profiles, ...b.profiles], subscriptionGroups: [{ id: 'group', name: '测试多仓', url: 'https://example.test/repos', status: 'partial', createdAt: '', updatedAt: '', members: [{ id: 'a', name: 'A子仓', url: a.apiUrl, profileId: 'A', status: 'ready' }, { id: 'b', name: 'B子仓', url: b.apiUrl, profileId: 'B', status: 'ready' }, { id: 'failed', name: '失败子仓', url: 'https://example.test/missing', status: 'failed', error: 'HTTP 404' }] }] };
   const port: ProfileSwitcherPort = {
-    loadConfiguration: vi.fn(async () => config as unknown as UserConfig),
+    loadConfiguration: vi.fn(async () => config),
     activateProfile: vi.fn(async id => { config = { ...config, ...(id === 'B' ? b : a), profiles: config.profiles, subscriptionGroups: config.subscriptionGroups }; }),
     publishProfileChanged: vi.fn(() => {
       window.dispatchEvent(new CustomEvent('winbox:profile-changed'));
@@ -31,7 +31,7 @@ function setup() {
 }
 
 describe('ProfileSwitcher', () => {
-  it('lists restorable children and keeps failed subscription entries in profile management', async () => {
+  it('lists restorable children and hides failed subscription entries from switching', async () => {
     setup();
     fireEvent.click(screen.getByRole('button', { name: /切换子仓/ }));
     expect(await screen.findByRole('dialog', { name: '切换子仓' })).toBeTruthy();
@@ -74,6 +74,22 @@ describe('ProfileSwitcher', () => {
     const a = profileConfig('A');
     a.subscriptionGroups = [{ id: 'g', name: '组', url: '', status: 'partial', createdAt: '', updatedAt: '', members: [{ id: 'm', name: 'A', url: '', status: 'failed', error: '超时', profileId: 'A' }] }];
     expect(profileChoices(a)[0]).toMatchObject({ restorable: true, reason: '刷新失败，可使用已保存配置' });
+  });
+
+  it('uses neutral empty-state guidance for groups without restorable profiles', async () => {
+    const pending = profileConfig('pending');
+    pending.profiles[0].json = 'not a restorable snapshot';
+    pending.subscriptionGroups = [{ id: 'g', name: '待处理组', url: '', status: 'partial', createdAt: '', updatedAt: '', members: [{ id: 'm', name: '待处理子仓', url: '', status: 'pending', profileId: 'pending' }] }];
+    setup(pending);
+    fireEvent.click(screen.getByRole('button', { name: /切换子仓/ }));
+    expect(await screen.findByText('当前没有可切换档案；可在“管理配置档案”中查看各成员状态。')).toBeTruthy();
+    expect(screen.queryByText(/导入失败的成员/)).toBeNull();
+  });
+
+  it('handles a profile id inherited from Object.prototype when reading scoped deleted keys', () => {
+    const specialId = profileConfig('constructor');
+    specialId.deletedSourceKeysByProfile = {};
+    expect(profileChoices(specialId)).toHaveLength(1);
   });
 
   it('excludes sources deleted in this profile from the displayed snapshot count', () => {

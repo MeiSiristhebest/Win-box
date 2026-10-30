@@ -20,7 +20,12 @@ export function profileChoices(config: UserConfig): ProfileChoice[] {
     const group = config.subscriptionGroups.find(item => item.members.some(member => member.profileId === profile.id));
     const member = group?.members.find(item => item.profileId === profile.id);
     const legacyDeletedKeys = profile.id === config.activeProfileId ? config.deletedSourceKeys ?? [] : [];
-    const deletedKeys = new Set(config.deletedSourceKeysByProfile?.[profile.id] ?? legacyDeletedKeys);
+    const scopedDeletedKeys = config.deletedSourceKeysByProfile;
+    const deletedKeys = new Set(
+      scopedDeletedKeys && Object.hasOwn(scopedDeletedKeys, profile.id)
+        ? scopedDeletedKeys[profile.id]
+        : legacyDeletedKeys,
+    );
     const counts = snapshotCounts(profile, deletedKeys);
     if (!counts.restorable) return [];
     return [{ id: profile.id, profileId: profile.id, name: profile.name, groupName: group?.name ?? '独立配置', ...counts, reason: member?.status === 'failed' ? '刷新失败，可使用已保存配置' : '' }];

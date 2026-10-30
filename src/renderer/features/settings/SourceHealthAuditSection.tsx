@@ -73,7 +73,7 @@ export function SourceHealthAuditSection({
             <button type="button" className={`tag ${filter === 'all' ? 'active' : ''}`} aria-pressed={filter === 'all'} onClick={() => onFilterChange('all')}>全部 {audit.length}</button>
             <button type="button" className={`tag ${filter === 'usable' ? 'active' : ''}`} aria-pressed={filter === 'usable'} onClick={() => onFilterChange('usable')}>有效</button>
             <button type="button" className={`tag ${filter === 'needs-ext' ? 'active' : ''}`} aria-pressed={filter === 'needs-ext'} onClick={() => onFilterChange('needs-ext')}>需补 ext</button>
-            <button type="button" className={`tag ${filter === 'bad' ? 'active' : ''}`} aria-pressed={filter === 'bad'} onClick={() => onFilterChange('bad')}>失效/空</button>
+            <button type="button" className={`tag ${filter === 'bad' ? 'active' : ''}`} aria-pressed={filter === 'bad'} onClick={() => onFilterChange('bad')}>请求失败/空</button>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>

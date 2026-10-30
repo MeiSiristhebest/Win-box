@@ -1,5 +1,6 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AuditItem, SourceBean } from '../../../shared/types';
+import { sourceConfigurationSignature } from '../../../shared/sourceConfigurationSignature';
 import type { SourceHealthAuditPort } from './application/sourceHealthAudit';
 import { removeFailedSources } from './application/sourceHealthAudit';
 import type { AuditFilter, SourceHealthAuditNotice } from './sourceHealthAuditTypes';
@@ -18,10 +19,6 @@ interface AuditSnapshot {
   items: AuditItem[];
 }
 
-function sourceSignature(sources: readonly SourceBean[]): string {
-  return JSON.stringify(sources.map((source) => [source.key, source.name, source.type, source.api]));
-}
-
 export function useSourceHealthAuditPresenter({
   port,
   sources,
@@ -34,7 +31,7 @@ export function useSourceHealthAuditPresenter({
   const [filter, setFilter] = useState<AuditFilter>('all');
   const [notice, setNotice] = useState<SourceHealthAuditNotice | null>(null);
   const [error, setError] = useState('');
-  const currentSourceSignature = sourceSignature(sources);
+  const currentSourceSignature = useMemo(() => sourceConfigurationSignature(sources), [sources]);
   const currentContext = useRef({ profileId: activeProfileId, sourceSignature: currentSourceSignature });
   useLayoutEffect(() => {
     currentContext.current = { profileId: activeProfileId, sourceSignature: currentSourceSignature };
@@ -45,7 +42,7 @@ export function useSourceHealthAuditPresenter({
     : null;
 
   const runAudit = useCallback(async () => {
-    const context = { profileId: activeProfileId, sourceSignature: sourceSignature(sources) };
+    const context = { profileId: activeProfileId, sourceSignature: currentSourceSignature };
     setError('');
     setNotice(null);
     setAuditBusy(true);
@@ -62,7 +59,7 @@ export function useSourceHealthAuditPresenter({
     } finally {
       setAuditBusy(false);
     }
-  }, [activeProfileId, port, sources]);
+  }, [activeProfileId, currentSourceSignature, port]);
 
   const deleteFailedSources = useCallback(async () => {
     if (!audit || !auditSnapshot) return;

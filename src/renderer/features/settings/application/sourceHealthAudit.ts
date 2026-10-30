@@ -1,8 +1,9 @@
 import type { AuditItem, SourceBean } from '../../../../shared/types';
+import { MAX_SOURCE_CONFIGURATION_BATCH_SIZE, sourceConfigurationSignature } from '../../../../shared/sourceConfigurationSignature';
 
 export interface SourceHealthAuditPort {
   run(profileId: string): Promise<AuditItem[]>;
-  deleteSources(sourceKeys: readonly string[], expectedProfileId: string): Promise<string[]>;
+  deleteSources(sourceKeys: readonly string[], expectedProfileId: string, expectedSourceSignature: string): Promise<string[]>;
 }
 
 export type FailedSourceCleanupResult =
@@ -21,7 +22,26 @@ export async function removeFailedSources(
   const failedKeys = [...new Set(audit.filter((item) => item.health === 'error' && currentKeys.has(item.key)).map((item) => item.key))];
   if (failedKeys.length === 0) return { kind: 'no-failed-sources' };
 
-  const deletedKeys = new Set(await port.deleteSources(failedKeys, expectedProfileId));
+  const deletedKeys = new Set<string>();
+  let currentSources = [...sources];
+  let expectedSourceSignature = sourceConfigurationSignature(currentSources);
+  try {
+    for (let offset = 0; offset < failedKeys.length; offset += MAX_SOURCE_CONFIGURATION_BATCH_SIZE) {
+      const batch = failedKeys.slice(offset, offset + MAX_SOURCE_CONFIGURATION_BATCH_SIZE);
+      const requested = new Set(batch);
+      const removed = await port.deleteSources(batch, expectedProfileId, expectedSourceSignature);
+      const removedThisBatch = new Set(removed.filter((key) => requested.has(key)));
+      for (const key of removedThisBatch) deletedKeys.add(key);
+      currentSources = currentSources.filter((source) => !removedThisBatch.has(source.key));
+      expectedSourceSignature = sourceConfigurationSignature(currentSources);
+    }
+  } catch (error) {
+    if (deletedKeys.size > 0) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`已删除 ${deletedKeys.size} 个请求失败线路；后续清理已中止，请刷新后重新体检。${reason}`);
+    }
+    throw error;
+  }
   const deletedCount = failedKeys.filter((key) => deletedKeys.has(key)).length;
   if (deletedCount === 0) return { kind: 'nothing-removed', failedCount: failedKeys.length };
 

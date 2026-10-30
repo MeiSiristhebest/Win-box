@@ -55,5 +55,7 @@ describe('useSourceHealthAuditPresenter', () => {
     await act(async () => { resolveAudit([]); await request; });
 
     expect(result.current.audit).toBeNull();
+    rerender({ ...baseOptions, activeProfileId: 'profile-a' });
+    expect(result.current.audit).toBeNull();
   });
 });

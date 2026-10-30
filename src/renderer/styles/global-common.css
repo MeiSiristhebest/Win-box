@@ -375,13 +375,7 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
 .hist-undo .linkbtn { margin-left: auto; }
 .hist-undo .muted-btn { margin-left: 0; color: var(--text-dim); }
 
-/* ---- ★ 2026-10-16（用户要求）：点播页「筛选」开关（右上角）----
-   ★ 2026-10-16 二次调整（用户要求）：「**分类那一列始终显示**，并与「筛选」按钮**同一水平线**；
-     点「筛选」后**下面**再弹出其余全部筛选组」—— 所以
-     · `.home-filter-row` = 一行 flex：左「分类」级（占满剩余宽度，chips 内部换行）+ 右「筛选」按钮（靠 `margin-left:auto`）；
-     · `.home-filters-more` = 下面弹出的其余筛选组（带轻微上浮淡入）。
-   ★ 开启态按钮**右下角带一个对号**角标（`.hf-check`），样式与「收藏」按钮同款口径
-     （`:root[data-theme]` 前缀压过各皮肤 button 规则，§C54 教训）。 */
+/* 点播筛选区保留分类行，其他筛选条件在下方展开；筛选按钮仅用 active 状态表示开启。 */
 .home-filter-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
 /* 「分类」那一级撑满剩余宽度；按钮靠右且始终停在第一行 */
 .home-filter-row .cascade { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
