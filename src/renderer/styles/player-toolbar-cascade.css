@@ -22,8 +22,228 @@
   white-space: nowrap;
 }
 
+/* Window controls sit above video, where theme-wide button rules can otherwise
+   paint both the button and its currentColor SVG white. Keep a stable dark
+   hit target and a visible glyph for both HTML and MPV playback windows. */
+:root[data-theme][data-theme] .app.pwin.pvwin .player-titlebar .tb-controls .tb-btn {
+  all: unset;
+  appearance: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 38px;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  min-height: 38px;
+  margin: 0 0 0 6px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 10px;
+  background: rgb(24 28 35 / 96%);
+  color: #f4f6fa;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, transform 100ms ease;
+}
+
+:root[data-theme][data-theme] .app.pwin.pvwin .player-titlebar .tb-controls .tb-btn:hover {
+  border-color: rgb(255 255 255 / 55%);
+  background: #343b46;
+  color: #fff;
+}
+
+:root[data-theme][data-theme] .app.pwin.pvwin .player-titlebar .tb-controls .tb-btn:active {
+  transform: scale(.96);
+}
+
+:root[data-theme][data-theme] .app.pwin.pvwin .player-titlebar .tb-controls .tb-btn:focus-visible {
+  outline: 2px solid #a8c8ff;
+  outline-offset: 2px;
+}
+
+:root[data-theme][data-theme] .app.pwin.pvwin .player-titlebar .tb-controls .tb-btn.tb-pin-on {
+  border-color: #a8c8ff;
+  background: #263a53;
+  color: #e6f0ff;
+}
+
+:root[data-theme][data-theme] .app.pwin.pvwin .player-titlebar .tb-controls .tb-btn.tb-close:hover {
+  border-color: #ffb4ab;
+  background: #b3261e;
+  color: #fff;
+}
+
+/* Icon-only playback controls must keep the same hit target in idle and active
+   states. This prevents a theme's button padding/min-height from squeezing an
+   SVG when aria-pressed/aria-expanded turns on the accent state. */
+:root[data-theme][data-theme] .vplayer .vp-bar-group .vp-ctl:not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+}
+
+:root[data-theme][data-theme] .vplayer .vp-bar-group .vp-ctl:not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) > svg {
+  display: block;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+
+:root[data-theme][data-theme] .vplayer .vp-bar-group .vp-ctl:is(.vp-on, [aria-expanded='true'], [aria-pressed='true']):not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) {
+  border: 1px solid rgb(255 255 255 / 58%);
+  background: var(--color-accent, #315fc2);
+  color: var(--on-accent, #fff);
+  box-shadow: none;
+}
+
+/* The danmaku panel uses compact labels and controls with a fixed label rail;
+   reset global shell button styles before they can wrap Chinese labels or grow
+   selected buttons independently of their neighbors. */
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-label {
+  box-sizing: border-box;
+  flex: 0 0 56px;
+  width: 56px;
+  min-width: 56px;
+  color: var(--text-secondary, var(--text-dim));
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn,
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle {
+  all: unset;
+  appearance: none;
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 9px;
+  background: var(--surface-raised, var(--surface-2));
+  color: var(--text-primary, var(--text));
+  font: 600 14px/1.25 var(--font-ui, system-ui, sans-serif);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:hover:not(:disabled),
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle:hover {
+  border-color: var(--color-accent, var(--accent));
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 12%, var(--surface-raised, var(--surface-2)));
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:is(.active, [aria-pressed='true']),
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle[aria-pressed='true'] {
+  border: 2px solid var(--color-accent, var(--accent));
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 18%, var(--surface-raised, var(--surface-2)));
+  color: var(--text-primary, var(--text));
+  font-weight: 700;
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn.primary {
+  border-color: transparent;
+  background: var(--color-accent, var(--accent));
+  color: var(--on-accent, #fff);
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:disabled {
+  border-color: var(--border);
+  background: var(--surface-2);
+  color: var(--text-disabled, var(--text-secondary, var(--text-dim)));
+  cursor: not-allowed;
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:focus-visible,
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring-color, var(--color-accent, var(--accent)));
+  outline-offset: 2px;
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel input[type='text'],
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel textarea {
+  box-sizing: border-box;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 8px;
+  background: var(--surface-raised, var(--surface-2));
+  color: var(--text-primary, var(--text));
+  font: 14px/1.4 var(--font-ui, system-ui, sans-serif);
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel input[type='text']::placeholder,
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel textarea::placeholder {
+  color: var(--text-secondary, var(--text-dim));
+  opacity: 1;
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel input[type='range'] {
+  box-sizing: border-box;
+  flex: 1 1 100px;
+  width: auto;
+  min-width: 100px;
+  margin: 0;
+  accent-color: var(--color-accent, var(--accent));
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-row > .muted:not(.vsp-label) {
+  flex: 0 0 auto;
+  color: var(--text-secondary, var(--text-dim));
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-value {
+  font-variant-numeric: tabular-nums;
+}
+
+:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-message {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 1100px) {
   :root[data-shell] .vplayer .vp-bar {
     gap: 5px;
+  }
+}
+
+@media (max-width: 560px) {
+  :root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-row {
+    flex-wrap: wrap;
+  }
+
+  :root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-label {
+    flex-basis: 100%;
+    width: 100%;
+    min-width: 0;
   }
 }

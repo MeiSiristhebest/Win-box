@@ -61,6 +61,41 @@ describe('player control style architecture', () => {
     expect(toolbar.match(/className=\{'vp-ctl vp-ctl-label/g) ?? []).toHaveLength(2);
   });
 
+  it('keeps player titlebar icons visible and playback hit targets stable when selected', async () => {
+    const { imports, css } = await readGlobalStyleComposition();
+    const titlebar = readRule(css, ':root[data-theme][data-theme] .app.pwin.pvwin .player-titlebar .tb-controls .tb-btn');
+    const toolbarIcon = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-bar-group .vp-ctl:not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel)');
+
+    expect(imports.at(-1)).toBe('player-toolbar-cascade.css');
+    expect(titlebar).toMatch(/background:\s*rgb\(24 28 35 \/ 96%\)/);
+    expect(titlebar).toMatch(/color:\s*#f4f6fa/);
+    expect(titlebar).toMatch(/flex:\s*0 0 38px/);
+    expect(titlebar).not.toMatch(/:not\(\[data-mpv\]\)/);
+    expect(toolbarIcon).toMatch(/flex:\s*0 0 36px/);
+    expect(toolbarIcon).toMatch(/min-width:\s*36px/);
+    expect(css).toContain(':root[data-theme][data-theme] .vplayer .vp-bar-group .vp-ctl:is(.vp-on, [aria-expanded=\'true\'], [aria-pressed=\'true\']):not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel)');
+  });
+
+  it('gives the danmaku settings panel readable labels, text and selected controls', async () => {
+    const { css } = await readGlobalStyleComposition();
+    const row = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-row');
+    const label = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-label');
+    const button = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn,\n:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle');
+    const selected = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:is(.active, [aria-pressed=\'true\']),\n:root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle[aria-pressed=\'true\']');
+    const message = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-message');
+    const primary = readRule(css, ':root[data-theme][data-theme] .vplayer .vp-subpanel.vp-dmpanel .vsp-btn.primary');
+
+    expect(row).toMatch(/flex-wrap:\s*nowrap/);
+    expect(label).toMatch(/flex:\s*0 0 56px/);
+    expect(label).toMatch(/white-space:\s*nowrap/);
+    expect(button).toMatch(/font:\s*600 14px/);
+    expect(button).toMatch(/min-height:\s*36px/);
+    expect(selected).toMatch(/border:\s*2px solid/);
+    expect(selected).not.toMatch(/content:\s*[\"']✓/);
+    expect(message).toMatch(/text-overflow:\s*ellipsis/);
+    expect(primary).toMatch(/background:\s*var\(--color-accent/);
+  });
+
   it('keeps paused play feedback compact and immune to global shell button styles', async () => {
     const { imports, css } = await readGlobalStyleComposition();
     const selector = ':root[data-theme] .vplayer > .vp-big';
