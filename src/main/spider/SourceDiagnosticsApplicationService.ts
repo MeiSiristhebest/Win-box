@@ -6,6 +6,7 @@ import { sourceDebug } from './SourceDebugger';
 /** Query capability owned by source diagnostics rather than by the spider host. */
 export interface SourceDiagnosticsCatalogPort {
   currentSources(): readonly SourceBean[];
+  activeProfileId(): string;
   findSource(key: string): SourceBean | null;
 }
 
@@ -28,8 +29,13 @@ export interface SourceDiagnosticsApplicationPorts {
 export class SourceDiagnosticsApplicationService {
   constructor(private readonly ports: SourceDiagnosticsApplicationPorts) {}
 
-  auditAll() {
-    return auditSources(this.ports.catalog.currentSources(), {
+  async auditAll(expectedProfileId?: string) {
+    const activeProfileId = this.ports.catalog.activeProfileId();
+    if (expectedProfileId !== undefined && activeProfileId !== expectedProfileId) {
+      throw new Error('配置档案已切换，请重新体检');
+    }
+    const sources = [...this.ports.catalog.currentSources()];
+    return auditSources(sources, {
       loadHome: (source) => this.ports.gateway.home(source),
       withTimeout: this.ports.withTimeout,
       now: this.ports.now,

@@ -402,9 +402,15 @@ export class UserConfigApplicationService {
   }
 
   /** 批量删除源：一次持久化/一次内容变更，避免逐个删除造成 UI 与档案反复刷新。 */
-  deleteSources(keys: readonly string[]): void {
+  deleteSources(keys: readonly string[], expectedProfileId?: string): string[] {
+    if (expectedProfileId !== undefined && this.snap.activeProfileId !== expectedProfileId) {
+      throw new Error('配置档案已切换，请重新体检后再清理线路');
+    }
+    const requested = new Set(keys.filter(Boolean));
+    const removedKeys = this.snap.sources.filter((source) => requested.has(source.key)).map((source) => source.key);
     const next = deleteSourcesFromConfig(this.snap, keys);
     if (next) this.apply(next);
+    return removedKeys;
   }
 
   /** 排序：up/down/top/bottom；边界或 key 不存在时静默 no-op（不写盘）。 */

@@ -200,7 +200,7 @@ export function registerIpc(
     return r;
   }, log);
   registerHandler(IPC.VOD_DEBUG, (_e: any, key: string) => services.sourceDiagnostics.debug(key), log);
-  registerHandler(IPC.VOD_AUDIT, () => services.sourceDiagnostics.auditAll(), log);
+  registerHandler(IPC.VOD_AUDIT, (_event: unknown, expectedProfileId?: string) => services.sourceDiagnostics.auditAll(expectedProfileId), log);
   registerDriveIpc(services.driveAccounts, log);
   registerSubtitleIpc(features.subtitles, log);
   registerDanmakuIpc(features.danmaku, log);

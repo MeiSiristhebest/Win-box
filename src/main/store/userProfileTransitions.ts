@@ -154,12 +154,10 @@ export function renameProfileInConfig(config: UserConfig, id: string, name: stri
 /** Detach a profile from any group when its saved profile is deleted. */
 export function removeProfileFromSubscriptionGroups(config: UserConfig, id: string): UserConfig['subscriptionGroups'] {
   return config.subscriptionGroups
-    .map((group) => ({
-      ...group,
-      members: group.members.map((member) => member.profileId === id
-        ? { ...member, profileId: undefined }
-        : member),
-    }))
+    .map((group) => {
+      const members = group.members.filter((member) => member.profileId !== id);
+      return { ...group, members, status: subscriptionGroupStatus(members) };
+    })
     .filter((group) => group.members.length > 0);
 }
 

@@ -29,7 +29,7 @@ export interface AddLiveChannelPort {
 
 export interface SourceDiagnosticsIpcPort {
   debug(key: string): Promise<SourceDebugReport>;
-  auditAll(): Promise<AuditItem[]>;
+  auditAll(expectedProfileId?: string): Promise<AuditItem[]>;
 }
 
 export interface SpiderRuntimeIpcPort {

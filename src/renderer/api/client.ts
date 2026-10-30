@@ -106,7 +106,7 @@ export const client = {
   cfgAddSource: (bean: SourceBean) => afterConfigMutation(window.api.config.addSource(bean)),
   cfgUpdateSource: (key: string, patch: SourceUpdatePatch) => afterConfigMutation(window.api.config.updateSource(key, patch)),
   cfgDeleteSource: (key: string) => afterConfigMutation(window.api.config.deleteSource(key)),
-  cfgDeleteSources: (keys: string[]) => afterConfigMutation(window.api.config.deleteSources(keys)),
+  cfgDeleteSources: (keys: string[], expectedProfileId?: string) => afterConfigMutation(window.api.config.deleteSources(keys, expectedProfileId)),
   cfgSetGlobalSourceBlock: (keys: string[], blocked: boolean) => afterConfigMutation(window.api.config.setGlobalSourceBlock(keys, blocked)),
   cfgMoveSource: (key: string, direction: SourceMoveDirection) => afterConfigMutation(window.api.config.moveSource(key, direction)),
   cfgSetActiveSource: (key: string) => afterConfigMutation(window.api.config.setActiveSource(key)),
@@ -158,7 +158,7 @@ export const client = {
   /** ★ 2026-09-30：数据目录信息（安装目录/data；迁移结果与回退原因） */
   dataDir: () => unwrap(window.api.system.dataDir()),
   vodDebug: (key: string) => unwrap(window.api.config.vodDebug(key)),
-  audit: () => unwrap(window.api.config.audit()),
+  audit: (expectedProfileId?: string) => unwrap(window.api.config.audit(expectedProfileId)),
   cacheClear: () => unwrap(window.api.config.cacheClear()),
   /** ★ 2026-09-27：已学到的「需要网盘绑定」源 key（源主页显示绑定入口的兜底判据） */
   driveBindKeys: () => unwrap(window.api.config.driveBindKeys()),

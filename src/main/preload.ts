@@ -40,7 +40,7 @@ const api = {
     addSource: (bean: SourceBean) => invoke<SourceBean>(IPC.CFG_ADD_SOURCE, bean),
     updateSource: (key: string, patch: SourceUpdatePatch) => invoke<SourceBean>(IPC.CFG_UPDATE_SOURCE, { key, patch }),
     deleteSource: (key: string) => invoke<void>(IPC.CFG_DELETE_SOURCE, key),
-    deleteSources: (keys: string[]) => invoke<void>(IPC.CFG_DELETE_SOURCES, keys),
+    deleteSources: (keys: string[], expectedProfileId?: string) => invoke<string[]>(IPC.CFG_DELETE_SOURCES, keys, expectedProfileId),
     setGlobalSourceBlock: (keys: string[], blocked: boolean) => invoke<void>(IPC.CFG_GLOBAL_SOURCE_BLOCK, { keys, blocked }),
     moveSource: (key: string, direction: SourceMoveDirection) => invoke<void>(IPC.CFG_MOVE_SOURCE, { key, direction }),
     setActiveSource: (key: string) => invoke<void>(IPC.CFG_SET_ACTIVE_SOURCE, key),
@@ -123,7 +123,7 @@ const api = {
     /** ★ 2026-09-30（用户要求）：一步完成「切换档案 + 选中该档案下的源」 */
     switchProfileSource: (a: { profileId: string; key: string }) => invoke<void>(IPC.CFG_SWITCH_PROFILE_SOURCE, a),
     vodDebug: (key: string) => invoke(IPC.VOD_DEBUG, key),
-    audit: () => invoke(IPC.VOD_AUDIT),
+    audit: (expectedProfileId?: string) => invoke(IPC.VOD_AUDIT, expectedProfileId),
     cacheClear: () => invoke<{ freedBytes: number; cleared: string[]; failed: string[] }>(IPC.CACHE_CLEAR),
     // ★ 2026-09-27：已学到的「需要网盘绑定」源 key（源主页显示绑定入口的兜底判据，见 needsDriveBind）
     driveBindKeys: () => invoke<string[]>(IPC.DRIVE_BIND_KEYS),

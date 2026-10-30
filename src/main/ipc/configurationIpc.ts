@@ -22,7 +22,7 @@ export interface SourceConfigurationIpcPort {
   addSource(source: SourceBean): SourceBean;
   updateSource(key: string, patch: SourceUpdatePatch): SourceBean;
   deleteSource(key: string): void;
-  deleteSources(keys: readonly string[]): void;
+  deleteSources(keys: readonly string[], expectedProfileId?: string): string[];
   setGlobalSourceBlock(keys: readonly string[], blocked: boolean): void;
   moveSource(key: string, direction: SourceMoveDirection): void;
   selectActiveSource(key: string): void;
@@ -101,7 +101,15 @@ export function registerSourceConfigurationIpc(
   registerHandler(IPC.CFG_UPDATE_SOURCE, (_event: unknown, args: { key: string; patch: SourceUpdatePatch }) =>
     config.updateSource(args.key, args.patch || {}), logger);
   registerHandler(IPC.CFG_DELETE_SOURCE, (_event: unknown, key: string) => config.deleteSource(key), logger);
-  registerHandler(IPC.CFG_DELETE_SOURCES, (_event: unknown, keys: string[]) => config.deleteSources(Array.isArray(keys) ? keys : []), logger);
+  registerHandler(IPC.CFG_DELETE_SOURCES, (_event: unknown, keys: string[], expectedProfileId?: string) => {
+    if (!Array.isArray(keys) || keys.length > 1000 || keys.some((key) => typeof key !== 'string' || key.length > 256)) {
+      throw new Error('批量删除线路参数无效');
+    }
+    if (expectedProfileId !== undefined && (typeof expectedProfileId !== 'string' || expectedProfileId.length > 256)) {
+      throw new Error('配置档案标识无效');
+    }
+    return config.deleteSources(keys, expectedProfileId);
+  }, logger);
   registerHandler(IPC.CFG_GLOBAL_SOURCE_BLOCK, (_event: unknown, args: { keys: string[]; blocked: boolean }) => {
     if (!args || !Array.isArray(args.keys) || args.keys.length > 1000 || typeof args.blocked !== 'boolean' || args.keys.some((key) => typeof key !== 'string' || key.length > 256)) {
       throw new Error('全局屏蔽参数无效');

@@ -15,6 +15,7 @@ describe('SourceDiagnosticsApplicationService', () => {
     const service = new SourceDiagnosticsApplicationService({
       catalog: {
         currentSources: () => [source],
+        activeProfileId: () => 'profile-a',
         findSource: (key) => key === source.key ? source : null,
       },
       gateway: { home: vi.fn(async () => home) },
@@ -34,7 +35,7 @@ describe('SourceDiagnosticsApplicationService', () => {
     const request = vi.fn();
     const home = vi.fn();
     const service = new SourceDiagnosticsApplicationService({
-      catalog: { currentSources: () => [], findSource: () => null },
+      catalog: { currentSources: () => [], activeProfileId: () => 'profile-a', findSource: () => null },
       gateway: { home },
       http: { request },
       logger: { i: vi.fn(), w: vi.fn(), e: vi.fn() },
@@ -45,6 +46,22 @@ describe('SourceDiagnosticsApplicationService', () => {
 
     await expect(service.debug('missing')).rejects.toThrow('源不存在: missing');
     expect(request).not.toHaveBeenCalled();
+    expect(home).not.toHaveBeenCalled();
+  });
+
+  it('rejects an audit request whose profile is no longer active', async () => {
+    const home = vi.fn();
+    const service = new SourceDiagnosticsApplicationService({
+      catalog: { currentSources: () => [source], activeProfileId: () => 'profile-b', findSource: () => source },
+      gateway: { home },
+      http: { request: vi.fn() },
+      logger: { i: vi.fn(), w: vi.fn(), e: vi.fn() },
+      globalSpiderJar: () => '',
+      withTimeout: async (operation) => operation,
+      now: () => 100,
+    });
+
+    await expect(service.auditAll('profile-a')).rejects.toThrow('配置档案已切换');
     expect(home).not.toHaveBeenCalled();
   });
 });
