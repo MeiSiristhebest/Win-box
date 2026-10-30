@@ -4,7 +4,7 @@ import { SourceConfigurationApplicationService } from '../src/main/configuration
 import type { SourceConfigurationStorePort } from '../src/main/configuration/SourceConfigurationApplicationService';
 
 describe('SourceConfigurationApplicationService', () => {
-  it('forwards the audited source signature to the configuration store before cleanup', () => {
+  it('forwards the expected profile and audited source signature to the configuration store', () => {
     const deleteSources = vi.fn((keys: readonly string[]) => [...keys]);
     const configuration: SourceConfigurationStorePort = {
       snapshot: () => ({ sources: [] } as unknown as UserConfig),

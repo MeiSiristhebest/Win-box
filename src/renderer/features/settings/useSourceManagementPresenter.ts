@@ -135,7 +135,7 @@ export function useSourceManagementPresenter({
     clearFeedback();
     try {
       const selectedKeys = selected.map((source) => source.key);
-      const result = await runSourceKeyBatches(selectedKeys, (batch) => sourcesPort.deleteSources(batch));
+      const result = await runSourceKeyBatches(selectedKeys, (batch) => sourcesPort.deleteSources(batch, profileId));
       const requestedKeys = new Set(selectedKeys);
       const removed = new Set(result.results.flatMap((keys) => keys).filter((key) => requestedKeys.has(key)));
       if (editingKey && removed.has(editingKey)) {
@@ -143,17 +143,21 @@ export function useSourceManagementPresenter({
         setDraft(null);
       }
       setSelectedSourceKeys((previous) => new Set([...previous].filter((key) => !removed.has(key))));
-      const refreshError = removed.size > 0 ? await refreshAfterMutation() : null;
+      const refreshError = await refreshAfterMutation();
       if (result.failed) {
         setError(errorMessage(result.error));
-        if (removed.size > 0) setNotice(`已删除 ${removed.size} 个源；后续批次失败，剩余项仍保留在选择中。${refreshError ? ` 源列表刷新失败：${refreshError}` : ''}`);
+        setNotice(`已删除 ${removed.size} 个源；后续批次失败，剩余项仍保留在选择中。${refreshError ? ` 源列表刷新失败：${refreshError}` : ''}`);
       } else {
-        setNotice(removed.size > 0 ? `已删除 ${removed.size} 个源${refreshError ? `；源列表刷新失败：${refreshError}` : ''}` : '所选源已不存在，无需删除');
+        setNotice(removed.size > 0
+          ? `已删除 ${removed.size} 个源${refreshError ? `；源列表刷新失败：${refreshError}` : ''}`
+          : `所选源已不存在，无需删除${refreshError ? `；源列表刷新失败：${refreshError}` : ''}`);
       }
+    } catch (deleteError) {
+      setError(errorMessage(deleteError));
     } finally {
       setSourceDeleteBusy(false);
     }
-  }, [clearFeedback, confirmDangerousAction, editingKey, refreshAfterMutation, selectedSourceKeys, sourceDeleteBusy, sources, sourcesPort]);
+  }, [clearFeedback, confirmDangerousAction, editingKey, profileId, refreshAfterMutation, selectedSourceKeys, sourceDeleteBusy, sources, sourcesPort]);
 
   const setGlobalBlock = useCallback(async (keys: string[], blocked: boolean) => {
     if (keys.length === 0 || sourceDeleteBusy || busy) return;
@@ -172,10 +176,10 @@ export function useSourceManagementPresenter({
       const result = await runSourceKeyBatches(keys, (batch) => sourcesPort.setGlobalSourceBlock(batch, blocked));
       const completed = new Set(result.completedKeys);
       setSelectedSourceKeys((previous) => new Set([...previous].filter((key) => !completed.has(key))));
-      const refreshError = completed.size > 0 ? await refreshAfterMutation() : null;
+      const refreshError = await refreshAfterMutation();
       if (result.failed) {
         setError(errorMessage(result.error));
-        if (completed.size > 0) setNotice(`已处理 ${completed.size} 个源；后续批次失败，剩余项仍保留在选择中。${refreshError ? ` 源列表刷新失败：${refreshError}` : ''}`);
+        setNotice(`已处理 ${completed.size} 个源；后续批次失败，剩余项仍保留在选择中。${refreshError ? ` 源列表刷新失败：${refreshError}` : ''}`);
       } else {
         setNotice(`${blocked ? '已全局屏蔽' : '已解除全局屏蔽'} ${completed.size} 个源${refreshError ? `；源列表刷新失败：${refreshError}` : ''}`);
       }

@@ -53,13 +53,35 @@ describe('useSourceManagementPresenter', () => {
     act(() => result.current.actions.setAllSourcePicks(true));
     await act(async () => { await result.current.actions.deleteSelectedSources(); });
 
-    expect(sourcesPort.deleteSources).toHaveBeenNthCalledWith(1, sources.slice(0, 1000).map((item) => item.key));
-    expect(sourcesPort.deleteSources).toHaveBeenNthCalledWith(2, ['source-1000']);
+    expect(sourcesPort.deleteSources).toHaveBeenNthCalledWith(1, sources.slice(0, 1000).map((item) => item.key), 'profile-a');
+    expect(sourcesPort.deleteSources).toHaveBeenNthCalledWith(2, ['source-1000'], 'profile-a');
     expect(result.current.selectedSourceCount).toBe(1);
     expect(result.current.selectedSourceKeys.has('source-1000')).toBe(true);
     expect(result.current.notice).toContain('已删除 1000 个源');
     expect(result.current.error).toBe('IPC unavailable');
     expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it('refreshes the active list when selected source keys are already gone', async () => {
+    const sources = [source('source-a')];
+    const sourcesPort = createPort();
+    vi.mocked(sourcesPort.deleteSources).mockResolvedValue([]);
+    const refresh = vi.fn(async () => undefined);
+    const { result } = renderHook(() => useSourceManagementPresenter({
+      sources,
+      profileId: 'profile-a',
+      busy: false,
+      refresh,
+      confirmDangerousAction: vi.fn(async () => true),
+      sourcesPort,
+    }));
+
+    act(() => result.current.actions.setAllSourcePicks(true));
+    await act(async () => { await result.current.actions.deleteSelectedSources(); });
+
+    expect(sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a'], 'profile-a');
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(result.current.notice).toContain('所选源已不存在');
   });
 
   it('splits large global block changes into IPC-safe batches', async () => {
