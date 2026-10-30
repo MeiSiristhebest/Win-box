@@ -72,7 +72,7 @@ describe('SourceManagementSection', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '全选源' }));
     fireEvent.click(screen.getByRole('button', { name: '删除所选（2）' }));
 
-    await waitFor(() => expect(page.sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a', 'source-b']));
+    await waitFor(() => expect(page.sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a', 'source-b'], 'profile-a'));
     expect(confirm).toHaveBeenCalledOnce();
     expect(screen.getByRole('status').textContent).toContain('已删除 2 个源');
     expect(page.onRefresh).toHaveBeenCalledOnce();
@@ -100,7 +100,7 @@ describe('SourceManagementSection', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '选择源 Source A' }));
     fireEvent.click(screen.getByRole('button', { name: '删除所选（1）' }));
 
-    await waitFor(() => expect(page.sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a']));
+    await waitFor(() => expect(page.sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a'], 'profile-a'));
     expect(screen.getByRole('status').textContent).toContain('已删除 1 个源；源列表刷新失败');
     expect(screen.getByRole('status').textContent).toContain('configuration unavailable');
   });
