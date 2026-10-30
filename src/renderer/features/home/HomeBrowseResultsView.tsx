@@ -58,7 +58,6 @@ export function HomeBrowseResultsView({
               <path d="M3 4h18l-7.2 8.4V19l-3.6-2.2v-4.4z" />
             </svg>
             筛选
-            {filtersOpen && <span className="hf-check" aria-hidden="true">✓</span>}
           </button>
         </div>
       )}

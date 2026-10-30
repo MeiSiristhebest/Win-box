@@ -16,6 +16,7 @@
 //   （IPC `cfg:moveSource` / `cfg:deleteSource` 未动）。
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { Eye16Regular } from '@fluentui/react-icons';
 import { useSourcePickerOverlay } from '../../components/useSourcePickerOverlay';
 import type { SourceBean } from '../../../shared/types';
 import type { SourcePickerPort } from './application/sourcePickerPort';
@@ -175,7 +176,7 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
                       title={`仅预览${p.name}来源，不立即激活`}
                       disabled={switching}
                       onClick={() => actions.previewProfile(p.id)}
-                    >预览</button>
+                    ><Eye16Regular aria-hidden="true" /></button>
                   </div>
                 ))}
               </div>

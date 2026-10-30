@@ -70,7 +70,7 @@ export function SavedProfilesSection({
                       </>
                     ) : (
                       <>
-                        {profile.name}{active ? ' ✓' : ''} <span className="muted">({profile.sourceCount})</span>
+                        {profile.name}{active && <span className="muted">当前使用</span>} <span className="muted">({profile.sourceCount})</span>
                         <button type="button" className="linkbtn" title="重命名该配置" onClick={() => actions.beginRename(profile.id, profile.name)}>改名</button>
                         {!active && <button type="button" className="linkbtn" onClick={() => onActivate(profile.id)}>切换</button>}
                         {<button type="button" className="linkbtn danger" onClick={() => void actions.deleteProfile(profile.id)}>删</button>}

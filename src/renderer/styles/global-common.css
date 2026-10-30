@@ -130,12 +130,13 @@
 .srcpick-search { width: 100%; height: 28px; font-size: 12px; padding: 0 8px; margin-bottom: 6px; box-sizing: border-box; }
 .srcpick-cols { display: flex; gap: 0; flex: 1 1 auto; min-height: 0; max-height: 296px; }
 .srcpick-col-sub {
-  flex: 0 0 132px; max-width: 132px; overflow-y: auto; padding-right: 4px; margin-right: 4px;
+  flex: 0 1 210px; min-width: 176px; max-width: 230px; overflow-y: auto; overflow-x: hidden; padding-right: 4px; margin-right: 4px;
   border-right: 1px solid var(--border-soft);
 }
 .srcpick-sub-row { display: flex; align-items: stretch; gap: 3px; }
-.srcpick-sub-row .srcpick-sub { flex: 1 1 auto; min-width: 0; }
-.srcpick-sub-preview { flex: 0 0 auto; width: auto; padding-inline: 8px; font-size: 12px; }
+.srcpick-sub-row .srcpick-sub { flex: 1 1 0; width: auto; min-width: 0; }
+.srcpick-sub-row > .srcpick-sub-preview { display: inline-flex; flex: 0 0 34px; width: 34px; min-width: 0; align-items: center; justify-content: center; padding-inline: 4px; font-size: 12px; }
+.srcpick-sub-preview svg { width: 16px; height: 16px; }
 .srcpick-col-src { flex: 1 1 auto; min-width: 0; overflow-y: auto; }
 .srcpick-item { width: 100%; padding: 7px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .srcpick-item:hover { background: var(--accent-soft, rgba(120,170,255,.12)); }
@@ -232,6 +233,7 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
   .srcpick-pop-right { right: -6px; }
   .sp-cols { gap: 8px; }
   .sp-rank { padding-left: 8px; }
+  .srcpick-col-sub { flex-basis: 168px; min-width: 144px; }
 }
 
 @media (max-width: 460px) {
@@ -390,17 +392,10 @@ h3 { font-size: var(--fs-xl); } h4 { font-size: var(--fs-lg); color: var(--text)
 }
 /* 点「筛选」后弹出的其余筛选组：轻微上浮淡入（`popUp` 关键帧在下方进场系统里定义） */
 .home-filters-more { animation: popUp var(--dur-panel) var(--ease-enter) both; }
-.home-filter-btn { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+.home-filter-btn { display: inline-flex; align-items: center; gap: 6px; }
 .home-filter-btn svg { flex: 0 0 auto; }
 :root[data-theme] .home-filter-btn.active { color: var(--text-accent); border-color: var(--text-accent, var(--accent)); background: var(--accent-soft); }
 :root[data-theme] .home-filter-btn.active:hover { color: var(--text-accent); border-color: var(--text-accent, var(--accent)); box-shadow: 0 0 0 3px var(--accent-soft); }
-/* 开启态对号：贴在按钮**右下角**、略微外挂（不需要描边环也能与按钮分离） */
-.home-filter-btn .hf-check {
-  position: absolute; right: -5px; bottom: -5px;
-  display: flex; align-items: center; justify-content: center;
-  width: 15px; height: 15px; border-radius: 50%;
-  background: var(--accent); color: #fff; font-size: 12px; line-height: 1; font-weight: 700;
-}
 
 /* ---- ★ 2026-10-16（用户要求「瀑布模式下增加回到顶部按钮」「翻页增加输入页码快速跳页」）----
    模式切换已挪到「配置 → 外观」（点播页不再放切换按钮）：

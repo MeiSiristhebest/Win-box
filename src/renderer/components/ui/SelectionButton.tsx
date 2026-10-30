@@ -1,13 +1,12 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { ToggleButton as FluentToggleButton } from '@fluentui/react-components';
-import { Checkmark16Regular } from '@fluentui/react-icons';
 
 export interface SelectionButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'aria-pressed'> {
   selected: boolean;
   children: ReactNode;
 }
 
-/** A compact single-choice control with a persistent check mark and Fluent keyboard/focus behavior. */
+/** A compact single-choice control; visual state and aria-pressed expose selection without a duplicate glyph. */
 export function SelectionButton({ selected, children, style, ...props }: SelectionButtonProps) {
   return (
     <FluentToggleButton
@@ -25,7 +24,6 @@ export function SelectionButton({ selected, children, style, ...props }: Selecti
       }}
     >
       {children}
-      {selected && <Checkmark16Regular aria-hidden="true" />}
     </FluentToggleButton>
   );
 }

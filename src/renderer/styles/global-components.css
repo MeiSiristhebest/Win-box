@@ -1,12 +1,6 @@
 @layer components {
   :where(button, a, input, select, textarea, [role='button'], dialog, .sp-panel, .srcpick-pop) { -webkit-app-region: no-drag; }
   :where(input, select, textarea):focus-visible { border-color: var(--color-accent); outline: var(--focus-ring); outline-offset: 2px; box-shadow: none; }
-  :root[data-theme] :is(button.tag, button.ep)[aria-pressed='true'],
-  :root[data-theme] button.tag:is(.active, [aria-selected='true']) {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-  }
   :root[data-theme] button.tag:is(.active, [aria-pressed='true'], [aria-selected='true']):not(:disabled),
   :root[data-theme] button.ep[aria-pressed='true']:not(:disabled),
   :root[data-theme] .home-filter-btn[aria-pressed='true']:not(:disabled) {
@@ -14,31 +8,6 @@
     background: var(--accent-soft);
     border-color: var(--color-accent, var(--accent));
     font-weight: 650;
-  }
-  :root[data-theme] .home-filter-btn[aria-pressed='true'] {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-  }
-  :root[data-theme] button.tag:is(.active, [aria-pressed='true'], [aria-selected='true'])::before,
-  :root[data-theme] .home-filter-btn[aria-pressed='true']::before {
-    content: '';
-    flex: 0 0 10px;
-    width: 10px;
-    height: 6px;
-    margin-inline: 1px 0;
-    border-inline-start: 2px solid currentColor;
-    border-bottom: 2px solid currentColor;
-    transform: rotate(-45deg) translateY(-1px);
-  }
-  :root[data-theme] button.ep[aria-pressed='true'] { justify-content: space-between; }
-  :root[data-theme] button.ep[aria-pressed='true']::after {
-    content: '✓';
-    flex: 0 0 auto;
-    margin-inline-start: auto;
-    color: var(--text-accent);
-    font-size: 13px;
-    font-weight: 700;
   }
   .linkbtn.danger { background: var(--surface); color: var(--text-danger); border: 1px solid transparent; }
   .linkbtn.danger:hover { border-color: var(--text-danger); }
@@ -173,23 +142,6 @@
   border-radius: var(--radius-control, var(--radius-sm));
   font-size: 13px;
   line-height: 1.55;
-}
-/* Category and provider tabs must show a non-color selected marker as well as
-   the active surface and their ARIA selected state. */
-:root[data-theme] .browse-tabs [role='tab'][aria-selected='true'],
-:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab'][aria-selected='true'] {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-:root[data-theme] .browse-tabs [role='tab'][aria-selected='true']::after,
-:root[data-theme] .drive-bind-dialog .drive-provider-list [role='tab'][aria-selected='true']::after {
-  content: '✓';
-  flex: 0 0 auto;
-  color: currentColor;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1;
 }
 /* Give block-level error messages a stable surface and border so they remain
    readable across themes; inline status labels keep their compact layout. */

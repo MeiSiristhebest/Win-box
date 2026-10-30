@@ -31,13 +31,13 @@ function setup() {
 }
 
 describe('ProfileSwitcher', () => {
-  it('lists live-only children and explains unavailable members', async () => {
+  it('lists restorable children and keeps failed subscription entries in profile management', async () => {
     setup();
     fireEvent.click(screen.getByRole('button', { name: /切换子仓/ }));
     expect(await screen.findByRole('dialog', { name: '切换子仓' })).toBeTruthy();
     const liveOnly = await screen.findByRole('button', { name: /B子仓.*0 个站点.*1 条直播/ });
     expect((liveOnly as HTMLButtonElement).disabled).toBe(false);
-    expect((screen.getByRole('button', { name: /失败子仓.*HTTP 404/ }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('button', { name: /失败子仓/ })).toBeNull();
     fireEvent.change(screen.getByRole('textbox', { name: '筛选子仓' }), { target: { value: 'B子仓' } });
     expect(screen.queryByRole('button', { name: /A子仓.*当前/ })).toBeNull();
     expect(screen.getByRole('button', { name: /B子仓/ })).toBeTruthy();
@@ -74,5 +74,11 @@ describe('ProfileSwitcher', () => {
     const a = profileConfig('A');
     a.subscriptionGroups = [{ id: 'g', name: '组', url: '', status: 'partial', createdAt: '', updatedAt: '', members: [{ id: 'm', name: 'A', url: '', status: 'failed', error: '超时', profileId: 'A' }] }];
     expect(profileChoices(a)[0]).toMatchObject({ restorable: true, reason: '刷新失败，可使用已保存配置' });
+  });
+
+  it('excludes sources deleted in this profile from the displayed snapshot count', () => {
+    const a = profileConfig('A');
+    a.deletedSourceKeysByProfile = { A: ['same-key'] };
+    expect(profileChoices(a)[0].sourceCount).toBe(0);
   });
 });
