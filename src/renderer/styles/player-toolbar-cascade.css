@@ -107,11 +107,6 @@
 }
 
 :root[data-theme][data-theme] .vplayer .vp-bar-group .vp-ctl:is(.vp-on, [aria-expanded='true'], [aria-pressed='true']):not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) {
-  flex: 0 0 36px;
-  width: 36px;
-  min-width: 36px;
-  height: 36px;
-  min-height: 36px;
   border: 1px solid rgb(255 255 255 / 58%);
   border-radius: 8px;
   background: var(--color-accent, #315fc2);

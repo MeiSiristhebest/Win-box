@@ -92,9 +92,7 @@ describe('player control style architecture', () => {
     expect(toolbarGlyph).toMatch(/flex:\s*0 0 18px/);
     expect(toolbarGlyph).toMatch(/width:\s*18px/);
     expect(toolbarGlyph).toMatch(/height:\s*18px/);
-    expect(selectedToolbarIcon).toMatch(/flex:\s*0 0 36px/);
-    expect(selectedToolbarIcon).toMatch(/width:\s*36px/);
-    expect(selectedToolbarIcon).toMatch(/height:\s*36px/);
+    expect(selectedToolbarIcon).not.toMatch(/\b(?:flex|width|min-width|height|min-height|padding)\s*:/);
     expect(selectedToolbarIcon).toMatch(/background:\s*var\(--color-accent/);
     expect(selectedToolbarIcon).toMatch(/color:\s*var\(--on-accent/);
     expect(skinSafeTitlebar).toMatch(/background:\s*rgb\(24 28 35 \/ 96%\) !important/);
