@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { AuditItem, SourceBean } from '../../../shared/types';
 import type { SourceHealthAuditPort } from './application/sourceHealthAudit';
 import { removeFailedSources } from './application/sourceHealthAudit';
@@ -34,10 +34,13 @@ export function useSourceHealthAuditPresenter({
   const [filter, setFilter] = useState<AuditFilter>('all');
   const [notice, setNotice] = useState<SourceHealthAuditNotice | null>(null);
   const [error, setError] = useState('');
-  const currentContext = useRef({ profileId: activeProfileId, sourceSignature: sourceSignature(sources) });
-  currentContext.current = { profileId: activeProfileId, sourceSignature: sourceSignature(sources) };
+  const currentSourceSignature = sourceSignature(sources);
+  const currentContext = useRef({ profileId: activeProfileId, sourceSignature: currentSourceSignature });
+  useLayoutEffect(() => {
+    currentContext.current = { profileId: activeProfileId, sourceSignature: currentSourceSignature };
+  }, [activeProfileId, currentSourceSignature]);
   const audit = auditSnapshot?.profileId === activeProfileId
-    && auditSnapshot.sourceSignature === currentContext.current.sourceSignature
+    && auditSnapshot.sourceSignature === currentSourceSignature
     ? auditSnapshot.items
     : null;
 
