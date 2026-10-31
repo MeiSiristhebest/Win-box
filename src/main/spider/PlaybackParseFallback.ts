@@ -54,6 +54,7 @@ export class PlaybackParseFallback {
 
     return {
       ...result,
+      parse: 1,
       message: '该播放地址需要网页解析/嗅探，自动解析未取得直连地址（可在配置里补充解析接口或改选其它源）',
     };
   }
