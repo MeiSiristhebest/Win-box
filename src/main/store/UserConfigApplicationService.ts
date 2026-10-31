@@ -342,24 +342,42 @@ export class UserConfigApplicationService {
   /**
    * ★ 2026-09-30（用户要求）：换源弹层的「左订阅 / 右源」视图。
    * 当前生效档案取**运行期真实源列表**（含手动增删改/排序）；其余档案解析其存档 JSON。
-   * 解析失败给空清单（弹层照常显示该订阅，只是没有源）——不因单份坏档整体失败。
+   * 有效空快照保留为「0 个点播源」；无效快照返回不可恢复状态，避免和空子仓混淆，也不影响其它档案显示。
    */
   profileSitesView(): ProfileSitesView {
     const activeId = this.snap.activeProfileId;
     const pick = (s: SourceBean): { key: string; name: string } => ({ key: s.key, name: s.name || s.key });
     const profiles = this.snap.profiles.map((profile) => {
       if (profile.id === activeId) {
-        return { id: profile.id, name: profile.name, sites: this.sources().map(pick) };
+        return { id: profile.id, name: profile.name, sites: this.sources().map(pick), restorable: true };
       }
-      let sites: Array<{ key: string; name: string }> = [];
-      if (profile.json) {
-        try {
-          sites = this.profileConfig(profile.id)?.sites.map(pick) ?? [];
-        } catch {
-          sites = [];
-        }
+      if (!profile.json) {
+        return {
+          id: profile.id,
+          name: profile.name,
+          sites: [],
+          restorable: false,
+          unavailableReason: '缺少可恢复的配置快照',
+        };
       }
-      return { id: profile.id, name: profile.name, sites };
+      try {
+        const config = this.profileConfig(profile.id);
+        return {
+          id: profile.id,
+          name: profile.name,
+          sites: config?.sites.map(pick) ?? [],
+          restorable: Boolean(config),
+          ...(config ? {} : { unavailableReason: '配置档案已不存在' }),
+        };
+      } catch {
+        return {
+          id: profile.id,
+          name: profile.name,
+          sites: [],
+          restorable: false,
+          unavailableReason: '保存的配置快照无法解析',
+        };
+      }
     });
     return buildProfileSitesView(activeId, profiles);
   }

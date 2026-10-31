@@ -6,10 +6,38 @@ import type { SourceHealthAuditPort } from '../src/renderer/features/settings/ap
 import { useSourceHealthAuditPresenter } from '../src/renderer/features/settings/useSourceHealthAuditPresenter';
 
 describe('useSourceHealthAuditPresenter', () => {
+  it('broadcasts the source removal so open pickers reload their profile snapshots', async () => {
+    const source: SourceBean = {
+      key: 'source-a', name: 'A', type: 0, api: 'https://a.test', searchable: 1, quickSearch: 1, changeable: 1, filterable: 1,
+      playUrl: '', ext: '', jar: '', playerType: -1, categories: null, timeout: 15, click: '', style: '',
+    };
+    const port: SourceHealthAuditPort = {
+      run: vi.fn().mockResolvedValue([{
+        key: 'source-a', name: 'A', type: 0, kind: 'cms-json', items: 0, classes: 0, extEmpty: true,
+        ms: 0, health: 'error', usable: false, needsExt: false, advice: 'request-failed',
+      }]),
+      deleteSources: vi.fn().mockResolvedValue(['source-a']),
+      announceSourcesChanged: vi.fn(),
+    };
+    const refresh = vi.fn(async () => undefined);
+    const { result } = renderHook(() => useSourceHealthAuditPresenter({
+      port, sources: [source], activeProfileId: 'profile-a', confirm: vi.fn(async () => true), refresh,
+    }));
+
+    await act(async () => { await result.current.runAudit(); });
+    await act(async () => { await result.current.deleteFailedSources(); });
+
+    expect(port.deleteSources).toHaveBeenCalledOnce();
+    expect(port.announceSourcesChanged).toHaveBeenCalledOnce();
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(result.current.audit).toBeNull();
+  });
+
   it('owns and clears errors produced by its own audit workflow', async () => {
     const port: SourceHealthAuditPort = {
       run: vi.fn().mockRejectedValueOnce(new Error('network unavailable')).mockResolvedValue([]),
       deleteSources: vi.fn().mockResolvedValue([]),
+      announceSourcesChanged: vi.fn(),
     };
     const options = {
       port,
@@ -34,6 +62,7 @@ describe('useSourceHealthAuditPresenter', () => {
     const port: SourceHealthAuditPort = {
       run: vi.fn(() => new Promise<AuditItem[]>(resolve => { resolveAudit = resolve; })),
       deleteSources: vi.fn().mockResolvedValue([]),
+      announceSourcesChanged: vi.fn(),
     };
     const sources: SourceBean[] = [{
       key: 'a', name: 'A', type: 0, api: 'https://a.test',

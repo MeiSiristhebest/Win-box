@@ -4,6 +4,15 @@ import { MAX_SOURCE_CONFIGURATION_BATCH_SIZE, sourceConfigurationSignature } fro
 export interface SourceHealthAuditPort {
   run(profileId: string): Promise<AuditItem[]>;
   deleteSources(sourceKeys: readonly string[], expectedProfileId: string, expectedSourceSignature: string): Promise<string[]>;
+  announceSourcesChanged(): void;
+}
+
+export class PartialFailedSourceCleanupError extends Error {
+  constructor(readonly deletedKeys: readonly string[], cause: unknown) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    super(`已删除 ${deletedKeys.length} 个请求失败线路；后续清理已中止，请刷新后重新体检。${reason}`);
+    this.name = 'PartialFailedSourceCleanupError';
+  }
 }
 
 export type FailedSourceCleanupResult =
@@ -37,8 +46,7 @@ export async function removeFailedSources(
     }
   } catch (error) {
     if (deletedKeys.size > 0) {
-      const reason = error instanceof Error ? error.message : String(error);
-      throw new Error(`已删除 ${deletedKeys.size} 个请求失败线路；后续清理已中止，请刷新后重新体检。${reason}`);
+      throw new PartialFailedSourceCleanupError([...deletedKeys], error);
     }
     throw error;
   }

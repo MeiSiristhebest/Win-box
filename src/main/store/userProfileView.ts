@@ -9,6 +9,8 @@ export interface ProfileSitesProjectionInput {
   id: string;
   name: string;
   sites: readonly ProfileSiteSummary[];
+  restorable?: boolean;
+  unavailableReason?: string;
 }
 
 /** Build the read-only profile/source model consumed by source-switching views. */
@@ -22,6 +24,8 @@ export function buildProfileSitesView(
       id: profile.id,
       name: profile.name,
       sites: profile.sites.map((site) => ({ ...site })),
+      ...(profile.restorable === undefined ? {} : { restorable: profile.restorable }),
+      ...(profile.unavailableReason ? { unavailableReason: profile.unavailableReason } : {}),
     })),
   };
 }

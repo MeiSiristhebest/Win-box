@@ -66,7 +66,15 @@ export function useSourceManagementPresenter({
     const profileChanged = previousProfileId.current !== profileId;
     previousProfileId.current = profileId;
     const sourceKeys = new Set(sources.map((source) => source.key));
-    setSelectedSourceKeys((previous) => profileChanged ? new Set() : new Set([...previous].filter((key) => sourceKeys.has(key))));
+    setSelectedSourceKeys((previous) => {
+      const next = profileChanged
+        ? new Set<string>()
+        : new Set([...previous].filter((key) => sourceKeys.has(key)));
+      // Source arrays may be recreated by a caller on every render. Return the
+      // existing Set when there is nothing to prune so the effect cannot
+      // trigger an endless state-update loop.
+      return next.size === previous.size ? previous : next;
+    });
     if (profileChanged || (editingKey && !sourceKeys.has(editingKey))) {
       setEditingKey(null);
       setDraft(null);
@@ -100,7 +108,7 @@ export function useSourceManagementPresenter({
   }, [clearFeedback, refreshAfterMutation]);
 
   const chooseSource = useCallback(async (key: string) => {
-    await performMutation(() => sourcesPort.activateSource(key));
+    await performMutation(() => sourcesPort.activateSource(key), () => sourcesPort.announceSourceChanged(key));
   }, [performMutation, sourcesPort]);
 
   const deleteSource = useCallback(async (key: string) => {
@@ -109,6 +117,7 @@ export function useSourceManagementPresenter({
     await performMutation(
       () => sourcesPort.deleteSource(key),
       () => {
+        sourcesPort.announceSourcesChanged();
         if (editingKey === key) {
           setEditingKey(null);
           setDraft(null);
@@ -138,6 +147,7 @@ export function useSourceManagementPresenter({
       const result = await runSourceKeyBatches(selectedKeys, (batch) => sourcesPort.deleteSources(batch, profileId));
       const requestedKeys = new Set(selectedKeys);
       const removed = new Set(result.results.flatMap((keys) => keys).filter((key) => requestedKeys.has(key)));
+      if (removed.size > 0) sourcesPort.announceSourcesChanged();
       if (editingKey && removed.has(editingKey)) {
         setEditingKey(null);
         setDraft(null);
@@ -175,6 +185,7 @@ export function useSourceManagementPresenter({
     try {
       const result = await runSourceKeyBatches(keys, (batch) => sourcesPort.setGlobalSourceBlock(batch, blocked));
       const completed = new Set(result.completedKeys);
+      if (completed.size > 0) sourcesPort.announceSourcesChanged();
       setSelectedSourceKeys((previous) => new Set([...previous].filter((key) => !completed.has(key))));
       const refreshError = await refreshAfterMutation();
       if (result.failed) {
@@ -202,7 +213,7 @@ export function useSourceManagementPresenter({
   }, [sources]);
 
   const moveSource = useCallback(async (key: string, direction: 'up' | 'down' | 'top' | 'bottom') => {
-    await performMutation(() => sourcesPort.moveSource(key, direction));
+    await performMutation(() => sourcesPort.moveSource(key, direction), () => sourcesPort.announceSourcesChanged());
   }, [performMutation, sourcesPort]);
 
   const startEdit = useCallback((source: SourceBean) => {
@@ -228,6 +239,7 @@ export function useSourceManagementPresenter({
     await performMutation(
       () => sourcesPort.updateSource(key, toSourceUpdatePatch(draft)),
       () => {
+        sourcesPort.announceSourcesChanged();
         setEditingKey(null);
         setDraft(null);
       },

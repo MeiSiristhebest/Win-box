@@ -30,6 +30,8 @@ function createPort(): SourceManagementPort {
     setGlobalSourceBlock: vi.fn(async () => undefined),
     moveSource: vi.fn(async () => undefined),
     updateSource: vi.fn(async () => undefined),
+    announceSourceChanged: vi.fn(),
+    announceSourcesChanged: vi.fn(),
   };
 }
 
@@ -60,6 +62,7 @@ describe('useSourceManagementPresenter', () => {
     expect(result.current.notice).toContain('已删除 1000 个源');
     expect(result.current.error).toBe('IPC unavailable');
     expect(refresh).toHaveBeenCalledOnce();
+    expect(sourcesPort.announceSourcesChanged).toHaveBeenCalledOnce();
   });
 
   it('refreshes the active list when selected source keys are already gone', async () => {
@@ -82,6 +85,24 @@ describe('useSourceManagementPresenter', () => {
     expect(sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a'], 'profile-a');
     expect(refresh).toHaveBeenCalledOnce();
     expect(result.current.notice).toContain('所选源已不存在');
+    expect(sourcesPort.announceSourcesChanged).not.toHaveBeenCalled();
+  });
+
+  it('announces active source selection to the rest of the application', async () => {
+    const sourcesPort = createPort();
+    const { result } = renderHook(() => useSourceManagementPresenter({
+      sources: [source('source-a')],
+      profileId: 'profile-a',
+      busy: false,
+      refresh: vi.fn(async () => undefined),
+      confirmDangerousAction: vi.fn(async () => true),
+      sourcesPort,
+    }));
+
+    await act(async () => { await result.current.actions.chooseSource('source-a'); });
+
+    expect(sourcesPort.activateSource).toHaveBeenCalledWith('source-a');
+    expect(sourcesPort.announceSourceChanged).toHaveBeenCalledWith('source-a');
   });
 
   it('splits large global block changes into IPC-safe batches', async () => {
@@ -102,5 +123,6 @@ describe('useSourceManagementPresenter', () => {
     expect(sourcesPort.setGlobalSourceBlock).toHaveBeenNthCalledWith(1, sources.slice(0, 1000).map((item) => item.key), true);
     expect(sourcesPort.setGlobalSourceBlock).toHaveBeenNthCalledWith(2, ['source-1000'], true);
     expect(result.current.selectedSourceCount).toBe(0);
+    expect(sourcesPort.announceSourcesChanged).toHaveBeenCalledOnce();
   });
 });

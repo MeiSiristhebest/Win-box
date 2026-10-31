@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AuditItem, SourceBean } from '../../../shared/types';
 import { sourceConfigurationSignature } from '../../../shared/sourceConfigurationSignature';
 import type { SourceHealthAuditPort } from './application/sourceHealthAudit';
-import { removeFailedSources } from './application/sourceHealthAudit';
+import { PartialFailedSourceCleanupError, removeFailedSources } from './application/sourceHealthAudit';
 import type { AuditFilter, SourceHealthAuditNotice } from './sourceHealthAuditTypes';
 
 interface SourceHealthAuditOptions {
@@ -91,6 +91,7 @@ export function useSourceHealthAuditPresenter({
         return;
       }
 
+      port.announceSourcesChanged();
       setAuditSnapshot(null);
       if (result.kind === 'all-removed') {
         setNotice({
@@ -105,6 +106,7 @@ export function useSourceHealthAuditPresenter({
       }
       await refresh();
     } catch (error) {
+      if (error instanceof PartialFailedSourceCleanupError) port.announceSourcesChanged();
       setError(`清理失败：${error instanceof Error ? error.message : String(error)}`);
       await refresh().catch(() => undefined);
     }

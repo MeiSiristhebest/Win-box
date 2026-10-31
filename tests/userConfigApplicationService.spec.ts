@@ -88,6 +88,40 @@ describe('source deletions belong to one child profile', () => {
     expect(manager.sources().map(item => item.key)).toEqual(['shared']);
   });
 
+  it('removes a deleted source from both active runtime and source picker profile snapshots', () => {
+    const manager = newUserConfigService(tmpDir());
+    manager.replaceFromImport(fullConfig([bean('remove-me'), bean('keep-me')]), 'https://a.test/config');
+    const activeProfileId = manager.activeProfileId();
+
+    expect(manager.deleteSources(['remove-me'])).toEqual(['remove-me']);
+
+    expect(manager.sources().map(item => item.key)).toEqual(['keep-me']);
+    expect(manager.profileSitesView().profiles.find(profile => profile.id === activeProfileId)?.sites.map(site => site.key))
+      .toEqual(['keep-me']);
+  });
+
+  it('marks empty profiles as valid and malformed saved snapshots as unavailable to the source picker', () => {
+    const manager = newUserConfigService(tmpDir());
+    manager.replaceFromImport(fullConfig([bean('active')]), 'https://active.test/config');
+    const activeProfile = manager.activeProfileId();
+    const emptyProfile = manager.saveAsProfile('空子仓', { parsed: fullConfig([]), apiUrl: 'https://empty.test/config' });
+    const brokenProfile = manager.saveAsProfile('损坏子仓', { parsed: fullConfig([bean('broken')]), apiUrl: 'https://broken.test/config' });
+    manager.activateProfile(activeProfile);
+
+    const damagedSnapshot = manager.snapshot();
+    damagedSnapshot.profiles.find(profile => profile.id === brokenProfile.id)!.json = '{not-json';
+    manager.restore(damagedSnapshot);
+
+    const view = manager.profileSitesView();
+    expect(view.profiles.find(profile => profile.id === activeProfile)).toMatchObject({ restorable: true });
+    expect(view.profiles.find(profile => profile.id === emptyProfile.id)).toMatchObject({ restorable: true, sites: [] });
+    expect(view.profiles.find(profile => profile.id === brokenProfile.id)).toMatchObject({
+      restorable: false,
+      sites: [],
+      unavailableReason: '保存的配置快照无法解析',
+    });
+  });
+
   it('deleting a shared key in B preserves A across switching and restart', () => {
     const directory = tmpDir();
     const manager = newUserConfigService(directory);

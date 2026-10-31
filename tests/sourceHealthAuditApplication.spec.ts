@@ -53,6 +53,7 @@ describe('source health cleanup application', () => {
     const port: SourceHealthAuditPort = {
       run: vi.fn(async () => []),
       deleteSources,
+      announceSourcesChanged: vi.fn(),
     };
 
     const result = await removeFailedSources(currentSources.map(failedAudit), currentSources, 'profile-a', port);
@@ -103,6 +104,7 @@ describe('source health cleanup application', () => {
         if (call === 1) return keys;
         throw new Error('线路列表已变化，请重新体检后再清理线路');
       }),
+      announceSourcesChanged: vi.fn(),
     };
 
     await expect(removeFailedSources(sources.map(failedAudit), sources, 'profile-a', port))

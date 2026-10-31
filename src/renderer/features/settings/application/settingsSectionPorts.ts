@@ -39,6 +39,8 @@ export interface SourceManagementPort {
   setGlobalSourceBlock(sourceKeys: string[], blocked: boolean): Promise<void>;
   moveSource(sourceKey: string, direction: SourceMoveDirection): Promise<void>;
   updateSource(sourceKey: string, patch: SourceUpdatePatch): Promise<void>;
+  announceSourceChanged(sourceKey: string): void;
+  announceSourcesChanged(): void;
 }
 
 export interface PlayerEngineSettingsEventsPort {

@@ -592,6 +592,10 @@ export interface ProfileSitesView {
     id: string;
     name: string;
     sites: Array<{ key: string; name: string }>;
+    /** False means the saved snapshot cannot be activated. Missing keeps compatibility with older renderers/tests. */
+    restorable?: boolean;
+    /** Human-readable reason when the saved snapshot cannot be activated. */
+    unavailableReason?: string;
   }>;
 }
 

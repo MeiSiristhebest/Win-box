@@ -1,4 +1,5 @@
 export const SOURCES_CHANGED_EVENT = 'winbox:sources-changed';
+export const SOURCE_CHANGED_EVENT = 'winbox:source-changed';
 export const PROFILE_CHANGED_EVENT = 'winbox:profile-changed';
 
 export function notifyProfileChanged(sourceKey = ''): void {
