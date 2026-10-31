@@ -150,35 +150,48 @@ export default function SourcePicker({ sites, current, onPick, port, variant = '
           <div className="srcpick-cols">
             {pane && multi && (
               <div className="srcpick-col-sub">
-                {profiles.map((p) => (
-                  <div className="srcpick-sub-row" key={p.id}>
-                    <button
-                      type="button"
-                      aria-pressed={p.id === pane.id}
-                      aria-current={p.id === presentation.activeProfileId ? 'true' : undefined}
-                      className={`srcpick-item ui-action srcpick-sub${p.id === pane.id ? ' active' : ''}${p.id === views!.activeId ? ' cur' : ''}`}
-                      title={`${p.name}（${p.sites.length} 个源）${p.id === views!.activeId ? ' · 当前使用' : ''}${p.id === pane.id && p.id !== views!.activeId ? ' · 正在查看' : ''}`}
-                      disabled={switching}
-                      onClick={() => selectPane(p.id)}
-                    >
-                      <span className="srcpick-sname">{p.name}</span>
-                      {(p.id === pane.id || p.id === views!.activeId) && (
-                        <span className={`srcpick-item-state${p.id === views!.activeId ? ' current' : ''}`}>
-                          {p.id === views!.activeId ? '当前使用' : '查看中'}
+                {profiles.map((p) => {
+                  const current = p.id === views!.activeId;
+                  const restorable = p.restorable !== false;
+                  const state = restorable
+                    ? `${p.sites.length} 个点播源${current ? ' · 当前使用' : ''}`
+                    : `无法切换，${p.unavailableReason || '配置快照不可用'}`;
+                  return (
+                    <div className="srcpick-sub-row" key={p.id}>
+                      <button
+                        type="button"
+                        aria-label={`${p.name}，${state}`}
+                        aria-pressed={p.id === pane.id}
+                        aria-current={current ? 'true' : undefined}
+                        aria-disabled={!restorable || undefined}
+                        className={`srcpick-item ui-action srcpick-sub${p.id === pane.id ? ' active' : ''}${current ? ' cur' : ''}${!restorable ? ' unavailable' : ''}`}
+                        title={`${p.name} · ${state}`}
+                        disabled={switching || !restorable}
+                        onClick={() => selectPane(p.id)}
+                      >
+                        <span className="srcpick-profile-heading">
+                          <span className="srcpick-sname">{p.name}</span>
+                          {p.id === pane.id && (
+                            <span className={`srcpick-profile-state${current ? ' current' : ' previewing'}`}>
+                              {current ? '当前' : '预览中'}
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      className="srcpick-item ui-action srcpick-sub-preview"
-                      aria-label={`仅预览${p.name}来源`}
-                      aria-pressed={p.id === pane.id}
-                      title={`仅预览${p.name}来源，不立即激活`}
-                      disabled={switching}
-                      onClick={() => actions.previewProfile(p.id)}
-                    ><Eye16Regular aria-hidden="true" /></button>
-                  </div>
-                ))}
+                        <span className={`srcpick-profile-meta${!restorable ? ' unavailable' : ''}`}>
+                          {restorable ? `${p.sites.length} 个点播源` : p.unavailableReason || '配置快照不可用'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className="srcpick-item ui-action srcpick-sub-preview"
+                        aria-label={`仅预览${p.name}来源`}
+                        title={p.restorable === false ? p.unavailableReason || '配置快照不可用' : `仅预览${p.name}来源，不立即激活`}
+                        disabled={switching || p.restorable === false}
+                        onClick={() => actions.previewProfile(p.id)}
+                      ><Eye16Regular aria-hidden="true" /></button>
+                    </div>
+                  );
+                })}
               </div>
             )}
             <div className="srcpick-col-src" ref={srcColRef}>

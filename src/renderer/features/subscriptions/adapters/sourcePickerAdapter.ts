@@ -1,5 +1,5 @@
 import { client } from '../../../api/client';
-import { notifyProfileChanged, PROFILE_CHANGED_EVENT, SOURCES_CHANGED_EVENT } from '../../../lib/configEvents';
+import { notifyProfileChanged, PROFILE_CHANGED_EVENT, SOURCE_CHANGED_EVENT, SOURCES_CHANGED_EVENT } from '../../../lib/configEvents';
 import type { SourcePickerPort } from '../application/sourcePickerPort';
 
 export const sourcePickerAdapter: SourcePickerPort = {
@@ -12,16 +12,16 @@ export const sourcePickerAdapter: SourcePickerPort = {
   activateProfile: profileId => client.cfgActivateProfile(profileId),
   switchProfileSource: (profileId, sourceKey) => client.cfgSwitchProfileSource(profileId, sourceKey),
   publishSourceChanged(sourceKey) {
-    window.dispatchEvent(new CustomEvent('winbox:source-changed', { detail: sourceKey }));
+    window.dispatchEvent(new CustomEvent(SOURCE_CHANGED_EVENT, { detail: sourceKey }));
   },
   publishProfileChanged: notifyProfileChanged,
   subscribeToCurrentSourcesRefresh(listener) {
     window.addEventListener('focus', listener);
-    window.addEventListener('winbox:source-changed', listener);
+    window.addEventListener(SOURCE_CHANGED_EVENT, listener);
     window.addEventListener(SOURCES_CHANGED_EVENT, listener);
     return () => {
       window.removeEventListener('focus', listener);
-      window.removeEventListener('winbox:source-changed', listener);
+      window.removeEventListener(SOURCE_CHANGED_EVENT, listener);
       window.removeEventListener(SOURCES_CHANGED_EVENT, listener);
     };
   },

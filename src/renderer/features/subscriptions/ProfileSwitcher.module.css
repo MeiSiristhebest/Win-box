@@ -10,9 +10,23 @@
 .list { display: flex; flex-direction: column; align-items: stretch; gap: 8px; min-height: 0; flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain; scrollbar-gutter: stable; -webkit-app-region: no-drag; margin-block: 12px; }
 .choice { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-start; gap: 6px; width: 100%; min-height: 0; padding: 12px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .choice[aria-pressed='true'] { border-color: var(--color-accent); background: var(--accent-soft); color: var(--text-primary); }
-.choiceHeading { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; width: 100%; }
-.choiceName { font-weight: 600; }
-.currentBadge { display: inline-flex; align-items: center; padding: 2px 7px; border: 1px solid var(--border-strong, var(--border)); border-radius: 999px; color: var(--text-secondary); background: var(--surface-2); font-size: 11px; font-weight: 650; white-space: nowrap; }
+.choiceHeading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 9px; width: 100%; }
+.choiceName { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.currentState {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 22px;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 62%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--surface-elevated));
+  color: var(--text-accent, var(--color-accent));
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+  white-space: nowrap;
+}
 .choice:disabled { opacity: 1; cursor: not-allowed; }
 .choice:disabled .choiceName { color: var(--text-secondary); }
 .meta, .reason { color: var(--text-secondary); font-size: 12px; }

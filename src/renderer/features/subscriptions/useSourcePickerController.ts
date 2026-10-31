@@ -15,7 +15,11 @@ function describeFailure(cause: unknown): string {
 }
 
 export function resolveSourcePickerPaneId(currentId: string, profiles: ProfileSitesView['profiles'], activeId: string, alignActive: boolean): string {
-  return alignActive || !profiles.some(profile => profile.id === currentId) ? activeId : currentId;
+  if (!alignActive && profiles.some(profile => profile.id === currentId && profile.restorable !== false)) return currentId;
+  return profiles.find(profile => profile.id === activeId && profile.restorable !== false)?.id
+    ?? profiles.find(profile => profile.restorable !== false)?.id
+    ?? profiles[0]?.id
+    ?? '';
 }
 
 /** Owns source/profile loading and selection. The component keeps only panel and DOM interaction state. */
@@ -97,6 +101,7 @@ export function useSourcePickerController({ port, enabled, open, onPick, current
 
   const activateProfile = useCallback(async (profileId: string) => {
     if (!profileId || switchInProgress.current || !profileSites) return false;
+    if (!profileSites.profiles.some(profile => profile.id === profileId && profile.restorable !== false)) return false;
     if (profileId === profileSites.activeId) {
       setSelectedProfileId(profileId);
       return true;
@@ -119,7 +124,7 @@ export function useSourcePickerController({ port, enabled, open, onPick, current
   }, [port, profileSites]);
 
   const previewProfile = useCallback((profileId: string) => {
-    if (switchInProgress.current || !profileSites?.profiles.some(profile => profile.id === profileId)) return false;
+    if (switchInProgress.current || !profileSites?.profiles.some(profile => profile.id === profileId && profile.restorable !== false)) return false;
     setSelectedProfileId(profileId);
     return true;
   }, [profileSites]);

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import SourcePicker from '../src/renderer/features/subscriptions/SourcePicker';
 import type { SourcePickerPort } from '../src/renderer/features/subscriptions/application/sourcePickerPort';
@@ -33,7 +33,7 @@ describe('SourcePicker child repository switching', () => {
     render(<SourcePicker port={port} />);
     fireEvent.click(screen.getByRole('button'));
     expect(await screen.findByRole('region', { name: '订阅和来源' })).toBeTruthy();
-    expect(await screen.findByRole('button', { name: '点播子仓' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /^点播子仓，1 个点播源$/ })).toBeTruthy();
     expect(port.loadCurrentSources).toHaveBeenCalledTimes(1);
     expect(port.loadProfileSites).toHaveBeenCalledOnce();
   });
@@ -43,7 +43,7 @@ describe('SourcePicker child repository switching', () => {
     render(<SourcePicker port={port} />);
     fireEvent.click(screen.getByRole('button'));
 
-    fireEvent.click(await screen.findByRole('button', { name: '点播子仓' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^点播子仓，1 个点播源$/ }));
 
     expect(port.activateProfile).toHaveBeenCalledTimes(1);
     expect(port.activateProfile).toHaveBeenCalledWith('vod');
@@ -57,12 +57,73 @@ describe('SourcePicker child repository switching', () => {
     render(<SourcePicker port={port} />);
     fireEvent.click(screen.getByRole('button'));
 
-    const activeProfile = await screen.findByRole('button', { name: '直播子仓 当前使用' });
+    const activeProfile = await screen.findByRole('button', { name: '直播子仓，2 个点播源 · 当前使用' });
+    const previewAction = screen.getByRole('button', { name: '仅预览直播子仓来源' });
     const activeSource = await screen.findByRole('button', { name: '直播源 当前' });
     expect(activeProfile.getAttribute('aria-current')).toBe('true');
     expect(activeProfile.getAttribute('aria-pressed')).toBe('true');
+    expect(within(activeProfile).getByText('当前')).toBeTruthy();
+    expect(previewAction.hasAttribute('aria-pressed')).toBe(false);
     expect(activeSource.getAttribute('aria-current')).toBe('true');
     expect(activeSource.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('keeps an empty valid profile switchable and prevents activation of an unreadable profile', async () => {
+    const port = createPort();
+    port.loadProfileSites = vi.fn().mockResolvedValue({
+      activeId: 'active',
+      profiles: [
+        { id: 'active', name: '当前子仓', sites: [{ key: 'live', name: '直播源' }], restorable: true },
+        { id: 'empty', name: '空子仓', sites: [], restorable: true },
+        { id: 'broken', name: '损坏子仓', sites: [], restorable: false, unavailableReason: '保存的配置快照无法解析' },
+      ],
+    });
+    render(<SourcePicker port={port} />);
+    fireEvent.click(screen.getByRole('button'));
+
+    const emptyProfile = await screen.findByRole('button', { name: '空子仓，0 个点播源' });
+    const brokenProfile = await screen.findByRole('button', { name: '损坏子仓，无法切换，保存的配置快照无法解析' });
+    expect((emptyProfile as HTMLButtonElement).disabled).toBe(false);
+    expect((brokenProfile as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: '仅预览损坏子仓来源' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '仅预览空子仓来源' }));
+    expect(screen.getByText('该子仓暂无点播源；直播线路不显示在这里')).toBeTruthy();
+
+    fireEvent.click(emptyProfile);
+    expect(port.activateProfile).toHaveBeenCalledWith('empty');
+    expect(port.activateProfile).not.toHaveBeenCalledWith('broken');
+  });
+
+  it('reloads an open picker after the source list changes elsewhere', async () => {
+    const port = createPort();
+    let notifyProfileSitesRefresh = (): void => undefined;
+    port.loadProfileSites = vi.fn()
+      .mockResolvedValueOnce({
+        activeId: 'profile-a',
+        profiles: [
+          { id: 'profile-a', name: '线路 A', sites: [{ key: 'source-a', name: 'Source A' }] },
+          { id: 'profile-b', name: '线路 B', sites: [{ key: 'source-b', name: 'Source B' }] },
+        ],
+      })
+      .mockResolvedValueOnce({
+        activeId: 'profile-a',
+        profiles: [
+          { id: 'profile-a', name: '线路 A', sites: [] },
+          { id: 'profile-b', name: '线路 B', sites: [{ key: 'source-b', name: 'Source B' }] },
+        ],
+      });
+    port.subscribeToProfileSitesRefresh = vi.fn((listener) => {
+      notifyProfileSitesRefresh = listener;
+      return () => undefined;
+    });
+    render(<SourcePicker port={port} />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(await screen.findByRole('button', { name: 'Source A' })).toBeTruthy();
+
+    await act(async () => { notifyProfileSitesRefresh(); });
+
+    expect(await screen.findByText('该子仓暂无点播源；直播线路不显示在这里')).toBeTruthy();
+    expect(port.loadProfileSites).toHaveBeenCalledTimes(2);
   });
 
   it('uses controlled sources and current selection without self-loading or changing the source through the port', async () => {
@@ -174,8 +235,10 @@ describe('SourcePicker child repository switching', () => {
     fireEvent.click(screen.getByRole('button'));
     const preview = await screen.findByRole('button', { name: '仅预览点播子仓来源' });
     fireEvent.click(preview);
-    expect(preview.getAttribute('aria-pressed')).toBe('true');
+    expect(preview.hasAttribute('aria-pressed')).toBe(false);
     expect(port.activateProfile).not.toHaveBeenCalled();
+    const previewingProfile = screen.getByRole('button', { name: '点播子仓，1 个点播源' });
+    expect(within(previewingProfile).getByText('预览中')).toBeTruthy();
 
     fireEvent.click(await screen.findByRole('button', { name: '点播站点' }));
     await act(async () => { await Promise.resolve(); });

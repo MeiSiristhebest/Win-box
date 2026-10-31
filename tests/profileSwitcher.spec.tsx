@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UserConfig } from '../src/shared/types';
@@ -34,13 +34,17 @@ describe('ProfileSwitcher', () => {
   it('lists restorable children and hides failed subscription entries from switching', async () => {
     setup();
     fireEvent.click(screen.getByRole('button', { name: /切换子仓/ }));
-    expect(await screen.findByRole('dialog', { name: '切换子仓' })).toBeTruthy();
+    const dialog = await screen.findByRole('dialog', { name: '切换子仓' });
     const liveOnly = await screen.findByRole('button', { name: /B子仓.*0 个站点.*1 条直播/ });
     expect((liveOnly as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByRole('button', { name: /失败子仓/ })).toBeNull();
+    const current = await within(dialog).findByRole('button', { name: /A子仓/ });
+    expect(current.getAttribute('aria-pressed')).toBe('true');
+    expect(within(current).getByText('当前')).toBeTruthy();
+    expect(within(current).queryByText('当前使用')).toBeNull();
     fireEvent.change(screen.getByRole('textbox', { name: '筛选子仓' }), { target: { value: 'B子仓' } });
-    expect(screen.queryByRole('button', { name: /A子仓.*当前/ })).toBeNull();
-    expect(screen.getByRole('button', { name: /B子仓/ })).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: /A子仓/ })).toBeNull();
+    expect(within(dialog).getByRole('button', { name: /B子仓/ })).toBeTruthy();
   });
 
   it('activates once and notifies site and live consumers only after success', async () => {
@@ -65,9 +69,10 @@ describe('ProfileSwitcher', () => {
     const { activate } = setup();
     activate.mockRejectedValue(new Error('配置快照无法恢复'));
     fireEvent.click(screen.getByRole('button', { name: /切换子仓/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /B子仓.*0 个站点/ }));
+    const dialog = await screen.findByRole('dialog', { name: '切换子仓' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: /B子仓.*0 个站点/ }));
     expect((await screen.findByRole('alert')).textContent).toContain('配置快照无法恢复');
-    expect(screen.getByRole('button', { name: /A子仓.*当前/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(dialog).getByRole('button', { name: /A子仓/ }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('retains an offline snapshot when the latest child refresh failed', () => {
@@ -82,7 +87,7 @@ describe('ProfileSwitcher', () => {
     pending.subscriptionGroups = [{ id: 'g', name: '待处理组', url: '', status: 'partial', createdAt: '', updatedAt: '', members: [{ id: 'm', name: '待处理子仓', url: '', status: 'pending', profileId: 'pending' }] }];
     setup(pending);
     fireEvent.click(screen.getByRole('button', { name: /切换子仓/ }));
-    expect(await screen.findByText('当前没有可切换档案；可在“管理配置档案”中查看各成员状态。')).toBeTruthy();
+    expect(await screen.findByText('当前没有可用档案；可在“管理配置档案”中查看各成员状态。')).toBeTruthy();
     expect(screen.queryByText(/导入失败的成员/)).toBeNull();
   });
 
