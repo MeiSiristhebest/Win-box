@@ -36,6 +36,28 @@ describe('PlaybackParseFallback', () => {
     expect(parser.resolve).not.toHaveBeenCalled();
   });
 
+  it('resolves a watch page even when the spider incorrectly marks it as direct', async () => {
+    const hit = { url: 'https://cdn.example/movie.m3u8', headers: {}, via: 'sniff:direct' };
+    const { fallback, parser } = createFallback(async () => hit);
+    const page = 'https://www.mgtv.com/592751.html';
+
+    const resolved = await fallback.resolve(result({ parse: 0, url: page }));
+
+    expect(parser.resolve).toHaveBeenCalledWith([], page);
+    expect(resolved).toMatchObject({ parse: 0, url: `${LOCAL_PROXY_BASE}/play?url=${encodeURIComponent(hit.url)}` });
+  });
+
+  it('does not report an unresolved watch page as a successful direct result', async () => {
+    const { fallback, parser } = createFallback(async () => null);
+    const page = 'https://www.mgtv.com/592751.html';
+
+    const unresolved = await fallback.resolve(result({ parse: 0, url: page }));
+
+    expect(parser.resolve).toHaveBeenCalledWith([], page);
+    expect(unresolved).toMatchObject({ parse: 1, url: page });
+    expect(unresolved.message).toContain('自动解析未取得直连地址');
+  });
+
   it('tries only the first address in a multi-address result', async () => {
     const hit = { url: 'https://cdn.example/movie.mp4', headers: {}, via: 'direct' };
     const { fallback, parser } = createFallback(async () => hit);

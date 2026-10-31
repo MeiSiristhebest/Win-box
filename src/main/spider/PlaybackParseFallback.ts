@@ -1,6 +1,6 @@
 import type { Logger, PlayResult, ParseBean } from '../../shared/types';
 import { wrapPlayUrlWithHeaders } from '../../shared/driveProvider';
-import { isHlsPlaylistUrl } from '../../shared/playbackResult';
+import { isHlsPlaylistUrl, isPlaybackPageUrl } from '../../shared/playbackResult';
 
 export interface PlaybackParseHit {
   url: string;
@@ -26,7 +26,10 @@ export class PlaybackParseFallback {
   constructor(private readonly ports: PlaybackParseFallbackPorts) {}
 
   async resolve(result: PlayResult, parses: ParseBean[] = [], offset = 0): Promise<PlayResult> {
-    if (result.parse !== 1 || !result.url) return result;
+    // Some spiders incorrectly label a watch page as a direct URL (parse=0).
+    // A successful HTTP URL is not enough: never hand a known player page to <video>.
+    const requiresResolution = result.parse === 1 || isPlaybackPageUrl(result.url);
+    if (!requiresResolution || !result.url) return result;
 
     const target = result.url.split('#').filter(Boolean)[0] || result.url;
     try {

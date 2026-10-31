@@ -17,6 +17,12 @@ describe('播放日志中的无效结果', () => {
     expect(extractParseResult(url)).toBeNull();
   });
 
+  it('rejects HTML watch pages as playable media URLs', () => {
+    const url = 'https://www.mgtv.com/592751.html';
+    expect(directPlayUrlError(url)).toContain('网页地址而非媒体流');
+    expect(playbackResultError({ parse: 0, url })).toContain('网页地址而非媒体流');
+  });
+
   it.each(['https://cdn.test/entry?token=a%2Bb', 'http://127.0.0.1:9978/bt/hash/1',
     'https://cdn.test/1.mp4#https://cdn.test/2.mp4', 'https://cdn.test/1.mp4#fragment',
     'file:///C:/Videos/a.mp4', 'C:\\Videos\\a.mp4', '\\\\server\\share\\a.mp4', 'rtsp://live.test/stream',

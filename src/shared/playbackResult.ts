@@ -64,6 +64,7 @@ export function directPlayUrlError(raw: string): string {
   // TVBox 用 # 拼多段 URL；普通 fragment 仍属于同一地址。
   for (const part of url.split(/#(?=(?:https?|file):\/\/)/i)) {
     if (isErrorVideoUrl(part)) return '源站返回错误占位视频，未取得有效播放地址，请切换线路或稍后重试';
+    if (isPlaybackPageUrl(part)) return '源站返回了网页地址而非媒体流，请切换线路或配置解析接口后重试';
     if (/^[a-z]:[\\/]/i.test(part) || /^\\\\[^\\]+\\[^\\]+/.test(part)) continue;
     try {
       const parsed = new URL(part);
