@@ -5,6 +5,7 @@ import { recordOpenedPlayerEpisode } from './recordPlayerEpisode';
 import { sourceIdentity } from './discoverPlaybackAlternatives';
 import type {
   PlayerInitData,
+  PlaybackRecoveryCause,
   PlayerPagePlaybackWorkflowPort,
   PlayerPageWorkflowHistoryPort,
   PlayerSourceMemoryPort,
@@ -25,7 +26,7 @@ export interface PlayerPageSessionWorkflow {
   applyInit(incoming: PlayerInitData): Promise<void>;
   selectEpisode(index: number): void;
   retryCurrent(resolutionKind: PlayerPageResolutionState['kind']): void;
-  autoChangeParse(currentPosition?: number, reason?: string): Promise<boolean>;
+  autoChangeParse(currentPosition?: number, reason?: string, cause?: PlaybackRecoveryCause): Promise<boolean>;
   selectAlternative(id: string): boolean;
   confirmPlaybackStarted(): void;
   dismissDriveBinding(): void;
@@ -92,7 +93,7 @@ export function createPlayerPageSessionWorkflow(
     const result = await resolve(data, index, preparedUrl);
     if (result === 'failed' && currentInit && samePlaybackRequest(currentInit, data, index)) {
       const message = '当前解析线路没有返回可播放地址';
-      void autoChangeParse(data.startTime || 0, message);
+      void autoChangeParse(data.startTime || 0, message, 'resolution-failure');
     }
   }
 
@@ -184,16 +185,25 @@ export function createPlayerPageSessionWorkflow(
     }
     if (result === 'failed') {
       // Resolution failures get the same bounded parser retries as media failures.
-      void autoChangeParse(position, '备用源解析失败');
+      void autoChangeParse(position, '备用源解析失败', 'resolution-failure');
       return true;
     }
     return result !== 'empty';
   }
 
-  async function autoChangeParse(currentPosition = 0, reason = ''): Promise<boolean> {
+  async function autoChangeParse(
+    currentPosition = 0,
+    reason = '',
+    cause: PlaybackRecoveryCause = 'resolution-failure',
+  ): Promise<boolean> {
     if (isUserInterruption(reason)) return false;
     const current = currentInit;
     if (!current) return false;
+
+    // A media engine has already exhausted the current URL. Cycling parser
+    // strategies cannot repair a decoded/network stream failure, so search
+    // verified sources immediately. Parser rotation remains for URL failures.
+    if (cause === 'media-failure') return searchAlternativeSources(currentPosition);
 
     if (automaticParseSwitches < MAX_AUTOMATIC_PARSE_SWITCHES) {
       automaticParseSwitches += 1;
@@ -202,7 +212,7 @@ export function createPlayerPageSessionWorkflow(
       updateInit(next);
       const result = await resolve(next, currentEpisodeIndex, '', { parseOffset });
       if (result === 'failed') {
-        return autoChangeParse(currentPosition, '解析线路未返回可播放地址');
+        return autoChangeParse(currentPosition, '解析线路未返回可播放地址', 'resolution-failure');
       }
       if (result === 'drive-bind-required') {
         return true;

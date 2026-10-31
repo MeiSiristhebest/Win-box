@@ -89,7 +89,7 @@ export interface VideoPlayerProps {
   episodes?: { name: string; url: string }[];
   onPickEpisode?: (index: number) => void;
   /** ★ 2026-10-25（自动切源容错机制 AutoChangeParse）：流异常/超时时自动切换下一解析线路 */
-  onAutoChangeParse?: (currentTime: number, reason: string) => Promise<boolean> | boolean;
+  onAutoChangeParse?: (currentTime: number, reason: string, cause: 'media-failure') => Promise<boolean> | boolean;
   /** Confirms that an alternate source actually began playing before history is committed. */
   onPlaybackStarted?: () => void;
   /** Re-resolve the selected episode instead of reloading the player window. */

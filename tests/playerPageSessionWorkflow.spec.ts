@@ -120,6 +120,45 @@ describe('player page session workflow', () => {
     expect(sourceMemory.rememberSource).toHaveBeenCalledWith(expect.objectContaining({ fromKey: 'source-b', id: 'movie-b' }));
   });
 
+  it('searches verified sources immediately after a media failure without rotating parsers first', async () => {
+    const candidate = alternateCandidate();
+    const session: PlayerPagePlaybackWorkflowPort = {
+      play: vi.fn(async (input) => ({
+        parse: 0,
+        url: input.key === 'source-b' ? 'https://media.invalid/alternate.mp4' : 'https://media.invalid/current.mp4',
+        playUrl: '',
+        flag: input.flag,
+      })),
+      resolveHistorySource: vi.fn(async () => ({ profileId: 'profile-a', name: 'Source A' })),
+      loadDetail: vi.fn(async () => null),
+      discover: vi.fn(async () => ({ candidates: [candidate], incompleteSources: 0, truncated: false })),
+      cleanupTemporaryFiles: vi.fn(async () => undefined),
+    };
+    const history: PlayerPageWorkflowHistoryPort = {
+      beginPlayerHistorySession: vi.fn(),
+      recordHistory: vi.fn(),
+      persist: vi.fn(),
+    };
+    const sourceMemory: PlayerSourceMemoryPort = { rememberSource: vi.fn() };
+    const actions: PlayerPageSessionAction[] = [];
+    const workflow = createPlayerPageSessionWorkflow({ session, history, sourceMemory, publish: action => actions.push(action) });
+
+    await workflow.applyInit(playbackInit());
+    await vi.waitFor(() => expect(history.recordHistory).toHaveBeenCalledOnce());
+
+    await workflow.autoChangeParse(125, 'decode failed', 'media-failure');
+
+    expect(session.play).toHaveBeenCalledTimes(2);
+    expect(session.play).toHaveBeenNthCalledWith(2, expect.objectContaining({ key: 'source-b', id: 'other-episode-2', parseOffset: undefined }));
+    expect(session.discover).toHaveBeenCalledOnce();
+    expect(history.recordHistory).toHaveBeenCalledOnce();
+    expect(actions).toContainEqual({ type: 'source-fallback-switching', sourceName: 'Source B' });
+
+    workflow.confirmPlaybackStarted();
+
+    expect(history.recordHistory).toHaveBeenCalledTimes(2);
+  });
+
   it('does not auto-switch when the aggregate search is incomplete, but lets the user choose a verified candidate', async () => {
     const candidate = alternateCandidate();
     const session: PlayerPagePlaybackWorkflowPort = {

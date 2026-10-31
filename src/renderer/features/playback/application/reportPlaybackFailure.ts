@@ -1,5 +1,5 @@
 export interface PlaybackFailureEffects {
-  autoChangeParse?: (currentTime: number, reason: string) => Promise<boolean> | boolean;
+  autoChangeParse?: (currentTime: number, reason: string, cause: 'media-failure') => Promise<boolean> | boolean;
   onPlaybackFailure?: (currentTime: number, reason: string) => void;
   notify: (message: string) => void;
 }
@@ -15,7 +15,7 @@ export function reportPlaybackFailure(
   if (effects.autoChangeParse) {
     effects.notify(`流异常（${reason}），正在自动为您切换解析线路…`);
     try {
-      autoChange = Promise.resolve(effects.autoChangeParse(currentTime, reason));
+      autoChange = Promise.resolve(effects.autoChangeParse(currentTime, reason, 'media-failure'));
     } catch (error) {
       effects.notify(`自动切换解析线路失败：${errorMessage(error)}`);
     }

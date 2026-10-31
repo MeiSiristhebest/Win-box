@@ -18,6 +18,8 @@ export interface PlayerInitData {
   deferHistoryUntilPlayback?: boolean;
 }
 
+export type PlaybackRecoveryCause = 'media-failure' | 'resolution-failure';
+
 export interface PlaybackAlternativeDiscoveryPort {
   discover(input: {
     current: PlayerInitData;
