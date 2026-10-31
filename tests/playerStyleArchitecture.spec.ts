@@ -39,6 +39,16 @@ describe('player control style architecture', () => {
     expect(group).toMatch(/border:\s*0/);
   });
 
+  it('lets video clicks pass through a hidden toolbar and restores keyboard-visible controls', async () => {
+    const { css } = await readGlobalStyleComposition();
+    const hiddenControls = readRule(css, '.vplayer .vp-controls');
+    const visibleControls = readRule(css, '.vplayer:is(.vui, :focus-within) .vp-controls');
+
+    expect(hiddenControls).toMatch(/pointer-events:\s*none/);
+    expect(visibleControls).toMatch(/pointer-events:\s*auto/);
+    expect(visibleControls).toMatch(/opacity:\s*1/);
+  });
+
   it('keeps MPV mode labels and the playback clock from collapsing in a full toolbar', async () => {
     const { imports, css } = await readGlobalStyleComposition();
     const toolbar = await readFile(new URL('../src/renderer/features/playback/PlayerControlsBar.tsx', import.meta.url), 'utf8');
