@@ -179,7 +179,7 @@ export function useSourceManagementPresenter({
       const refreshError = await refreshAfterMutation();
       if (result.failed) {
         setError(errorMessage(result.error));
-        setNotice(`已处理 ${completed.size} 个源；后续批次失败，剩余项仍保留在选择中。${refreshError ? ` 源列表刷新失败：${refreshError}` : ''}`);
+        if (completed.size > 0) setNotice(`已处理 ${completed.size} 个源；后续批次失败，剩余项仍保留在选择中。${refreshError ? ` 源列表刷新失败：${refreshError}` : ''}`);
       } else {
         setNotice(`${blocked ? '已全局屏蔽' : '已解除全局屏蔽'} ${completed.size} 个源${refreshError ? `；源列表刷新失败：${refreshError}` : ''}`);
       }
