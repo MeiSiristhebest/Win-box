@@ -58,7 +58,9 @@ describe('player control style architecture', () => {
     expect(time).toMatch(/flex:\s*0 0 auto/);
     expect(time).toMatch(/white-space:\s*nowrap/);
     expect(compactToolbar).toMatch(/gap:\s*5px/);
-    expect(responsiveToolbar).toMatch(/overflow-x:\s*auto/);
+    expect(responsiveToolbar).toMatch(/flex-wrap:\s*wrap/);
+    expect(responsiveToolbar).toMatch(/overflow:\s*visible/);
+    expect(css).not.toMatch(/\.vplayer \.vp-bar\s*\{[^}]*overflow-x:\s*auto/);
     expect(kernelControl).toContain("className={'vp-ctl vp-kernel'");
     expect(toolbar.match(/className=\{'vp-ctl vp-ctl-label/g) ?? []).toHaveLength(2);
   });

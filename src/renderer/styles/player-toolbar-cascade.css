@@ -265,15 +265,20 @@
 
 @media (max-width: 760px) {
   :root .vplayer .vp-bar {
-    justify-content: flex-start;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-    overscroll-behavior-inline: contain;
+    justify-content: center;
+    flex-wrap: wrap;
+    overflow: visible;
+    row-gap: 4px;
   }
 
   :root .vplayer .vp-bar-group {
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  :root .vplayer .vp-bar-spacer {
+    display: none;
   }
 }
 
