@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { themeApplication } from '../src/renderer/features/theme/themeRuntime';
 import { useTheme, useSkinLayout } from '../src/renderer/features/theme/adapters/useThemeStore';
-import { registerPluginSkins, SEMANTIC_TOKEN_NAMES, themes, type Theme } from '../src/renderer/lib/themeTokens';
+import { colorSchemeFor, registerPluginSkins, SEMANTIC_TOKEN_NAMES, themes, type Theme } from '../src/renderer/lib/themeTokens';
 
 describe('theme application', () => {
   const values = { themeId: 'dark', motion: 'auto', showDiscover: true, waterfall: false };
@@ -35,6 +35,7 @@ describe('theme application', () => {
     for (const theme of themeIds) {
       themeApplication.applyTheme(theme);
       expect(document.documentElement.getAttribute('data-theme')).toBe(theme);
+      expect(document.documentElement.style.colorScheme).toBe(colorSchemeFor(theme));
       for (const token of SEMANTIC_TOKEN_NAMES) {
         expect(document.documentElement.style.getPropertyValue(`--${token}`)).toBe(themes[theme].tokens[token]);
       }
@@ -62,5 +63,6 @@ describe('theme application', () => {
     });
     expect(result.current.theme).toBe('plugin:test-layout');
     expect(result.current.layout.shell).toBe('sidebar');
+    expect(document.documentElement.style.colorScheme).toBe('light');
   });
 });

@@ -66,4 +66,24 @@ describe('global stylesheet composition', () => {
     expect(optionState).toContain('font-weight: 700');
     expect(css).not.toMatch(/:root\[data-shell=['"](?:topbar|dualbar|sidebar|pillbar)['"]\]\s+\.vp-ctl\.vp-on/);
   });
+
+  it('keeps native options and the custom playback-rate popup readable and keyboard-visible', async () => {
+    const { css } = await readGlobalStyleComposition();
+    const nativeOptions = css.match(/:root\s+:where\(option,\s*optgroup\)\s*\{([^}]*)\}/)?.[1] ?? '';
+    const nativeSelected = css.match(/:root\s+option:checked\s*\{([^}]*)\}/)?.[1] ?? '';
+    const rateOption = css.match(/:root\[data-shell\]\s+\.vp-rate-menu button\.vp-rate-option\s*\{([^}]*)\}/)?.[1] ?? '';
+    const rateSelected = css.match(/:root\[data-shell\]\s+\.vp-rate-menu button\.vp-rate-option\.selected,\s*:root\[data-shell\]\s+\.vp-rate-menu button\.vp-rate-option\[aria-checked='true'\]\s*\{([^}]*)\}/)?.[1] ?? '';
+    const rateFocus = css.match(/:root\[data-shell\]\s+\.vp-rate-menu button\.vp-rate-option:focus-visible\s*\{([^}]*)\}/)?.[1] ?? '';
+
+    expect(nativeOptions).toContain('color: var(--text-primary, var(--text))');
+    expect(nativeOptions).toContain('background-color: var(--surface-elevated, var(--surface-3))');
+    expect(nativeSelected).toContain('color: var(--on-accent)');
+    expect(nativeSelected).toContain('background-color: var(--accent)');
+
+    expect(rateOption).toContain('color: var(--text-primary, var(--text))');
+    expect(rateOption).toContain('background: transparent');
+    expect(rateSelected).toContain('color: var(--on-accent)');
+    expect(rateSelected).toContain('background: var(--color-accent, var(--accent))');
+    expect(rateFocus).toContain('outline: 2px solid var(--focus-ring-color, var(--color-accent, var(--accent)))');
+  });
 });
