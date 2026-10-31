@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-31T06:46:53Z",
+  "taskId": "V04",
+  "command": "node --test scripts/installer-script.check.mjs",
+  "result": {
+    "passed": 12,
+    "failed": 0,
+    "exitCode": 0,
+    "durationSeconds": 95.1
+  },
+  "scope": [
+    "Synthetic NSIS lifecycle and process-stop fixtures.",
+    "Six synthetic user-data categories for preservation checks.",
+    "Rollback, uninstall-failure, and locked-file refusal cases.",
+    "Isolated generated install directory; temporary environment cleaned."
+  ],
+  "realShippingInstallerEvidence": "architecture-audit/evidence/v04-real-upgrade-acceptance-2026-10-30.json",
+  "limits": [
+    "This run did not execute the current 2026-10-31 Setup.exe UI.",
+    "The previous real same-path overwrite used an earlier package; full profile digest was inconclusive because its baseline was taken while the old app was running.",
+    "Real uninstall-first, Cancel/Back rollback, UAC/elevation, and favorites/config/account baseline remain unverified."
+  ],
+  "conclusion": "Installer regression suite passes 12/12, but it is not proof of every real Setup.exe UI path or full user-profile preservation."
+}

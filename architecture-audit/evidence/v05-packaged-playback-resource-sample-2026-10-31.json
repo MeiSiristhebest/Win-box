@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-31T06:46:53Z",
+  "taskId": "V05",
+  "candidate": {
+    "version": "1.27.1",
+    "installerSha256": "5a5f6b80e637fc2825b14f6cd4e4dd797ad3f1fc8cebcce128656b4c0f86e3e1",
+    "appAsarSha256": "d3eaf5d3fbf99b973bb26e380342278b1eab4bb1a583885413f92900f5a2d38b",
+    "fixture": "Generated local VP8 WebM, 320x180, approximately 14 seconds."
+  },
+  "playbackProcessSamples": {
+    "command": "node scripts/measure-runtime-resources.mjs wrapping packaged playback acceptance",
+    "includedProcessNames": [
+      "Win-Box.exe"
+    ],
+    "sampleIntervalMs": 500,
+    "runs": [
+      {
+        "run": 1,
+        "samples": 36,
+        "durationMs": 24343,
+        "workingSetPeakMiB": 638.5,
+        "privateBytesPeakMiB": 528.1,
+        "cpuP95Percent": 108.8,
+        "cpuPeakPercent": 168.6,
+        "processCountPeak": 5,
+        "budgetStatus": "NOT_CONFIGURED",
+        "exitCode": 0
+      },
+      {
+        "run": 2,
+        "samples": 32,
+        "durationMs": 25063,
+        "workingSetPeakMiB": 702.3,
+        "privateBytesPeakMiB": 530.4,
+        "cpuP95Percent": 111.6,
+        "cpuPeakPercent": 291.7,
+        "processCountPeak": 5,
+        "budgetStatus": "NOT_CONFIGURED",
+        "exitCode": 0
+      },
+      {
+        "run": 3,
+        "samples": 33,
+        "durationMs": 24443,
+        "workingSetPeakMiB": 703.6,
+        "privateBytesPeakMiB": 523.4,
+        "cpuP95Percent": 146.3,
+        "cpuPeakPercent": 241.2,
+        "processCountPeak": 5,
+        "budgetStatus": "NOT_CONFIGURED",
+        "exitCode": 0
+      }
+    ],
+    "ranges": {
+      "workingSetPeakMiB": [
+        638.5,
+        703.6
+      ],
+      "privateBytesPeakMiB": [
+        523.4,
+        530.4
+      ],
+      "cpuP95Percent": [
+        108.8,
+        146.3
+      ]
+    },
+    "combinedPotPlayerRun": {
+      "durationMs": 38671,
+      "samples": 49,
+      "winBoxWorkingSetPeakMiB": 728,
+      "winBoxPrivateBytesPeakMiB": 603.9,
+      "potPlayerWorkingSetPeakMiB": 154.7,
+      "potPlayerPrivateBytesPeakMiB": 172.4,
+      "combinedWorkingSetPeakMiB": 855.6,
+      "combinedPrivateBytesPeakMiB": 707.3,
+      "winBoxCpuP95Percent": 108,
+      "potPlayerCpuP95Percent": 156.6,
+      "source": "Synthetic local playback fixture; decode was visually confirmed separately."
+    }
+  },
+  "approximateInstalledIdleBaseline": {
+    "status": "OLDER_INSTALLED_BUILD_NOT_EXACT_CANDIDATE",
+    "durationMs": 11000,
+    "workingSetMiB": 459.4,
+    "privateBytesMiB": 332.7,
+    "cpuP95Percent": 3.6,
+    "processCount": 4
+  },
+  "limitations": [
+    "No application budgets are configured; all package playback samples report NOT_CONFIGURED.",
+    "Fixture is 320x180 and short; no 1080p/4K, dense danmaku, long playback, source search, JAR/Python spider workloads, or repeated route-switch measurements.",
+    "The older installed-build idle sample is only an approximate reference, not a valid candidate A/B comparison."
+  ],
+  "conclusion": "The exact packaged app repeatedly reaches 638.5–703.6 MiB working set and 523.4–530.4 MiB private bytes during a short low-resolution local playback fixture. This is a useful warning measurement, not a budget pass; V05 remains open."
+}

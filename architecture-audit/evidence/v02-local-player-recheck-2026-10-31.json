@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-31T06:46:53Z",
+  "taskId": "V02",
+  "scope": "Exact local 1.27.1 package playback checks using a generated 320x180 VP8 WebM fixture; no live third-party source or account data accessed.",
+  "candidate": {
+    "version": "1.27.1",
+    "installer": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "installerBytes": 228686430,
+    "installerSha256": "5a5f6b80e637fc2825b14f6cd4e4dd797ad3f1fc8cebcce128656b4c0f86e3e1",
+    "appAsarBytes": 24890127,
+    "appAsarSha256": "d3eaf5d3fbf99b973bb26e380342278b1eab4bb1a583885413f92900f5a2d38b",
+    "baseCommit": "62b1c0bf5aa0a77fe6f37d9b5a0346d209996594"
+  },
+  "packagedHtml5AndMpv": {
+    "harness": "scripts/verify-playback.mjs",
+    "generatedFixture": {
+      "codec": "VP8",
+      "width": 320,
+      "height": 180,
+      "durationMs": 14006,
+      "bytes": 74344
+    },
+    "status": "PASS",
+    "results": [
+      {
+        "name": "html5-real-decode-time-progress-pause-resume",
+        "status": "PASS",
+        "timeSeconds": 1.113814,
+        "resumedFromSeconds": 0.589849
+      },
+      {
+        "name": "mpv-real-decode-seek-time-progress-pause-resume",
+        "status": "PASS",
+        "timeSeconds": 3.578,
+        "resumedFromSeconds": 3.022
+      },
+      {
+        "name": "mpv-toolbar-labels-remain-readable",
+        "status": "PASS",
+        "clientWidth": 997.33,
+        "scrollWidth": 997
+      },
+      {
+        "name": "html5-pause-feedback-compact-centered-and-sharp",
+        "status": "PASS",
+        "sizePx": 28,
+        "iconPx": 14,
+        "centerOffsetPx": [
+          0,
+          0
+        ],
+        "backdropFilter": "none",
+        "boxShadow": "none"
+      }
+    ],
+    "rendererErrors": [],
+    "cleanup": "PASS"
+  },
+  "potplayer": {
+    "executable": "D:\\PotPlayer\\PotPlayerMini64.exe",
+    "processStart": "PROCESS_LIST_CONFIRMED",
+    "mediaResponse": {
+      "method": "GET",
+      "path": "/clip.webm",
+      "range": "",
+      "status": 200,
+      "contentType": "video/webm",
+      "responseBytes": 73537,
+      "completed": true
+    },
+    "processCleanup": [
+      {
+        "processId": 38580,
+        "status": "CLOSED",
+        "method": "pid-close"
+      }
+    ],
+    "visualEvidence": "architecture-audit/evidence/potplayer-local-fixture-2026-10-31.jpg",
+    "visualObservation": "The displayed Win-Box acceptance fixture is decoded; PotPlayer shows playback time 00:00:03 / 00:00:14 in the captured frame.",
+    "pauseResume": "NOT_VERIFIED",
+    "harness": "scripts/verify-playback.mjs",
+    "rawTemporaryReportPurgedAfterEvidence": true
+  },
+  "superResolutionBoundary": "MPV shaders are scoped to the managed MPV engine; they do not post-process HTML5 or PotPlayer windows.",
+  "remainingGaps": [
+    "PotPlayer pause/resume behavior was not captured.",
+    "No live third-party source playback was run.",
+    "MPV native child window pixels remain unconfirmed.",
+    "Playback failure behavior against a current user-configured source remains unverified."
+  ],
+  "conclusion": "Packaged HTML5 and managed-MPV decode/time/pause-resume pass. PotPlayer local-fixture decode and time progression are visually confirmed; pause/resume and real sources remain open."
+}

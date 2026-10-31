@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-31T06:22:28.753Z",
+  "taskId": "V02",
+  "scope": "Offline focused regression and review of latest recorded packaged playback evidence; no GUI or installed application was started in this recheck.",
+  "commands": [
+    {
+      "command": "pnpm exec vitest run tests/externalPlayback.spec.ts tests/externalPlayer.spec.ts tests/hlsErrorText.spec.ts tests/htmlMedia.spec.ts tests/reportPlaybackFailure.spec.ts tests/useHtml5PlaybackSession.spec.tsx tests/pluginPlayerEngine.spec.ts",
+      "result": "PASS",
+      "files": 7,
+      "tests": 97,
+      "durationSeconds": 1.88
+    },
+    {
+      "command": "pnpm run test:acceptance-tools",
+      "result": "PASS",
+      "tests": 20,
+      "durationSeconds": 0.188,
+      "network": "No live source was contacted; source matrix uses fakeCall stubs and fixture tests use loopback."
+    }
+  ],
+  "latestPackagedCandidateEvidence": {
+    "path": "architecture-audit/evidence/playback-acl-path-diagnostics-2026-10-28.json",
+    "candidate": "release1.27.1/win-unpacked, packaged candidate hash as recorded in playback-acceptance-toolbar-2026-10-30.json",
+    "html5": "PASS local generated VP8 WebM decode, time progress, pause/resume; 320x180.",
+    "managedMpv": "PASS local generated VP8 WebM decode, seek, time progress, pause/resume; 320x180.",
+    "nativeSurface": "Unconfirmed: screenshot showed a black MPV child surface despite state/time telemetry."
+  },
+  "remainingGaps": [
+    "PotPlayer launch and completed media-byte request were previously confirmed, but actual decode, time progression, and pause/resume were not measured.",
+    "No live third-party source playback was run; parser/import success is not evidence of playable source.",
+    "MPV native video child surface visible pixels remain unconfirmed.",
+    "External-playback success currently means process launch was accepted; the host cannot observe the third-party decoder and App.tsx returns without an affirmative or actual-playback disclaimer message."
+  ],
+  "superResolutionBoundary": {
+    "status": "Code and UI are MPV-kernel scoped.",
+    "evidence": [
+      "src/renderer/features/playback/PlayerSuperResolutionControl.tsx",
+      "src/main/ipc/playerRuntime.ts"
+    ],
+    "behavior": "Shader choices are loaded and sent through the MPV runtime. They do not affect HTML5, PotPlayer, or arbitrary external player windows."
+  },
+  "cleanup": {
+    "guiProcessesStarted": false,
+    "activeInstallationChanged": false,
+    "aclRegistryOrSystemSettingsChanged": false,
+    "temporaryPlaybackArtifactsFound": false
+  },
+  "conclusion": "Focused code/acceptance-tool tests pass. V02 remains open because PotPlayer actual playback, live source playback, and MPV visible frame output are not verified."
+}
