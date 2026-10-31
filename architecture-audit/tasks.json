@@ -1646,9 +1646,17 @@
         {
           "path": "architecture-audit/evidence/playback-acl-path-diagnostics-2026-10-28.json",
           "symbol": "install_dir_access ACL diagnosis and isolated packaged playback"
+        },
+        {
+          "path": "architecture-audit/evidence/playback-boundary-recheck-2026-10-31.json",
+          "symbol": "focused playback boundary recheck and remaining acceptance gaps"
+        },
+        {
+          "path": "architecture-audit/evidence/v02-local-player-recheck-2026-10-31.json",
+          "symbol": "current packaged HTML5/MPV and visually decoded PotPlayer local fixture evidence"
         }
       ],
-      "gap": "The exact latest local 1.27.1 package passed isolated HTML5 and managed-MPV local fixture decode/time/progress/pause-resume, and controls fit at 997 px without wrapping or overflow. PotPlayer decode/time/pause, live third-party sources, and desktop-visible MPV native child pixels remain unverified.",
+      "gap": "Exact local 1.27.1 package passes HTML5 and managed-MPV fixture decode/time/pause-resume. PotPlayer also visibly decodes the local generated fixture and advances to 3/14 seconds; its pause/resume remains unverified. No live third-party source playback was run and MPV native child pixels remain unconfirmed. External-player host status remains a process handoff; observed PotPlayer playback proves this fixture/player pairing only.",
       "direction": "先可控夹具验证 MP4/HLS/TS、401/403/HTML 假媒体、Range/跳转；再按获准的代表来源测完整播放。单独验证已配置 PotPlayer 直接启动和失败反馈；超分按内核能力如实展示。",
       "acceptance": "保存至少 HTML5、托管 MPV、PotPlayer 的实际启动/时间推进/暂停续播证据；源失效与播放器回归分开；账号切子仓可复用；明确托管 shader 不自动影响任意外部播放器。",
       "estimateEngineerHours": {
@@ -1664,20 +1672,21 @@
       ],
       "probes": [],
       "reviewEvidence": {
-        "verification": "Final package local HTML5/MPV decode and controls pass. PotPlayer launcher and complete local media fetch pass, while decode/time/pause remain NOT_VERIFIED. Actual desktop-visible MPV frame and live sources remain unconfirmed.",
-        "evidence": "architecture-audit/evidence/playback-acceptance-final-2026-10-28.json",
+        "verification": "2026-10-31: Exact 1.27.1 package HTML5 and managed-MPV local fixture decode/time/pause-resume PASS. PotPlayer local fixture visibly decoded and advanced to 00:00:03/00:00:14; pause/resume not verified. Full tests/typecheck/lint/build pass. Live sources and MPV native child pixels remain unverified.",
+        "evidence": "architecture-audit/evidence/playback-boundary-recheck-2026-10-31.json",
         "notRun": [
-          "PotPlayer decode/time/pause",
+          "PotPlayer pause/resume",
           "Live third-party source playback",
-          "Desktop-visible MPV child surface"
+          "Visible MPV native child surface/frame content",
+          "Current user-configured source playback"
         ],
         "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-        "latestVerification": "2026-10-29 latest package acceptance PASS: HTML5 and managed MPV synthetic VP8 playback/control; PotPlayer decode/time/pause and live sources not run.",
-        "latestEvidence": "architecture-audit/evidence/playback-acceptance-toolbar-2026-10-30.json"
+        "latestVerification": "2026-10-31: Exact 1.27.1 package HTML5 and managed-MPV local fixture decode/time/pause-resume PASS. PotPlayer local fixture visibly decoded and advanced to 00:00:03/00:00:14; pause/resume not verified. Full tests/typecheck/lint/build pass. Live sources and MPV native child pixels remain unverified.",
+        "latestEvidence": "architecture-audit/evidence/v02-local-player-recheck-2026-10-31.json"
       },
       "latestImplementationCommit": "88fd7c666c6fb62bd70747883aab53d323d30250",
-      "latestVerification": "2026-10-29 latest package acceptance PASS: HTML5 and managed MPV synthetic VP8 playback/control; PotPlayer decode/time/pause and live sources not run.",
-      "latestEvidence": "architecture-audit/evidence/playback-acceptance-toolbar-2026-10-30.json"
+      "latestVerification": "2026-10-31: Exact 1.27.1 package HTML5 and managed-MPV local fixture decode/time/pause-resume PASS. PotPlayer local fixture visibly decoded and advanced to 00:00:03/00:00:14; pause/resume not verified. Full tests/typecheck/lint/build pass. Live sources and MPV native child pixels remain unverified.",
+      "latestEvidence": "architecture-audit/evidence/v02-local-player-recheck-2026-10-31.json"
     },
     {
       "id": "V03",
@@ -1733,9 +1742,13 @@
         {
           "path": "architecture-audit/evidence/v03-followup-2026-10-29.json",
           "symbol": "latest player controls and V03 acceptance evidence"
+        },
+        {
+          "path": "architecture-audit/evidence/v03-hidden-toolbar-hitbox-2026-10-31.json",
+          "symbol": "hidden player toolbar click-through regression and exact package CSS check"
         }
       ],
-      "gap": "Player toolbar/volume/rate/pause defects addressed; latest packaged fixture confirms toolbar controls fit at 997 px and pause overlay is centered with no blur. Full route/theme/DPI/focus screenshot matrix and the reported live danmaku trails remain open.",
+      "gap": "The hidden-controls opacity state retained a transparent hitbox that blocked video clicks. CSS now disables pointer events until the toolbar is visible/focused; the regression is tested and the exact package contains both rules. Full route/theme/DPI/focus screenshots, detailed contrast/selected states across all pages, and reported live danmaku trails remain open.",
       "direction": "按窗口×组件状态×主题/外壳×DPI 建立检查矩阵；复用已有 showcase，计算最终样式并用真实 Electron 窗口复核；业务功能清单作回归对照。",
       "acceptance": "主/详情/搜索/播放器/全局账号/设置/历史/直播/存储均有记录；100/125/150% DPI 与窄宽布局；沿用仓库普通文本4.5:1/功能边界3:1口径；键盘焦点、selected 语义、弹幕拖影和暂停无模糊逐项关闭。",
       "estimateEngineerHours": {
@@ -1755,15 +1768,15 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "9d5a958",
-        "verification": "播放器样式 9/9 测试和音量滑块 6 项静态几何检查通过；全量 Vitest 505 文件/4148 测试通过（3 文件/5 测试跳过），三套 typecheck、lint/架构边界和生产 build 通过。仍缺最终 Electron 截图复核。",
+        "verification": "2026-10-31: Fixed hidden player toolbar pointer hitbox; regression test added. Exact package contains both hidden pointer-events:none and visible/focused pointer-events:auto CSS rules. Full Vitest 512 files/4,202 passed; package pause and toolbar geometry PASS. Full route/theme/DPI/focus matrix and live danmaku trails remain unverified.",
         "evidence": "architecture-audit/evidence/player-controls-followup-2026-10-28.json",
         "latestImplementationCommit": "3b854d969270eb5b86f0bb955331ab1a771bb7c3",
-        "latestVerification": "2026-10-29 latest package acceptance confirms no toolbar overflow at 997 px, one-line labels and playback clock, centered 28x28 pause feedback without blur. Full route/theme/DPI/focus matrix and reported live danmaku remain not verified.",
-        "latestEvidence": "architecture-audit/evidence/playback-acceptance-toolbar-2026-10-30.json"
+        "latestVerification": "2026-10-31: Fixed hidden player toolbar pointer hitbox; regression test added. Exact package contains both hidden pointer-events:none and visible/focused pointer-events:auto CSS rules. Full Vitest 512 files/4,202 passed; package pause and toolbar geometry PASS. Full route/theme/DPI/focus matrix and live danmaku trails remain unverified.",
+        "latestEvidence": "architecture-audit/evidence/v03-hidden-toolbar-hitbox-2026-10-31.json"
       },
       "latestImplementationCommit": "76e469c0ef482b0d0e02132b5367a5129809a52f",
-      "latestVerification": "2026-10-29 latest package acceptance confirms no toolbar overflow at 997 px, one-line labels and playback clock, centered 28x28 pause feedback without blur. Full route/theme/DPI/focus matrix and reported live danmaku remain not verified.",
-      "latestEvidence": "architecture-audit/evidence/playback-acceptance-toolbar-2026-10-30.json"
+      "latestVerification": "2026-10-31: Fixed hidden player toolbar pointer hitbox; regression test added. Exact package contains both hidden pointer-events:none and visible/focused pointer-events:auto CSS rules. Full Vitest 512 files/4,202 passed; package pause and toolbar geometry PASS. Full route/theme/DPI/focus matrix and live danmaku trails remain unverified.",
+      "latestEvidence": "architecture-audit/evidence/v03-hidden-toolbar-hitbox-2026-10-31.json"
     },
     {
       "id": "V04",
@@ -1807,9 +1820,13 @@
         {
           "path": "architecture-audit/evidence/v04-real-upgrade-acceptance-2026-10-30.json",
           "symbol": "shipping Setup same-path upgrade and real-profile observation"
+        },
+        {
+          "path": "architecture-audit/evidence/v04-installer-regression-2026-10-31.json",
+          "symbol": "current installer lifecycle synthetic regression recheck"
         }
       ],
-      "gap": "The real shipping Setup.exe upgrade to E:/Win-Box passed after manually correcting a stale isolated-test InstallLocation. The running app was stopped; same-path overwrite completed; installed app.asar hash matches the candidate; source group, site, and 9 history entries (2 resumable) loaded. The sampled non-cache profile retained file count/bytes but its digest changed; baseline was taken while the old app was running, so byte-for-byte preservation and data-loss attribution are inconclusive. Real uninstall-first, cancel/back/rollback/elevation, and a favorites baseline remain unverified.",
+      "gap": "The installer script regression suite passes 12/12 synthetic cases. Prior real same-path recommended overwrite stopped the old process and loaded sources/history, but was an earlier candidate and its profile digest was inconclusive. The exact current Setup UI has not been re-run through live process stop, uninstall-first, Cancel/Back/rollback/UAC and complete config/account/history/favorites preservation.",
       "direction": "将安装验收扩展到完整候选包的播放中和老板键隐藏场景，再核对取消安装保护及每个用户数据域迁移。",
       "acceptance": "正在播放/老板键隐藏/后台无主窗口时可一键停止继续；其它安装目录不受影响；配置、订阅、账号、历史、收藏重启后保留；取消不破坏旧版；注册表/快捷方式正确。",
       "estimateEngineerHours": {
@@ -1826,14 +1843,14 @@
       "reviewEvidence": {
         "commit": "3e3bd13",
         "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
-        "verification": "最终候选包的 505 文件隔离安装/覆盖/卸载/数据保留记录见 installation-acceptance-2026-10-28.json。最新 installer-script.check.mjs 为 7/7 PASS；无窗口进程实测 4549ms 停止。该合成 fixture 不等于真实播放/隐藏窗口和取消保护验收，因此 V04 仍为 open。",
-        "latestVerification": "2026-10-29T17:02:14Z: shipping Setup 1.27.1 completed a same-path recommended overwrite of E:/Win-Box while the old app process was running; installer stopped it, payload hash matched, app launched manually, current source/site and 9 history entries (2 resumable) loaded. Non-cache profile sample count/bytes matched but digest changed from an in-app-running baseline; no data-loss claim. Uninstall-first and rollback/cancel/back/elevation not run.",
-        "latestEvidence": "architecture-audit/evidence/v04-real-upgrade-acceptance-2026-10-30.json",
-        "remaining": "Real same-path recommended overwrite and runtime stop passed. Remaining: test real uninstall-first only with separate authorization; compare complete account/favorites/config baseline without exposing secrets; verify Cancel/Back/rollback/elevation and startup shortcut behavior."
+        "verification": "2026-10-31: installer-script.check.mjs 12/12 synthetic lifecycle tests pass (95.1 s). Prior real same-path upgrade evidence is from the earlier candidate and had an inconclusive profile digest. Current Setup UI cancel/back/rollback/UAC, uninstall-first and complete real profile preservation remain unverified.",
+        "latestVerification": "2026-10-31: installer-script.check.mjs 12/12 synthetic lifecycle tests pass (95.1 s). Prior real same-path upgrade evidence is from the earlier candidate and had an inconclusive profile digest. Current Setup UI cancel/back/rollback/UAC, uninstall-first and complete real profile preservation remain unverified.",
+        "latestEvidence": "architecture-audit/evidence/v04-installer-regression-2026-10-31.json",
+        "remaining": "Current 2026-10-31 Setup.exe still needs real UI acceptance for process stop, uninstall-first, Cancel/Back/rollback/UAC and a quiescent baseline/after comparison of config, accounts, subscriptions, history and favorites."
       },
       "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
-      "latestVerification": "2026-10-29T17:02:14Z: shipping Setup 1.27.1 completed a same-path recommended overwrite of E:/Win-Box while the old app process was running; installer stopped it, payload hash matched, app launched manually, current source/site and 9 history entries (2 resumable) loaded. Non-cache profile sample count/bytes matched but digest changed from an in-app-running baseline; no data-loss claim. Uninstall-first and rollback/cancel/back/elevation not run.",
-      "latestEvidence": "architecture-audit/evidence/v04-real-upgrade-acceptance-2026-10-30.json",
+      "latestVerification": "2026-10-31: installer-script.check.mjs 12/12 synthetic lifecycle tests pass (95.1 s). Prior real same-path upgrade evidence is from the earlier candidate and had an inconclusive profile digest. Current Setup UI cancel/back/rollback/UAC, uninstall-first and complete real profile preservation remain unverified.",
+      "latestEvidence": "architecture-audit/evidence/v04-installer-regression-2026-10-31.json",
       "remaining": "Real same-path recommended overwrite and runtime stop passed. Remaining: test real uninstall-first only with separate authorization; compare complete account/favorites/config baseline without exposing secrets; verify Cancel/Back/rollback/elevation and startup shortcut behavior."
     },
     {
@@ -1874,9 +1891,13 @@
         {
           "path": "architecture-audit/evidence/v05-budget-gate-2026-10-29.json",
           "symbol": "budgeted synthetic aggregate-search regression run"
+        },
+        {
+          "path": "architecture-audit/evidence/v05-packaged-playback-resource-sample-2026-10-31.json",
+          "symbol": "three exact package playback process-tree samples and PotPlayer combined sample"
         }
       ],
-      "gap": "A budget-gated synthetic aggregate-search benchmark now passes on a local loopback fixture, including cancellation cleanup and recovery. Its process sample is the Node/Vitest acceptance tree, not Win-Box. Real third-party sources, user profiles and Spider/JAR/Python workloads, UI responsiveness, video playback, 1080p/4K and dense danmaku remain unmeasured; product resource budgets are not established.",
+      "gap": "The exact packaged app now has three repeatable low-resolution local playback resource samples, with 638.5–703.6 MiB Working Set and 523.4–530.4 MiB Private Bytes peaks across five Win-Box processes. Budgets are not configured, so no budget pass is claimed. 1080p/4K, dense danmaku, large-source search, JAR/Python workloads, route-change leak checks and long-duration recovery remain unmeasured.",
       "direction": "固定机器/数据/窗口/冷热缓存条件，记录完整进程树与私有内存/工作集、CPU、搜索首个结果/总耗时、帧时间和关闭后资源恢复。根据数据再调并发与保留策略。",
       "acceptance": "Record reproducible application-only resource and responsiveness measurements for idle, large-source search, 1080p/4K playback, danmaku and repeated source/window changes; define product budgets from representative measurements and verify no monotonic resource growth. The synthetic loopback gate is supplementary and cannot close V05 by itself.",
       "estimateEngineerHours": {
@@ -1898,16 +1919,16 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "040d1885e8a1debfe5ce07ac9380ae14cca91068",
-        "verification": "2026-10-29 budgeted synthetic recheck: 10 x 1,000-source loopback cycles, 12,050 requests, peak concurrency 48; cycle latency p50/p95 465.4/621.4 ms; request latency p50/p95 20.1/34.6 ms; throughput p50/p95 1,968.8/3,299 sources/s. Node/Vitest process tree working-set peak 344.9 MiB, private bytes peak 414.7 MiB and CPU p95 131.7%, within synthetic-only guardrails of 500 MiB, 700 MiB and 180%. Timeout/partial failure, cancel cleanup, and recovery passed; 0 active requests after settling. V05 remains open because this is not an application process or real-source/video workload measurement.",
-        "evidence": "architecture-audit/evidence/v05-budget-gate-2026-10-29.json",
-        "remaining": "Measure Win-Box-only and representative real source/profile/spider workloads, UI responsiveness, 1080p/4K and dense danmaku against explicit product budgets before closing V05.",
-        "latestVerification": "Synthetic-only recheck remains the only measurement: 10×1,000-source loopback cycles; 12,050 requests; concurrency 48; cycle latency p50/p95 465.4/621.4 ms; request latency 20.1/34.6 ms; throughput 1,968.8/3,299 sources/s. Node/Vitest tree WS/private peaks 344.9/414.7 MiB, CPU p95 131.7%; synthetic guardrails pass. No real Win-Box idle/search/playback/danmaku/1080p/4K sample was collected.",
-        "latestEvidence": "architecture-audit/evidence/v05-budget-gate-2026-10-29.json",
+        "verification": "2026-10-31: Three exact packaged 320x180 local playback runs; Win-Box Working Set peaks 638.5/702.3/703.6 MiB, Private Bytes 528.1/530.4/523.4 MiB, CPU p95 108.8/111.6/146.3%; 5 processes, no product budgets configured. This is a high-useful sample, not a budget pass. 1080p/4K/danmaku/search/spider workloads remain unmeasured.",
+        "evidence": "architecture-audit/evidence/v05-packaged-playback-resource-sample-2026-10-31.json",
+        "remaining": "Measure 1080p/4K, dense danmaku, large-source search, Spider/JAR/Python workloads, repeated route/source changes and idle recovery; establish device/workload-specific product budgets before closing V05.",
+        "latestVerification": "2026-10-31: Three exact packaged 320x180 local playback runs; Win-Box Working Set peaks 638.5/702.3/703.6 MiB, Private Bytes 528.1/530.4/523.4 MiB, CPU p95 108.8/111.6/146.3%; 5 processes, no product budgets configured. This is a high-useful sample, not a budget pass. 1080p/4K/danmaku/search/spider workloads remain unmeasured.",
+        "latestEvidence": "architecture-audit/evidence/v05-packaged-playback-resource-sample-2026-10-31.json",
         "budgetHarnessCommit": "uus"
       },
       "latestImplementationCommit": "292f8150d63ceb89df36d19fd1e8a1b69f0249c7",
-      "latestVerification": "Synthetic-only recheck remains the only measurement: 10×1,000-source loopback cycles; 12,050 requests; concurrency 48; cycle latency p50/p95 465.4/621.4 ms; request latency 20.1/34.6 ms; throughput 1,968.8/3,299 sources/s. Node/Vitest tree WS/private peaks 344.9/414.7 MiB, CPU p95 131.7%; synthetic guardrails pass. No real Win-Box idle/search/playback/danmaku/1080p/4K sample was collected.",
-      "latestEvidence": "architecture-audit/evidence/v05-budget-gate-2026-10-29.json"
+      "latestVerification": "2026-10-31: Three exact packaged 320x180 local playback runs; Win-Box Working Set peaks 638.5/702.3/703.6 MiB, Private Bytes 528.1/530.4/523.4 MiB, CPU p95 108.8/111.6/146.3%; 5 processes, no product budgets configured. This is a high-useful sample, not a budget pass. 1080p/4K/danmaku/search/spider workloads remain unmeasured.",
+      "latestEvidence": "architecture-audit/evidence/v05-packaged-playback-resource-sample-2026-10-31.json"
     },
     {
       "id": "V06",
@@ -1951,9 +1972,13 @@
         {
           "path": "architecture-audit/evidence/installer-regression-2026-10-29.json",
           "symbol": "current installer regression suite"
+        },
+        {
+          "path": "architecture-audit/evidence/current-candidate-2026-10-31.json",
+          "symbol": "exact local Setup hash, full current static/test gates and exact packaged player acceptance"
         }
       ],
-      "gap": "Latest local 1.27.1 package was rebuilt and exact package passed isolated HTML5/managed-MPV fixture playback, toolbar geometry, and payload install/overwrite/uninstall-first/uninstall including a synthetic packaged-executable stop in 452 ms and six synthetic data files preserved. Full current test suite passes. Remote CI, shipping Setup.exe GUI against a real installation, real profile migration, live-source/PotPlayer playback, and full UI route/theme/DPI acceptance remain open.",
+      "gap": "A reproducible local 1.27.1 package and current code/test gates are recorded; source fix is present in app.asar and no GitHub Release was published. V06 remains open while V02–V05 acceptance gaps remain, remote CI is not refreshed, and shipping Setup.exe has not been re-tested against a quiescent real user-profile baseline for all install paths.",
       "direction": "修复后在同一候选提交运行类型/lint/架构/正式测试/构建和上述验收，隔离目录制作唯一的本地安装包，记录 hash/尺寸/版本/提交。遵守用户不发布小版本、不创建多工作区的要求。",
       "acceptance": "所有必需任务有实现与验收链接；旧绿灯不代替当前结果；本地 Setup 在干净目录安装运行通过；保留数据及产物来源可查；不发布 Release，审计/修复改动分步提交，临时目录清理。",
       "estimateEngineerHours": {
@@ -2000,23 +2025,23 @@
       "probes": [],
       "reviewEvidence": {
         "commit": "0119e76",
-        "verification": "2026-10-29: current 1.27.1 Setup rebuilt from source through commit 3b854d969270eb5b86f0bb955331ab1a771bb7c3 and isolated payload acceptance passed (451 files, six synthetic data files preserved). This does not validate shipping Setup UI or stopping a running Win-Box process. Remote CI, live playback, full packaged UI and real-profile migration remain unverified; package remains local, unpublished and unpushed.",
+        "verification": "2026-10-31: exact local 1.27.1 Setup SHA-256 5a5f6b80e637fc2825b14f6cd4e4dd797ad3f1fc8cebcce128656b4c0f86e3e1; 228,686,430 bytes; 451-file app payload; app.asar 24,890,127 bytes. Full Vitest, all three typechecks, lint/architecture, acceptance tools, package playback and installer script regression pass. No Release published. Remote CI and complete real-install/profile/source/UI acceptance remain open.",
         "latestImplementationCommits": [
           "48105537",
           "129f566a65d07c3c3f7b5a0849226eef141aec16",
           "88fd7c666c6fb62bd70747883aab53d323d30250"
         ],
-        "evidence": "architecture-audit/evidence/current-candidate-2026-10-30.json",
-        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-30.json",
-        "latestVerification": "2026-10-29/30: full pnpm test 509 files/4,177 tests passed, 4 files/7 tests skipped. Latest local 1.27.1 setup SHA-256 4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0; exact packaged HTML5/managed-MPV fixture acceptance passed. Isolated payload lifecycle and packaged-executable stop fixture passed (452 ms, six synthetic data categories preserved). The shipping Setup.exe also completed a clean install into a separate .tmp path; run-after-install was unchecked and the temporary copy was cleaned. Same-path live upgrade, real profile, live sources, full UI matrix, and remote CI remain unverified. Nothing published or pushed."
+        "evidence": "architecture-audit/evidence/current-candidate-2026-10-31.json",
+        "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-31.json",
+        "latestVerification": "2026-10-31: exact local 1.27.1 Setup SHA-256 5a5f6b80e637fc2825b14f6cd4e4dd797ad3f1fc8cebcce128656b4c0f86e3e1; 228,686,430 bytes; 451-file app payload; app.asar 24,890,127 bytes. Full Vitest, all three typechecks, lint/architecture, acceptance tools, package playback and installer script regression pass. No Release published. Remote CI and complete real-install/profile/source/UI acceptance remain open."
       },
       "latestImplementationCommits": [
         "48105537",
         "129f566a65d07c3c3f7b5a0849226eef141aec16",
         "88fd7c666c6fb62bd70747883aab53d323d30250"
       ],
-      "latestVerification": "2026-10-29/30: full pnpm test 509 files/4,177 tests passed, 4 files/7 tests skipped. Latest local 1.27.1 setup SHA-256 4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0; exact packaged HTML5/managed-MPV fixture acceptance passed. Isolated payload lifecycle and packaged-executable stop fixture passed (452 ms, six synthetic data categories preserved). The shipping Setup.exe also completed a clean install into a separate .tmp path; run-after-install was unchecked and the temporary copy was cleaned. Same-path live upgrade, real profile, live sources, full UI matrix, and remote CI remain unverified. Nothing published or pushed.",
-      "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-30.json"
+      "latestVerification": "2026-10-31: exact local 1.27.1 Setup SHA-256 5a5f6b80e637fc2825b14f6cd4e4dd797ad3f1fc8cebcce128656b4c0f86e3e1; 228,686,430 bytes; 451-file app payload; app.asar 24,890,127 bytes. Full Vitest, all three typechecks, lint/architecture, acceptance tools, package playback and installer script regression pass. No Release published. Remote CI and complete real-install/profile/source/UI acceptance remain open.",
+      "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-31.json"
     },
     {
       "id": "O01",
@@ -2215,7 +2240,7 @@
     "previousEvidenceCommit": "f7108c051d8ae14988452fd9e230c57e093b5a96"
   },
   "latestProgress": {
-    "recordedAt": "2026-10-29T16:36:50Z",
+    "recordedAt": "2026-10-31T07:00:45Z",
     "requiredTaskCount": 36,
     "completedTaskIds": [
       "B01",
@@ -2261,56 +2286,25 @@
       "min": 21,
       "max": 36
     },
-    "branch": "codex/architecture-cleanup-20261025",
+    "branch": "main",
     "localCommitsThisTurn": [
-      "3e3bd13",
-      "0119e76",
-      "6c9b0b6",
-      "9d5a958",
-      "e523ca6",
-      "6867b67",
-      "6d3e6d2",
-      "orx",
-      "mzs",
-      "qpy",
-      "pxr",
-      "mkt",
-      "wto",
-      "oor",
-      "vnp",
-      "xwy",
-      "sttl",
-      "ror",
-      "617de7b4",
-      "4a5ac726",
-      "15fb29f2",
-      "863c41f6",
-      "83d438e2",
-      "9dcaf166",
-      "c61e741a",
-      "bb12488d",
-      "uxy",
-      "qot",
-      "rkr"
+      "805d302465edd6de9278422b03f42b78df2ebc55",
+      "2537fb0c"
     ],
     "localInstallerPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
-    "installerSha256": "4c04136e7067f504c5edbc7a53a304da550bdb9082f81bca6da06e85ef94ebf0",
-    "localCommitsUnpushed": true,
+    "installerSha256": "5a5f6b80e637fc2825b14f6cd4e4dd797ad3f1fc8cebcce128656b4c0f86e3e1",
+    "localCommitsUnpushed": false,
     "releasePublished": false,
-    "preservedUncommittedUserFile": "libnc.so",
-    "localInstallerBytes": 228685343,
-    "localAppDirectoryBytes": 533336495,
+    "localInstallerBytes": 228686430,
+    "localAppDirectoryBytes": 533322785,
     "localReleaseDirectories": [
       "release1.27.1"
     ],
-    "preservedUncommittedUserFiles": [
-      "libnc.so",
-      "src/renderer/components/SourcePicker.tsx"
-    ],
-    "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-30.json",
-    "applicationBuildCommit": "50699458217938c53cbfdd7a6fa3ab92d51130c8",
-    "applicationBuildAt": "2026-10-29T15:54:46.251Z",
-    "latestPlaybackEvidence": "architecture-audit/evidence/playback-acceptance-toolbar-2026-10-30.json",
+    "preservedUncommittedUserFiles": [],
+    "latestEvidence": "architecture-audit/evidence/current-candidate-2026-10-31.json",
+    "applicationBuildCommit": "805d302465edd6de9278422b03f42b78df2ebc55",
+    "applicationBuildAt": "2026-10-31T06:28:09.965Z",
+    "latestPlaybackEvidence": "architecture-audit/evidence/v02-local-player-recheck-2026-10-31.json",
     "requiredCompletedCount": 31,
     "optionalOpenTaskIds": [],
     "latestSpiderEvidence": "architecture-audit/evidence/spider-jre-protocol-smoke-2026-10-28.json",
@@ -2323,11 +2317,11 @@
     ],
     "mpvFrameDiagnostic": "Playwright screenshot omits the native MPV child HWND; actual desktop-visible MPV pixels remain unverified.",
     "latestPythonEvidence": "architecture-audit/evidence/python-runtime-acceptance-2026-10-28.json",
-    "latestPerformanceEvidence": "architecture-audit/evidence/v05-aggregate-search-2026-10-29.json",
+    "latestPerformanceEvidence": "architecture-audit/evidence/v05-packaged-playback-resource-sample-2026-10-31.json",
     "latestNativeUiEvidence": "architecture-audit/evidence/v02-v03-native-ui-2026-10-29.json",
     "temporaryAcceptanceArtifactsCleaned": true,
-    "temporaryAcceptanceCleanup": "PASS: latest package harnesses, this turn's isolated Setup.exe install directory, and O02 raw logs/screenshots/GPU samples were removed after compact evidence was recorded; the Desktop shortcut was restored to E:\\Win-Box\\Win-Box.exe; unrelated .tmp entries were untouched.",
-    "latestInstallerEvidence": "architecture-audit/evidence/v04-stop-running-acceptance-2026-10-30.json",
+    "temporaryAcceptanceCleanup": "PASS: removed this turn dist/, release1.27.1/win-unpacked/, exact playback/PotPlayer/resource-sample temp directories and helper scripts after recording durable evidence; preserved Setup.exe, package-size-report.json, existing APK/notes, and unrelated .tmp entries.",
+    "latestInstallerEvidence": "architecture-audit/evidence/v04-installer-regression-2026-10-31.json",
     "productionChangesAfterBuild": false,
     "latestValidatedSourceCommits": [
       "8270cbb4",
@@ -2336,17 +2330,19 @@
       "cce91e7a",
       "7e83ea84",
       "3b854d96",
-      "50699458"
+      "50699458",
+      "805d302465edd6de9278422b03f42b78df2ebc55"
     ],
-    "packagePayloadAcceptance": "PASS: isolated payload install/overwrite/uninstall-first/uninstall, 451 files, six synthetic data files; packaged process fixture stopped in 452 ms. Shipping Setup.exe clean install into isolated .tmp also passed, with app auto-run unchecked and temporary directory cleaned; same-path live upgrade remains NOT_RUN.",
+    "packagePayloadAcceptance": "Historical previous-candidate isolated payload lifecycle passed (451 files, six synthetic data categories); the exact current Setup UI lifecycle remains unverified.",
     "optionalCompletedTaskIds": [
       "O01",
       "O02"
     ],
     "latestO01Evidence": "architecture-audit/evidence/o01-followup-2026-10-29.json",
     "latestO02Evidence": "architecture-audit/evidence/o02-shader-poc-followup-2026-10-30.json",
-    "packagePlaybackAcceptance": "PASS: latest local package HTML5 and managed-MPV synthetic fixture decode/progress/pause-resume; toolbar geometry fits at 997 px; PotPlayer/live source/native MPV pixels remain unverified.",
-    "latestStopRunningAcceptance": "PASS_ISOLATED_PACKAGED_EXE_FIXTURE_ONLY",
-    "shippingSetupUiFollowup": "PASS_ISOLATED_TEMP_CLEAN_INSTALL_ONLY"
+    "packagePlaybackAcceptance": "PASS: exact local 1.27.1 package HTML5/managed-MPV fixture decode/time/pause-resume; PotPlayer local fixture visibly decoded and time advanced, pause-resume unverified; no live sources.",
+    "latestStopRunningAcceptance": "PASS_ISOLATED_PACKAGED_EXE_FIXTURE_ONLY on previous candidate; exact current Setup UI not rerun.",
+    "shippingSetupUiFollowup": "PASS_ISOLATED_TEMP_CLEAN_INSTALL_ONLY on previous candidate; current candidate GUI and full profile baseline remain unverified.",
+    "deliveryState": "Landed on main; no GitHub Release published."
   }
 }
