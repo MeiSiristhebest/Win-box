@@ -1,6 +1,5 @@
-/* Keep compact text controls and the playback clock readable when all player
-   tools are present. Shell themes size generic controls independently, so this
-   final, scoped cascade prevents flex shrink from turning labels into columns. */
+/* Keep short text controls and the playback clock readable when all tools are
+   visible. Generic theme buttons must not shrink labels into narrow columns. */
 :root[data-shell] .vplayer .vp-ctl.vp-kernel,
 :root[data-shell] .vplayer .vp-ctl.vp-ctl-label {
   box-sizing: border-box;
@@ -22,8 +21,275 @@
   white-space: nowrap;
 }
 
+/* These are the canonical player control dimensions. Scope by the player
+   window itself rather than a theme attribute: theme sheets may be swapped or
+   temporarily absent while the player window is mounting. !important is
+   limited to properties known to be overridden by bundled skin button rules. */
+.app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn {
+  appearance: none !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  flex: 0 0 38px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 38px !important;
+  min-width: 38px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  margin: 0 0 0 6px !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border: 1px solid rgb(255 255 255 / 32%) !important;
+  border-radius: 10px !important;
+  background: rgb(24 28 35 / 96%) !important;
+  color: #f4f6fa !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn > svg {
+  display: block !important;
+  flex: 0 0 22px !important;
+  width: 22px !important;
+  min-width: 22px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  color: inherit !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn:hover {
+  border-color: rgb(255 255 255 / 62%) !important;
+  background: #343b46 !important;
+  color: #fff !important;
+}
+
+.app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn:active {
+  transform: scale(.97);
+}
+
+.app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn:focus-visible {
+  outline: 2px solid #a8c8ff;
+  outline-offset: 2px;
+}
+
+.app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn.tb-pin-on {
+  border-color: #a8c8ff !important;
+  background: #263a53 !important;
+  color: #e6f0ff !important;
+}
+
+.app.pwin.pvwin .player-titlebar .tb-controls > .tb-btn.tb-close:hover {
+  border-color: #ffb4ab !important;
+  background: #b3261e !important;
+  color: #fff !important;
+}
+
+/* Selected playback controls change color only. They keep the same 38px target
+   and 22px glyph as idle controls, so selection cannot collapse the icon. */
+:root .vplayer .vp-bar-group .vp-ctl:not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) {
+  appearance: none !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  flex: 0 0 38px !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 38px !important;
+  min-width: 38px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  transform: none;
+}
+
+:root .vplayer .vp-bar-group .vp-ctl:not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) > svg {
+  display: block !important;
+  flex: 0 0 22px !important;
+  width: 22px !important;
+  min-width: 22px !important;
+  height: 22px !important;
+  min-height: 22px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+:root .vplayer .vp-bar-group .vp-ctl:is(.vp-on, [aria-expanded='true'], [aria-pressed='true']):not(.vp-rate):not(.vp-ctl-label):not(.vp-kernel) {
+  border: 1px solid rgb(255 255 255 / 58%) !important;
+  border-radius: 8px !important;
+  background: var(--color-accent, #315fc2) !important;
+  color: var(--on-accent, #fff) !important;
+  box-shadow: none !important;
+}
+
+:root .vplayer .vp-bar-group .vp-ctl:focus-visible {
+  outline: 2px solid #a8c8ff;
+  outline-offset: 2px;
+}
+
+/* Danmaku settings use one fixed label rail and readable controls. This avoids
+   per-skin font and width changes that split short Chinese labels vertically. */
+:root .vplayer .vp-subpanel.vp-dmpanel .vsp-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel .vsp-label {
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  flex: 0 0 76px !important;
+  align-items: center !important;
+  width: 76px !important;
+  min-width: 76px !important;
+  color: var(--text-secondary, var(--text-dim)) !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel .vsp-btn,
+:root .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle {
+  appearance: none !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 48px !important;
+  min-height: 38px !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--border-strong, var(--border)) !important;
+  border-radius: 9px !important;
+  background: var(--surface-raised, var(--surface-2)) !important;
+  color: var(--text-primary, var(--text)) !important;
+  font: 600 15px/1.3 var(--font-ui, system-ui, sans-serif) !important;
+  letter-spacing: normal !important;
+  white-space: nowrap !important;
+  transform: none !important;
+  cursor: pointer;
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:hover:not(:disabled):not(.primary):not(.active):not([aria-pressed='true']),
+:root .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle:hover:not([aria-pressed='true']) {
+  border-color: var(--color-accent, var(--accent)) !important;
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 12%, var(--surface-raised, var(--surface-2))) !important;
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:is(.active, [aria-pressed='true']),
+:root .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle[aria-pressed='true'] {
+  border: 2px solid var(--color-accent, var(--accent)) !important;
+  background: color-mix(in srgb, var(--color-accent, var(--accent)) 18%, var(--surface-raised, var(--surface-2))) !important;
+  color: var(--text-primary, var(--text)) !important;
+  font-weight: 700 !important;
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel .vsp-btn.primary {
+  border-color: transparent !important;
+  background: var(--color-accent, var(--accent)) !important;
+  color: var(--on-accent, #fff) !important;
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:disabled {
+  border-color: var(--border) !important;
+  background: var(--surface-2) !important;
+  color: var(--text-disabled, var(--text-secondary, var(--text-dim))) !important;
+  cursor: not-allowed;
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel .vsp-btn:focus-visible,
+:root .vplayer .vp-subpanel.vp-dmpanel .vp-panel-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring-color, var(--color-accent, var(--accent)));
+  outline-offset: 2px;
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel input[type='text'],
+:root .vplayer .vp-subpanel.vp-dmpanel textarea {
+  box-sizing: border-box;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 8px;
+  background: var(--surface-raised, var(--surface-2));
+  color: var(--text-primary, var(--text));
+  font: 15px/1.4 var(--font-ui, system-ui, sans-serif);
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel input[type='text']::placeholder,
+:root .vplayer .vp-subpanel.vp-dmpanel textarea::placeholder {
+  color: var(--text-secondary, var(--text-dim));
+  opacity: 1;
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel input[type='range'] {
+  box-sizing: border-box;
+  flex: 1 1 100px;
+  width: auto;
+  min-width: 100px;
+  margin: 0;
+  accent-color: var(--color-accent, var(--accent));
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel .vsp-row > .muted:not(.vsp-label) {
+  flex: 0 0 auto;
+  color: var(--text-secondary, var(--text-dim));
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel .vsp-value {
+  font-variant-numeric: tabular-nums;
+}
+
+:root .vplayer .vp-subpanel.vp-dmpanel .vsp-message {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 1100px) {
   :root[data-shell] .vplayer .vp-bar {
     gap: 5px;
+  }
+}
+
+@media (max-width: 760px) {
+  :root .vplayer .vp-bar {
+    justify-content: center;
+    flex-wrap: wrap;
+    overflow: visible;
+    row-gap: 4px;
+  }
+
+  :root .vplayer .vp-bar-group {
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  :root .vplayer .vp-bar-spacer {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  :root .vplayer .vp-subpanel.vp-dmpanel .vsp-row {
+    flex-wrap: wrap;
+  }
+
+  :root .vplayer .vp-subpanel.vp-dmpanel .vsp-label {
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    min-width: 0 !important;
   }
 }

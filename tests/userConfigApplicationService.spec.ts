@@ -11,6 +11,7 @@ import { UserConfigApplicationService, USER_CONFIG_KEY, serializeImport } from '
 import { parseSubscriptionSourceOverrides } from '../src/main/store/subscriptionProfileMerge';
 import { parseSiteConfig } from '../src/engine/config/ApiConfigParser';
 import { NullLogger } from '../src/engine/util/logger';
+import { sourceConfigurationSignature } from '../src/shared/sourceConfigurationSignature';
 import type { SiteConfig, SourceBean, SourceUpdatePatch, LiveBean } from '../src/shared/types';
 import type { SubscriptionGroup, UserProfile } from '../src/shared/types';
 
@@ -105,6 +106,44 @@ describe('source deletions belong to one child profile', () => {
     expect(restarted.snapshot().deletedSourceKeys).toEqual(['shared']);
     restarted.activateProfile(first);
     expect(restarted.sources().map(item => item.key)).toContain('shared');
+  });
+
+  it('rejects stale cleanup when a source was edited under the same key', () => {
+    const manager = newUserConfigService(tmpDir());
+    manager.replaceFromImport(fullConfig([bean('same-key')]), 'https://a.test/config');
+    const profileId = manager.activeProfileId();
+    const auditedSignature = sourceConfigurationSignature(manager.sources());
+
+    manager.updateSource('same-key', { name: 'Edited after audit' } as SourceUpdatePatch);
+
+    expect(() => manager.deleteSources(['same-key'], profileId, auditedSignature))
+      .toThrow('线路列表已变化，请刷新后重试');
+    expect(manager.sources()).toHaveLength(1);
+    expect(manager.sources()[0].name).toBe('Edited after audit');
+  });
+
+  it('reports a neutral refresh action when the active profile changed before deletion', () => {
+    const manager = newUserConfigService(tmpDir());
+    manager.replaceFromImport(fullConfig([bean('same-key')]), 'https://a.test/config');
+    const auditedProfileId = manager.activeProfileId();
+    const auditedSignature = sourceConfigurationSignature(manager.sources());
+    manager.saveAsProfile('B', { parsed: fullConfig([bean('same-key')]), apiUrl: 'https://b.test/config' });
+
+    expect(() => manager.deleteSources(['same-key'], auditedProfileId, auditedSignature))
+      .toThrow('当前档案已切换，请刷新线路列表后重试');
+    expect(manager.sources().map(item => item.key)).toEqual(['same-key']);
+  });
+
+  it('validates cleanup against visible sources while unrelated sources remain globally blocked', () => {
+    const manager = newUserConfigService(tmpDir());
+    manager.replaceFromImport(fullConfig([bean('blocked'), bean('remove'), bean('keep')]), 'https://a.test/config');
+    manager.setGlobalSourceBlock(['blocked'], true);
+    const profileId = manager.activeProfileId();
+    const auditedSignature = sourceConfigurationSignature(manager.sources());
+
+    expect(manager.deleteSources(['remove'], profileId, auditedSignature)).toEqual(['remove']);
+    expect(manager.sources().map(item => item.key)).toEqual(['keep']);
+    expect(manager.snapshot().sources.map(item => item.key)).toEqual(['blocked', 'keep']);
   });
 
   it('legacy global records migrate only to the saved active profile', () => {

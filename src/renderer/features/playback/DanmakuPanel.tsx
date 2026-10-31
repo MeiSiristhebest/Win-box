@@ -56,7 +56,7 @@ export function DanmakuPanel({
           <section id={panelId} aria-label="弹幕设置" className="vp-subpanel vp-dmpanel">
             <div className="vsp-row">
               <button type="button" className={`vp-panel-toggle${enabled ? ' active' : ''}`} aria-pressed={enabled} onClick={onToggle}>弹幕：{enabled ? '开' : '关'}</button>
-              <span className="muted" style={{ marginLeft: 'auto', fontSize: 12 }}>{message || (activeEpisodeId != null ? '已加载' : '')}</span>
+              <span className="muted vsp-message">{message || (activeEpisodeId != null ? '已加载' : '')}</span>
             </div>
             <div className="vsp-row">
               <span className="muted vsp-label">区域</span>
@@ -87,7 +87,7 @@ export function DanmakuPanel({
                 aria-label="弹幕不透明度" type="range" min={20} max={100} value={Math.round(settings.opacity * 100)}
                 onChange={(event) => onSettingsCommand({ type: 'set-opacity', value: Number(event.target.value) / 100 })}
               />
-              <span className="muted" style={{ fontSize: 12 }}>{Math.round(settings.opacity * 100)}%</span>
+              <span className="muted vsp-value">{Math.round(settings.opacity * 100)}%</span>
             </div>
             <div className="vsp-row">
               <span className="muted vsp-label">密度</span>
@@ -95,7 +95,7 @@ export function DanmakuPanel({
                 aria-label="弹幕密度" type="range" min={25} max={100} value={Math.round(settings.density * 100)}
                 onChange={(event) => onSettingsCommand({ type: 'set-density', value: Number(event.target.value) / 100 })}
               />
-              <span className="muted" style={{ fontSize: 12 }}>{settings.density.toFixed(2)}</span>
+              <span className="muted vsp-value">{settings.density.toFixed(2)}</span>
             </div>
             <div className="vsp-row">
               <span className="muted vsp-label">速度</span>
@@ -103,12 +103,12 @@ export function DanmakuPanel({
                 aria-label="弹幕速度" type="range" min={50} max={300} value={settings.speed}
                 onChange={(event) => onSettingsCommand({ type: 'set-speed', value: Number(event.target.value) })}
               />
-              <span className="muted" style={{ fontSize: 12 }}>{settings.speed}</span>
+              <span className="muted vsp-value">{settings.speed}</span>
             </div>
             <div className="vsp-row">
               <span className="muted vsp-label">时间</span>
               <button className="vsp-btn" onClick={() => onSettingsCommand({ type: 'step-offset', delta: -0.5 })}>−0.5s</button>
-              <span className="muted" style={{ fontSize: 12 }}>{settings.offset >= 0 ? '+' : ''}{settings.offset}s</span>
+              <span className="muted vsp-value">{settings.offset >= 0 ? '+' : ''}{settings.offset}s</span>
               <button className="vsp-btn" onClick={() => onSettingsCommand({ type: 'step-offset', delta: 0.5 })}>+0.5s</button>
               <button className="vsp-btn" title="重置" onClick={() => onSettingsCommand({ type: 'reset-offset' })}>重置</button>
             </div>

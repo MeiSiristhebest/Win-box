@@ -32,22 +32,6 @@
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 
-.selectedMarker {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 16px;
-  height: 16px;
-  margin-left: 6px;
-  color: var(--text-accent);
-}
-
-.selectedMarker svg {
-  width: 16px;
-  height: 16px;
-}
-
 .vertical {
   width: 100%;
   border-bottom: 0;

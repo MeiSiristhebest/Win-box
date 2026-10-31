@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { emptyUserConfig } from '../src/main/store/UserConfigApplicationService';
 import { createProfileFromConfig, replaceImportedProfileConfig } from '../src/main/store/userProfileImports';
-import { activateProfileInConfig } from '../src/main/store/userProfileTransitions';
+import { activateProfileInConfig, deleteProfileFromConfig } from '../src/main/store/userProfileTransitions';
 import { commitSubscriptionGroupInConfig } from '../src/main/store/subscriptionGroupTransitions';
 import { serializeImport } from '../src/main/store/userProfileSnapshot';
 import type { LiveBean, SiteConfig, SourceBean, SubscriptionGroup, UserConfig, UserProfile } from '../src/shared/types';
@@ -102,5 +102,23 @@ describe('pure profile state transitions', () => {
     expect(result.config.ui.activeSourceKey).toBe('');
     expect(state.activeProfileId).toBe('current');
     expect(state.ui.activeSourceKey).toBe('current');
+  });
+
+  it('removes a deleted profile from its subscription group instead of leaving an orphan switcher row', () => {
+    const state = currentState();
+    state.profiles.push(profile('other', 'other'));
+    state.subscriptionGroups = [{
+      id: 'group', name: 'Group', url: 'https://group.test/config', status: 'partial',
+      createdAt: now.toISOString(), updatedAt: now.toISOString(),
+      members: [
+        { id: 'current-member', profileId: 'current', name: 'Current', url: 'https://current.test/config', status: 'ready' },
+        { id: 'failed-member', name: 'Failed child', url: 'https://failed.test/config', status: 'failed', error: 'HTTP 404' },
+      ],
+    }];
+
+    const result = deleteProfileFromConfig(state, 'current');
+
+    expect(result?.config.subscriptionGroups[0].members).toEqual([state.subscriptionGroups[0].members[1]]);
+    expect(result?.config.subscriptionGroups[0].status).toBe('failed');
   });
 });

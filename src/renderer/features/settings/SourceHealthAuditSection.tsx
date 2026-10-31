@@ -18,7 +18,7 @@ const HEALTH_LABEL: Record<string, string> = {
   'ok-classes': '有效·仅分类(点分类可见)',
   'needs-ext': '需补 ext',
   empty: '空(源站无数据)',
-  error: '失效(加载报错)',
+  error: '请求失败（需复核）',
 };
 
 const HEALTH_COLOR: Record<string, string> = {
@@ -43,7 +43,7 @@ export function SourceHealthAuditSection({
   return (
     <div className="card" id="cfg-audit" style={{ padding: 12, marginBottom: 16 }}>
       <div className="row" style={{ marginBottom: 8, flexWrap: 'wrap' }}>
-        <span className="muted" style={{ fontWeight: 600 }}>主页可见性体检（判定源是否有效）</span>
+        <span className="muted" style={{ fontWeight: 600 }}>线路首页检查（反映本次请求结果，不等于永久失效）</span>
         <button className="primary" disabled={auditBusy || !sources.length} onClick={onRunAudit}>
           {auditBusy ? '体检中…（逐源加载首页，jar 源较慢）' : '一键体检全部源'}
         </button>
@@ -52,16 +52,16 @@ export function SourceHealthAuditSection({
             style={{ color: 'var(--text-danger)' }}
             disabled={!audit.some((item) => item.health === 'error')}
             onClick={onDeleteFailedSources}
-            title="批量删除体检结果为失败或报错的源（不触碰原始文件）"
+            title="只从当前档案移除本次请求失败的线路；网络、登录或运行环境问题也可能造成失败"
           >
-            一键删除失败源（{audit.filter((item) => item.health === 'error').length}）
+            移除本次请求失败线路（{audit.filter((item) => item.health === 'error').length}）
           </button>
         )}
         {audit && (
           <span className="status">
             {audit.filter((item) => item.health === 'ok-content' || item.health === 'ok-classes').length} 有效 ·
             {audit.filter((item) => item.needsExt).length} 需补 ext ·
-            {audit.filter((item) => item.health === 'error' || item.health === 'empty').length} 失效/空
+            {audit.filter((item) => item.health === 'error' || item.health === 'empty').length} 请求失败/空
           </span>
         )}
       </div>
@@ -73,7 +73,7 @@ export function SourceHealthAuditSection({
             <button type="button" className={`tag ${filter === 'all' ? 'active' : ''}`} aria-pressed={filter === 'all'} onClick={() => onFilterChange('all')}>全部 {audit.length}</button>
             <button type="button" className={`tag ${filter === 'usable' ? 'active' : ''}`} aria-pressed={filter === 'usable'} onClick={() => onFilterChange('usable')}>有效</button>
             <button type="button" className={`tag ${filter === 'needs-ext' ? 'active' : ''}`} aria-pressed={filter === 'needs-ext'} onClick={() => onFilterChange('needs-ext')}>需补 ext</button>
-            <button type="button" className={`tag ${filter === 'bad' ? 'active' : ''}`} aria-pressed={filter === 'bad'} onClick={() => onFilterChange('bad')}>失效/空</button>
+            <button type="button" className={`tag ${filter === 'bad' ? 'active' : ''}`} aria-pressed={filter === 'bad'} onClick={() => onFilterChange('bad')}>请求失败/空</button>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>

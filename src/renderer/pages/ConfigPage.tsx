@@ -144,12 +144,10 @@ export default function ConfigPage() {
 
   const sources = cfg?.sources ?? [];
   const activeKey = cfg?.ui.activeSourceKey ?? '';
-  const activeProfileName = cfg?.profiles.find((profile) => profile.id === cfg.activeProfileId)?.name ?? '';
   const sourceHealthAudit = useSourceHealthAuditPresenter({
     port: sourceHealthAuditAdapter,
     sources,
     activeProfileId: cfg?.activeProfileId ?? '',
-    activeProfileName,
     confirm: (message, options) => dialog.confirm(message, options),
     refresh,
   });

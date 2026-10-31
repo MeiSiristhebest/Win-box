@@ -35,7 +35,7 @@ function props(sources = [source('source-a', 'Source A')]) {
     sourcesPort: {
       activateSource: vi.fn().mockResolvedValue(undefined),
       deleteSource: vi.fn().mockResolvedValue(undefined),
-      deleteSources: vi.fn().mockResolvedValue(undefined),
+      deleteSources: vi.fn(async (keys: string[]) => keys),
       setGlobalSourceBlock: vi.fn().mockResolvedValue(undefined),
       moveSource: vi.fn().mockResolvedValue(undefined),
       updateSource: vi.fn().mockResolvedValue(undefined),
@@ -72,10 +72,24 @@ describe('SourceManagementSection', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '全选源' }));
     fireEvent.click(screen.getByRole('button', { name: '删除所选（2）' }));
 
-    await waitFor(() => expect(page.sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a', 'source-b']));
+    await waitFor(() => expect(page.sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a', 'source-b'], 'profile-a'));
     expect(confirm).toHaveBeenCalledOnce();
     expect(screen.getByRole('status').textContent).toContain('已删除 2 个源');
     expect(page.onRefresh).toHaveBeenCalledOnce();
+  });
+
+  it('reports and clears only sources confirmed as removed by the store', async () => {
+    confirm.mockResolvedValue(true);
+    const page = props([source('source-a', 'Source A'), source('source-b', 'Source B')]);
+    page.sourcesPort.deleteSources.mockResolvedValue(['source-a']);
+
+    render(<SourceManagementSection {...page} />);
+    fireEvent.click(screen.getByRole('checkbox', { name: '全选源' }));
+    fireEvent.click(screen.getByRole('button', { name: '删除所选（2）' }));
+
+    await waitFor(() => expect(screen.getByRole('status').textContent).toContain('已删除 1 个源'));
+    expect((screen.getByRole('checkbox', { name: '选择源 Source A' }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole('checkbox', { name: '选择源 Source B' }) as HTMLInputElement).checked).toBe(true);
   });
 
   it('reports a completed mutation separately when refreshing the list fails', async () => {
@@ -86,8 +100,8 @@ describe('SourceManagementSection', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: '选择源 Source A' }));
     fireEvent.click(screen.getByRole('button', { name: '删除所选（1）' }));
 
-    await waitFor(() => expect(page.sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a']));
-    expect(screen.getByRole('status').textContent).toContain('操作已完成，但源列表刷新失败');
+    await waitFor(() => expect(page.sourcesPort.deleteSources).toHaveBeenCalledWith(['source-a'], 'profile-a'));
+    expect(screen.getByRole('status').textContent).toContain('已删除 1 个源；源列表刷新失败');
     expect(screen.getByRole('status').textContent).toContain('configuration unavailable');
   });
 

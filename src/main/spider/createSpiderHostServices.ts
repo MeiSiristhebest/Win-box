@@ -171,6 +171,7 @@ export function createSpiderHostServices(
   const sourceDiagnostics = new SourceDiagnosticsApplicationService({
     catalog: {
       currentSources: () => sourceRuntimeConfiguration.current?.sites ?? [],
+      activeProfileId: () => userConfig.activeProfileId(),
       findSource: (key) => sourceExecutionContext.forRequest(key) ?? null,
     },
     gateway: { home: (source) => sourceServices.gateway.home(source) },

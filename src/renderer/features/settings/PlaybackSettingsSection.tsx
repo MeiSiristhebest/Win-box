@@ -73,7 +73,7 @@ export function PlaybackSettingsSection({ active, requestedSection = '', prefere
           <button type="button" disabled={externalSettings.vod.busy || !prefsLoaded} onClick={() => void externalSettings.vod.detect()}>{externalSettings.vod.busy ? '正在处理…' : '检测已安装的播放器'}</button>
           {externalSettings.vod.players.map(player => (
             <button type="button" disabled={externalSettings.vod.busy || !prefsLoaded} key={player.path} className="tag ui-action" title={player.path} aria-pressed={externalSettings.vod.value === player.path} onClick={() => void externalSettings.vod.save(player.path)}>
-              {player.name}{externalSettings.vod.value === player.path ? ' ✓' : ''}
+              {player.name}{externalSettings.vod.value === player.path && <span className="muted" style={{ marginInlineStart: 6, fontSize: 11 }}>当前使用</span>}
             </button>
           ))}
         </div>

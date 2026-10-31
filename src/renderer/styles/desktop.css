@@ -617,21 +617,6 @@
     font-weight: 600;
   }
 
-  /* A checkmark makes the selected category legible without asking users to infer color alone. */
-  :root[data-ui='desktop'] .desktop-main :is(.tag.active, .tag[aria-pressed='true'], .tag[aria-selected='true'])::before {
-    content: '✓';
-    display: inline-grid;
-    width: 16px;
-    height: 16px;
-    place-items: center;
-    border-radius: 50%;
-    color: var(--on-accent);
-    background: var(--color-accent);
-    font-size: 12px;
-    font-weight: 800;
-    line-height: 1;
-  }
-
   /* Keep favorite controls inside the poster width; labels remain explicit and readable. */
   :root[data-ui='desktop'] .desktop-main .favorite-cover-button {
     display: block;

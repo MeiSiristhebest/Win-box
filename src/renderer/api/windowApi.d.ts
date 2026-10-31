@@ -93,7 +93,7 @@ declare global {
         addSource: (bean: SourceBean) => Promise<IpcResult<SourceBean>>;
         updateSource: (key: string, patch: SourceUpdatePatch) => Promise<IpcResult<SourceBean>>;
         deleteSource: (key: string) => Promise<IpcResult<void>>;
-        deleteSources: (keys: string[]) => Promise<IpcResult<void>>;
+        deleteSources: (keys: string[], expectedProfileId?: string, expectedSourceSignature?: string) => Promise<IpcResult<string[]>>;
         setGlobalSourceBlock: (keys: string[], blocked: boolean) => Promise<IpcResult<void>>;
         moveSource: (key: string, direction: SourceMoveDirection) => Promise<IpcResult<void>>;
         setActiveSource: (key: string) => Promise<IpcResult<void>>;
@@ -143,7 +143,7 @@ declare global {
         /** ★ 2026-09-30（用户要求）：一步完成「切换档案 + 选中该档案下的源」 */
         switchProfileSource: (a: { profileId: string; key: string }) => Promise<IpcResult<void>>;
         vodDebug: (key: string) => Promise<IpcResult<SourceDebugReport>>;
-        audit: () => Promise<IpcResult<AuditItem[]>>;
+        audit: (expectedProfileId?: string) => Promise<IpcResult<AuditItem[]>>;
         cacheClear: () => Promise<IpcResult<{ freedBytes: number; cleared: string[]; failed: string[] }>>;
         driveBindKeys: () => Promise<IpcResult<string[]>>;
         gotoDriveBind: () => Promise<IpcResult<void>>;

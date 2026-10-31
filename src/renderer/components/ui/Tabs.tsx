@@ -1,6 +1,5 @@
 import type { KeyboardEvent, ReactNode } from 'react';
 import { Tab as FluentTab, TabList as FluentTabList } from '@fluentui/react-components';
-import { Checkmark16Regular } from '@fluentui/react-icons';
 import styles from './Tabs.module.css';
 
 export interface TabItem<Value extends string> {
@@ -65,7 +64,6 @@ export function Tabs<Value extends string>({ items, value, onChange, label, idPr
           icon={item.icon ? <>{item.icon}</> : undefined}
         >
           {item.label}
-          {item.id === value && <span className={styles.selectedMarker} aria-hidden="true"><Checkmark16Regular /></span>}
         </FluentTab>
       ))}
     </FluentTabList>
