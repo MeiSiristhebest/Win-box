@@ -16,7 +16,9 @@ export interface PlayerPageSession extends PlayerPageSessionPresentation {
   canNext: boolean;
   selectEpisode(index: number): void;
   retryCurrent(): void;
-  autoChangeParse(currentPosition?: number): Promise<boolean>;
+  autoChangeParse(currentPosition?: number, reason?: string): Promise<boolean>;
+  selectAlternative(id: string): boolean;
+  confirmPlaybackStarted(): void;
   dismissDriveBinding(): void;
   onDriveBound(): void;
 }
@@ -27,7 +29,7 @@ export function usePlayerPageSession(
   sourceMemory: PlayerSourceMemoryPort,
 ): PlayerPageSession {
   const [state, dispatch] = useReducer(reducePlayerPageSession, initialPlayerPageSessionState);
-  const { init, epIndex, activeUrl, curName, resolving, driveBind, parseMsg, playName, parseName } = presentPlayerPageSession(state);
+  const { init, epIndex, activeUrl, curName, resolving, driveBind, parseMsg, playName, parseName, sourceFallback } = presentPlayerPageSession(state);
   const workflow = useMemo(() => createPlayerPageSessionWorkflow({
     session: sessionPort,
     history: historyPort,
@@ -49,7 +51,7 @@ export function usePlayerPageSession(
   const retryCurrent = useCallback(() => workflow.retryCurrent(state.resolution.kind), [state.resolution.kind, workflow]);
   const onDriveBound = useCallback(() => workflow.onDriveBound(state.resolution.kind), [state.resolution.kind, workflow]);
 
-  usePlayerHistoryProgress(init ? {
+  usePlayerHistoryProgress(init && !init.deferHistoryUntilPlayback ? {
     rawUrl: init.episodes?.[epIndex]?.url || '',
     playbackUrl: activeUrl,
     name: curName || init.lastName || '',
@@ -72,12 +74,15 @@ export function usePlayerPageSession(
     driveBind,
     parseMsg,
     parseName,
+    sourceFallback,
     episodes,
     canPrev,
     canNext,
     selectEpisode: workflow.selectEpisode,
     retryCurrent,
     autoChangeParse: workflow.autoChangeParse,
+    selectAlternative: workflow.selectAlternative,
+    confirmPlaybackStarted: workflow.confirmPlaybackStarted,
     dismissDriveBinding: workflow.dismissDriveBinding,
     onDriveBound,
   };

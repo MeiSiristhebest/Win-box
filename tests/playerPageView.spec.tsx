@@ -23,6 +23,9 @@ describe('PlayerPageView', () => {
       selectEpisode: vi.fn(),
       retryCurrent,
       autoChangeParse: vi.fn(),
+      selectAlternative: vi.fn(() => false),
+      confirmPlaybackStarted: vi.fn(),
+      sourceFallback: { kind: 'idle' },
       dismissDriveBinding: vi.fn(),
       onDriveBound: vi.fn(),
     };

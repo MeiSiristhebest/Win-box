@@ -18,7 +18,7 @@ describe('reportPlaybackFailure', () => {
       'auto-change',
       'page-failure',
     ]);
-    expect(autoChangeParse).toHaveBeenCalledWith(42);
+    expect(autoChangeParse).toHaveBeenCalledWith(42, 'decode failed');
     expect(onPlaybackFailure).toHaveBeenCalledWith(42, 'decode failed');
   });
 

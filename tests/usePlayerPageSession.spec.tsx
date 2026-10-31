@@ -33,6 +33,7 @@ describe('usePlayerPageSession', () => {
         : Promise.resolve(successfulPlay('https://media.invalid/episode-2.mp4'))),
       resolveHistorySource: vi.fn(async () => ({ profileId: 'profile-a', name: 'Source A' })),
       loadDetail: vi.fn(async () => null),
+      discover: vi.fn(async () => ({ candidates: [], incompleteSources: 0, truncated: false })),
       onInit: ((listener) => {
         initListener = listener;
         return () => { if (initListener === listener) initListener = null; };
@@ -107,6 +108,7 @@ describe('usePlayerPageSession', () => {
         return { profileId: `profile-${sourceKey}`, name: `Source ${sourceKey}` };
       }),
       loadDetail: vi.fn(async () => null),
+      discover: vi.fn(async () => ({ candidates: [], incompleteSources: 0, truncated: false })),
       onInit: (listener) => {
         initListener = listener;
         return () => { if (initListener === listener) initListener = null; };
@@ -178,6 +180,7 @@ describe('usePlayerPageSession', () => {
       }),
       resolveHistorySource: vi.fn(async () => ({ profileId: 'profile-a', name: 'Source A' })),
       loadDetail: vi.fn(async () => null),
+      discover: vi.fn(async () => ({ candidates: [], incompleteSources: 0, truncated: false })),
       onInit: ((listener) => {
         initListener = listener;
         return () => { if (initListener === listener) initListener = null; };
@@ -222,13 +225,14 @@ describe('usePlayerPageSession', () => {
     await act(async () => {
       expect(await result.current.autoChangeParse(125)).toBe(true);
       expect(await result.current.autoChangeParse(125)).toBe(true);
-      expect(await result.current.autoChangeParse(125)).toBe(false);
+      expect(await result.current.autoChangeParse(125)).toBe(true);
     });
     expect(playCalls.map(call => call.parseOffset)).toEqual([undefined, 1, 2, 3]);
+    await waitFor(() => expect(result.current.sourceFallback.kind).toBe('unavailable'));
 
     act(() => result.current.retryCurrent());
     await waitFor(() => expect(sessionPort.play).toHaveBeenCalledTimes(5));
-    expect(playCalls[4]).toEqual({ id: 'episode-1', parseOffset: 3 });
+    expect(playCalls[4]).toEqual({ id: 'episode-1', parseOffset: undefined });
 
     unmount();
   });

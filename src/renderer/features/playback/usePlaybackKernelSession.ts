@@ -22,6 +22,7 @@ export interface PlaybackKernelSessionOptions {
   onEngineFailure?: (kernel: Kernel, reason: string) => void;
   /** ★ 2026-10-25（自动切源容错机制 AutoChangeParse）：流播放失败/崩溃时回调并自动切线 */
   onPlaybackFailure?: (currentTime: number, reason: string) => void;
+  onPlaybackStarted?: () => void;
   url: string;
   progressKey: string;
   playbackSource?: PlaybackSourceRef;
@@ -117,6 +118,7 @@ export function usePlaybackKernelSession(options: PlaybackKernelSessionOptions):
     let outroFired = false;
     let eofFired = false;
     let pendingEvents: MpvStateEvent[] = [];
+    let playbackConfirmed = false;
 
     const maybeSkip = (time: number, duration: number) => {
       const decision = decideMpvSegmentSkip({
@@ -154,6 +156,10 @@ export function usePlaybackKernelSession(options: PlaybackKernelSessionOptions):
 
       const state = { ...stateRef.current, ...event.state };
       stateRef.current = state;
+      if (state.playbackStarted && !playbackConfirmed) {
+        playbackConfirmed = true;
+        latestOptions.current.onPlaybackStarted?.();
+      }
       latestOptions.current.onState?.(state);
       audioTracksRef.current?.(state.audioTracks ?? [], state.aid ?? null);
       const plan = projectMpvPlaybackEvent(state, label, eofFired);

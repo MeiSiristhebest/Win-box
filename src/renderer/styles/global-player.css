@@ -15,6 +15,33 @@
    ② 画面区域：.vp-stage 绝对定位撑满并裁切溢出 → 画面本身不可能把控制条挤出可视区。 */
 .pwin-body { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .pwin-stage { flex: 1; min-height: 0; min-width: 0; display: flex; }
+.player-source-fallback {
+  flex: 0 0 auto;
+  margin: 8px 12px 0;
+  padding: 8px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  color: #f3f6fb;
+  background: rgba(24, 31, 42, .98);
+  border: 1px solid #56657b;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.player-source-fallback__choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.player-source-fallback-choice {
+  min-height: 32px;
+  padding: 5px 10px;
+  color: #f7f9fc;
+  background: #2a3a51;
+  border: 1px solid #788ba6;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.player-source-fallback-choice:hover { background: #354a65; }
+.player-source-fallback-choice:focus-visible { outline: 2px solid #9dc2ff; outline-offset: 2px; }
 .vp-stage { position: absolute; inset: 0; overflow: hidden; display: flex; align-items: center; justify-content: center;
   container-type: size; }
 .vp-stage-toggle { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0;

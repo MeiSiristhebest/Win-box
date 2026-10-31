@@ -1,5 +1,12 @@
 import type { PlayerInitData } from './playerPageSession';
 
+export type PlayerSourceFallbackState =
+  | { kind: 'idle' }
+  | { kind: 'searching' }
+  | { kind: 'switching'; sourceName: string }
+  | { kind: 'choices'; candidates: Array<{ id: string; sourceName: string; profileName: string }>; incompleteSources: number; truncated: boolean }
+  | { kind: 'unavailable'; message: string };
+
 export type PlayerPageResolutionState =
   | { kind: 'idle' }
   | { kind: 'hydrating' }
@@ -14,6 +21,7 @@ export interface PlayerPageSessionState {
   curName: string;
   playName: string;
   resolution: PlayerPageResolutionState;
+  sourceFallback: PlayerSourceFallbackState;
 }
 
 export type PlayerPageSessionAction =
@@ -25,6 +33,11 @@ export type PlayerPageSessionAction =
   | { type: 'resolution-succeeded'; url: string; parseName?: string }
   | { type: 'drive-bind-required'; provider: string }
   | { type: 'resolution-failed'; message: string }
+  | { type: 'source-fallback-searching' }
+  | { type: 'source-fallback-switching'; sourceName: string }
+  | { type: 'source-fallback-choices'; candidates: Array<{ id: string; sourceName: string; profileName: string }>; incompleteSources: number; truncated: boolean }
+  | { type: 'source-fallback-unavailable'; message: string }
+  | { type: 'source-fallback-cleared' }
   | { type: 'drive-bind-dismissed' };
 
 export interface PlayerPageSessionPresentation {
@@ -37,6 +50,7 @@ export interface PlayerPageSessionPresentation {
   driveBind: string | null;
   parseMsg: string;
   parseName?: string;
+  sourceFallback: PlayerSourceFallbackState;
 }
 
 export const initialPlayerPageSessionState: PlayerPageSessionState = {
@@ -45,6 +59,7 @@ export const initialPlayerPageSessionState: PlayerPageSessionState = {
   curName: '',
   playName: '',
   resolution: { kind: 'idle' },
+  sourceFallback: { kind: 'idle' },
 };
 
 export function reducePlayerPageSession(
@@ -60,6 +75,7 @@ export function reducePlayerPageSession(
         curName: '',
         playName: '',
         resolution: { kind: 'hydrating' },
+        sourceFallback: { kind: 'idle' },
       };
     case 'hydration-completed':
       return {
@@ -86,6 +102,24 @@ export function reducePlayerPageSession(
       return { ...state, resolution: { kind: 'drive-bind-required', provider: action.provider } };
     case 'resolution-failed':
       return { ...state, resolution: { kind: 'failed', message: action.message } };
+    case 'source-fallback-searching':
+      return { ...state, sourceFallback: { kind: 'searching' } };
+    case 'source-fallback-switching':
+      return { ...state, sourceFallback: { kind: 'switching', sourceName: action.sourceName } };
+    case 'source-fallback-choices':
+      return {
+        ...state,
+        sourceFallback: {
+          kind: 'choices',
+          candidates: action.candidates,
+          incompleteSources: action.incompleteSources,
+          truncated: action.truncated,
+        },
+      };
+    case 'source-fallback-unavailable':
+      return { ...state, sourceFallback: { kind: 'unavailable', message: action.message } };
+    case 'source-fallback-cleared':
+      return { ...state, sourceFallback: { kind: 'idle' } };
     case 'drive-bind-dismissed':
       return state.resolution.kind === 'drive-bind-required'
         ? { ...state, resolution: { kind: 'idle' } }
@@ -105,5 +139,6 @@ export function presentPlayerPageSession(state: PlayerPageSessionState): PlayerP
     driveBind: resolution.kind === 'drive-bind-required' ? resolution.provider : null,
     parseMsg: resolution.kind === 'failed' ? resolution.message : '',
     parseName: resolution.kind === 'ready' ? resolution.parseName : undefined,
+    sourceFallback: state.sourceFallback,
   };
 }

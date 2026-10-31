@@ -1,5 +1,6 @@
 import type { PlayResult, VodDetail } from '../../../../shared/types';
 import type { PlayerHistoryProgressPort } from './playerHistoryProgress';
+import type { PlaybackAlternativeSearchResult } from './discoverPlaybackAlternatives';
 
 export interface PlayerInitData {
   key: string;
@@ -13,6 +14,17 @@ export interface PlayerInitData {
   meta?: { pic?: string; remarks?: string; sourceName?: string; vodId?: string; fromKey?: string; id?: string; profileId?: string };
   startTime?: number;
   initSeq?: number;
+  /** Alternate-source history is written only after a media engine confirms playback started. */
+  deferHistoryUntilPlayback?: boolean;
+}
+
+export interface PlaybackAlternativeDiscoveryPort {
+  discover(input: {
+    current: PlayerInitData;
+    episodeIndex: number;
+    position: number;
+    excludedSourceIds: ReadonlySet<string>;
+  }, signal: AbortSignal): Promise<PlaybackAlternativeSearchResult>;
 }
 
 /** Capability required when resolving a selected episode to a playable URL. */
@@ -41,7 +53,8 @@ export interface PlayerTemporaryFileCleanupPort {
 export interface PlayerPagePlaybackWorkflowPort extends
   PlayerPlaybackResolutionPort,
   PlayerInitHydrationPort,
-  PlayerTemporaryFileCleanupPort {}
+  PlayerTemporaryFileCleanupPort,
+  PlaybackAlternativeDiscoveryPort {}
 
 /** Full capability bundle retained only by the player-session composition controller. */
 export interface PlayerPageSessionPort extends PlayerPagePlaybackWorkflowPort, PlayerPageEventsPort {}

@@ -43,6 +43,7 @@ export interface Html5PlaybackSessionOptions {
   revealControls(): void;
   recoverHtmlPlayback(): boolean;
   onPlaybackFailure?(currentTime: number, reason: string): void;
+  onPlaybackStarted?(): void;
   tryExternalFallback?(sourceUrl: string, position: number): Promise<{ opened: boolean; player?: string; error?: string } | null>;
   handlePlaybackEnd(): void;
   canAdvance(): boolean;
@@ -80,6 +81,7 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
     revealControls,
     recoverHtmlPlayback,
     onPlaybackFailure,
+    onPlaybackStarted,
     tryExternalFallback,
     handlePlaybackEnd,
     canAdvance,
@@ -119,6 +121,7 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
     let cancelled = false;
     let terminalFailureReported = false;
     const recovery = createHtml5PlaybackRecovery();
+    let playbackConfirmed = false;
     const reportTerminalFailure = (message: string, reason: string) => {
       if (terminalFailureReported || cancelled) return;
       terminalFailureReported = true;
@@ -188,7 +191,13 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
       revealControls();
     };
     const onWaiting = () => updatePlaybackStatus({ buffering: true });
-    const onPlaying = () => updatePlaybackStatus({ buffering: false });
+    const onPlaying = () => {
+      updatePlaybackStatus({ buffering: false });
+      if (!playbackConfirmed) {
+        playbackConfirmed = true;
+        onPlaybackStarted?.();
+      }
+    };
     const onError = () => {
       const mediaError = video.error;
       if (recovery.shouldIgnoreMediaError(mediaError?.code ?? 0)) return;

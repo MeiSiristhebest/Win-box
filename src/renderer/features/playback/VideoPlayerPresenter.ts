@@ -89,7 +89,9 @@ export interface VideoPlayerProps {
   episodes?: { name: string; url: string }[];
   onPickEpisode?: (index: number) => void;
   /** ★ 2026-10-25（自动切源容错机制 AutoChangeParse）：流异常/超时时自动切换下一解析线路 */
-  onAutoChangeParse?: (currentTime: number) => Promise<boolean> | boolean;
+  onAutoChangeParse?: (currentTime: number, reason: string) => Promise<boolean> | boolean;
+  /** Confirms that an alternate source actually began playing before history is committed. */
+  onPlaybackStarted?: () => void;
   /** Re-resolve the selected episode instead of reloading the player window. */
   onRetryPlayback?: () => void;
   /** ★ 2026-10-25（播放故障回调）：供外层（如直播切备用线）接管流异常 */
@@ -568,6 +570,7 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
       revealControls: poke,
       recoverHtmlPlayback,
       onPlaybackFailure: handlePlaybackFailure,
+      onPlaybackStarted: props.onPlaybackStarted,
       tryExternalFallback: tryConfiguredExternalFallback,
       handlePlaybackEnd,
       canAdvance,
@@ -588,6 +591,7 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
       onState: technical.onState,
       onEngineFailure: (failed, reason) => { engines.markFailure(failed, reason); recoverWithKernel('html5'); },
       onPlaybackFailure: handlePlaybackFailure,
+      onPlaybackStarted: props.onPlaybackStarted,
       onAudioTracks: audio.sync,
       allowMpv,
       kernel,
@@ -735,10 +739,11 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
     onCopy: () => { void contextMenu.copyAddress(); contextMenu.closeMenu(); },
   };
   const onGoToBind = useCallback(() => { void dependencies.driveBindingNavigation.openBindingSettings(); }, [dependencies.driveBindingNavigation]);
+  const onRetryPlayback = props.onRetryPlayback;
   const onRetry = useCallback(() => {
-    if (props.onRetryPlayback) props.onRetryPlayback();
+    if (onRetryPlayback) onRetryPlayback();
     else dependencies.playerWindowReload.reload();
-  }, [dependencies.playerWindowReload, props.onRetryPlayback]);
+  }, [dependencies.playerWindowReload, onRetryPlayback]);
   const retryLabel = props.onRetryPlayback ? '重新解析当前集' : '刷新重试';
   return {
     identity: { url, resourceName, danmakuTitle, playTitle, mini },

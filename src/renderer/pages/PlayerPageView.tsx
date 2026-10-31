@@ -15,7 +15,8 @@ type PlayerPageViewProps = {
 export function PlayerPageView({ session, windowState, title, onResolutionChange }: PlayerPageViewProps) {
   const {
     init, epIndex, activeUrl, curName, playName, resolving, driveBind, parseMsg, parseName,
-    episodes, canPrev, canNext, selectEpisode, retryCurrent, autoChangeParse, dismissDriveBinding, onDriveBound,
+    sourceFallback, episodes, canPrev, canNext, selectEpisode, retryCurrent, autoChangeParse,
+    selectAlternative, confirmPlaybackStarted, dismissDriveBinding, onDriveBound,
   } = session;
   const { appIcon, maximized, mini, pinTop, minimize, toggleMaximize, setMini, togglePinTop, close } = windowState;
   const eps = episodes;
@@ -95,6 +96,34 @@ export function PlayerPageView({ session, windowState, title, onResolutionChange
             {parseMsg}
           </div>
         )}
+        {sourceFallback.kind !== 'idle' && (
+          <output className="player-source-fallback" aria-live="polite">
+            {sourceFallback.kind === 'searching' && <span>当前线路播放失败，正在搜索并核验同剧同集的备用源…</span>}
+            {sourceFallback.kind === 'switching' && <span>正在切换到已核验的备用源：{sourceFallback.sourceName}</span>}
+            {sourceFallback.kind === 'unavailable' && <span>{sourceFallback.message}</span>}
+            {sourceFallback.kind === 'choices' && (
+              <>
+                <span>
+                  已核验到 {sourceFallback.candidates.length} 个同剧同集来源，请选择。
+                  {sourceFallback.incompleteSources > 0 && ` 另有 ${sourceFallback.incompleteSources} 个来源未完成，暂不自动切换。`}
+                  {sourceFallback.truncated && ' 候选较多，仅核验了前几项。'}
+                </span>
+                <div className="player-source-fallback__choices">
+                  {sourceFallback.candidates.map(candidate => (
+                    <button
+                      key={candidate.id}
+                      type="button"
+                      className="player-source-fallback-choice"
+                      onClick={() => selectAlternative(candidate.id)}
+                    >
+                      {candidate.sourceName}{candidate.profileName ? ` · ${candidate.profileName}` : ''}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </output>
+        )}
         <div className="pwin-stage">
           {activeUrl && true ? (
             <VideoPlayer
@@ -104,6 +133,7 @@ export function PlayerPageView({ session, windowState, title, onResolutionChange
               playTitle={playName}
               parseName={parseName}
               onAutoChangeParse={autoChangeParse}
+              onPlaybackStarted={confirmPlaybackStarted}
               onRetryPlayback={retryCurrent}
               onResolutionChange={onResolutionChange}
               danmakuTitle={((init?.subtitleTitle || init?.title) || '').trim()}
