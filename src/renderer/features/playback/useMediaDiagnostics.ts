@@ -2,7 +2,20 @@ import { useEffect, type RefObject } from 'react';
 import { reportHtmlMediaEvent, type MediaDiagnosticsPort } from './application/mediaDiagnostics';
 
 function reportVideoEvent(port: MediaDiagnosticsPort, video: HTMLVideoElement, url: string, title: string | undefined, event: string): void {
-  reportHtmlMediaEvent(port, { event, url, title, readyState: video.readyState, currentTime: video.currentTime, paused: video.paused });
+  const mediaError = event === 'error' ? video.error : null;
+  reportHtmlMediaEvent(port, {
+    event,
+    url,
+    title,
+    readyState: video.readyState,
+    currentTime: video.currentTime,
+    paused: video.paused,
+    ...(mediaError ? {
+      mediaErrorCode: mediaError.code,
+      mediaErrorMessage: mediaError.message,
+      networkState: video.networkState,
+    } : {}),
+  });
 }
 
 export function useMediaDiagnostics(

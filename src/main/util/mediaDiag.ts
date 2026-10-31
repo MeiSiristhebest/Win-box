@@ -31,6 +31,15 @@ function asNum(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 10) / 10 : undefined;
 }
 
+function sanitizeMediaError(v: unknown): string | undefined {
+  if (typeof v !== 'string' || !v.trim()) return undefined;
+  return v.trim()
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/\b(token|sign|auth|cookie|key)=\S+/gi, '$1=[redacted]')
+    .replace(/\s+/g, ' ')
+    .slice(0, 160);
+}
+
 /**
  * 记一条渲染层上报的播放事件。
  * @param wcId 上报窗口的 webContents id（GPU 崩溃时优先重载它 —— 「最后在播放的那个窗口」）
@@ -46,11 +55,17 @@ export function noteMediaState(wcId: number, win: string, raw: unknown): void {
     readyState: asNum(r.readyState),
     currentTime: asNum(r.currentTime),
     paused: !!r.paused,
+    mediaErrorCode: asNum(r.mediaErrorCode),
+    networkState: asNum(r.networkState),
+    mediaErrorMessage: sanitizeMediaError(r.mediaErrorMessage),
   };
   last = { wcId, win, at: Date.now(), state };
   const brief =
     `media:${state.event} win=${win} wc=${wcId} kernel=${state.kernel}`
     + ` rs=${state.readyState ?? '-'} t=${state.currentTime ?? '-'} paused=${state.paused ? 1 : 0}`
+    + `${state.mediaErrorCode == null ? '' : ` mediaErr=${state.mediaErrorCode}`}`
+    + `${state.networkState == null ? '' : ` net=${state.networkState}`}`
+    + `${state.mediaErrorMessage ? ` detail=${state.mediaErrorMessage}` : ''}`
     + `${state.title ? ` title=${state.title}` : ''}${state.url ? ` url=${state.url}` : ''}`;
   if (LOUD.test(state.event)) fileLogger.w(brief);
   else fileLogger.i(brief);

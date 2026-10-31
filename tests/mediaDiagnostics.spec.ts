@@ -20,4 +20,22 @@ describe('HTML media diagnostic mapping', () => {
       paused: false,
     });
   });
+
+  it('preserves concise media failure details for the main-process diagnostic boundary', () => {
+    expect(createHtmlMediaDiagnosticEvent({
+      event: 'error',
+      url: 'http://127.0.0.1/play?url=private',
+      readyState: 0,
+      currentTime: 0,
+      paused: true,
+      mediaErrorCode: 4,
+      networkState: 3,
+      mediaErrorMessage: 'MEDIA_ELEMENT_ERROR: Format error',
+    })).toMatchObject({
+      event: 'error',
+      mediaErrorCode: 4,
+      networkState: 3,
+      mediaErrorMessage: 'MEDIA_ELEMENT_ERROR: Format error',
+    });
+  });
 });

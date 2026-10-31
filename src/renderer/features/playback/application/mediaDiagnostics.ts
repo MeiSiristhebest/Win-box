@@ -12,6 +12,9 @@ export interface HtmlMediaDiagnosticSnapshot {
   readyState: number;
   currentTime: number;
   paused: boolean;
+  mediaErrorCode?: number;
+  networkState?: number;
+  mediaErrorMessage?: string;
 }
 
 export function createHtmlMediaDiagnosticEvent(snapshot: HtmlMediaDiagnosticSnapshot): MediaStateEvent {
@@ -23,6 +26,9 @@ export function createHtmlMediaDiagnosticEvent(snapshot: HtmlMediaDiagnosticSnap
     readyState: snapshot.readyState,
     currentTime: snapshot.currentTime,
     paused: snapshot.paused,
+    ...(snapshot.mediaErrorCode == null ? {} : { mediaErrorCode: snapshot.mediaErrorCode }),
+    ...(snapshot.networkState == null ? {} : { networkState: snapshot.networkState }),
+    ...(snapshot.mediaErrorMessage ? { mediaErrorMessage: snapshot.mediaErrorMessage } : {}),
   };
 }
 

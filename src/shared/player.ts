@@ -445,6 +445,11 @@ export interface MediaStateEvent {
   readyState?: number;
   currentTime?: number;
   paused?: boolean;
+  /** HTMLMediaElement error code and network state at the failure boundary. */
+  mediaErrorCode?: number;
+  networkState?: number;
+  /** Short browser-provided detail; main-process diagnostics redact URLs and secrets. */
+  mediaErrorMessage?: string;
 }
 
 /** 字幕字号换算：CSS px → mpv `sub-font-size`（mpv 默认 55 ≈ 720p 常规字号；近似 2:1，两侧共用） */
