@@ -49,6 +49,29 @@
   .import-report-details p { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
   .table-scroll { max-width: 100%; overflow: auto; overscroll-behavior-x: contain; }
   .table-scroll:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+  #cfg-sources .cfg-source-table { min-width: 690px; table-layout: fixed; }
+  #cfg-sources .cfg-source-table th { white-space: nowrap; }
+  #cfg-sources .cfg-source-table th:nth-child(1),
+  #cfg-sources .cfg-source-table td:nth-child(1) { width: 30px; }
+  #cfg-sources .cfg-source-table th:nth-child(2),
+  #cfg-sources .cfg-source-table td:nth-child(2) { width: 40px; }
+  #cfg-sources .cfg-source-table th:nth-child(3),
+  #cfg-sources .cfg-source-table td:nth-child(3) { width: 115px; }
+  #cfg-sources .cfg-source-table th:nth-child(4),
+  #cfg-sources .cfg-source-table td:nth-child(4) { width: 72px; }
+  #cfg-sources .cfg-source-table th:nth-child(5),
+  #cfg-sources .cfg-source-table td:nth-child(5) { width: 78px; }
+  #cfg-sources .cfg-source-table th:nth-child(6),
+  #cfg-sources .cfg-source-table td:nth-child(6) { width: 120px; }
+  #cfg-sources .cfg-source-table th:nth-child(7),
+  #cfg-sources .cfg-source-table td:nth-child(7) { width: 235px; }
+  #cfg-sources .cfg-source-table td:nth-child(3) div { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #cfg-sources .cfg-source-table td:nth-child(4),
+  #cfg-sources .cfg-source-table td:nth-child(5) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #cfg-sources .cfg-source-actions { gap: 3px; }
+  #cfg-sources .cfg-source-actions > button { flex: 0 0 auto; min-width: 24px; padding-inline: 3px; font-size: 12px; white-space: nowrap; }
+  #cfg-sources .cfg-source-actions > button:nth-child(-n+3) { min-width: 36px; }
+  #cfg-sources .cfg-source-actions > button:nth-child(n+4) { width: 24px; padding-inline: 2px; }
 
 .app-dialog:not([open]) { display: none; }
 .app-dialog {
@@ -60,6 +83,212 @@
   border: 1px solid color-mix(in srgb, var(--border) 55%, var(--text) 45%);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg), 0 0 0 1px color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+/* Profile switcher rows own their geometry and selected state. The generic
+   desktop button layer otherwise overrides the dialog's flex layout and clips
+   the secondary text between adjacent rows. */
+:root[data-theme] .app-dialog.profile-switcher-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, calc(100vw - 32px));
+  max-height: min(82vh, 720px);
+  overflow: hidden;
+}
+:root[data-theme] .app-dialog.profile-switcher-dialog > .profile-switcher-list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  margin-block: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice {
+  appearance: none;
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  min-height: 68px;
+  height: auto;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: visible;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control, 8px);
+  color: var(--text-primary, var(--text));
+  background: var(--surface-raised, var(--surface-2));
+  box-shadow: none;
+  font: inherit;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice:hover:not(:disabled) {
+  border-color: var(--border-strong, var(--border));
+  color: var(--text-primary, var(--text));
+  background: var(--surface-elevated, var(--surface-3));
+}
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice[aria-pressed='true'] {
+  border-color: var(--color-accent, var(--accent));
+  color: var(--text-primary, var(--text));
+  background: var(--accent-soft);
+}
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice:disabled {
+  color: var(--text-secondary, var(--text-dim));
+  background: var(--surface-2);
+  cursor: not-allowed;
+}
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+}
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice-name {
+  color: inherit;
+  font-weight: 650;
+}
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice-meta,
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice-reason {
+  color: var(--text-secondary, var(--text-dim));
+  font-size: 13px;
+  line-height: 1.45;
+}
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-footer {
+  justify-content: space-between;
+  gap: 12px;
+}
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice .profile-switcher-choice-name,
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice .profile-switcher-choice-meta,
+:root[data-theme] .app-dialog.profile-switcher-dialog .profile-switcher-choice .profile-switcher-choice-reason {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* Keep the two-column source picker usable at narrow sizes and high DPI. */
+:root[data-theme] .srcpick-pop .srcpick-item {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 40px;
+  height: auto;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control, 8px);
+  color: var(--text-primary, var(--text));
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+}
+:root[data-theme] .srcpick-pop .srcpick-item:hover:not(:disabled) {
+  border-color: var(--border-subtle, var(--border));
+  color: var(--text-primary, var(--text));
+  background: var(--surface-raised, var(--surface-2));
+}
+:root[data-theme] .srcpick-pop .srcpick-item[aria-pressed='true'] {
+  border-color: var(--color-accent, var(--accent));
+  color: var(--text-primary, var(--text));
+  background: var(--accent-soft);
+}
+:root[data-theme] .srcpick-pop .srcpick-col-sub .srcpick-sub-row > .srcpick-sub {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  min-height: 58px;
+  height: auto;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 3px;
+  padding: 7px 9px;
+  white-space: normal;
+}
+:root[data-theme] .srcpick-pop .srcpick-profile-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+:root[data-theme] .srcpick-pop .srcpick-profile-heading .srcpick-sname {
+  font-size: 14px;
+  font-weight: 600;
+}
+:root[data-theme] .srcpick-pop .srcpick-profile-state {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 999px;
+  color: var(--text-secondary, var(--text-dim));
+  background: var(--surface-2);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+:root[data-theme] .srcpick-pop .srcpick-profile-state.current {
+  border-color: var(--color-accent, var(--accent));
+  color: var(--text-accent, var(--accent));
+  background: var(--accent-soft);
+}
+:root[data-theme] .srcpick-pop .srcpick-profile-state.previewing {
+  border-color: var(--border-subtle, var(--border));
+  color: var(--text-primary, var(--text));
+  background: var(--surface-3);
+}
+:root[data-theme] .srcpick-pop .srcpick-profile-meta {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: var(--text-secondary, var(--text-dim));
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:root[data-theme] .srcpick-pop .srcpick-profile-meta.unavailable {
+  color: var(--color-danger, #c7434b);
+}
+:root[data-theme] .srcpick-pop .srcpick-sub.unavailable {
+  border-style: dashed;
+  cursor: not-allowed;
+}
+:root[data-theme] .srcpick-pop .srcpick-col-sub .srcpick-sub-row > .srcpick-sub-preview {
+  flex: 0 0 40px;
+  width: 40px;
+  min-width: 40px;
+  padding: 8px;
+  justify-content: center;
+}
+:root[data-theme] .srcpick-pop .srcpick-sub-preview svg {
+  display: block;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
 }
 .disclaimer-dialog { width: min(520px, calc(100vw - 32px)); max-height: min(80vh, 640px); }
 .drive-bind-dialog { width: min(520px, calc(100vw - 32px)); max-height: 90vh; }

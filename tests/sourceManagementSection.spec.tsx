@@ -39,6 +39,8 @@ function props(sources = [source('source-a', 'Source A')]) {
       setGlobalSourceBlock: vi.fn().mockResolvedValue(undefined),
       moveSource: vi.fn().mockResolvedValue(undefined),
       updateSource: vi.fn().mockResolvedValue(undefined),
+      announceSourceChanged: vi.fn(),
+      announceSourcesChanged: vi.fn(),
     },
     diagnosticsPort: { debugSource: vi.fn().mockResolvedValue({}) },
   };

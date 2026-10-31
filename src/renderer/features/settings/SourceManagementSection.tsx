@@ -115,7 +115,7 @@ export function SourceManagementSection({
         ) : (
           // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Keyboard users can scroll the source table.
           <section className="table-scroll" aria-label="点播源列表" tabIndex={0}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <table className="cfg-source-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
             <thead>
               <tr style={{ color: 'var(--text-dim)', textAlign: 'left' }}>
                 <th style={{ padding: 6, borderBottom: '1px solid var(--border)', width: 36, textAlign: 'center' }}>
@@ -285,7 +285,7 @@ export function SourceManagementSection({
                         <td style={{ padding: 6, borderBottom: '1px solid var(--border)' }}>{statusCell(s)}</td>
                         <td style={{ padding: 6, borderBottom: '1px solid var(--border)', color: 'var(--text-dim)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.api}>{s.api}</td>
                         <td style={{ padding: 6, borderBottom: '1px solid var(--border)' }}>
-                          <div className="row" style={{ flexWrap: 'nowrap' }}>
+                          <div className="row cfg-source-actions" style={{ flexWrap: 'nowrap' }}>
                             <button onClick={(e) => { e.stopPropagation(); actions.startEdit(s); }}>编辑</button>
                             <button onClick={(e) => { e.stopPropagation(); actions.runDiagnose(s.key); }}>诊断</button>
                             <button disabled={sourceDeleteBusy} onClick={(e) => { e.stopPropagation(); void actions.deleteSource(s.key); }} style={{ color: 'var(--text-danger)' }}>删除</button>
