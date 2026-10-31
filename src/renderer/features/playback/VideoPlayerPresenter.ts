@@ -90,6 +90,8 @@ export interface VideoPlayerProps {
   onPickEpisode?: (index: number) => void;
   /** ★ 2026-10-25（自动切源容错机制 AutoChangeParse）：流异常/超时时自动切换下一解析线路 */
   onAutoChangeParse?: (currentTime: number) => Promise<boolean> | boolean;
+  /** Re-resolve the selected episode instead of reloading the player window. */
+  onRetryPlayback?: () => void;
   /** ★ 2026-10-25（播放故障回调）：供外层（如直播切备用线）接管流异常 */
   onPlaybackFailure?: (time: number, reason: string) => void;
   /** 当前解析线路名称（展示在 HUD 提示中） */
@@ -565,6 +567,7 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
       clearAuto,
       revealControls: poke,
       recoverHtmlPlayback,
+      onPlaybackFailure: handlePlaybackFailure,
       tryExternalFallback: tryConfiguredExternalFallback,
       handlePlaybackEnd,
       canAdvance,
@@ -732,7 +735,11 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
     onCopy: () => { void contextMenu.copyAddress(); contextMenu.closeMenu(); },
   };
   const onGoToBind = useCallback(() => { void dependencies.driveBindingNavigation.openBindingSettings(); }, [dependencies.driveBindingNavigation]);
-  const onRetry = useCallback(() => dependencies.playerWindowReload.reload(), [dependencies.playerWindowReload]);
+  const onRetry = useCallback(() => {
+    if (props.onRetryPlayback) props.onRetryPlayback();
+    else dependencies.playerWindowReload.reload();
+  }, [dependencies.playerWindowReload, props.onRetryPlayback]);
+  const retryLabel = props.onRetryPlayback ? '重新解析当前集' : '刷新重试';
   return {
     identity: { url, resourceName, danmakuTitle, playTitle, mini },
     media: {
@@ -775,7 +782,7 @@ export function useVideoPlayerPresenter(props: VideoPlayerProps, dependencies: V
       endAll, formatBadges: technical.badges, kernelNotice: engines.notice,
       onPlay: onSurfaceClick, onPlayMouseDown: boost.onMouseDown, onGoToBind, onOpenBindModal: driveBinding.openModal,
       onDismissBindNotice: driveBinding.dismissNotice, onCloseBindModal: driveBinding.closeModal, onBindSaved: driveBinding.onSaved,
-      onSwitchKernel: (nextKernel: Kernel) => switchKernel(nextKernel), onRetry,
+       onSwitchKernel: (nextKernel: Kernel) => switchKernel(nextKernel), onRetry, retryLabel,
     },
     controls: playerControlsModel,
   };

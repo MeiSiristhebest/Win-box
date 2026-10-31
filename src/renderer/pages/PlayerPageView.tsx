@@ -104,6 +104,7 @@ export function PlayerPageView({ session, windowState, title, onResolutionChange
               playTitle={playName}
               parseName={parseName}
               onAutoChangeParse={autoChangeParse}
+              onRetryPlayback={retryCurrent}
               onResolutionChange={onResolutionChange}
               danmakuTitle={((init?.subtitleTitle || init?.title) || '').trim()}
               driveBindProvider={driveBind}

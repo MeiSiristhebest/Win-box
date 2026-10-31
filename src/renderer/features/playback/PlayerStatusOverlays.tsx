@@ -30,6 +30,7 @@ export interface PlayerStatusOverlaysProps {
   onBindSaved(): void;
   onSwitchKernel(kernel: Kernel): void;
   onRetry(): void;
+  retryLabel?: string;
 }
 
 /** Declarative playback status and recovery surfaces, isolated from player orchestration. */
@@ -39,7 +40,7 @@ export function PlayerStatusOverlays(props: PlayerStatusOverlaysProps) {
     driveProvider, bindModalOpen, resourceName, allowMpv, mpvAvailable, kernel,
     endAll, formatBadges, kernelNotice, onPlay, onPlayMouseDown, onGoToBind,
     onOpenBindModal, onDismissBindNotice, onCloseBindModal, onBindSaved,
-    onSwitchKernel, onRetry,
+     onSwitchKernel, onRetry, retryLabel = '刷新重试',
   } = props;
 
   return (
@@ -88,7 +89,7 @@ export function PlayerStatusOverlays(props: PlayerStatusOverlaysProps) {
             {allowMpv && mpvAvailable && kernel === 'html5' && (
               <button className="primary" onClick={() => onSwitchKernel('mpv')}>用 MPV 内核重试</button>
             )}
-            <button className={allowMpv && mpvAvailable && kernel === 'html5' ? '' : 'primary'} onClick={onRetry}>刷新重试</button>
+            <button className={allowMpv && mpvAvailable && kernel === 'html5' ? '' : 'primary'} onClick={onRetry}>{retryLabel}</button>
           </div>
         </div>
       )}

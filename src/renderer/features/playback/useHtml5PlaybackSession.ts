@@ -42,6 +42,7 @@ export interface Html5PlaybackSessionOptions {
   clearAuto(): void;
   revealControls(): void;
   recoverHtmlPlayback(): boolean;
+  onPlaybackFailure?(currentTime: number, reason: string): void;
   tryExternalFallback?(sourceUrl: string, position: number): Promise<{ opened: boolean; player?: string; error?: string } | null>;
   handlePlaybackEnd(): void;
   canAdvance(): boolean;
@@ -78,6 +79,7 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
     clearAuto,
     revealControls,
     recoverHtmlPlayback,
+    onPlaybackFailure,
     tryExternalFallback,
     handlePlaybackEnd,
     canAdvance,
@@ -115,7 +117,14 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
     const target = resolvePlayTarget(htmlUrl).toLowerCase().split('?')[0];
     let speedTimer: ReturnType<typeof setInterval> | null = null;
     let cancelled = false;
+    let terminalFailureReported = false;
     const recovery = createHtml5PlaybackRecovery();
+    const reportTerminalFailure = (message: string, reason: string) => {
+      if (terminalFailureReported || cancelled) return;
+      terminalFailureReported = true;
+      updatePlaybackStatus({ error: message, loading: false });
+      onPlaybackFailure?.(Math.max(0, video.currentTime || 0), reason);
+    };
     let previousBytes = -1;
     let previousTime = 0;
     const reportKiloBytesPerSecond = (speed: number) => {
@@ -161,7 +170,7 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
         if (video.volume !== prefsRef.current.vol) video.volume = prefsRef.current.vol;
         if (video.playbackRate !== prefsRef.current.rate) video.playbackRate = prefsRef.current.rate;
       }
-      updatePlaybackStatus({ loading: false });
+       updatePlaybackStatus({ loading: false });
       timeline.maybeSkip();
     };
     const onDuration = () => {
@@ -212,19 +221,20 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
           const completion = recovery.completeExternalFallback(result);
           if (completion.kind === 'ignore') return;
           if (completion.kind === 'external-player-opened') {
-            updatePlaybackStatus({ error: `内置播放器无法解析此媒体，已启动${completion.player || '外部播放器'}；请在播放器窗口确认播放状态。` });
+          updatePlaybackStatus({ error: `内置播放器无法解析此媒体，已启动${completion.player || '外部播放器'}；请在播放器窗口确认播放状态。` });
             return;
           }
-          updatePlaybackStatus({ error: completion.error ? `${errorMessage}（外部播放器启动失败：${completion.error}）` : errorMessage });
+          const message = completion.error ? `${errorMessage}（外部播放器启动失败：${completion.error}）` : errorMessage;
+          reportTerminalFailure(message, completion.error || nativeMessage || reason);
         }).catch((error) => {
           const detail = error instanceof Error ? error.message : String(error);
           const completion = recovery.completeExternalFallback({ opened: false, error: detail });
           if (completion.kind === 'ignore') return;
-          updatePlaybackStatus({ error: `${errorMessage}（外部播放器启动失败：${detail}）` });
+          reportTerminalFailure(`${errorMessage}（外部播放器启动失败：${detail}）`, detail);
         });
         return;
       }
-      updatePlaybackStatus({ error: errorMessage });
+      reportTerminalFailure(errorMessage, nativeMessage || reason);
     };
     const onEnded = () => handlePlaybackEnd();
 
@@ -326,18 +336,21 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
             }
             if (decision.kind === 'switch-kernel' && recoverHtmlPlayback()) return;
             const retries = decision.retryCount ?? 0;
-            updatePlaybackStatus({ error: `HLS 播放失败：${hlsErrorText(data.type, data.details, responseStatus, data.response?.data)}` + (retries ? `（已自动重试 ${retries} 次）` : '') });
+            const reason = hlsErrorText(data.type, data.details, responseStatus, data.response?.data);
+            reportTerminalFailure(`HLS 播放失败：${reason}` + (retries ? `（已自动重试 ${retries} 次）` : ''), reason);
           });
         }).catch(() => {
           if (cancelled) return;
-          updatePlaybackStatus({ error: 'HLS 播放组件加载失败', loading: false });
+          if (recoverHtmlPlayback()) return;
+          reportTerminalFailure('HLS 播放组件加载失败', 'hls-component-load');
         });
       }
     } else if (target.endsWith('.flv') || target.endsWith('.ts') || /mpegts/.test(target)) {
       void import('mpegts.js').then(({ default: mpegts }) => {
         if (cancelled) return;
         if (!mpegts.isSupported()) {
-          updatePlaybackStatus({ error: '当前环境不支持 FLV 播放', loading: false });
+          if (recoverHtmlPlayback()) return;
+          reportTerminalFailure('当前环境不支持 FLV 播放', 'mpegts-unsupported');
           return;
         }
         const isFlv = target.endsWith('.flv') || /mpegts/.test(target);
@@ -352,6 +365,11 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
         player.on(mpegts.Events.STATISTICS_INFO, (info: { currentSpeed?: number }) => {
           if (info?.currentSpeed != null && info.currentSpeed > 0) reportKiloBytesPerSecond(info.currentSpeed);
         });
+        player.on(mpegts.Events.ERROR, (type: string, detail: string, info: unknown) => {
+          if (cancelled || recoverHtmlPlayback()) return;
+          const reason = [type, detail, typeof info === 'string' ? info : ''].filter(Boolean).join(': ').slice(0, 180);
+          reportTerminalFailure(`MPEG-TS 播放失败：${reason || '媒体流读取或解复用失败'}`, reason || 'mpegts-error');
+        });
         const keepPaused = currentHandoff()?.paused;
         if (keepPaused) {
           updatePlaybackStatus({ paused: true });
@@ -361,7 +379,8 @@ export function useHtml5PlaybackSession(options: Html5PlaybackSessionOptions, me
         }
       }).catch(() => {
         if (cancelled) return;
-        updatePlaybackStatus({ error: 'MPEG-TS 播放组件加载失败', loading: false });
+        if (recoverHtmlPlayback()) return;
+        reportTerminalFailure('MPEG-TS 播放组件加载失败', 'mpegts-component-load');
       });
     } else {
       const targetPrefix = url.split('?')[0];

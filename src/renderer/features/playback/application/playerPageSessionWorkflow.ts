@@ -9,6 +9,8 @@ import type {
 import { resolvePlayerPageEpisode } from './resolvePlayerPageEpisode';
 import type { PlayerPageResolutionState, PlayerPageSessionAction } from './playerPageSessionState';
 
+const MAX_AUTOMATIC_PARSE_SWITCHES = 3;
+
 export interface PlayerPageSessionWorkflowPorts {
   session: PlayerPagePlaybackWorkflowPort;
   history: PlayerPageWorkflowHistoryPort;
@@ -37,6 +39,7 @@ export function createPlayerPageSessionWorkflow(
   let pendingInit: PlayerInitData | null = null;
   let currentEpisodeIndex = 0;
   let parseOffset = 0;
+  let automaticParseSwitches = 0;
 
   const updateInit = (next: PlayerInitData) => {
     currentInit = next;
@@ -60,6 +63,8 @@ export function createPlayerPageSessionWorkflow(
 
   const applyInit = async (incoming: PlayerInitData) => {
     const requestGeneration = generation.next();
+    parseOffset = 0;
+    automaticParseSwitches = 0;
     pendingInit = incoming;
     currentInit = null;
     publish({ type: 'hydration-started' });
@@ -85,6 +90,7 @@ export function createPlayerPageSessionWorkflow(
 
   const selectEpisode = (index: number) => {
     parseOffset = 0;
+    automaticParseSwitches = 0;
     const current = currentInit;
     if (!current || !Number.isInteger(index) || index < 0 || index >= current.episodes.length) return;
     currentEpisodeIndex = index;
@@ -95,6 +101,7 @@ export function createPlayerPageSessionWorkflow(
 
   const retryCurrent = (resolutionKind: PlayerPageResolutionState['kind']) => {
     if (resolutionKind === 'hydrating' || resolutionKind === 'resolving') return;
+    automaticParseSwitches = 0;
     const pending = pendingInit;
     if (pending) {
       parseOffset = 0;
@@ -107,7 +114,8 @@ export function createPlayerPageSessionWorkflow(
 
   const autoChangeParse = async (currentPosition?: number): Promise<boolean> => {
     const current = currentInit;
-    if (!current) return false;
+    if (!current || automaticParseSwitches >= MAX_AUTOMATIC_PARSE_SWITCHES) return false;
+    automaticParseSwitches += 1;
     parseOffset += 1;
     const next = currentPosition != null && currentPosition > 0
       ? { ...current, startTime: currentPosition }

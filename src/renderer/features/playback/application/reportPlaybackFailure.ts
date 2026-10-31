@@ -23,7 +23,9 @@ export function reportPlaybackFailure(
 
   effects.onPlaybackFailure?.(currentTime, reason);
 
-  return autoChange?.then(() => undefined).catch((error: unknown) => {
+  return autoChange?.then((started) => {
+    if (!started) effects.notify('没有可用的备用解析线路，请切换播放源或重新解析当前集');
+  }).catch((error: unknown) => {
     effects.notify(`自动切换解析线路失败：${errorMessage(error)}`);
   }) ?? Promise.resolve();
 }

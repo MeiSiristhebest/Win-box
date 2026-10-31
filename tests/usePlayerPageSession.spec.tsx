@@ -219,6 +219,17 @@ describe('usePlayerPageSession', () => {
     expect(playCalls[1].parseOffset).toBe(1);
     expect(result.current.init?.startTime).toBe(125);
 
+    await act(async () => {
+      expect(await result.current.autoChangeParse(125)).toBe(true);
+      expect(await result.current.autoChangeParse(125)).toBe(true);
+      expect(await result.current.autoChangeParse(125)).toBe(false);
+    });
+    expect(playCalls.map(call => call.parseOffset)).toEqual([undefined, 1, 2, 3]);
+
+    act(() => result.current.retryCurrent());
+    await waitFor(() => expect(sessionPort.play).toHaveBeenCalledTimes(5));
+    expect(playCalls[4]).toEqual({ id: 'episode-1', parseOffset: 3 });
+
     unmount();
   });
 });

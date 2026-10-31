@@ -36,6 +36,17 @@ describe('reportPlaybackFailure', () => {
     expect(notify).toHaveBeenLastCalledWith('自动切换解析线路失败：no more parses');
   });
 
+  it('explains when the automatic parse-switch budget is exhausted', async () => {
+    const notify = vi.fn();
+    await reportPlaybackFailure(12, 'network error', {
+      autoChangeParse: () => Promise.resolve(false),
+      notify,
+    });
+
+    expect(notify).toHaveBeenNthCalledWith(1, '流异常（network error），正在自动为您切换解析线路…');
+    expect(notify).toHaveBeenLastCalledWith('没有可用的备用解析线路，请切换播放源或重新解析当前集');
+  });
+
   it('still reports playback failure when parse failover throws synchronously', async () => {
     const notify = vi.fn();
     const onPlaybackFailure = vi.fn();
