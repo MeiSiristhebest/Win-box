@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "recordedAt": "2026-10-31T06:46:53Z",
+  "recordedAt": "2026-10-31T07:00:45Z",
   "taskId": "V03",
   "defect": "The player toolbar reached opacity zero when hidden but continued to intercept pointer input, blocking clicks on the video.",
   "change": {
@@ -40,5 +40,6 @@
     "Reported live danmaku trails/ghosting were not visually reproduced or closed.",
     "No Playwright capture can prove MPV child HWND visible pixels."
   ],
-  "conclusion": "A concrete hidden-toolbar interaction regression was fixed and included in the exact package; V03 remains open pending complete visual matrix and live danmaku verification."
+  "conclusion": "A concrete hidden-toolbar interaction regression was fixed and included in the exact package; V03 remains open pending complete visual matrix and live danmaku verification.",
+  "sourceCommit": "805d302465edd6de9278422b03f42b78df2ebc55"
 }

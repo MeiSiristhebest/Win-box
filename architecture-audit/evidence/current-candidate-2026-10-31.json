@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-31T07:00:45Z",
+  "candidate": {
+    "version": "1.27.1",
+    "sourceBaseCommit": "62b1c0bf5aa0a77fe6f37d9b5a0346d209996594",
+    "sourceChanges": [
+      "src/renderer/styles/global-components.css",
+      "tests/playerStyleArchitecture.spec.ts"
+    ],
+    "setupPath": "release1.27.1/Win-Box.Setup.1.27.1.exe",
+    "setupBytes": 228686430,
+    "setupSha256": "5a5f6b80e637fc2825b14f6cd4e4dd797ad3f1fc8cebcce128656b4c0f86e3e1",
+    "appDirectoryBytes": 533322785,
+    "appDirectoryFiles": 451,
+    "appAsarBytes": 24890127,
+    "appAsarSha256": "d3eaf5d3fbf99b973bb26e380342278b1eab4bb1a583885413f92900f5a2d38b",
+    "packageBuiltAt": "2026-10-31T06:28:09.965Z",
+    "packageSizeReport": "release1.27.1/package-size-report.json",
+    "githubReleasePublished": false,
+    "sourceCommit": "805d302465edd6de9278422b03f42b78df2ebc55",
+    "productionWorkingTreeChangesAtBuild": [
+      "src/renderer/styles/global-components.css"
+    ],
+    "productionChangeCommit": "805d302465edd6de9278422b03f42b78df2ebc55",
+    "testOnlyChangeAtBuild": "tests/playerStyleArchitecture.spec.ts"
+  },
+  "verification": {
+    "fullVitest": {
+      "command": "pnpm test",
+      "filesPassed": 512,
+      "filesSkipped": 4,
+      "testsPassed": 4202,
+      "testsSkipped": 7,
+      "durationSeconds": 108.85,
+      "result": "PASS"
+    },
+    "typecheck": {
+      "configs": [
+        "tsconfig.json",
+        "tsconfig.web.json",
+        "tsconfig.test.json"
+      ],
+      "result": "PASS",
+      "exitCodes": [
+        0,
+        0,
+        0
+      ],
+      "runner": "TypeScript 7.0.2 native Windows compiler from the local install"
+    },
+    "lint": {
+      "sourceScriptsTests": "PASS",
+      "rendererReactAndReactPerf": "PASS",
+      "rendererJsxA11y": "PASS",
+      "architectureBoundaries": "PASS"
+    },
+    "acceptanceTools": {
+      "testsPassed": 20,
+      "result": "PASS"
+    },
+    "installerScriptRegression": {
+      "testsPassed": 12,
+      "result": "PASS"
+    },
+    "exactPackagePlayback": {
+      "html5": "PASS decode/time/pause-resume",
+      "managedMpv": "PASS decode/seek/time/pause-resume",
+      "potPlayer": "Separate run: process and HTTP fetch plus visible fixture decode/time; pause/resume not verified.",
+      "rendererErrors": 0,
+      "cleanup": "PASS",
+      "evidence": "architecture-audit/evidence/v02-local-player-recheck-2026-10-31.json",
+      "rawTemporaryReports": "Removed after recording compact results in the durable V02 evidence."
+    },
+    "packageSourceCheck": {
+      "cssAsset": "index-CTpF0c_D.css",
+      "hiddenToolbarPassThrough": true,
+      "visibleToolbarInteractive": true
+    }
+  },
+  "notComplete": [
+    "Remote CI status was not refreshed.",
+    "Current Setup.exe UI paths and complete real user-profile preservation remain unverified.",
+    "Live-source playback, PotPlayer pause/resume, and visible MPV native frame remain unverified.",
+    "Full app theme/DPI/route/danmaku visual matrix remains unverified.",
+    "V05 representative 1080p/4K and long-duration resource budget not established."
+  ],
+  "conclusion": "Locally built current 1.27.1 candidate only. Local tests and package gates pass; no GitHub Release was published."
+}
